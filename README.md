@@ -16,6 +16,22 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Data access
+
+The application uses Prisma for database queries through server-side data
+access functions and Route Handlers. The Supabase SDK remains available in
+`lib/supabase/client.ts` for browser features such as Auth, Storage, and
+Realtime.
+
+Copy `.env.example` to `.env.local` and set `DATABASE_URL` to the PostgreSQL
+connection string from Supabase. Keep this variable server-only; it must not
+use a `NEXT_PUBLIC_` prefix.
+
+The current connection check uses a temporary Prisma raw query because the
+database schema is not yet present in this repository. After configuring the
+connection, introspect an existing schema with `npx prisma db pull`, then
+replace that query with generated Prisma model calls.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

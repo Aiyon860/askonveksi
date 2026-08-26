@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 export default function Home() {
   const [status, setStatus] = useState<string>("");
@@ -12,16 +11,16 @@ export default function Home() {
     setStatus("Connecting...");
 
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("test")
-        .select("*")
-        .limit(1);
+      const response = await fetch("/api/test", { cache: "no-store" });
+      const result = (await response.json()) as {
+        data?: unknown;
+        error?: string;
+      };
 
-      if (error) {
-        setStatus(`❌ Error: ${error.message}`);
+      if (!response.ok || result.error) {
+        setStatus(`❌ Error: ${result.error ?? "Request failed"}`);
       } else {
-        setStatus(`✅ Connected! Data: ${JSON.stringify(data)}`);
+        setStatus(`✅ Connected! Data: ${JSON.stringify(result.data)}`);
       }
     } catch (err) {
       setStatus(`❌ Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -34,7 +33,7 @@ export default function Home() {
     <div className="flex flex-col flex-1 items-center justify-center min-h-screen bg-zinc-50 dark:bg-black p-8">
       <main className="flex flex-col items-center gap-6 max-w-md w-full">
         <h1 className="text-2xl font-bold text-black dark:text-white">
-          Supabase Connection Test
+          Prisma Data Layer Test
         </h1>
 
         <button
@@ -52,7 +51,7 @@ export default function Home() {
         )}
 
         <p className="text-zinc-500 text-sm text-center">
-          Pastikan sudah isi <code className="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">.env.local</code> dengan credential Supabase yang benar.
+          Database queries use Prisma on the server. Supabase SDK remains available for Auth, Storage, and Realtime.
         </p>
       </main>
     </div>
