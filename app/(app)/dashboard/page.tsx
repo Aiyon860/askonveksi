@@ -29,6 +29,13 @@ import {
 } from "recharts";
 
 import { PageHeader } from "@/components/page-header";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 
 const metrics = [
