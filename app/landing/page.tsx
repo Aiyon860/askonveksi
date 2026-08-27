@@ -31,7 +31,7 @@ export default function LandingPage() {
     <main className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
       <nav className="border-b bg-background" aria-label="Navigasi utama">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link href="/landing" className="flex items-center gap-2 rounded-md font-bold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <Link href="/" className="flex items-center gap-2 rounded-md font-bold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <Image
               src="/brand/askonveksi-mark.png"
               alt=""

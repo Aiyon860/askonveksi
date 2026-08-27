@@ -16,6 +16,7 @@ import {
   WalletCards,
 } from "lucide-react";
 
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 
 const metrics = [
@@ -51,21 +52,19 @@ const funnel = [
 
 export default function DashboardPage() {
   return (
-    <main className="min-h-screen bg-muted/50 text-foreground selection:bg-foreground selection:text-background">
-      <header className="border-b bg-background">
-        <div className="mx-auto flex max-w-[1600px] items-end justify-between gap-6 px-5 py-6 sm:px-8 lg:px-12">
-          <div>
-            <h1 className="text-2xl font-bold leading-8">ASKONVEKSI DASHBOARD</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Ringkasan kondisi bisnis dan operasional.</p>
-          </div>
-          <div className="hidden text-right sm:block">
+    <>
+      <PageHeader
+        title="Dashboard"
+        description="Ringkasan kondisi bisnis dan operasional."
+        action={(
+          <div className="text-right">
             <p className="text-sm font-medium">Data dummy · Agustus 2026</p>
             <p className="mt-1 text-xs text-muted-foreground">Ringkasan bulanan</p>
           </div>
-        </div>
-      </header>
+        )}
+      />
 
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-5 py-6 sm:px-8 lg:px-12 lg:py-8">
+      <div className="flex flex-col gap-6">
         <section aria-labelledby="ringkasan-title">
           <div className="mb-4">
             <h2 id="ringkasan-title" className="text-base font-semibold">Ringkasan bisnis</h2>
@@ -167,6 +166,6 @@ export default function DashboardPage() {
           </article>
         </section>
       </div>
-    </main>
+    </>
   );
 }

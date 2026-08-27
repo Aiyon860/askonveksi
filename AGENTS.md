@@ -15,5 +15,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - For Prisma Client queries and Prisma database access, use the `prisma-client-api` skill. Favor efficient query shapes and performance while keeping the result straightforward and readable for developers.
 - For security-sensitive work—including untrusted input, authentication, authorization, sessions, personal data, storage, and external integrations—use the `security-and-hardening` skill.
 - For UI component selection, installation, composition, styling, and shadcn best practices, use the `shadcn` skill.
+- For page-load, navigation, rendering, Core Web Vitals, or bundle performance work, use the `performance` skill.
 - For any Supabase work—including Database, Auth, Realtime, Storage, Edge Functions, RLS, and other Supabase services—use the `supabase` skill.
 - When a task spans multiple areas, use every relevant skill. For example, Supabase Auth requires both `supabase` and `security-and-hardening`, while shadcn-based interface work requires both `impeccable` and `shadcn`.

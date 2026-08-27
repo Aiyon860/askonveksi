@@ -19,7 +19,8 @@ Client Browser
 
 1. Salin `.env.example` menjadi `.env.local`.
 2. Isi `DATABASE_URL` dengan connection string PostgreSQL dari Supabase.
-3. Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_ANON_KEY` jika fitur Supabase SDK digunakan.
+3. Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` untuk Supabase Auth.
+4. Isi `SUPABASE_SECRET_KEY` hanya pada server untuk administrasi user Auth.
 
 Untuk deployment serverless, gunakan connection pooler Supabase yang sesuai. Jangan commit `.env.local` atau connection string ke repository.
 
@@ -28,26 +29,24 @@ Untuk deployment serverless, gunakan connection pooler Supabase yang sesuai. Jan
 - `prisma/schema.prisma` — definisi model Prisma.
 - `prisma.config.ts` — lokasi schema dan sumber `DATABASE_URL`.
 - `lib/prisma.ts` — singleton Prisma Client dengan PostgreSQL adapter.
-- `lib/data/` — fungsi data access server-side.
-- `app/api/test/route.ts` — contoh Route Handler yang memanggil data layer.
-- `lib/supabase/client.ts` — client Supabase untuk fitur non-database.
+- `lib/crm/data.ts` — DAL read-only dengan query Prisma terpilih.
+- `app/actions/` — mutation boundary dengan validasi, Auth, dan RBAC.
+- `lib/supabase/server.ts` — client SSR berbasis cookie.
+- `lib/supabase/admin.ts` — client Admin server-only untuk manajemen user.
+- `prisma/migrations/` — migration schema, constraint bisnis, RLS, dan revoke Data API.
 
 ## Perintah umum
 
 ```bash
 npm install
+npx prisma migrate deploy
 npm run db:validate
 npm run db:generate
 ```
 
-Jika database Supabase sudah memiliki tabel, introspeksi schema terlebih dahulu:
+Migration sengaja menggunakan jalur Prisma server-side dan tidak membuka policy Data API untuk role browser. Pastikan `DATABASE_URL` memakai direct connection atau Supavisor session mode yang dapat menjalankan migration; transaction pooler tidak cocok untuk migration.
 
-```bash
-npx prisma db pull
-npm run db:generate
-```
-
-Setelah model tersedia, gunakan query typed seperti `prisma.user.findMany()` di `lib/data/`. Query raw pada `lib/data/test.ts` hanya untuk connection check sementara karena schema aplikasi belum didefinisikan.
+Untuk instalasi baru, isi variabel `BOOTSTRAP_OWNER_*`, lalu jalankan `npm run bootstrap:owner` tepat satu kali. Script berhenti jika `AppUser` sudah berisi data dan tidak pernah mencetak password.
 
 ## Aturan keamanan
 
