@@ -69,13 +69,14 @@ Integrasi WhatsApp belum direncanakan untuk tahap development saat ini.
 
 - Nama produk: ERM Askonveksi.
 - Bahasa produk: Bahasa Indonesia.
-- Belum ada logo atau aset merek resmi yang harus dipertahankan.
+- Logo resmi AS Konveksi tersedia pada `public/brand/askonveksi-logo.png` dengan turunan simbol pada `public/brand/askonveksi-mark.png`.
+- Warna asli logo dipertahankan sebagai identitas merek; warna tersebut tidak otomatis menjadi aksen dekoratif pada antarmuka produk yang tetap mengikuti sistem monokrom.
 
 ## Evidence on Hand
 
 - Blueprint produk utama: `BLUEPRINT_ERM_ASKONVEKSI.md`.
 - Blueprint memuat contoh alur end-to-end, struktur peran, metrik dashboard, pipeline CRM, struktur Sales Order, prioritas fase pembangunan, dan relasi antar-modul.
-- Belum ada logo resmi, aset merek, testimonial, studi kasus, benchmark, atau klaim eksternal yang boleh difabrikasi.
+- Logo resmi tersedia pada `public/brand/`; belum ada testimonial, studi kasus, benchmark, atau klaim eksternal terverifikasi yang boleh difabrikasi.
 - Implementasi saat ini masih berupa scaffold Next.js dengan halaman pengujian koneksi data; belum menjadi bukti rancangan produk final.
 
 ## Product Principles
