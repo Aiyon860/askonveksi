@@ -164,7 +164,7 @@ export async function createCustomerAction(formData: FormData) {
     const parsed = createCustomerSchema.safeParse(customerFields(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
-    const customer = await getPrismaClient().$transaction(
+    await getPrismaClient().$transaction(
       async (tx) => {
         const [customerType, leadSource, salesPic] = await Promise.all([
           tx.customerType.findUnique({ where: { id: parsed.data.customerTypeId }, select: { id: true } }),
@@ -188,7 +188,7 @@ export async function createCustomerAction(formData: FormData) {
 
     revalidatePath("/crm");
     revalidatePath("/crm/pelanggan");
-    return flashMessagePath(`/crm/pelanggan/${customer.id}`, "notice", "Customer berhasil dibuat.");
+    return flashMessagePath("/crm/pelanggan", "notice", "Customer berhasil dibuat.");
   });
 }
 
@@ -228,7 +228,7 @@ export async function updateCustomerAction(formData: FormData) {
 
     revalidatePath("/crm/pelanggan");
     revalidatePath(`/crm/pelanggan/${customerId}`);
-    return flashMessagePath(`/crm/pelanggan/${customerId}`, "notice", "Data customer diperbarui.");
+    return flashMessagePath("/crm/pelanggan", "notice", "Data customer diperbarui.");
   });
 }
 

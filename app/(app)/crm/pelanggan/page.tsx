@@ -15,6 +15,7 @@ import {
 
 import { archiveCustomerAction, restoreCustomerAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { EditCustomerForm } from "@/components/crm/edit-customer-form";
 import { NewCustomerForm } from "@/components/crm/new-customer-form";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { DataPagination } from "@/components/data-pagination";
@@ -181,6 +182,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
     getCustomerFormOptions(),
   ]);
   const canChangeArchiveStatus = Boolean(actor && hasRole(actor.role, ARCHIVE_ROLES));
+  const showActions = !archived || canChangeArchiveStatus;
 
   if (page > pageCount) {
     redirect(tableHref(state, { page: pageCount }));
@@ -237,14 +239,14 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
             <p className="text-xs text-muted-foreground">
               <strong className="font-medium text-foreground">{total}</strong> {archived ? "customer diarsipkan" : "customer aktif"}
             </p>
-            <NewCustomerForm {...formOptions} />
+            <NewCustomerForm key={`new-${archived}-${query}-${total}`} {...formOptions} />
           </div>
         </div>
 
         {customers.length ? (
           <div className="flex min-h-112 flex-1 flex-col">
             <Table
-              className={canChangeArchiveStatus ? "min-w-5xl" : "min-w-232"}
+              className={showActions ? "min-w-5xl" : "min-w-232"}
               containerClassName="min-h-0 flex-1 overflow-auto"
             >
               <TableHeader className="sticky top-0 bg-muted">
@@ -258,7 +260,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                   <TableHead className="min-w-56">Kontak</TableHead>
                   <SortableHead label="Peluang" value="opportunities" state={state} />
                   <SortableHead label="Diperbarui" value="updatedAt" state={state} />
-                  {canChangeArchiveStatus ? <TableHead className="w-40">Aksi</TableHead> : null}
+                  {showActions ? <TableHead className="w-56">Aksi</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -300,29 +302,40 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                       <TableCell className="text-muted-foreground">
                         {formatDate(customer.opportunities[0]?.updatedAt ?? customer.updatedAt)}
                       </TableCell>
-                      {canChangeArchiveStatus ? (
+                      {showActions ? (
                         <TableCell>
-                          <form action={archived ? restoreCustomerAction : archiveCustomerAction}>
-                            <input type="hidden" name="customerId" value={customer.id} />
-                            <input type="hidden" name="version" value={customer.version} />
-                            <ConfirmSubmitButton
-                              variant={archived ? "outline" : "destructive"}
-                              size="sm"
-                              pendingLabel="Memproses..."
-                              confirmTitle={archived ? "Aktifkan kembali customer?" : "Arsipkan customer?"}
-                              confirmDescription={archived
-                                ? "Customer akan tersedia kembali untuk peluang dan transaksi baru."
-                                : "Customer tidak lagi tersedia untuk peluang baru. Riwayat transaksi tetap tersimpan."}
-                              confirmLabel={archived ? "Ya, aktifkan" : "Ya, arsipkan"}
-                            >
-                              {archived ? (
-                                <ArchiveRestore data-icon="inline-start" aria-hidden="true" />
-                              ) : (
-                                <Archive data-icon="inline-start" aria-hidden="true" />
-                              )}
-                              {archived ? "Aktifkan" : "Arsipkan"}
-                            </ConfirmSubmitButton>
-                          </form>
+                          <div className="flex items-center gap-2">
+                            {!archived ? (
+                              <EditCustomerForm
+                                key={`edit-${customer.id}-${customer.version}`}
+                                customer={customer}
+                                {...formOptions}
+                              />
+                            ) : null}
+                            {canChangeArchiveStatus ? (
+                              <form action={archived ? restoreCustomerAction : archiveCustomerAction}>
+                                <input type="hidden" name="customerId" value={customer.id} />
+                                <input type="hidden" name="version" value={customer.version} />
+                                <ConfirmSubmitButton
+                                  variant={archived ? "outline" : "destructive"}
+                                  size="sm"
+                                  pendingLabel="Memproses..."
+                                  confirmTitle={archived ? "Aktifkan kembali customer?" : "Arsipkan customer?"}
+                                  confirmDescription={archived
+                                    ? "Customer akan tersedia kembali untuk peluang dan transaksi baru."
+                                    : "Customer tidak lagi tersedia untuk peluang baru. Riwayat transaksi tetap tersimpan."}
+                                  confirmLabel={archived ? "Ya, aktifkan" : "Ya, arsipkan"}
+                                >
+                                  {archived ? (
+                                    <ArchiveRestore data-icon="inline-start" aria-hidden="true" />
+                                  ) : (
+                                    <Archive data-icon="inline-start" aria-hidden="true" />
+                                  )}
+                                  {archived ? "Aktifkan" : "Arsipkan"}
+                                </ConfirmSubmitButton>
+                              </form>
+                            ) : null}
+                          </div>
                         </TableCell>
                       ) : null}
                     </TableRow>
