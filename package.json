@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "postinstall": "npm run db:generate",
     "test": "node --test tests/*.test.mjs",
     "lint": "eslint",
     "bootstrap:owner": "node scripts/bootstrap-owner.mjs",
