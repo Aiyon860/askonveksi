@@ -9,7 +9,7 @@ import {
   quotationDraftSchema,
   strongPasswordSchema,
 } from "../lib/crm/validation.ts";
-import { DATA_PAGE_SIZE, parsePageParam } from "../lib/pagination.ts";
+import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 
 test("lead wajib memakai customer tersimpan", () => {
   const inlineCustomer = createOpportunitySchema.safeParse({
@@ -104,4 +104,8 @@ test("parameter pagination dibatasi pada nilai aman", () => {
   assert.equal(parsePageParam("0"), 1);
   assert.equal(parsePageParam(["3", "9"]), 3);
   assert.equal(parsePageParam("999999999999999999999"), 10_000);
+  assert.equal(parsePageSizeParam(undefined), DATA_PAGE_SIZE);
+  assert.equal(parsePageSizeParam("10"), 10);
+  assert.equal(parsePageSizeParam(["50", "10"]), 50);
+  assert.equal(parsePageSizeParam("5000"), DATA_PAGE_SIZE);
 });

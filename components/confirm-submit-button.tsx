@@ -27,15 +27,22 @@ export function ConfirmSubmitButton({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { pending } = useFormStatus();
 
+  function openConfirmation() {
+    const form = triggerRef.current?.form;
+    if (!form?.reportValidity()) return;
+
+    setOpen(true);
+  }
+
   function submitConfirmed() {
-    const form = triggerRef.current?.closest("form");
+    const form = triggerRef.current?.form;
     setOpen(false);
     form?.requestSubmit();
   }
 
   return (
     <>
-      <Button ref={triggerRef} type="button" variant={variant} disabled={pending} onClick={() => setOpen(true)} {...props}>
+      <Button ref={triggerRef} type="button" variant={variant} disabled={pending} onClick={openConfirmation} {...props}>
         {pending ? <Spinner data-icon="inline-start" /> : null}
         {pending ? pendingLabel : children}
       </Button>

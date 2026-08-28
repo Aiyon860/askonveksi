@@ -1,11 +1,10 @@
 import "server-only";
 
-import type { OpportunityStage, Prisma } from "@prisma/client";
+import type { AppRole, OpportunityStage, Prisma } from "@prisma/client";
 
 import { USER_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { DATA_PAGE_SIZE } from "@/lib/pagination";
 
 export type PipelineOpportunity = {
   id: string;
@@ -93,7 +92,24 @@ export async function getCustomerOptions() {
   });
 }
 
-export async function getCustomers(query: string, archived: boolean, page: number) {
+export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt";
+export type SortDirection = "asc" | "desc";
+
+export async function getCustomers({
+  query,
+  archived,
+  page,
+  pageSize,
+  sort,
+  direction,
+}: {
+  query: string;
+  archived: boolean;
+  page: number;
+  pageSize: number;
+  sort: CustomerSort;
+  direction: SortDirection;
+}) {
   await requireActor();
   const normalizedQuery = query.trim().slice(0, 80);
   const where = {
@@ -112,6 +128,11 @@ export async function getCustomers(query: string, archived: boolean, page: numbe
       : {}),
   } satisfies Prisma.CustomerWhereInput;
   const prisma = getPrismaClient();
+  const orderBy = (
+    sort === "opportunities"
+      ? [{ opportunities: { _count: direction } }, { id: "asc" as const }]
+      : [{ [sort]: direction }, { id: "asc" as const }]
+  ) satisfies Prisma.CustomerOrderByWithRelationInput[];
 
   const [items, total] = await prisma.$transaction([
     prisma.customer.findMany({
@@ -119,6 +140,7 @@ export async function getCustomers(query: string, archived: boolean, page: numbe
       select: {
         id: true,
         customerNo: true,
+        version: true,
         name: true,
         companyName: true,
         whatsapp: true,
@@ -133,13 +155,13 @@ export async function getCustomers(query: string, archived: boolean, page: numbe
           take: 1,
         },
       },
-      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-      skip: (page - 1) * DATA_PAGE_SIZE,
-      take: DATA_PAGE_SIZE,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     }),
     prisma.customer.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / DATA_PAGE_SIZE)) };
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export async function getCustomerDetail(customerId: string) {
@@ -297,11 +319,45 @@ export async function getSalesOrderDetail(salesOrderId: string) {
   });
 }
 
-export async function getUsers(page: number) {
+export type UserStatusFilter = "active" | "all" | "inactive";
+export type UserSort = "createdAt" | "email" | "isActive" | "name" | "role";
+
+export async function getUsers({
+  query,
+  role,
+  status,
+  page,
+  pageSize,
+  sort,
+  direction,
+}: {
+  query: string;
+  role: AppRole | "all";
+  status: UserStatusFilter;
+  page: number;
+  pageSize: number;
+  sort: UserSort;
+  direction: SortDirection;
+}) {
   await requireActor(USER_ADMIN_ROLES);
+  const normalizedQuery = query.trim().slice(0, 120);
+  const where = {
+    ...(normalizedQuery
+      ? {
+          OR: [
+            { name: { contains: normalizedQuery, mode: "insensitive" as const } },
+            { email: { contains: normalizedQuery, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+    ...(role === "all" ? {} : { role }),
+    ...(status === "all" ? {} : { isActive: status === "active" }),
+  } satisfies Prisma.AppUserWhereInput;
+  const orderBy = [{ [sort]: direction }, { id: "asc" as const }] satisfies Prisma.AppUserOrderByWithRelationInput[];
   const prisma = getPrismaClient();
-  const [items, total, activeTotal] = await prisma.$transaction([
+  const [items, total, activeTotal, allTotal] = await prisma.$transaction([
     prisma.appUser.findMany({
+      where,
       select: {
         id: true,
         authUserId: true,
@@ -313,12 +369,13 @@ export async function getUsers(page: number) {
         createdAt: true,
         updatedAt: true,
       },
-      orderBy: [{ isActive: "desc" }, { name: "asc" }, { id: "asc" }],
-      skip: (page - 1) * DATA_PAGE_SIZE,
-      take: DATA_PAGE_SIZE,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     }),
-    prisma.appUser.count(),
+    prisma.appUser.count({ where }),
     prisma.appUser.count({ where: { isActive: true } }),
+    prisma.appUser.count(),
   ]);
-  return { items, total, activeTotal, pageCount: Math.max(1, Math.ceil(total / DATA_PAGE_SIZE)) };
+  return { items, total, activeTotal, allTotal, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }

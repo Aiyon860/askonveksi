@@ -29,6 +29,7 @@ import {
 } from "recharts";
 
 import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import {
   ChartContainer,
   ChartTooltip,
@@ -38,35 +39,70 @@ import {
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 
+const metricToneClasses = {
+  destructive: {
+    surface: "bg-card",
+    value: "text-destructive",
+    icon: "bg-destructive/10 text-destructive",
+  },
+  highlight: {
+    surface: "bg-card",
+    value: "text-highlight",
+    icon: "bg-highlight/10 text-highlight",
+  },
+  info: {
+    surface: "bg-card",
+    value: "text-info",
+    icon: "bg-info/10 text-info",
+  },
+  success: {
+    surface: "bg-card",
+    value: "text-success",
+    icon: "bg-success/10 text-success",
+  },
+  warning: {
+    surface: "bg-card",
+    value: "text-warning",
+    icon: "bg-warning/10 text-warning",
+  },
+} as const;
+
 const metrics = [
-  { label: "Omzet bulan ini", value: "Rp 185.500.000", note: "Pendapatan berjalan", icon: CircleDollarSign, issue: false },
-  { label: "Piutang", value: "Rp 42.500.000", note: "Perlu ditagihkan", icon: HandCoins, issue: false },
-  { label: "Hutang", value: "Rp 28.750.000", note: "Kewajiban berjalan", icon: BanknoteArrowDown, issue: false },
-  { label: "Pengeluaran", value: "Rp 96.250.000", note: "Bulan berjalan", icon: WalletCards, issue: false },
-  { label: "Order aktif", value: "37", note: "Sedang diproses", icon: PackageCheck, issue: false },
-  { label: "Produksi", value: "21", note: "Order produksi aktif", icon: Factory, issue: false },
-  { label: "Order terlambat", value: "4", note: "Butuh perhatian", icon: Clock3, issue: true },
-  { label: "Lead baru", value: "32", note: "Potensi pelanggan", icon: UsersRound, issue: false },
+  { label: "Omzet bulan ini", value: "Rp 185.500.000", note: "Pendapatan berjalan", icon: CircleDollarSign, tone: "success" },
+  { label: "Piutang", value: "Rp 42.500.000", note: "Perlu ditagihkan", icon: HandCoins, tone: "warning" },
+  { label: "Hutang", value: "Rp 28.750.000", note: "Kewajiban berjalan", icon: BanknoteArrowDown, tone: "warning" },
+  { label: "Pengeluaran", value: "Rp 96.250.000", note: "Bulan berjalan", icon: WalletCards, tone: "highlight" },
+  { label: "Order aktif", value: "37", note: "Sedang diproses", icon: PackageCheck, tone: "info" },
+  { label: "Produksi", value: "21", note: "Order produksi aktif", icon: Factory, tone: "highlight" },
+  { label: "Order terlambat", value: "4", note: "Butuh perhatian", icon: Clock3, tone: "destructive" },
+  { label: "Lead baru", value: "32", note: "Potensi pelanggan", icon: UsersRound, tone: "info" },
 ] as const;
 
+const productionToneClasses = {
+  highlight: { icon: "bg-highlight/10 text-highlight", progress: "bg-highlight" },
+  info: { icon: "bg-info/10 text-info", progress: "bg-info" },
+  success: { icon: "bg-success/10 text-success", progress: "bg-success" },
+  warning: { icon: "bg-warning/10 text-warning", progress: "bg-warning" },
+} as const;
+
 const production = [
-  { label: "Menunggu desain", value: 5, icon: Sparkles, busiest: false },
-  { label: "Menunggu bahan", value: 3, icon: Shirt, busiest: false },
-  { label: "Cutting", value: 4, icon: Scissors, busiest: false },
-  { label: "Printing", value: 6, icon: Box, busiest: false },
-  { label: "Jahit", value: 8, icon: Factory, busiest: true },
-  { label: "QC", value: 5, icon: PackageCheck, busiest: false },
-  { label: "Packing", value: 3, icon: Box, busiest: false },
-  { label: "Pengiriman", value: 7, icon: Truck, busiest: false },
+  { label: "Menunggu desain", value: 5, icon: Sparkles, tone: "info" },
+  { label: "Menunggu bahan", value: 3, icon: Shirt, tone: "warning" },
+  { label: "Cutting", value: 4, icon: Scissors, tone: "info" },
+  { label: "Printing", value: 6, icon: Box, tone: "highlight" },
+  { label: "Jahit", value: 8, icon: Factory, tone: "warning" },
+  { label: "QC", value: 5, icon: PackageCheck, tone: "highlight" },
+  { label: "Packing", value: 3, icon: Box, tone: "info" },
+  { label: "Pengiriman", value: 7, icon: Truck, tone: "success" },
 ] as const;
 
 const highestProductionCount = Math.max(...production.map((stage) => stage.value));
 
 const funnel = [
-  { label: "Lead", value: 100, width: "100%" },
-  { label: "Follow up", value: 45, width: "45%" },
-  { label: "Penawaran", value: 20, width: "20%" },
-  { label: "Deal", value: 12, width: "12%" },
+  { label: "Lead", value: 100, width: "100%", track: "bg-info/10", fill: "bg-info text-background" },
+  { label: "Follow up", value: 45, width: "45%", track: "bg-warning/10", fill: "bg-warning text-background" },
+  { label: "Penawaran", value: 20, width: "20%", track: "bg-highlight/10", fill: "bg-highlight text-background" },
+  { label: "Deal", value: 12, width: "12%", track: "bg-success/10", fill: "bg-success text-background" },
 ] as const;
 
 const trendYears = ["2024", "2025", "2026"] as const;
@@ -123,14 +159,14 @@ const businessTrendData: Record<TrendYear, TrendDatum[]> = {
 const revenueChartConfig = {
   revenue: {
     label: "Kas masuk",
-    color: "var(--chart-5)",
+    color: "var(--success)",
   },
 } satisfies ChartConfig;
 
 const completedOrdersChartConfig = {
   completedOrders: {
     label: "Order selesai & lunas",
-    color: "var(--chart-3)",
+    color: "var(--info)",
   },
 } satisfies ChartConfig;
 
@@ -168,9 +204,9 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Ringkasan kondisi bisnis dan operasional."
         action={(
-          <div className="text-right">
-            <p className="text-sm font-medium">Data dummy · Agustus 2026</p>
-            <p className="mt-1 text-xs text-muted-foreground">Ringkasan bulanan</p>
+          <div className="flex flex-col items-end gap-1.5 text-right">
+            <Badge variant="info">Data dummy · Agustus 2026</Badge>
+            <p className="text-xs text-muted-foreground">Ringkasan bulanan</p>
           </div>
         )}
       />
@@ -185,16 +221,17 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-2 xl:grid-cols-4">
             {metrics.map((metric) => {
               const Icon = metric.icon;
+              const tone = metricToneClasses[metric.tone];
               return (
-                <article key={metric.label} className="flex min-w-0 items-start justify-between gap-4 bg-card p-4">
+                <article key={metric.label} className={cn("flex min-w-0 items-start justify-between gap-4 p-4", tone.surface)}>
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-muted-foreground">{metric.label}</p>
-                    <p className={cn("mt-3 truncate font-mono text-xl font-semibold tabular-nums", metric.issue ? "text-destructive" : "text-card-foreground")}>
+                    <p className={cn("mt-3 truncate font-mono text-xl font-semibold tabular-nums", tone.value)}>
                       {metric.value}
                     </p>
-                    <p className={cn("mt-1 text-xs", metric.issue ? "text-destructive" : "text-muted-foreground")}>{metric.note}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{metric.note}</p>
                   </div>
-                  <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md", metric.issue ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
+                  <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md", tone.icon)}>
                     <Icon className="size-4" strokeWidth={1.8} aria-hidden="true" />
                   </div>
                 </article>
@@ -225,15 +262,15 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-            <article className="rounded-lg border bg-card xl:col-span-3">
-              <div className="flex flex-col gap-4 border-b p-4 sm:flex-row sm:items-start sm:justify-between">
+            <article className="overflow-hidden rounded-lg border bg-card xl:col-span-3">
+              <div className="flex flex-col gap-4 border-b bg-success/5 p-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-sm font-semibold">Pendapatan per bulan</h3>
                   <p className="mt-1 text-xs text-muted-foreground">Kas masuk aktual · data dummy {selectedYear}</p>
                 </div>
                 <div className="sm:text-right">
                   <p className="text-xs font-medium text-muted-foreground">Total {selectedYear}</p>
-                  <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatRupiah(totalRevenue)}</p>
+                  <p className="mt-1 font-mono text-lg font-semibold text-success tabular-nums">{formatRupiah(totalRevenue)}</p>
                 </div>
               </div>
 
@@ -244,7 +281,7 @@ export default function DashboardPage() {
                   initialDimension={{ width: 720, height: 256 }}
                   aria-label={`Grafik pendapatan bulanan tahun ${selectedYear}`}
                 >
-                  <LineChart accessibilityLayer data={trendData} margin={{ left: 4, right: 12, top: 8 }}>
+                  <LineChart accessibilityLayer data={trendData} margin={{ left: 4, right: 12, top: 16 }}>
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="month" axisLine={false} tickLine={false} tickMargin={10} />
                     <YAxis
@@ -286,15 +323,15 @@ export default function DashboardPage() {
               </div>
             </article>
 
-            <article className="rounded-lg border bg-card xl:col-span-2">
-              <div className="flex flex-col gap-4 border-b p-4 sm:flex-row sm:items-start sm:justify-between">
+            <article className="overflow-hidden rounded-lg border bg-card xl:col-span-2">
+              <div className="flex flex-col gap-4 border-b bg-info/5 p-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-sm font-semibold">Order selesai &amp; lunas</h3>
                   <p className="mt-1 text-xs text-muted-foreground">Produksi selesai dan seluruh invoice paid.</p>
                 </div>
                 <div className="sm:text-right">
                   <p className="text-xs font-medium text-muted-foreground">Total {selectedYear}</p>
-                  <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{totalCompletedOrders} order</p>
+                  <p className="mt-1 font-mono text-lg font-semibold text-info tabular-nums">{totalCompletedOrders} order</p>
                 </div>
               </div>
 
@@ -347,16 +384,17 @@ export default function DashboardPage() {
                 <h2 className="text-base font-semibold">Dashboard produksi</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Order produksi · jumlah job/item aktif per tahap.</p>
               </div>
-              <div className="rounded-md bg-secondary px-2.5 py-1.5 text-xs font-medium text-secondary-foreground">Jahit terpadat</div>
+              <Badge variant="warning">Jahit terpadat</Badge>
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
               {production.map((stage, index) => {
                 const Icon = stage.icon;
+                const tone = productionToneClasses[stage.tone];
                 return (
                   <div key={stage.label} className="min-w-0">
                     <div className="mb-3 flex items-center">
-                      <div className={cn("flex size-8 items-center justify-center rounded-md", stage.busiest ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                      <div className={cn("flex size-8 items-center justify-center rounded-md", tone.icon)}>
                         <Icon className="size-4" strokeWidth={1.8} aria-hidden="true" />
                       </div>
                       {index < production.length - 1 && <ArrowRight className="ml-2 hidden size-4 text-muted-foreground/40 sm:block" aria-hidden="true" />}
@@ -364,15 +402,15 @@ export default function DashboardPage() {
                     <p className="truncate text-xs text-muted-foreground">{stage.label}</p>
                     <p className="mt-1 font-mono text-xl font-semibold tabular-nums">{stage.value}</p>
                     <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-foreground" style={{ width: `${(stage.value / highestProductionCount) * 100}%` }} />
+                      <div className={cn("h-full rounded-full", tone.progress)} style={{ width: `${(stage.value / highestProductionCount) * 100}%` }} />
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <div className="m-4 mt-2 flex items-center gap-3 rounded-md border bg-muted/50 p-3">
-              <Clock3 className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div className="m-4 mt-2 flex items-center gap-3 rounded-md border border-warning/20 bg-warning/5 p-3">
+              <Clock3 className="size-4 shrink-0 text-warning" aria-hidden="true" />
               <p className="text-sm"><span className="font-medium">Tahap terpadat:</span> Jahit memiliki 8 job/item aktif.</p>
             </div>
           </article>
@@ -383,7 +421,7 @@ export default function DashboardPage() {
                 <h2 className="text-base font-semibold">Dashboard sales</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Pergerakan lead menuju deal.</p>
               </div>
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-highlight/10 text-highlight">
                 <Target className="size-4" aria-hidden="true" />
               </div>
             </div>
@@ -395,8 +433,8 @@ export default function DashboardPage() {
                     <p className="text-xs font-medium text-muted-foreground">{step.label}</p>
                     <p className="font-mono text-sm font-medium tabular-nums">{step.value}</p>
                   </div>
-                  <div className="h-8 overflow-hidden rounded-md bg-muted">
-                    <div className="flex h-full min-w-12 items-center justify-end rounded-md bg-foreground px-2 font-mono text-xs text-background" style={{ width: step.width }}>
+                  <div className={cn("h-8 overflow-hidden rounded-md", step.track)}>
+                    <div className={cn("flex h-full min-w-12 items-center justify-end rounded-md px-2 font-mono text-xs", step.fill)} style={{ width: step.width }}>
                       {step.value}
                     </div>
                   </div>
@@ -404,10 +442,10 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            <div className="m-4 mt-2 flex items-center justify-between gap-5 rounded-md bg-secondary p-4">
+            <div className="m-4 mt-2 flex items-center justify-between gap-5 rounded-md bg-success/10 p-4">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Konversi</p>
-                <p className="mt-1 font-mono text-2xl font-semibold tabular-nums">12%</p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-success tabular-nums">12%</p>
               </div>
               <p className="text-right text-xs text-muted-foreground">12 deal dari 100 lead</p>
             </div>

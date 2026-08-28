@@ -254,7 +254,39 @@ export async function archiveCustomerAction(formData: FormData) {
 
     revalidatePath("/crm");
     revalidatePath("/crm/pelanggan");
+    revalidatePath(`/crm/pelanggan/${parsed.data.customerId}`);
     return flashMessagePath("/crm/pelanggan", "notice", "Customer diarsipkan.");
+  });
+}
+
+export async function restoreCustomerAction(formData: FormData) {
+  return runRedirectingAction("/crm/pelanggan?archived=true", async () => {
+    const actor = await requireActor(ARCHIVE_ROLES);
+    const parsed = archiveCustomerSchema.safeParse({
+      customerId: formValue(formData, "customerId"),
+      version: formValue(formData, "version"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    await getPrismaClient().$transaction(async (tx) => {
+      const updated = await tx.customer.updateMany({
+        where: {
+          id: parsed.data.customerId,
+          version: parsed.data.version,
+          archivedAt: { not: null },
+        },
+        data: { archivedAt: null, version: { increment: 1 } },
+      });
+      if (updated.count !== 1) {
+        throw new UserFacingError("Customer sudah aktif, tidak ditemukan, atau datanya telah berubah. Muat ulang halaman.");
+      }
+      await audit(tx, actor, "Customer", parsed.data.customerId, "CUSTOMER_RESTORED", ["archivedAt"]);
+    });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/pelanggan");
+    revalidatePath(`/crm/pelanggan/${parsed.data.customerId}`);
+    return flashMessagePath("/crm/pelanggan?archived=true", "notice", "Customer diaktifkan kembali.");
   });
 }
 

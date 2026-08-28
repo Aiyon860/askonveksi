@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 
 import { updatePasswordAction } from "@/app/actions/auth";
+import { PasswordInput } from "@/components/password-input";
 import { PageMessage } from "@/components/page-message";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { getCurrentActor } from "@/lib/auth/session";
 
 export default async function PasswordPage() {
@@ -29,12 +29,12 @@ export default async function PasswordPage() {
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="password" required>Password baru</FieldLabel>
-                <Input id="password" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+                <PasswordInput id="password" name="password" autoComplete="new-password" required minLength={12} maxLength={128} />
                 <FieldDescription>Minimal 12 karakter, dengan huruf besar, huruf kecil, angka, dan simbol.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="confirmPassword" required>Ulangi password baru</FieldLabel>
-                <Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+                <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" required minLength={12} maxLength={128} />
               </Field>
               <SubmitButton pendingLabel="Memperbarui...">Simpan password</SubmitButton>
             </FieldGroup>

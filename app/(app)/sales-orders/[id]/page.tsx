@@ -65,7 +65,7 @@ export default async function SalesOrderPage({
               <dl className="ml-auto mt-5 grid w-full max-w-sm gap-2 text-sm">
                 <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-mono">{formatCurrency(order.subtotal)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Diskon</dt><dd className="font-mono">{order.discountType === "PERCENTAGE" ? `${order.discountValue.toString()}%` : formatCurrency(order.discountValue)}</dd></div>
-                <div className="flex justify-between gap-4 border-t pt-3 text-base font-semibold"><dt>Total</dt><dd className="font-mono">{formatCurrency(order.total)}</dd></div>
+                <div className="flex justify-between gap-4 border-t border-info/20 pt-3 text-base font-semibold text-info"><dt>Total</dt><dd className="font-mono">{formatCurrency(order.total)}</dd></div>
               </dl>
             </CardContent>
           </Card>
@@ -78,28 +78,28 @@ export default async function SalesOrderPage({
             <CardContent>
               <dl className="grid gap-4 text-sm sm:grid-cols-2">
                 <div><dt className="text-xs text-muted-foreground">Customer</dt><dd className="mt-1 font-medium">{order.snapshotCustomerName}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Perusahaan</dt><dd className="mt-1">{order.snapshotCompanyName ?? "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">WhatsApp</dt><dd className="mt-1">{order.snapshotWhatsapp ?? "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Email</dt><dd className="mt-1">{order.snapshotEmail ?? "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Instagram</dt><dd className="mt-1">{order.snapshotInstagram ? `@${order.snapshotInstagram}` : "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Alamat</dt><dd className="mt-1 whitespace-pre-wrap">{order.snapshotAddress ?? "—"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Perusahaan</dt><dd className="mt-1">{order.snapshotCompanyName ?? "-"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">WhatsApp</dt><dd className="mt-1">{order.snapshotWhatsapp ?? "-"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Email</dt><dd className="mt-1">{order.snapshotEmail ?? "-"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Instagram</dt><dd className="mt-1">{order.snapshotInstagram ? `@${order.snapshotInstagram}` : "-"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Alamat</dt><dd className="mt-1 whitespace-pre-wrap">{order.snapshotAddress ?? "-"}</dd></div>
               </dl>
             </CardContent>
           </Card>
         </div>
 
-        <aside className="flex flex-col gap-6">
+        <aside className="flex flex-col gap-6 rounded-xl border border-sidebar-primary/20 bg-sidebar-primary/6 p-3 sm:p-4">
           <Card>
             <CardHeader>
               <CardTitle>Jejak transaksi</CardTitle>
               <CardDescription>Sales Order final tidak dapat diedit.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-                <LockKeyhole aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <p className="text-sm leading-6 text-muted-foreground">Dibentuk dari quotation revisi {order.quotation.revision}, diterima {formatDate(order.acceptedAt, true)} oleh {order.createdBy.name}.</p>
+              <div className="flex items-start gap-3 rounded-lg border border-info/20 bg-info/5 p-3 text-info">
+                <LockKeyhole aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <p className="text-sm leading-6">Dibentuk dari quotation revisi {order.quotation.revision}, diterima {formatDate(order.acceptedAt, true)} oleh {order.createdBy.name}.</p>
               </div>
-              <p className="text-sm leading-6"><span className="text-muted-foreground">Referensi:</span><br />{order.quotation.acceptanceReference ?? "—"}</p>
+              <p className="text-sm leading-6"><span className="text-muted-foreground">Referensi:</span><br />{order.quotation.acceptanceReference ?? "-"}</p>
               {order.quotation.acceptanceProofPath ? (
                 <Button
                   variant="outline"
@@ -114,7 +114,7 @@ export default async function SalesOrderPage({
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                   <p className="font-medium">Dibatalkan {formatDate(order.cancelledAt, true)}</p>
                   <p className="mt-1 whitespace-pre-wrap">{order.cancelReason}</p>
-                  <p className="mt-2 text-xs">Oleh {order.cancelledBy?.name ?? "—"}</p>
+                  <p className="mt-2 text-xs">Oleh {order.cancelledBy?.name ?? "-"}</p>
                 </div>
               ) : null}
             </CardContent>
@@ -137,12 +137,13 @@ export default async function SalesOrderPage({
                     </Field>
                     <ConfirmSubmitButton
                       variant="destructive"
+                      className="h-auto min-h-11 w-full whitespace-normal py-2.5 text-center leading-5"
                       pendingLabel="Membatalkan..."
                       confirmTitle="Batalkan Sales Order?"
                       confirmDescription="Peluang akan kembali ke Penawaran. Sales Order tetap tersimpan sebagai riwayat dan tidak dapat diaktifkan kembali."
                       confirmLabel="Ya, batalkan Sales Order"
                     >
-                      Batalkan Sales Order &amp; kembalikan peluang
+                      Batalkan Deal dan kembalikan peluang
                     </ConfirmSubmitButton>
                   </FieldGroup>
                 </form>

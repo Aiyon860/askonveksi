@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "antislop": {
+      "source": "miqdadbadjuber/anti-slop",
+      "sourceType": "github",
+      "skillPath": "skills/antislop/SKILL.md",
+      "computedHash": "27e4040ca350b497a4726056f4c1ef3385f28f49c9343861359419d848c40ad7"
+    },
     "grill-me": {
       "source": "mattpocock/skills",
       "sourceType": "github",

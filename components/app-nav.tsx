@@ -7,21 +7,33 @@ import { ContactRound, LayoutDashboard, KanbanSquare, UsersRound } from "lucide-
 import { cn } from "@/lib/utils";
 
 const mainItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/crm", label: "Pipeline", icon: KanbanSquare, exact: true },
-  { href: "/crm/pelanggan", label: "Customer", icon: ContactRound, exact: false },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/crm", label: "Pipeline", icon: KanbanSquare },
+  { href: "/crm/pelanggan", label: "Customer", icon: ContactRound },
 ] as const;
+
+function isPathWithin(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function isNavItemActive(pathname: string, href: string) {
+  if (href === "/crm") {
+    return pathname === href || isPathWithin(pathname, "/crm/peluang") || isPathWithin(pathname, "/sales-orders");
+  }
+
+  return isPathWithin(pathname, href);
+}
 
 export function AppNav({ isOwner }: { isOwner: boolean }) {
   const pathname = usePathname();
   const items = isOwner
-    ? [...mainItems, { href: "/admin/users", label: "Pengguna", icon: UsersRound, exact: false } as const]
+    ? [...mainItems, { href: "/admin/users", label: "Pengguna", icon: UsersRound } as const]
     : mainItems;
 
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
       {items.map((item) => {
-        const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+        const active = isNavItemActive(pathname, item.href);
         const Icon = item.icon;
         return (
           <Link

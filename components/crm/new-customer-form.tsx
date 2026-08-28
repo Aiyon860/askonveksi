@@ -11,9 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 export function NewCustomerForm() {
   return (
     <Dialog>
-      <DialogTrigger render={<Button variant="outline" />}>
+      <DialogTrigger render={<Button />}>
         <Plus data-icon="inline-start" aria-hidden="true" />
-        Customer baru
+        Tambah customer
       </DialogTrigger>
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>

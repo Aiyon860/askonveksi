@@ -60,7 +60,7 @@ export default async function OpportunityDetailPage({
               {opportunity.quotations.length ? (
                 <div className="flex flex-col gap-6">
                   {opportunity.quotations.map((quotation) => (
-                    <section key={quotation.id} aria-labelledby={`quotation-${quotation.id}`} className="rounded-lg border bg-muted/20 p-4">
+                    <section key={quotation.id} aria-labelledby={`quotation-${quotation.id}`} className="rounded-lg border border-info/20 bg-info/5 p-4">
                       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <h3 id={`quotation-${quotation.id}`} className="font-medium">{quotation.quotationNo} · Revisi {quotation.revision}</h3>
@@ -129,7 +129,7 @@ export default async function OpportunityDetailPage({
                       </div>
 
                       {quotation.status === "ISSUED" ? (
-                        <form action={acceptQuotationAndDealAction} className="mt-4 rounded-lg border bg-background p-4">
+                        <form action={acceptQuotationAndDealAction} className="mt-4 rounded-lg border border-success/20 bg-success/5 p-4">
                           <input type="hidden" name="quotationId" value={quotation.id} />
                           <input type="hidden" name="version" value={quotation.version} />
                           <FieldGroup>
@@ -213,7 +213,7 @@ export default async function OpportunityDetailPage({
           </Card>
         </div>
 
-        <aside className="flex flex-col gap-6">
+        <aside className="flex flex-col gap-6 rounded-xl border border-sidebar-primary/20 bg-sidebar-primary/6 p-3 sm:p-4">
           <Card>
             <CardHeader>
               <CardTitle>Status pipeline</CardTitle>
@@ -267,16 +267,16 @@ export default async function OpportunityDetailPage({
               <CardTitle>Customer</CardTitle>
               <CardDescription>{opportunity.customer.customerNo}</CardDescription>
               <CardAction>
-                <Button variant="ghost" size="sm" render={<Link href={`/crm/pelanggan/${opportunity.customer.id}`} />} nativeButton={false}>Buka profil</Button>
+                <Button variant="link" size="sm" render={<Link href={`/crm/pelanggan/${opportunity.customer.id}`} />} nativeButton={false}>Buka profil</Button>
               </CardAction>
             </CardHeader>
             <CardContent>
               <p className="font-medium">{opportunity.customer.name}</p>
               {opportunity.customer.companyName ? <p className="text-sm text-muted-foreground">{opportunity.customer.companyName}</p> : null}
               <dl className="grid gap-2 text-sm text-muted-foreground">
-                <div><dt className="sr-only">WhatsApp</dt><dd>{opportunity.customer.whatsapp ?? "—"}</dd></div>
-                <div><dt className="sr-only">Email</dt><dd>{opportunity.customer.email ?? "—"}</dd></div>
-                <div><dt className="sr-only">Instagram</dt><dd>{opportunity.customer.instagram ? `@${opportunity.customer.instagram}` : "—"}</dd></div>
+                <div><dt className="sr-only">WhatsApp</dt><dd>{opportunity.customer.whatsapp ?? "-"}</dd></div>
+                <div><dt className="sr-only">Email</dt><dd>{opportunity.customer.email ?? "-"}</dd></div>
+                <div><dt className="sr-only">Instagram</dt><dd>{opportunity.customer.instagram ? `@${opportunity.customer.instagram}` : "-"}</dd></div>
               </dl>
             </CardContent>
           </Card>
@@ -327,12 +327,12 @@ function QuotationSnapshot({ quotation }: { quotation: NonNullable<Awaited<Retur
       <dl className="ml-auto grid w-full max-w-xs gap-2 text-sm">
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-mono">{formatCurrency(quotation.subtotal)}</dd></div>
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Diskon</dt><dd className="font-mono">{quotation.discountType === "PERCENTAGE" ? `${quotation.discountValue.toString()}%` : formatCurrency(quotation.discountValue)}</dd></div>
-        <div className="flex justify-between gap-4 border-t pt-2 font-medium"><dt>Total</dt><dd className="font-mono">{formatCurrency(quotation.total)}</dd></div>
+        <div className="flex justify-between gap-4 border-t border-info/20 pt-2 font-medium text-info"><dt>Total</dt><dd className="font-mono">{formatCurrency(quotation.total)}</dd></div>
       </dl>
       {quotation.acceptedAt ? (
-        <div className="rounded-md bg-muted p-3 text-sm">
+        <div className="rounded-md bg-success/10 p-3 text-sm text-success">
           <p className="font-medium">Diterima {formatDate(quotation.acceptedAt, true)}</p>
-          <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{quotation.acceptanceReference}</p>
+          <p className="mt-1 whitespace-pre-wrap">{quotation.acceptanceReference}</p>
           {quotation.acceptanceProofPath ? (
             <Button
               className="mt-3"

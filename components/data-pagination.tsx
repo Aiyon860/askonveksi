@@ -1,13 +1,13 @@
 import {
   Pagination,
   PaginationContent,
-  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
 } from "@/components/ui/pagination";
+import { Button } from "@/components/ui/button";
+import { PageSizeSelect } from "@/components/page-size-select";
 import { cn } from "@/lib/utils";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 function pageHref(pathname: string, page: number, params: Record<string, string | undefined>) {
   const search = new URLSearchParams();
@@ -19,17 +19,6 @@ function pageHref(pathname: string, page: number, params: Record<string, string 
   return query ? `${pathname}?${query}` : pathname;
 }
 
-function visiblePages(page: number, pageCount: number) {
-  const pages = [...new Set([1, page - 1, page, page + 1, pageCount])]
-    .filter((value) => value >= 1 && value <= pageCount)
-    .sort((a, b) => a - b);
-
-  return pages.flatMap<(number | "ellipsis")>((value, index) => {
-    const previous = pages[index - 1];
-    return previous && value - previous > 1 ? ["ellipsis", value] : [value];
-  });
-}
-
 export function DataPagination({
   pathname,
   page,
@@ -37,6 +26,7 @@ export function DataPagination({
   total,
   pageSize,
   params = {},
+  pageSizeOptions,
   className,
 }: {
   pathname: string;
@@ -45,38 +35,55 @@ export function DataPagination({
   total: number;
   pageSize: number;
   params?: Record<string, string | undefined>;
+  pageSizeOptions?: readonly number[];
   className?: string;
 }) {
   if (total === 0) return null;
   const first = (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
+  const pageSizeParams = Object.fromEntries(
+    Object.entries(params).filter(([key]) => key !== "pageSize"),
+  );
 
   return (
-    <div className={cn("flex flex-col items-center justify-between gap-3 sm:flex-row", className)}>
-      <p className="text-xs text-muted-foreground">Menampilkan {first}–{last} dari {total} data</p>
-      {pageCount > 1 ? (
+    <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between", className)}>
+      <p className="text-xs text-muted-foreground">
+        Menampilkan <strong className="font-medium text-foreground">{first}</strong> hingga <strong className="font-medium text-foreground">{last}</strong> dari <strong className="font-medium text-foreground">{total}</strong> data
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 sm:justify-end">
+        {pageSizeOptions ? (
+          <PageSizeSelect pathname={pathname} value={pageSize} options={pageSizeOptions} params={pageSizeParams} />
+        ) : null}
+        <p className="whitespace-nowrap text-xs text-muted-foreground">
+          Halaman <strong className="font-medium text-foreground">{page}</strong> / <strong className="font-medium text-foreground">{pageCount}</strong>
+        </p>
         <Pagination className="mx-0 w-auto">
           <PaginationContent>
-            {page > 1 ? (
-              <PaginationItem>
-                <PaginationPrevious href={pageHref(pathname, page - 1, params)} text="Sebelumnya" />
-              </PaginationItem>
-            ) : null}
-            {visiblePages(page, pageCount).map((item, index) => item === "ellipsis" ? (
-              <PaginationItem key={`ellipsis-${index}`}><PaginationEllipsis /></PaginationItem>
-            ) : (
-              <PaginationItem key={item}>
-                <PaginationLink href={pageHref(pathname, item, params)} isActive={item === page}>{item}</PaginationLink>
-              </PaginationItem>
-            ))}
-            {page < pageCount ? (
-              <PaginationItem>
-                <PaginationNext href={pageHref(pathname, page + 1, params)} text="Berikutnya" />
-              </PaginationItem>
-            ) : null}
+            <PaginationItem>
+              {page > 1 ? (
+                <PaginationLink href={pageHref(pathname, page - 1, params)} size="icon-sm" aria-label="Ke halaman sebelumnya">
+                  <ChevronLeft aria-hidden="true" />
+                </PaginationLink>
+              ) : (
+                <Button size="icon-sm" variant="ghost" disabled aria-label="Tidak ada halaman sebelumnya">
+                  <ChevronLeft aria-hidden="true" />
+                </Button>
+              )}
+            </PaginationItem>
+            <PaginationItem>
+              {page < pageCount ? (
+                <PaginationLink href={pageHref(pathname, page + 1, params)} size="icon-sm" aria-label="Ke halaman berikutnya">
+                  <ChevronRight aria-hidden="true" />
+                </PaginationLink>
+              ) : (
+                <Button size="icon-sm" variant="ghost" disabled aria-label="Tidak ada halaman berikutnya">
+                  <ChevronRight aria-hidden="true" />
+                </Button>
+              )}
+            </PaginationItem>
           </PaginationContent>
         </Pagination>
-      ) : null}
+      </div>
     </div>
   );
 }

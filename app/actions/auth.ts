@@ -78,6 +78,8 @@ export async function updatePasswordAction(formData: FormData) {
       }),
     ]);
 
+    if (actor.mustChangePassword) return "/dashboard";
+
     return flashMessagePath("/dashboard", "notice", "Password berhasil diperbarui.");
   });
 }
