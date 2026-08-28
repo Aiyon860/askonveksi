@@ -10,13 +10,13 @@ import {
   Check,
   ChevronDown,
   ListFilter,
-  Search,
   UsersRound,
 } from "lucide-react";
 
 import { archiveCustomerAction, restoreCustomerAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { NewCustomerForm } from "@/components/crm/new-customer-form";
+import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { DataPagination } from "@/components/data-pagination";
 import { TableSkeleton } from "@/components/loading-skeletons";
 import { PageHeader } from "@/components/page-header";
@@ -31,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ARCHIVE_ROLES, hasRole } from "@/lib/auth/permissions";
@@ -201,26 +201,15 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
       >
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-            <form className="w-full sm:max-w-md" action="/crm/pelanggan">
-              {archived ? <input type="hidden" name="archived" value="true" /> : null}
-              {sort !== "updatedAt" ? <input type="hidden" name="sort" value={sort} /> : null}
-              {direction !== defaultDirection(sort) ? <input type="hidden" name="order" value={direction} /> : null}
-              {pageSize !== DATA_PAGE_SIZE ? <input type="hidden" name="pageSize" value={pageSize} /> : null}
-              <InputGroup>
-                <InputGroupInput
-                  name="q"
-                  type="search"
-                  maxLength={80}
-                  defaultValue={query}
-                  placeholder="Cari nama, nomor, atau kontak..."
-                  aria-label="Cari customer"
-                />
-                <InputGroupAddon align="inline-start">
-                  <Search aria-hidden="true" />
-                </InputGroupAddon>
-              </InputGroup>
-              <button type="submit" className="sr-only">Cari customer</button>
-            </form>
+            <DebouncedSearchInput
+              key={query}
+              initialValue={query}
+              pathname="/crm/pelanggan"
+              params={persistentParams}
+              placeholder="Cari nama, nomor, atau kontak..."
+              ariaLabel="Cari customer"
+              className="sm:max-w-md"
+            />
 
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="outline" />}>

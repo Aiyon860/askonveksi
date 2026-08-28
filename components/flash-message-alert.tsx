@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CircleCheck, XIcon } from "lucide-react";
+import { CircleAlert, CircleCheck, XIcon } from "lucide-react";
 
 import { FlashMessageClearer } from "@/components/flash-message-clearer";
 import {
@@ -23,7 +23,7 @@ export function FlashMessageAlert({ flash }: { flash: FlashMessage }) {
   return (
     <Alert variant={isError ? "destructive" : "success"}>
       <FlashMessageClearer id={flash.id} />
-      {!isError ? <CircleCheck aria-hidden="true" /> : null}
+      {isError ? <CircleAlert aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
       <AlertTitle>{isError ? "Tindakan belum berhasil" : "Berhasil"}</AlertTitle>
       <AlertDescription>{flash.message}</AlertDescription>
       <AlertAction>

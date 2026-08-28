@@ -211,7 +211,6 @@ export default async function CustomerDetailPage({
                     <Field>
                       <FieldLabel htmlFor="customerTypeId" required>Jenis customer</FieldLabel>
                       <NativeSelect id="customerTypeId" name="customerTypeId" required defaultValue={customer.customerTypeId} className="w-full" disabled={Boolean(customer.archivedAt)}>
-                        {!customer.customerType.isActive && !formOptions.customerTypes.some((item) => item.id === customer.customerTypeId) ? <NativeSelectOption value={customer.customerTypeId}>{customer.customerType.name} (nonaktif)</NativeSelectOption> : null}
                         {formOptions.customerTypes.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
@@ -219,7 +218,6 @@ export default async function CustomerDetailPage({
                       <FieldLabel htmlFor="leadSourceId">Sumber lead</FieldLabel>
                       <NativeSelect id="leadSourceId" name="leadSourceId" defaultValue={customer.leadSourceId ?? ""} className="w-full" disabled={Boolean(customer.archivedAt)}>
                         <NativeSelectOption value="">Belum ditentukan</NativeSelectOption>
-                        {customer.leadSource && !customer.leadSource.isActive && !formOptions.leadSources.some((item) => item.id === customer.leadSourceId) ? <NativeSelectOption value={customer.leadSource.id}>{customer.leadSource.name} (nonaktif)</NativeSelectOption> : null}
                         {formOptions.leadSources.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
