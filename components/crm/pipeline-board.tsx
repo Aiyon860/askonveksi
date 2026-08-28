@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { CalendarClock, GripVertical, NotebookText, PackageCheck } from "lucide-react";
 import type { OpportunityStage } from "@prisma/client";
 
@@ -36,6 +36,14 @@ export function PipelineBoard({ opportunities }: { opportunities: PipelineOpport
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [isMoving, startMoving] = useTransition();
+  const dragImageRef = useRef<HTMLElement | null>(null);
+
+  function removeDragImage() {
+    dragImageRef.current?.remove();
+    dragImageRef.current = null;
+  }
+
+  useEffect(() => removeDragImage, []);
 
   function requestMove(opportunity: PipelineOpportunity, stage: OpportunityStage) {
     if (opportunity.stage === stage) return;
@@ -107,7 +115,42 @@ export function PipelineBoard({ opportunities }: { opportunities: PipelineOpport
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
                         event.dataTransfer.setData("text/opportunity-id", opportunity.id);
+
+                        removeDragImage();
+
+                        const card = event.currentTarget;
+                        const bounds = card.getBoundingClientRect();
+                        const computedStyle = window.getComputedStyle(card);
+                        const dragImage = card.cloneNode(true) as HTMLElement;
+
+                        Object.assign(dragImage.style, {
+                          position: "fixed",
+                          top: "0",
+                          left: "-10000px",
+                          width: `${bounds.width}px`,
+                          height: `${bounds.height}px`,
+                          boxSizing: "border-box",
+                          margin: "0",
+                          backgroundColor: computedStyle.backgroundColor,
+                          borderRadius: computedStyle.borderRadius,
+                          overflow: "hidden",
+                          boxShadow: "none",
+                          outline: "none",
+                          filter: "none",
+                          pointerEvents: "none",
+                        });
+                        dragImage.setAttribute("aria-hidden", "true");
+                        dragImage.inert = true;
+                        document.body.appendChild(dragImage);
+                        dragImageRef.current = dragImage;
+
+                        event.dataTransfer.setDragImage(
+                          dragImage,
+                          event.clientX - bounds.left,
+                          event.clientY - bounds.top,
+                        );
                       }}
+                      onDragEnd={removeDragImage}
                       className={cn("cursor-default", opportunity.stage !== "DEAL" && "cursor-grab active:cursor-grabbing")}
                     >
                       <CardHeader>

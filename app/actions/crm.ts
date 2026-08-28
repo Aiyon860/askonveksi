@@ -95,6 +95,11 @@ function customerFields(formData: FormData) {
     email: formValue(formData, "email"),
     instagram: formValue(formData, "instagram"),
     address: formValue(formData, "address"),
+    city: formValue(formData, "city"),
+    notes: formValue(formData, "notes"),
+    customerTypeId: formValue(formData, "customerTypeId"),
+    leadSourceId: formValue(formData, "leadSourceId"),
+    salesPicId: formValue(formData, "salesPicId"),
   };
 }
 
@@ -161,12 +166,20 @@ export async function createCustomerAction(formData: FormData) {
 
     const customer = await getPrismaClient().$transaction(
       async (tx) => {
+        const [customerType, leadSource, salesPic] = await Promise.all([
+          tx.customerType.findFirst({ where: { id: parsed.data.customerTypeId, isActive: true }, select: { id: true } }),
+          parsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: parsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
+          parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+        ]);
+        if (!customerType) throw new UserFacingError("Jenis customer tidak aktif atau tidak ditemukan.");
+        if (parsed.data.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+        if (parsed.data.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
         const created = await tx.customer.create({
           data: { ...parsed.data, email: parsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
           select: { id: true },
         });
         await audit(tx, actor, "Customer", created.id, "CUSTOMER_CREATED", [
-          "name", "companyName", "whatsapp", "email", "instagram", "address",
+          "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
         ]);
         return created;
       },
@@ -191,13 +204,23 @@ export async function updateCustomerAction(formData: FormData) {
 
     const { customerId, version, ...fields } = parsed.data;
     const result = await getPrismaClient().$transaction(async (tx) => {
+      const current = await tx.customer.findUnique({ where: { id: customerId }, select: { customerTypeId: true, leadSourceId: true, salesPicId: true } });
+      if (!current) throw new UserFacingError("Customer tidak ditemukan.");
+      const [customerType, leadSource, salesPic] = await Promise.all([
+        tx.customerType.findFirst({ where: { id: fields.customerTypeId, OR: [{ isActive: true }, { id: current.customerTypeId }] }, select: { id: true } }),
+        fields.leadSourceId ? tx.leadSource.findFirst({ where: { id: fields.leadSourceId, OR: [{ isActive: true }, { id: current.leadSourceId ?? "" }] }, select: { id: true } }) : null,
+        fields.salesPicId ? tx.appUser.findFirst({ where: { id: fields.salesPicId, role: "SALES", OR: [{ isActive: true }, { id: current.salesPicId ?? "" }] }, select: { id: true } }) : null,
+      ]);
+      if (!customerType) throw new UserFacingError("Jenis customer tidak aktif atau tidak ditemukan.");
+      if (fields.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+      if (fields.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
       const updated = await tx.customer.updateMany({
         where: { id: customerId, version, archivedAt: null },
         data: { ...fields, email: fields.email?.toLowerCase(), version: { increment: 1 } },
       });
       if (updated.count !== 1) throw new UserFacingError("Customer sudah berubah atau telah diarsipkan. Muat ulang halaman.");
       await audit(tx, actor, "Customer", customerId, "CUSTOMER_UPDATED", [
-        "name", "companyName", "whatsapp", "email", "instagram", "address",
+        "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
       ]);
       return updated;
     });

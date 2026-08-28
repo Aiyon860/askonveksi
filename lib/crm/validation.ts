@@ -18,6 +18,11 @@ const requiredVersion = z.preprocess(
 
 export const entityIdSchema = z.string().trim().min(10).max(40);
 
+const optionalEntityId = z.preprocess(
+  (value) => (value === null || (typeof value === "string" && value.trim() === "") ? undefined : value),
+  entityIdSchema.optional(),
+);
+
 export const customerFieldsSchema = z
   .object({
     name: z.string().trim().min(2, "Nama customer minimal 2 karakter.").max(160),
@@ -29,6 +34,11 @@ export const customerFieldsSchema = z
     ),
     instagram: optionalText(80),
     address: optionalText(2000),
+    city: optionalText(120),
+    notes: optionalText(4000),
+    customerTypeId: entityIdSchema,
+    leadSourceId: optionalEntityId,
+    salesPicId: optionalEntityId,
   })
   .refine((value) => Boolean(value.whatsapp || value.email || value.instagram), {
     message: "Isi minimal satu kontak: WhatsApp, email, atau Instagram.",
@@ -46,6 +56,19 @@ export const updateCustomerSchema = customerFieldsSchema.and(
 export const archiveCustomerSchema = z.object({
   customerId: entityIdSchema,
   version: requiredVersion,
+});
+
+export const masterDataFieldsSchema = z.object({
+  name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(80),
+  description: optionalText(500),
+  position: z.coerce.number().int().min(0).max(10_000),
+});
+
+export const updateMasterDataSchema = masterDataFieldsSchema.extend({ id: entityIdSchema });
+
+export const toggleMasterDataSchema = z.object({
+  id: entityIdSchema,
+  isActive: z.enum(["true", "false"]).transform((value) => value === "true"),
 });
 
 export const createOpportunitySchema = z.object({

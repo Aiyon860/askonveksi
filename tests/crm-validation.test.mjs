@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   createCustomerSchema,
   createOpportunitySchema,
+  masterDataFieldsSchema,
   moveOpportunitySchema,
   quotationDraftSchema,
   strongPasswordSchema,
@@ -30,11 +31,21 @@ test("lead wajib memakai customer tersimpan", () => {
 });
 
 test("customer membutuhkan nama dan minimal satu kontak", () => {
-  const missingContact = createCustomerSchema.safeParse({ name: "Budi", companyName: "", whatsapp: "", email: "", instagram: "", address: "" });
+  const missingContact = createCustomerSchema.safeParse({ name: "Budi", companyName: "", whatsapp: "", email: "", instagram: "", address: "", city: "", notes: "", customerTypeId: "master-ct-personal", leadSourceId: "", salesPicId: "" });
   assert.equal(missingContact.success, false);
 
-  const valid = createCustomerSchema.safeParse({ name: "Budi", companyName: "", whatsapp: "08123456789", email: "", instagram: "", address: "" });
+  const valid = createCustomerSchema.safeParse({ name: "Budi", companyName: "", whatsapp: "08123456789", email: "", instagram: "", address: "", city: "Bandung", notes: "Customer prioritas", customerTypeId: "master-ct-personal", leadSourceId: "", salesPicId: "" });
   assert.equal(valid.success, true);
+});
+
+test("customer wajib memiliki jenis customer yang valid secara bentuk", () => {
+  const withoutType = createCustomerSchema.safeParse({ name: "Budi", whatsapp: "08123456789" });
+  assert.equal(withoutType.success, false);
+});
+
+test("master data membatasi nama, deskripsi, dan urutan", () => {
+  assert.equal(masterDataFieldsSchema.safeParse({ name: "Perusahaan", description: "Badan usaha", position: "10" }).success, true);
+  assert.equal(masterDataFieldsSchema.safeParse({ name: " ", description: "", position: "-1" }).success, false);
 });
 
 test("Follow Up dan Batal menolak payload tanpa field wajib", () => {
@@ -81,6 +92,16 @@ test("migration memegang invariant concurrency dan menutup Data API", async () =
   assert.match(sql, /Opportunity_follow_up_date_required/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   assert.match(sql, /REVOKE ALL ON TABLE[\s\S]+FROM anon, authenticated/);
+});
+
+test("migration klasifikasi customer melakukan seed dan backfill aman", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260828000000_customer_classification/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /CREATE TABLE "CustomerType"/);
+  assert.match(sql, /CREATE TABLE "LeadSource"/);
+  assert.match(sql, /Belum diklasifikasikan/);
+  assert.match(sql, /UPDATE "Customer" SET "customerTypeId"/);
+  assert.match(sql, /ON DELETE RESTRICT/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
 });
 
 test("flash message tidak membocorkan isi notifikasi ke URL", async () => {

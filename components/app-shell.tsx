@@ -1,3 +1,4 @@
+import { LogOut } from "lucide-react";
 import Image from "next/image";
 
 import { logoutAction } from "@/app/actions/auth";
@@ -22,7 +23,7 @@ export function AppShell({ actor, children }: { actor: Actor; children: React.Re
           <Badge variant="outline" className="lg:hidden">{ROLE_LABEL[actor.role]}</Badge>
         </div>
         <div className="border-t px-3 py-2 lg:flex-1 lg:px-4 lg:py-4">
-          <AppNav isOwner={actor.role === "OWNER"} />
+          <AppNav role={actor.role} />
         </div>
         <div className="hidden border-t p-4 lg:block">
           <div className="mb-3 min-w-0">
@@ -30,7 +31,10 @@ export function AppShell({ actor, children }: { actor: Actor; children: React.Re
             <p className="truncate text-xs text-muted-foreground">{actor.email}</p>
           </div>
           <form action={logoutAction}>
-            <SubmitButton variant="outline" size="sm" className="w-full" pendingLabel="Keluar...">Keluar</SubmitButton>
+            <SubmitButton variant="destructive" size="sm" className="w-full" pendingLabel="Keluar...">
+                          <LogOut data-icon="inline-start" aria-hidden="true" />
+                          Keluar
+                        </SubmitButton>
           </form>
         </div>
       </aside>
@@ -42,7 +46,10 @@ export function AppShell({ actor, children }: { actor: Actor; children: React.Re
               <p className="text-xs text-muted-foreground">{ROLE_LABEL[actor.role]}</p>
             </div>
             <form action={logoutAction}>
-              <SubmitButton variant="outline" size="sm" pendingLabel="Keluar...">Keluar</SubmitButton>
+              <SubmitButton variant="destructive" size="sm" pendingLabel="Keluar...">
+                              <LogOut data-icon="inline-start" aria-hidden="true" />
+                              Keluar
+                            </SubmitButton>
             </form>
           </div>
           {children}

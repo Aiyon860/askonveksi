@@ -9,15 +9,17 @@ import { PageMessage } from "@/components/page-message";
 import { OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCustomerDetail } from "@/lib/crm/data";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { getCustomerFormOptions } from "@/lib/master-data";
 
 export default async function CustomerDetailPage({
   params,
@@ -25,9 +27,25 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [customer, actor] = await Promise.all([getCustomerDetail(id), getCurrentActor()]);
+  const [customer, actor, formOptions] = await Promise.all([getCustomerDetail(id), getCurrentActor(), getCustomerFormOptions()]);
   if (!customer || !actor) notFound();
   const canArchive = (actor.role === "OWNER" || actor.role === "ADMIN") && !customer.archivedAt;
+  const salesOrders = customer.opportunities
+    .flatMap((opportunity) =>
+      opportunity.salesOrders.map((order) => ({
+        ...order,
+        opportunity: {
+          id: opportunity.id,
+          opportunityNo: opportunity.opportunityNo,
+          title: opportunity.title,
+        },
+      })),
+    )
+    .sort((first, second) => second.acceptedAt.getTime() - first.acceptedAt.getTime());
+  const validOrders = salesOrders.filter((order) => order.status !== "CANCELLED");
+  const totalTransaction = validOrders.reduce((total, order) => total + Number(order.total), 0);
+  const activeOrderCount = validOrders.filter((order) => order.status === "ACTIVE").length;
+  const latestOrder = validOrders[0];
 
   return (
     <>
@@ -45,7 +63,92 @@ export default async function CustomerDetailPage({
         <div className="flex min-w-0 flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Peluang dan riwayat order</CardTitle>
+              <CardTitle>Ringkasan order</CardTitle>
+              <CardDescription>Perhitungan hanya mencakup Sales Order yang tidak dibatalkan.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-5 md:grid-cols-4">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <dt className="text-sm text-muted-foreground">Total order</dt>
+                  <dd className="font-mono text-xl font-semibold tabular-nums">{validOrders.length}</dd>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <dt className="text-sm text-muted-foreground">Total transaksi</dt>
+                  <dd className="font-mono text-xl font-semibold tabular-nums wrap-break-word">{formatCurrency(totalTransaction)}</dd>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <dt className="text-sm text-muted-foreground">Order aktif</dt>
+                  <dd className="font-mono text-xl font-semibold tabular-nums">{activeOrderCount}</dd>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <dt className="text-sm text-muted-foreground">Order terakhir</dt>
+                  <dd className="text-sm font-semibold md:text-base">{latestOrder ? formatDate(latestOrder.acceptedAt) : "Belum ada order"}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Riwayat order</CardTitle>
+              <CardDescription>Order terbaru ditampilkan lebih dahulu. Order yang dibatalkan tetap tercatat.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {salesOrders.length ? (
+                <div className="flex flex-col">
+                  {salesOrders.map((order) => (
+                    <article key={order.id} className="grid gap-4 border-b py-5 first:pt-0 last:border-b-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="flex min-w-0 flex-col gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link href={`/sales-orders/${order.id}`} className="inline-flex items-center gap-1 font-mono text-sm font-medium underline-offset-4 hover:underline">
+                            {order.salesOrderNo}<ExternalLink aria-hidden="true" className="size-3.5" />
+                          </Link>
+                          <SalesOrderStatusBadge status={order.status} />
+                        </div>
+                        <div>
+                          <Link href={`/crm/peluang/${order.opportunity.id}`} className="font-medium underline-offset-4 hover:underline">{order.opportunity.title}</Link>
+                          <p className="mt-1 font-mono text-xs text-muted-foreground">{order.opportunity.opportunityNo}</p>
+                        </div>
+                        {order.items.length ? (
+                          <ul className="flex flex-col gap-2" aria-label={`Item ${order.salesOrderNo}`}>
+                            {order.items.map((item) => (
+                              <li key={item.id} className="flex items-start justify-between gap-4 text-sm">
+                                <span className="min-w-0 wrap-break-word">{item.description}</span>
+                                <span className="shrink-0 font-mono tabular-nums">{item.quantity} pcs</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Rincian item tidak tersedia.</p>
+                        )}
+                      </div>
+                      <dl className="flex gap-6 md:flex-col md:items-end md:gap-2 md:text-right">
+                        <div>
+                          <dt className="sr-only">Tanggal order</dt>
+                          <dd className="text-sm text-muted-foreground">{formatDate(order.acceptedAt)}</dd>
+                        </div>
+                        <div>
+                          <dt className="sr-only">Total order</dt>
+                          <dd className="font-mono font-medium tabular-nums">{formatCurrency(order.total)}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <Empty className="p-8">
+                  <EmptyHeader>
+                    <EmptyTitle>Belum ada order</EmptyTitle>
+                    <EmptyDescription>Riwayat akan muncul setelah quotation customer diterima dan Sales Order terbentuk.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Peluang CRM</CardTitle>
               <CardDescription>Semua repeat order tetap memakai profil customer ini.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -55,32 +158,22 @@ export default async function CustomerDetailPage({
                     <TableRow>
                       <TableHead>Peluang</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Sales Order</TableHead>
-                      <TableHead className="text-right">Nilai</TableHead>
+                      <TableHead>Deadline</TableHead>
+                      <TableHead className="text-right">Estimasi nilai</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {customer.opportunities.map((opportunity) => {
-                      const latestOrder = opportunity.salesOrders[0];
-                      return (
-                        <TableRow key={opportunity.id}>
-                          <TableCell>
-                            <Link href={`/crm/peluang/${opportunity.id}`} className="font-medium underline-offset-4 hover:underline">{opportunity.title}</Link>
-                            <p className="mt-1 font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</p>
-                          </TableCell>
-                          <TableCell><OpportunityStatusBadge stage={opportunity.stage} /></TableCell>
-                          <TableCell>
-                            {latestOrder ? (
-                              <Link href={`/sales-orders/${latestOrder.id}`} className="inline-flex items-center gap-1 underline-offset-4 hover:underline">
-                                {latestOrder.salesOrderNo}<ExternalLink aria-hidden="true" className="size-3.5" />
-                              </Link>
-                            ) : "—"}
-                            {latestOrder ? <div className="mt-1"><SalesOrderStatusBadge status={latestOrder.status} /></div> : null}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">{formatCurrency(latestOrder?.total ?? opportunity.estimatedValue)}</TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {customer.opportunities.map((opportunity) => (
+                      <TableRow key={opportunity.id}>
+                        <TableCell>
+                          <Link href={`/crm/peluang/${opportunity.id}`} className="font-medium underline-offset-4 hover:underline">{opportunity.title}</Link>
+                          <p className="mt-1 font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</p>
+                        </TableCell>
+                        <TableCell><OpportunityStatusBadge stage={opportunity.stage} /></TableCell>
+                        <TableCell>{opportunity.deadline ? formatDate(opportunity.deadline) : "Belum ditentukan"}</TableCell>
+                        <TableCell className="text-right font-mono">{opportunity.estimatedValue ? formatCurrency(opportunity.estimatedValue) : "Belum diisi"}</TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               ) : (
@@ -110,8 +203,33 @@ export default async function CustomerDetailPage({
                       <Input id="name" name="name" required minLength={2} maxLength={160} defaultValue={customer.name} disabled={Boolean(customer.archivedAt)} />
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="companyName">Perusahaan</FieldLabel>
+                      <FieldLabel htmlFor="companyName">Perusahaan/komunitas</FieldLabel>
                       <Input id="companyName" name="companyName" maxLength={160} defaultValue={customer.companyName ?? ""} disabled={Boolean(customer.archivedAt)} />
+                    </Field>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <Field>
+                      <FieldLabel htmlFor="customerTypeId" required>Jenis customer</FieldLabel>
+                      <NativeSelect id="customerTypeId" name="customerTypeId" required defaultValue={customer.customerTypeId} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                        {!customer.customerType.isActive && !formOptions.customerTypes.some((item) => item.id === customer.customerTypeId) ? <NativeSelectOption value={customer.customerTypeId}>{customer.customerType.name} (nonaktif)</NativeSelectOption> : null}
+                        {formOptions.customerTypes.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
+                      </NativeSelect>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="leadSourceId">Sumber lead</FieldLabel>
+                      <NativeSelect id="leadSourceId" name="leadSourceId" defaultValue={customer.leadSourceId ?? ""} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                        <NativeSelectOption value="">Belum ditentukan</NativeSelectOption>
+                        {customer.leadSource && !customer.leadSource.isActive && !formOptions.leadSources.some((item) => item.id === customer.leadSourceId) ? <NativeSelectOption value={customer.leadSource.id}>{customer.leadSource.name} (nonaktif)</NativeSelectOption> : null}
+                        {formOptions.leadSources.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
+                      </NativeSelect>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="salesPicId">Sales/PIC</FieldLabel>
+                      <NativeSelect id="salesPicId" name="salesPicId" defaultValue={customer.salesPicId ?? ""} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                        <NativeSelectOption value="">Belum ditugaskan</NativeSelectOption>
+                        {customer.salesPic && !customer.salesPic.isActive && !formOptions.salesUsers.some((item) => item.id === customer.salesPicId) ? <NativeSelectOption value={customer.salesPic.id}>{customer.salesPic.name} (nonaktif)</NativeSelectOption> : null}
+                        {formOptions.salesUsers.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
+                      </NativeSelect>
                     </Field>
                   </div>
                   <FieldSet disabled={Boolean(customer.archivedAt)}>
@@ -132,9 +250,20 @@ export default async function CustomerDetailPage({
                     </div>
                     <FieldDescription>Minimal satu kontak harus tetap terisi.</FieldDescription>
                   </FieldSet>
+                  <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                    <Field>
+                      <FieldLabel htmlFor="city">Kota</FieldLabel>
+                      <Input id="city" name="city" maxLength={120} defaultValue={customer.city ?? ""} disabled={Boolean(customer.archivedAt)} />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="address">Alamat</FieldLabel>
+                      <Textarea id="address" name="address" maxLength={2000} rows={3} defaultValue={customer.address ?? ""} disabled={Boolean(customer.archivedAt)} />
+                    </Field>
+                  </div>
                   <Field>
-                    <FieldLabel htmlFor="address">Alamat</FieldLabel>
-                    <Textarea id="address" name="address" maxLength={2000} rows={4} defaultValue={customer.address ?? ""} disabled={Boolean(customer.archivedAt)} />
+                    <FieldLabel htmlFor="notes">Catatan umum</FieldLabel>
+                    <Textarea id="notes" name="notes" maxLength={4000} rows={4} defaultValue={customer.notes ?? ""} disabled={Boolean(customer.archivedAt)} />
+                    <FieldDescription>Informasi yang berlaku untuk profil customer, bukan catatan satu peluang.</FieldDescription>
                   </Field>
                   {!customer.archivedAt ? <SubmitButton pendingLabel="Memperbarui...">Simpan perubahan</SubmitButton> : null}
                 </FieldGroup>
@@ -197,19 +326,6 @@ export default async function CustomerDetailPage({
             </Card>
           ) : null}
 
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>Ringkasan</CardTitle>
-              <CardDescription>Profil dibuat {formatDate(customer.createdAt)}</CardDescription>
-              <CardAction><span className="font-mono text-xs">{customer.customerNo}</span></CardAction>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid gap-3 text-sm">
-                <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Peluang</dt><dd className="font-mono">{customer.opportunities.length}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Sales Order</dt><dd className="font-mono">{customer.opportunities.reduce((sum, opportunity) => sum + opportunity.salesOrders.length, 0)}</dd></div>
-              </dl>
-            </CardContent>
-          </Card>
         </aside>
       </div>
     </>

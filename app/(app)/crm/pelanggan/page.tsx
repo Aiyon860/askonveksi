@@ -37,6 +37,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ARCHIVE_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCustomers, type CustomerSort, type SortDirection } from "@/lib/crm/data";
+import { getCustomerFormOptions } from "@/lib/master-data";
 import { formatDate } from "@/lib/crm/format";
 import {
   DATA_PAGE_SIZE,
@@ -174,9 +175,10 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
   const sort = parseSort(params.sort);
   const direction = parseDirection(params.order, sort);
   const state = { query, archived, page, pageSize, sort, direction } satisfies TableState;
-  const [{ items: customers, total, pageCount }, actor] = await Promise.all([
+  const [{ items: customers, total, pageCount }, actor, formOptions] = await Promise.all([
     getCustomers(state),
     getCurrentActor(),
+    getCustomerFormOptions(),
   ]);
   const canChangeArchiveStatus = Boolean(actor && hasRole(actor.role, ARCHIVE_ROLES));
 
@@ -194,7 +196,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
 
   return (
     <section
-        className="overflow-hidden rounded-xl border bg-background"
+        className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
         aria-label={archived ? "Customer terarsip" : "Customer aktif"}
       >
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -246,22 +248,24 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
             <p className="text-xs text-muted-foreground">
               <strong className="font-medium text-foreground">{total}</strong> {archived ? "customer diarsipkan" : "customer aktif"}
             </p>
-            <NewCustomerForm />
+            <NewCustomerForm {...formOptions} />
           </div>
         </div>
 
         {customers.length ? (
-          <>
+          <div className="flex min-h-112 flex-1 flex-col">
             <Table
               className={canChangeArchiveStatus ? "min-w-5xl" : "min-w-232"}
-              containerClassName="max-h-[min(58svh,42rem)] overflow-auto"
+              containerClassName="min-h-0 flex-1 overflow-auto"
             >
               <TableHeader className="sticky top-0 bg-muted">
                 <TableRow className="hover:bg-muted">
                   <TableHead className="w-16 text-center">No</TableHead>
                   <SortableHead label="No. customer" value="customerNo" state={state} />
                   <SortableHead label="Customer" value="name" state={state} className="min-w-56" />
-                  <TableHead className="min-w-48">Perusahaan</TableHead>
+                  <TableHead className="min-w-48">Jenis</TableHead>
+                  <TableHead className="min-w-48">Perusahaan/komunitas</TableHead>
+                  <TableHead className="min-w-48">Sales/PIC</TableHead>
                   <TableHead className="min-w-56">Kontak</TableHead>
                   <SortableHead label="Peluang" value="opportunities" state={state} />
                   <SortableHead label="Diperbarui" value="updatedAt" state={state} />
@@ -290,7 +294,15 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                           {customer.name}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{customer.companyName ?? "—"}</TableCell>
+                      <TableCell>
+                        <p>{customer.customerType.name}</p>
+                        {customer.leadSource ? <p className="mt-1 text-xs text-muted-foreground">{customer.leadSource.name}</p> : null}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <p>{customer.companyName ?? "—"}</p>
+                        {customer.city ? <p className="mt-1 text-xs">{customer.city}</p> : null}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{customer.salesPic?.name ?? "Belum ditugaskan"}</TableCell>
                       <TableCell className="whitespace-normal">
                         <p className="text-sm">{contacts[0] ?? "—"}</p>
                         {contacts[1] ? <p className="mt-1 text-xs text-muted-foreground">{contacts[1]}</p> : null}
@@ -339,7 +351,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
               params={persistentParams}
               className="border-t px-4 py-3"
             />
-          </>
+          </div>
         ) : (
           <Empty>
             <EmptyHeader>
