@@ -64,12 +64,12 @@ export const masterDataFieldsSchema = z.object({
   position: z.coerce.number().int().min(0).max(10_000),
 });
 
-export const updateMasterDataSchema = masterDataFieldsSchema.extend({ id: entityIdSchema });
+export const sortableMasterDataFieldsSchema = masterDataFieldsSchema.omit({ position: true });
 
-export const toggleMasterDataSchema = z.object({
-  id: entityIdSchema,
-  isActive: z.enum(["true", "false"]).transform((value) => value === "true"),
-});
+export const bulkUpdateMasterDataSchema = z
+  .array(sortableMasterDataFieldsSchema.extend({ id: entityIdSchema }))
+  .min(1, "Minimal satu data harus tersedia.")
+  .max(1_000, "Terlalu banyak data untuk diperbarui sekaligus.");
 
 export const createOpportunitySchema = z.object({
   customerId: entityIdSchema,

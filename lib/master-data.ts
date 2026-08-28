@@ -9,12 +9,10 @@ export async function getCustomerFormOptions() {
   const prisma = getPrismaClient();
   const [customerTypes, leadSources, salesUsers] = await Promise.all([
     prisma.customerType.findMany({
-      where: { isActive: true },
       select: { id: true, name: true },
       orderBy: [{ position: "asc" }, { name: "asc" }],
     }),
     prisma.leadSource.findMany({
-      where: { isActive: true },
       select: { id: true, name: true },
       orderBy: [{ position: "asc" }, { name: "asc" }],
     }),
@@ -30,7 +28,7 @@ export async function getCustomerFormOptions() {
 export async function getCustomerTypes() {
   await requireActor(MASTER_DATA_ROLES);
   return getPrismaClient().customerType.findMany({
-    select: { id: true, name: true, description: true, position: true, isActive: true, _count: { select: { customers: true } } },
+    select: { id: true, name: true, description: true, position: true, _count: { select: { customers: true } } },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
 }
@@ -38,7 +36,7 @@ export async function getCustomerTypes() {
 export async function getLeadSources() {
   await requireActor(MASTER_DATA_ROLES);
   return getPrismaClient().leadSource.findMany({
-    select: { id: true, name: true, description: true, position: true, isActive: true, _count: { select: { customers: true } } },
+    select: { id: true, name: true, description: true, position: true, _count: { select: { customers: true } } },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
 }

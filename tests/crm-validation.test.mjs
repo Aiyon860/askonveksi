@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  bulkUpdateMasterDataSchema,
   createCustomerSchema,
   createOpportunitySchema,
+  sortableMasterDataFieldsSchema,
   masterDataFieldsSchema,
   moveOpportunitySchema,
   quotationDraftSchema,
@@ -46,6 +48,23 @@ test("customer wajib memiliki jenis customer yang valid secara bentuk", () => {
 test("master data membatasi nama, deskripsi, dan urutan", () => {
   assert.equal(masterDataFieldsSchema.safeParse({ name: "Perusahaan", description: "Badan usaha", position: "10" }).success, true);
   assert.equal(masterDataFieldsSchema.safeParse({ name: " ", description: "", position: "-1" }).success, false);
+});
+
+test("jenis customer dibuat tanpa urutan manual dan edit massal membatasi payload", () => {
+  assert.equal(sortableMasterDataFieldsSchema.safeParse({ name: "Perusahaan", description: "Badan usaha" }).success, true);
+  assert.equal(sortableMasterDataFieldsSchema.safeParse({ name: " ", description: "" }).success, false);
+  assert.equal(
+    bulkUpdateMasterDataSchema.safeParse([
+      { id: "cm123456789012", name: "Personal", description: "Perorangan" },
+      { id: "cm123456789013", name: "Perusahaan", description: "Badan usaha" },
+    ]).success,
+    true,
+  );
+  assert.equal(bulkUpdateMasterDataSchema.safeParse([]).success, false);
+  assert.equal(
+    bulkUpdateMasterDataSchema.safeParse([{ id: "id-pendek", name: "Personal", description: "" }]).success,
+    false,
+  );
 });
 
 test("Follow Up dan Batal menolak payload tanpa field wajib", () => {

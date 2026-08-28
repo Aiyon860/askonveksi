@@ -1,4 +1,4 @@
-import { createCustomerTypeAction, toggleCustomerTypeAction, updateCustomerTypeAction } from "@/app/actions/master-data";
+import { bulkUpdateCustomerTypesAction, createCustomerTypeAction } from "@/app/actions/master-data";
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
@@ -15,8 +15,7 @@ export default async function CustomerTypesPage() {
         singularLabel="Jenis customer"
         createDescription="Tambahkan klasifikasi baru tanpa mengubah data customer yang sudah ada."
         createAction={createCustomerTypeAction}
-        updateAction={updateCustomerTypeAction}
-        toggleAction={toggleCustomerTypeAction}
+        bulkUpdateAction={bulkUpdateCustomerTypesAction}
       />
     </>
   );
