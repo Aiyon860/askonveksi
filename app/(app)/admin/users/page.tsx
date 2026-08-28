@@ -9,19 +9,19 @@ import {
   Check,
   ChevronDown,
   ListFilter,
-  Search,
   UserPlus,
   UsersRound,
 } from "lucide-react";
 
-import { createUserAction, toggleUserActiveAction } from "@/app/actions/users";
+import { createUserAction } from "@/app/actions/users";
+import { UsersTableBody } from "@/components/admin/users-table-body";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
+import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { TableSkeleton } from "@/components/loading-skeletons";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { PasswordInput } from "@/components/password-input";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -36,10 +36,9 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getCurrentActor } from "@/lib/auth/session";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 import {
@@ -48,7 +47,6 @@ import {
   type UserSort,
   type UserStatusFilter,
 } from "@/lib/crm/data";
-import { formatDate } from "@/lib/crm/format";
 import {
   DATA_PAGE_SIZE,
   DATA_PAGE_SIZES,
@@ -177,7 +175,7 @@ function UsersTableFallback() {
         <Skeleton className="h-4 w-36" />
       </div>
       <div className="min-h-112" aria-hidden="true">
-        <TableSkeleton columns={7} rows={8} className="min-w-232" />
+        <TableSkeleton columns={6} rows={8} className="min-w-5xl" />
       </div>
       <div className="flex items-center justify-between gap-4 border-t px-4 py-3" aria-hidden="true">
         <Skeleton className="h-4 w-40" />
@@ -218,27 +216,16 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
     <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-label="Daftar pengguna">
           <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-              <form className="w-full sm:max-w-md" action="/admin/users">
-                {role !== "all" ? <input type="hidden" name="role" value={role} /> : null}
-                {status !== "all" ? <input type="hidden" name="status" value={status} /> : null}
-                {sort !== "createdAt" ? <input type="hidden" name="sort" value={sort} /> : null}
-                {direction !== defaultDirection(sort) ? <input type="hidden" name="order" value={direction} /> : null}
-                {pageSize !== DATA_PAGE_SIZE ? <input type="hidden" name="pageSize" value={pageSize} /> : null}
-                <InputGroup>
-                  <InputGroupInput
-                    name="q"
-                    type="search"
-                    maxLength={120}
-                    defaultValue={query}
-                    placeholder="Cari nama atau email..."
-                    aria-label="Cari pengguna"
-                  />
-                  <InputGroupAddon align="inline-start">
-                    <Search aria-hidden="true" />
-                  </InputGroupAddon>
-                </InputGroup>
-                <button type="submit" className="sr-only">Cari pengguna</button>
-              </form>
+              <DebouncedSearchInput
+                key={query}
+                initialValue={query}
+                pathname="/admin/users"
+                params={persistentParams}
+                placeholder="Cari nama atau email..."
+                ariaLabel="Cari pengguna"
+                className="sm:max-w-md"
+                maxLength={120}
+              />
 
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="outline" />}>
@@ -290,8 +277,8 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
           </div>
 
           {users.length ? (
-            <div className="flex min-h-[28rem] flex-1 flex-col">
-              <Table className="min-w-[58rem]" containerClassName="min-h-0 flex-1 overflow-auto">
+            <div className="flex min-h-112 flex-1 flex-col">
+              <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
                 <TableHeader className="sticky top-0 bg-muted">
                   <TableRow className="hover:bg-muted">
                     <TableHead className="w-16 text-center">No</TableHead>
@@ -299,44 +286,23 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     <SortableHead label="Email" value="email" state={state} className="min-w-56" />
                     <SortableHead label="Role" value="role" state={state} />
                     <SortableHead label="Status" value="isActive" state={state} />
-                    <SortableHead label="Dibuat" value="createdAt" state={state} />
-                    <TableHead>Aksi</TableHead>
+                    <TableHead className="min-w-52">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {users.map((user, index) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="text-center font-mono text-muted-foreground tabular-nums">
-                        {(page - 1) * pageSize + index + 1}
-                      </TableCell>
-                      <TableCell className="font-medium">{user.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                      <TableCell><Badge variant="outline">{ROLE_LABEL[user.role]}</Badge></TableCell>
-                      <TableCell>
-                        <Badge variant={user.isActive ? "success" : "destructive"}>{user.isActive ? "Aktif" : "Nonaktif"}</Badge>
-                        {user.mustChangePassword ? <p className="mt-1 text-xs text-muted-foreground">Wajib ganti password</p> : null}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
-                      <TableCell>
-                        <form action={toggleUserActiveAction}>
-                          <input type="hidden" name="userId" value={user.id} />
-                          <input type="hidden" name="isActive" value={String(!user.isActive)} />
-                          <ConfirmSubmitButton
-                            variant={user.isActive ? "destructive" : "outline"}
-                            size="sm"
-                            disabled={user.id === actor?.id}
-                            pendingLabel="Memproses..."
-                            confirmTitle={`${user.isActive ? "Nonaktifkan" : "Aktifkan"} pengguna?`}
-                            confirmDescription={user.isActive ? "Pengguna akan kehilangan akses ke aplikasi sampai diaktifkan kembali." : "Pengguna akan kembali memperoleh akses sesuai role yang dimilikinya."}
-                            confirmLabel={`Ya, ${user.isActive ? "nonaktifkan" : "aktifkan"}`}
-                          >
-                            {user.isActive ? "Nonaktifkan" : "Aktifkan"}
-                          </ConfirmSubmitButton>
-                        </form>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
+                <UsersTableBody
+                  users={users.map((user) => ({
+                    id: user.id,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role,
+                    isActive: user.isActive,
+                    mustChangePassword: user.mustChangePassword,
+                    updatedAt: user.updatedAt.toISOString(),
+                  }))}
+                  actorId={actor?.id}
+                  numberOffset={(page - 1) * pageSize}
+                  returnTo={usersHref(state, {})}
+                />
               </Table>
               <DataPagination
                 pathname="/admin/users"

@@ -15,6 +15,7 @@ export function DebouncedSearchInput({
   ariaLabel,
   className,
   delay = 300,
+  maxLength = 80,
 }: {
   initialValue: string;
   pathname: string;
@@ -23,12 +24,13 @@ export function DebouncedSearchInput({
   ariaLabel: string;
   className?: string;
   delay?: number;
+  maxLength?: number;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
-    const normalizedValue = value.trim().slice(0, 80);
+    const normalizedValue = value.trim().slice(0, maxLength);
     if (normalizedValue === initialValue) return;
 
     const timeout = window.setTimeout(() => {
@@ -45,14 +47,14 @@ export function DebouncedSearchInput({
     }, delay);
 
     return () => window.clearTimeout(timeout);
-  }, [delay, initialValue, params, pathname, router, value]);
+  }, [delay, initialValue, maxLength, params, pathname, router, value]);
 
   return (
     <div className={cn("w-full", className)}>
       <InputGroup>
         <InputGroupInput
           type="search"
-          maxLength={80}
+          maxLength={maxLength}
           value={value}
           placeholder={placeholder}
           aria-label={ariaLabel}

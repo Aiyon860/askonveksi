@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 const mainItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/crm", label: "Pipeline", icon: KanbanSquare },
+  { href: "/crm", label: "Pipeline CRM", icon: KanbanSquare },
   { href: "/crm/pelanggan", label: "Customer", icon: ContactRound },
   { href: "/notifications", label: "Notifikasi", icon: Bell, count: 3 },
 ] as const;

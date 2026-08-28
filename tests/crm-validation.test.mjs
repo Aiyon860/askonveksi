@@ -11,6 +11,7 @@ import {
   moveOpportunitySchema,
   quotationDraftSchema,
   strongPasswordSchema,
+  updateUserSchema,
 } from "../lib/crm/validation.ts";
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 
@@ -102,6 +103,21 @@ test("password kuat dan item quotation divalidasi pada boundary", () => {
     items: [{ description: "Kaos", quantity: 0, unitPrice: "50000" }],
   });
   assert.equal(invalidQuotation.success, false);
+});
+
+test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", () => {
+  const valid = {
+    userId: "cm123456789012",
+    updatedAt: "2026-08-29T09:00:00.000Z",
+    name: "Budi Santoso",
+    email: "budi@example.com",
+    role: "ADMIN",
+  };
+
+  assert.equal(updateUserSchema.safeParse(valid).success, true);
+  assert.equal(updateUserSchema.safeParse({ ...valid, updatedAt: "bukan-tanggal" }).success, false);
+  assert.equal(updateUserSchema.safeParse({ ...valid, email: "bukan-email" }).success, false);
+  assert.equal(updateUserSchema.safeParse({ ...valid, role: "FINANCE" }).success, false);
 });
 
 test("migration memegang invariant concurrency dan menutup Data API", async () => {

@@ -16,8 +16,8 @@ export function AppShell({ actor, children }: { actor: Actor; children: React.Re
           <div className="flex min-w-0 items-center gap-3">
             <Image src="/brand/askonveksi-mark.png" alt="" width={48} height={48} className="size-9 shrink-0 object-contain" priority />
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">ERM Askonveksi</p>
-              <p className="truncate text-xs text-muted-foreground">Ruang kendali sales</p>
+              <p className="truncate text-xs text-muted-foreground">ERM</p>
+              <p className="truncate text-sm font-semibold">ASKonveksi</p>
             </div>
           </div>
           <Badge variant="outline" className="lg:hidden">{ROLE_LABEL[actor.role]}</Badge>

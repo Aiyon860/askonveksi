@@ -180,6 +180,14 @@ export const createUserSchema = z.object({
   temporaryPassword: strongPasswordSchema,
 });
 
+export const updateUserSchema = z.object({
+  userId: entityIdSchema,
+  updatedAt: z.string().datetime(),
+  name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
+  email: z.email("Email tidak valid.").trim().max(320),
+  role: z.enum(["OWNER", "ADMIN", "SALES"]),
+});
+
 export const toggleUserSchema = z.object({
   userId: entityIdSchema,
   isActive: z.enum(["true", "false"]).transform((value) => value === "true"),

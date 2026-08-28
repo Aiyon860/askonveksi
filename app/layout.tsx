@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ERM Askonveksi",
+  title: "ERM ASKonveksi",
   description: "Sistem operasional terpadu untuk bisnis konveksi.",
 };
 
