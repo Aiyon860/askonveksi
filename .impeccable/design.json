@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-27T02:38:54Z",
+  "title": "Design System: ERM Askonveksi",
+  "extensions": {
+    "colorMeta": {
+      "tinta-operasional": {
+        "role": "primary",
+        "displayName": "Tinta Operasional",
+        "canonical": "oklch(0.145 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "kertas-kerja": {
+        "role": "neutral",
+        "displayName": "Kertas Kerja",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "kontrol-utama": {
+        "role": "primary",
+        "displayName": "Kontrol Utama",
+        "canonical": "oklch(0.205 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "teks-di-kontrol": {
+        "role": "neutral",
+        "displayName": "Teks di Kontrol",
+        "canonical": "oklch(0.985 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "permukaan-sekunder": {
+        "role": "neutral",
+        "displayName": "Permukaan Sekunder",
+        "canonical": "oklch(0.97 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "abu-penanda": {
+        "role": "neutral",
+        "displayName": "Abu Penanda",
+        "canonical": "oklch(0.556 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "garis-kerja": {
+        "role": "neutral",
+        "displayName": "Garis Kerja",
+        "canonical": "oklch(0.922 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "cincin-fokus": {
+        "role": "neutral",
+        "displayName": "Cincin Fokus",
+        "canonical": "oklch(0.708 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "destruktif": {
+        "role": "tertiary",
+        "displayName": "Merah Destruktif",
+        "canonical": "oklch(0.577 0.245 27.325)",
+        "tonalRamp": ["oklch(0.15 0.245 27.325)", "oklch(0.25 0.245 27.325)", "oklch(0.35 0.245 27.325)", "oklch(0.45 0.245 27.325)", "oklch(0.58 0.245 27.325)", "oklch(0.72 0.245 27.325)", "oklch(0.85 0.245 27.325)", "oklch(0.95 0.245 27.325)"]
+      },
+      "ruang-gelap": {
+        "role": "neutral",
+        "displayName": "Ruang Gelap",
+        "canonical": "oklch(0.145 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "panel-gelap": {
+        "role": "neutral",
+        "displayName": "Panel Gelap",
+        "canonical": "oklch(0.205 0 0)",
+        "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.58 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"]
+      },
+      "aksen-sidebar-gelap": {
+        "role": "tertiary",
+        "displayName": "Aksen Sidebar Gelap",
+        "canonical": "oklch(0.488 0.243 264.376)",
+        "tonalRamp": ["oklch(0.15 0.243 264.376)", "oklch(0.25 0.243 264.376)", "oklch(0.35 0.243 264.376)", "oklch(0.45 0.243 264.376)", "oklch(0.58 0.243 264.376)", "oklch(0.72 0.243 264.376)", "oklch(0.85 0.243 264.376)", "oklch(0.95 0.243 264.376)"]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Judul halaman atau panel utama."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Penjelasan singkat dan metadata operasional."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Tombol dan kontrol interaktif."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Identifier, kode, dan keluaran sistem yang membutuhkan pembacaan karakter presisi."
+      }
+    },
+    "shadows": [
+      {
+        "name": "outline-control",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "Kedalaman sangat ringan untuk tombol outline; bukan bayangan permukaan umum."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-standard",
+        "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Transisi singkat untuk hover, fokus, dan perubahan state kontrol."
+      },
+      {
+        "name": "press-nudge",
+        "value": "translateY(1px)",
+        "purpose": "Umpan balik tekan pada tombol non-popup."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Tindakan utama berkontras tinggi untuk satu keputusan dominan dalam wilayah kerja.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Simpan perubahan</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;height:2.25rem;gap:.375rem;padding:0 .625rem;border:1px solid transparent;border-radius:calc(.625rem * .8);font:500 .875rem/1.429 Inter,Arial,sans-serif;white-space:nowrap;transition:all 150ms cubic-bezier(.4,0,.2,1);cursor:pointer}.ds-btn:focus-visible{outline:none;border-color:var(--ring,oklch(.708 0 0));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(.708 0 0)) 50%,transparent)}.ds-btn:active{transform:translateY(1px)}.ds-btn-primary{background:var(--primary,oklch(.205 0 0));color:var(--primary-foreground,oklch(.985 0 0))}.ds-btn-primary:hover{background:color-mix(in oklch,var(--primary,oklch(.205 0 0)) 80%,transparent)}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Tindakan sekunder yang mempertahankan struktur tanpa menyaingi tindakan utama.",
+      "html": "<button class=\"ds-btn ds-btn-outline\">Lihat detail</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;height:2.25rem;gap:.375rem;padding:0 .625rem;border-radius:calc(.625rem * .8);font:500 .875rem/1.429 Inter,Arial,sans-serif;white-space:nowrap;transition:all 150ms cubic-bezier(.4,0,.2,1);cursor:pointer}.ds-btn:focus-visible{outline:none;border-color:var(--ring,oklch(.708 0 0));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(.708 0 0)) 50%,transparent)}.ds-btn-outline{border:1px solid var(--border,oklch(.922 0 0));background:var(--background,oklch(1 0 0));color:var(--foreground,oklch(.145 0 0));box-shadow:0 1px 2px rgb(0 0 0/.05)}.ds-btn-outline:hover{background:var(--muted,oklch(.97 0 0))}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Tindakan pendukung dengan lapisan tonal lembut.",
+      "html": "<button class=\"ds-btn ds-btn-secondary\">Tambah catatan</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;height:2.25rem;gap:.375rem;padding:0 .625rem;border:1px solid transparent;border-radius:calc(.625rem * .8);font:500 .875rem/1.429 Inter,Arial,sans-serif;white-space:nowrap;transition:all 150ms cubic-bezier(.4,0,.2,1);cursor:pointer}.ds-btn:focus-visible{outline:none;border-color:var(--ring,oklch(.708 0 0));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(.708 0 0)) 50%,transparent)}.ds-btn-secondary{background:var(--secondary,oklch(.97 0 0));color:var(--secondary-foreground,oklch(.205 0 0))}.ds-btn-secondary:hover{background:color-mix(in oklch,var(--secondary,oklch(.97 0 0)),var(--foreground,oklch(.145 0 0)) 5%)}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Aksi kontekstual berprioritas rendah yang muncul tanpa bidang saat diam.",
+      "html": "<button class=\"ds-btn ds-btn-ghost\">Batal</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;height:2.25rem;gap:.375rem;padding:0 .625rem;border:1px solid transparent;border-radius:calc(.625rem * .8);font:500 .875rem/1.429 Inter,Arial,sans-serif;white-space:nowrap;transition:all 150ms cubic-bezier(.4,0,.2,1);cursor:pointer}.ds-btn:focus-visible{outline:none;border-color:var(--ring,oklch(.708 0 0));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(.708 0 0)) 50%,transparent)}.ds-btn-ghost{background:transparent;color:var(--foreground,oklch(.145 0 0))}.ds-btn-ghost:hover{background:var(--muted,oklch(.97 0 0))}"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Tindakan merusak data dengan warna semantik yang tidak menyerupai tombol primer.",
+      "html": "<button class=\"ds-btn ds-btn-destructive\">Hapus data</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;height:2.25rem;gap:.375rem;padding:0 .625rem;border:1px solid transparent;border-radius:calc(.625rem * .8);font:500 .875rem/1.429 Inter,Arial,sans-serif;white-space:nowrap;transition:all 150ms cubic-bezier(.4,0,.2,1);cursor:pointer}.ds-btn:focus-visible{outline:none;border-color:color-mix(in oklch,var(--destructive,oklch(.577 .245 27.325)) 40%,transparent);box-shadow:0 0 0 3px color-mix(in oklch,var(--destructive,oklch(.577 .245 27.325)) 20%,transparent)}.ds-btn-destructive{background:color-mix(in oklch,var(--destructive,oklch(.577 .245 27.325)) 10%,transparent);color:var(--destructive,oklch(.577 .245 27.325))}.ds-btn-destructive:hover{background:color-mix(in oklch,var(--destructive,oklch(.577 .245 27.325)) 20%,transparent)}"
+    },
+    {
+      "name": "Link Button",
+      "kind": "button",
+      "refersTo": "button-link",
+      "description": "Aksi berbentuk teks untuk jalur sekunder atau navigasi kontekstual.",
+      "html": "<button class=\"ds-btn ds-btn-link\">Buka customer</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;height:2.25rem;padding:0 .625rem;border:1px solid transparent;border-radius:calc(.625rem * .8);font:500 .875rem/1.429 Inter,Arial,sans-serif;white-space:nowrap;transition:all 150ms cubic-bezier(.4,0,.2,1);cursor:pointer}.ds-btn:focus-visible{outline:none;border-color:var(--ring,oklch(.708 0 0));box-shadow:0 0 0 3px color-mix(in oklch,var(--ring,oklch(.708 0 0)) 50%,transparent)}.ds-btn-link{background:transparent;color:var(--primary,oklch(.205 0 0));text-underline-offset:4px}.ds-btn-link:hover{text-decoration:underline}"
+    },
+    {
+      "name": "Status Panel",
+      "kind": "card",
+      "refersTo": "status-panel",
+      "description": "Bidang untuk respons proses, identifier, atau status teknis yang dapat memuat string panjang.",
+      "html": "<div class=\"ds-status\"><strong>Status koneksi</strong><code>Database terhubung</code></div>",
+      "css": ".ds-status{display:grid;gap:.375rem;padding:1rem;border:1px solid var(--border,oklch(.922 0 0));border-radius:calc(.625rem * .8);background:var(--card,oklch(1 0 0));color:var(--card-foreground,oklch(.145 0 0));font:400 .875rem/1.429 'Geist Mono',monospace;overflow-wrap:anywhere}.ds-status strong{font:600 .875rem/1.429 Inter,Arial,sans-serif}.ds-status code{color:var(--muted-foreground,oklch(.556 0 0))}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Ruang Kendali Konveksi",
+    "overview": "ERM Askonveksi terasa seperti ruang kendali yang tenang: informasi operasional disusun agar status, angka, dan tindakan dapat dikenali tanpa kebisingan visual. Palet monokrom, tipografi sans yang lugas, serta kepadatan komponen yang ringkas menjadikan data sebagai pusat perhatian.\n\nSistem ini tidak mengejar kesan dekoratif. Karakternya profesional, presisi, dan terkendali, tetapi tetap membumi untuk pengguna lintas divisi. Identitas muncul melalui disiplin hierarki, konsistensi status, dan ritme kerja—bukan melalui ornamen atau warna yang belum memiliki dasar merek.",
+    "keyCharacteristics": [
+      "Netral dan berorientasi informasi.",
+      "Ringkas tanpa terasa sesak.",
+      "Lapisan tonal lebih utama daripada bayangan.",
+      "Tindakan dan status terbaca dengan cepat.",
+      "Kontras serta fokus interaktif memenuhi kebutuhan WCAG Level AA."
+    ],
+    "rules": [
+      {
+        "name": "The Monochrome Authority Rule",
+        "body": "Bangun hierarki utama melalui terang-gelap, tipografi, jarak, dan struktur; jangan menambahkan aksen warna dekoratif sebelum identitas merek menetapkannya.",
+        "section": "colors"
+      },
+      {
+        "name": "The Exception Color Rule",
+        "body": "Warna destruktif hanya muncul ketika maknanya benar-benar destruktif atau bermasalah, bukan sebagai cara menarik perhatian umum.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Sans Voice Rule",
+        "body": "Inter menjadi suara utama untuk heading, body, dan kontrol; jangan mencampur Geist Sans hanya karena font tersebut ikut dimuat oleh scaffold.",
+        "section": "typography"
+      },
+      {
+        "name": "The Data Voice Rule",
+        "body": "Gunakan mono untuk identifier, kode, atau keluaran teknis—bukan untuk paragraf, navigasi, dan label tindakan sehari-hari.",
+        "section": "typography"
+      },
+      {
+        "name": "The Work-Zone Rule",
+        "body": "Satu wilayah visual harus menjawab satu pekerjaan utama; jangan menggabungkan ringkasan, tabel, dan formulir panjang dalam kartu serbaguna tanpa hierarki.",
+        "section": "layout"
+      },
+      {
+        "name": "The Tonal-First Rule",
+        "body": "Pisahkan tingkat informasi dengan warna permukaan dan batas terlebih dahulu; gunakan bayangan hanya ketika sebuah elemen benar-benar berada di atas konteksnya.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Controlled Curve Rule",
+        "body": "Gunakan radius medium untuk kontrol dan panel; bentuk pil hanya untuk kategori yang secara semantik memang kapsul, seperti filter singkat atau status padat.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do susun halaman sebagai ruang kerja yang jelas, dengan status dan tindakan utama mudah ditemukan.",
+      "Do gunakan token semantik; satu nilai visual harus tetap bermakna sama pada tema terang dan gelap.",
+      "Do pertahankan cincin fokus keyboard, state disabled, dan penanda error yang sudah tersedia pada komponen.",
+      "Do gunakan Bahasa Indonesia yang singkat dan operasional pada label serta status.",
+      "Do tampilkan label teks bersama warna atau ikon status untuk memenuhi kebutuhan aksesibilitas."
+    ],
+    "donts": [
+      "Don't menambahkan warna aksen dekoratif atau gradien sebelum keputusan identitas merek dibuat.",
+      "Don't membuat seluruh kartu melayang dengan bayangan; kedalaman default berasal dari lapisan tonal dan batas.",
+      "Don't menggunakan bentuk pil untuk semua tombol dan bidang.",
+      "Don't mencampur Inter, Geist Sans, dan Geist Mono tanpa fungsi yang jelas.",
+      "Don't meniru template admin generik melalui grid kartu identik tanpa prioritas informasi atau konteks pekerjaan."
+    ]
+  }
+}

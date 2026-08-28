@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AppRole {
+  OWNER
+  ADMIN
+  SALES
+}
+
+enum OpportunityStage {
+  LEAD
+  FOLLOW_UP
+  PENAWARAN
+  DEAL
+  BATAL
+}
+
+enum DiscountType {
+  NONE
+  NOMINAL
+  PERCENTAGE
+}
+
+enum QuotationStatus {
+  DRAFT
+  ISSUED
+  ACCEPTED
+  SUPERSEDED
+}
+
+enum SalesOrderStatus {
+  ACTIVE
+  CANCELLED
+}
+
+model AppUser {
+  id                 String       @id @default(cuid())
+  authUserId         String       @unique @db.Uuid
+  email              String       @unique @db.VarChar(320)
+  name               String       @db.VarChar(120)
+  role               AppRole
+  isActive           Boolean      @default(true)
+  mustChangePassword Boolean      @default(true)
+  notes              CRMNote[]
+  quotations         Quotation[]  @relation("QuotationCreatedBy")
+  salesOrders        SalesOrder[] @relation("SalesOrderCreatedBy")
+  cancelledOrders    SalesOrder[] @relation("SalesOrderCancelledBy")
+  auditEvents        AuditEvent[]
+  assignedCustomers  Customer[]   @relation("CustomerSalesPic")
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@index([role, isActive])
+}
+
+model CustomerType {
+  id          String     @id @default(cuid())
+  name        String     @unique @db.VarChar(80)
+  description String?    @db.VarChar(500)
+  position    Int        @default(0)
+  isActive    Boolean    @default(true)
+  customers   Customer[]
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@index([isActive, position, name])
+}
+
+model LeadSource {
+  id          String     @id @default(cuid())
+  name        String     @unique @db.VarChar(80)
+  description String?    @db.VarChar(500)
+  position    Int        @default(0)
+  isActive    Boolean    @default(true)
+  customers   Customer[]
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@index([isActive, position, name])
+}
+
+model Customer {
+  id             String        @id @default(cuid())
+  customerNo     String        @unique @db.VarChar(24)
+  name           String        @db.VarChar(160)
+  companyName    String?       @db.VarChar(160)
+  whatsapp       String?       @db.VarChar(32)
+  email          String?       @db.VarChar(320)
+  instagram      String?       @db.VarChar(80)
+  address        String?       @db.Text
+  city           String?       @db.VarChar(120)
+  notes          String?       @db.Text
+  customerTypeId String
+  leadSourceId   String?
+  salesPicId     String?
+  archivedAt     DateTime?     @db.Timestamptz(3)
+  version        Int           @default(1)
+  customerType   CustomerType  @relation(fields: [customerTypeId], references: [id], onDelete: Restrict)
+  leadSource     LeadSource?   @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  salesPic       AppUser?      @relation("CustomerSalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
+  opportunities  Opportunity[]
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([archivedAt, updatedAt])
+  @@index([name])
+  @@index([companyName])
+  @@index([customerTypeId, archivedAt])
+  @@index([leadSourceId])
+  @@index([salesPicId])
+  @@index([city])
+}
+
+model Opportunity {
+  id                String           @id @default(cuid())
+  opportunityNo     String           @unique @db.VarChar(24)
+  customerId        String
+  title             String           @db.VarChar(180)
+  stage             OpportunityStage @default(LEAD)
+  estimatedQuantity Int?
+  estimatedValue    Decimal?         @db.Decimal(18, 2)
+  deadline          DateTime?        @db.Date
+  followUpAt        DateTime?        @db.Timestamptz(3)
+  cancelReason      String?          @db.Text
+  version           Int              @default(1)
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  notes             CRMNote[]
+  quotations        Quotation[]
+  salesOrders       SalesOrder[]
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([customerId, updatedAt])
+  @@index([stage, updatedAt])
+  @@index([stage, followUpAt])
+}
+
+model CRMNote {
+  id            String      @id @default(cuid())
+  opportunityId String
+  authorId      String
+  content       String      @db.Text
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  author        AppUser     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@index([opportunityId, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model Quotation {
+  id                   String          @id @default(cuid())
+  quotationNo          String          @unique @db.VarChar(28)
+  opportunityId        String
+  revision             Int
+  status               QuotationStatus @default(DRAFT)
+  snapshotCustomerName String          @db.VarChar(160)
+  snapshotCompanyName  String?         @db.VarChar(160)
+  snapshotWhatsapp     String?         @db.VarChar(32)
+  snapshotEmail        String?         @db.VarChar(320)
+  snapshotInstagram    String?         @db.VarChar(80)
+  snapshotAddress      String?         @db.Text
+  discountType         DiscountType    @default(NONE)
+  discountValue        Decimal         @default(0) @db.Decimal(18, 2)
+  subtotal             Decimal         @db.Decimal(18, 2)
+  total                Decimal         @db.Decimal(18, 2)
+  issuedAt             DateTime?       @db.Timestamptz(3)
+  acceptedAt           DateTime?       @db.Timestamptz(3)
+  acceptanceReference  String?         @db.Text
+  acceptanceProofPath  String?         @db.VarChar(500)
+  acceptanceProofName  String?         @db.VarChar(255)
+  acceptanceProofType  String?         @db.VarChar(64)
+  version              Int             @default(1)
+  createdById          String
+  opportunity          Opportunity     @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  createdBy            AppUser         @relation("QuotationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  items                QuotationItem[]
+  salesOrder           SalesOrder?
+  createdAt            DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@unique([opportunityId, revision])
+  @@index([opportunityId, status])
+  @@index([createdById, createdAt])
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  position    Int
+  description String    @db.VarChar(240)
+  quantity    Int
+  unitPrice   Decimal   @db.Decimal(18, 2)
+  subtotal    Decimal   @db.Decimal(18, 2)
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([quotationId, position])
+  @@index([quotationId])
+}
+
+model SalesOrder {
+  id                   String           @id @default(cuid())
+  salesOrderNo         String           @unique @db.VarChar(28)
+  opportunityId        String
+  quotationId          String           @unique
+  quotationNo          String           @db.VarChar(28)
+  status               SalesOrderStatus @default(ACTIVE)
+  snapshotCustomerName String           @db.VarChar(160)
+  snapshotCompanyName  String?          @db.VarChar(160)
+  snapshotWhatsapp     String?          @db.VarChar(32)
+  snapshotEmail        String?          @db.VarChar(320)
+  snapshotInstagram    String?          @db.VarChar(80)
+  snapshotAddress      String?          @db.Text
+  discountType         DiscountType
+  discountValue        Decimal          @db.Decimal(18, 2)
+  subtotal             Decimal          @db.Decimal(18, 2)
+  total                Decimal          @db.Decimal(18, 2)
+  acceptedAt           DateTime         @db.Timestamptz(3)
+  createdById          String
+  cancelledAt          DateTime?        @db.Timestamptz(3)
+  cancelReason         String?          @db.Text
+  cancelledById        String?
+  opportunity          Opportunity      @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  quotation            Quotation        @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  createdBy            AppUser          @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy          AppUser?         @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  items                SalesOrderItem[]
+  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@index([opportunityId, status])
+  @@index([createdById, createdAt])
+  @@index([status, createdAt])
+}
+
+model SalesOrderItem {
+  id           String     @id @default(cuid())
+  salesOrderId String
+  position     Int
+  description  String     @db.VarChar(240)
+  quantity     Int
+  unitPrice    Decimal    @db.Decimal(18, 2)
+  subtotal     Decimal    @db.Decimal(18, 2)
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([salesOrderId, position])
+  @@index([salesOrderId])
+}
+
+model AuditEvent {
+  id            String   @id @default(cuid())
+  actorId       String
+  entityType    String   @db.VarChar(64)
+  entityId      String
+  action        String   @db.VarChar(80)
+  changedFields String[]
+  metadata      Json?
+  actor         AppUser  @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+model SequenceCounter {
+  key       String   @id @db.VarChar(64)
+  value     Int
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}

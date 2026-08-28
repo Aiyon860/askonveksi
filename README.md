@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ERM Askonveksi
 
-## Getting Started
+Aplikasi operasional internal berbasis Next.js 16, Prisma, PostgreSQL Supabase, dan Supabase Auth. Implementasi saat ini mencakup CRM pipeline, customer, quotation revision, Sales Order immutable, RBAC, serta audit log.
 
-First, run the development server:
+## Menjalankan secara lokal
+
+1. Salin `.env.example` menjadi `.env` dan isi seluruh konfigurasi Supabase/database.
+2. Terapkan migration dan buat Prisma Client.
+3. Buat Owner pertama satu kali.
+4. Jalankan development server.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+rtk npx prisma migrate deploy
+rtk npm run db:generate
+rtk npm run bootstrap:owner
+rtk npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Setelah Owner berhasil login dan mengganti password sementara, hapus `BOOTSTRAP_OWNER_PASSWORD` dari environment.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Kontrak akses data
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Supabase SDK hanya menangani Auth dan cookie session.
+- Prisma menangani seluruh data aplikasi melalui server.
+- Role, status aktif, dan kewajiban ganti password berasal dari `AppUser`, bukan metadata JWT.
+- Setiap Server Action memvalidasi input, autentikasi, dan role kembali.
+- Tabel aplikasi mengaktifkan RLS serta mencabut akses langsung role `anon`/`authenticated`.
+- Quotation final dan Sales Order disimpan sebagai snapshot immutable.
 
-## Learn More
+## Verifikasi
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+rtk npm test
+rtk npm run db:validate
+rtk npm run db:generate
+rtk npm run lint
+rtk npm run build -- --webpack
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Build webpack disediakan sebagai jalur verifikasi bila Turbopack tidak diizinkan membuka port proses oleh environment sandbox.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Dokumentasi database lebih lanjut tersedia di [docs/PRISMA_SETUP.md](docs/PRISMA_SETUP.md). Rencana dan acceptance criteria CRM tersedia di [IMPLEMENTASI_CRM_PLAN.md](IMPLEMENTASI_CRM_PLAN.md).

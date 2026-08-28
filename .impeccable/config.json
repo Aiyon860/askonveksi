@@ -1,0 +1,39 @@
+{
+  "buildPath": "code",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-color",
+        "value": "rgb(0.45, 0.45, 0.45)",
+        "createdAt": "2026-08-27T14:35:31.015Z",
+        "reason": "Printable quotation PDF uses an intentional neutral grayscale mapped to the project monochrome design system."
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgb(0.12, 0.12, 0.12)",
+        "createdAt": "2026-08-27T14:35:31.775Z",
+        "reason": "Printable quotation PDF uses an intentional neutral grayscale mapped to the project monochrome design system."
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgb(0.94, 0.94, 0.94)",
+        "createdAt": "2026-08-27T14:35:32.495Z",
+        "reason": "Printable quotation PDF uses an intentional neutral grayscale mapped to the project monochrome design system."
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgb(0.86, 0.86, 0.86)",
+        "createdAt": "2026-08-27T14:35:33.246Z",
+        "reason": "Printable quotation PDF uses an intentional neutral grayscale mapped to the project monochrome design system."
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgb(0.2, 0.2, 0.2)",
+        "createdAt": "2026-08-27T14:35:33.911Z",
+        "reason": "Printable quotation PDF uses an intentional neutral grayscale mapped to the project monochrome design system."
+      }
+    ]
+  }
+}
