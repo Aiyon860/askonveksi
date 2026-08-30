@@ -9,15 +9,18 @@ import {
   sortableMasterDataFieldsSchema,
   masterDataFieldsSchema,
   moveOpportunitySchema,
+  publicLeadSchema,
   quotationDraftSchema,
+  recordFollowUpResultSchema,
   strongPasswordSchema,
   updateUserSchema,
 } from "../lib/crm/validation.ts";
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 
-test("lead wajib memakai customer tersimpan", () => {
+test("opportunity tervalidasi dengan customer tersimpan dan field CRM V1", () => {
   const inlineCustomer = createOpportunitySchema.safeParse({
     title: "Seragam panitia",
+    leadScore: "80",
     name: "Customer inline",
     whatsapp: "08123456789",
   });
@@ -26,6 +29,7 @@ test("lead wajib memakai customer tersimpan", () => {
   const valid = createOpportunitySchema.safeParse({
     customerId: "cm123456789012",
     title: "Seragam panitia",
+    leadScore: "80",
     estimatedQuantity: "150",
     estimatedValue: "15000000",
     deadline: "2026-12-01",
@@ -68,11 +72,11 @@ test("jenis customer dibuat tanpa urutan manual dan edit massal membatasi payloa
   );
 });
 
-test("Follow Up dan Batal menolak payload tanpa field wajib", () => {
+test("pipeline menolak Deal manual dan Lost tanpa alasan", () => {
   const base = { opportunityId: "cm123456789012", version: "1" };
-  assert.equal(moveOpportunitySchema.safeParse({ ...base, stage: "FOLLOW_UP", followUpAt: "", cancelReason: "" }).success, false);
-  assert.equal(moveOpportunitySchema.safeParse({ ...base, stage: "BATAL", followUpAt: "", cancelReason: "" }).success, false);
-  assert.equal(moveOpportunitySchema.safeParse({ ...base, stage: "DEAL", followUpAt: "", cancelReason: "" }).success, false);
+  assert.equal(moveOpportunitySchema.safeParse({ ...base, stage: "FOLLOW_UP", cancelReason: "" }).success, true);
+  assert.equal(moveOpportunitySchema.safeParse({ ...base, stage: "LOST", cancelReason: "" }).success, false);
+  assert.equal(moveOpportunitySchema.safeParse({ ...base, stage: "DEAL", cancelReason: "" }).success, false);
 });
 
 test("field status yang tidak dirender boleh bernilai null dari FormData", () => {
@@ -81,15 +85,40 @@ test("field status yang tidak dirender boleh bernilai null dari FormData", () =>
     moveOpportunitySchema.safeParse({
       ...base,
       stage: "FOLLOW_UP",
-      followUpAt: "2026-08-28T09:00",
       cancelReason: null,
     }).success,
     true,
   );
   assert.equal(
-    moveOpportunitySchema.safeParse({ ...base, stage: "PENAWARAN", followUpAt: null, cancelReason: null }).success,
+    moveOpportunitySchema.safeParse({ ...base, stage: "PENAWARAN", cancelReason: null }).success,
     true,
   );
+});
+
+test("hasil follow-up mewajibkan next action untuk opportunity terbuka", () => {
+  const base = {
+    opportunityId: "cm123456789012",
+    version: "1",
+    content: "Customer meminta revisi harga.",
+    contactedAt: "2026-08-31T10:00",
+    stage: "NEGOSIASI",
+  };
+  assert.equal(recordFollowUpResultSchema.safeParse(base).success, false);
+  assert.equal(recordFollowUpResultSchema.safeParse({ ...base, nextAction: "Kirim revisi", nextActionAt: "2026-09-01T09:00" }).success, true);
+  assert.equal(recordFollowUpResultSchema.safeParse({ ...base, stage: "LOST", cancelReason: "Budget tidak cocok" }).success, true);
+});
+
+test("lead publik hanya menerima field intake minimum", () => {
+  const valid = { submissionKey: "9d414d3c-1e40-4ad4-944b-74f8cba7a723", name: "Budi", whatsapp: "08123456789", productName: "Jersey", estimatedQuantity: "100", deadline: "2026-09-15", city: "Semarang", website: "" };
+  assert.equal(publicLeadSchema.safeParse(valid).success, true);
+  assert.equal(publicLeadSchema.safeParse({ ...valid, whatsapp: "123" }).success, false);
+});
+
+test("field penugasan opportunity tidak tertukar dengan profil customer", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /leadSourceId: formData\.has\("opportunityLeadSourceId"\)/);
+  assert.match(actionSource, /salesPicId: formData\.has\("opportunitySalesPicId"\)/);
+  assert.match(actionSource, /function customerFields[\s\S]+leadSourceId: formValue\(formData, "leadSourceId"\),[\s\S]+salesPicId: formValue\(formData, "salesPicId"\),/);
 });
 
 test("password kuat dan item quotation divalidasi pada boundary", () => {
@@ -137,6 +166,17 @@ test("migration klasifikasi customer melakukan seed dan backfill aman", async ()
   assert.match(sql, /UPDATE "Customer" SET "customerTypeId"/);
   assert.match(sql, /ON DELETE RESTRICT/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+});
+
+test("migration gap CRM menambah pipeline, next action, scoring, dan rate limit", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260831000000_crm_v1_gap/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /LEAD_BARU/);
+  assert.match(sql, /KEBUTUHAN_TERGALI/);
+  assert.match(sql, /Opportunity_next_action_pair/);
+  assert.match(sql, /Opportunity_lead_score_range/);
+  assert.match(sql, /PublicRateLimitBucket/);
+  assert.match(sql, /Landing Page/);
+  assert.match(sql, /REVOKE ALL ON TABLE "PublicRateLimitBucket" FROM anon, authenticated/);
 });
 
 test("flash message tidak membocorkan isi notifikasi ke URL", async () => {

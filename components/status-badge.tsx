@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { QUOTATION_STATUS_LABEL, SALES_ORDER_STATUS_LABEL, STAGE_LABEL } from "@/lib/crm/constants";
 
 export function OpportunityStatusBadge({ stage }: { stage: OpportunityStage }) {
-  const variant = stage === "BATAL" ? "destructive" : stage === "DEAL" ? "success" : stage === "LEAD" ? "info" : stage === "FOLLOW_UP" ? "warning" : "highlight";
+  const variant = stage === "LOST" ? "destructive" : stage === "DEAL" ? "success" : stage === "LEAD_BARU" || stage === "DIHUBUNGI" ? "info" : stage === "FOLLOW_UP" || stage === "NEGOSIASI" ? "warning" : "highlight";
   return <Badge variant={variant}>{STAGE_LABEL[stage]}</Badge>;
 }
 

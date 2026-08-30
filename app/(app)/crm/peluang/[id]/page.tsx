@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, FileCheck2, FileDown, ImageIcon, NotebookPen } from "lucide-react";
+import { ArrowLeft, FileCheck2, FileDown, ImageIcon, NotebookPen, Save } from "lucide-react";
 
 import {
   acceptQuotationAndDealAction,
@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { OpportunityStageForm } from "@/components/crm/opportunity-stage-form";
+import { OpportunityFields } from "@/components/crm/opportunity-fields";
 import { QuotationForm } from "@/components/crm/quotation-form";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
@@ -25,6 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { getOpportunityDetail } from "@/lib/crm/data";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { getCustomerFormOptions } from "@/lib/master-data";
 
 export default async function OpportunityDetailPage({
   params,
@@ -32,9 +34,10 @@ export default async function OpportunityDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const opportunity = await getOpportunityDetail(id);
+  const [opportunity, formOptions] = await Promise.all([getOpportunityDetail(id), getCustomerFormOptions()]);
   if (!opportunity) notFound();
   const draft = opportunity.quotations.find((quotation) => quotation.status === "DRAFT");
+  const canManageQuotation = opportunity.stage === "PENAWARAN" || opportunity.stage === "NEGOSIASI";
 
   return (
     <>
@@ -51,6 +54,27 @@ export default async function OpportunityDetailPage({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Kualifikasi dan next action</CardTitle>
+              <CardDescription>Lengkapi kebutuhan, penugasan, skor, dan tindakan berikutnya untuk peluang ini.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={updateOpportunityAction}>
+                <input type="hidden" name="opportunityId" value={opportunity.id} />
+                <input type="hidden" name="version" value={opportunity.version} />
+                <OpportunityFields idPrefix="opportunity" leadSources={formOptions.leadSources} salesUsers={formOptions.salesUsers} values={opportunity} />
+                <div className="mt-7 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">Simpan setelah mengubah kebutuhan, penugasan, atau next action.</p>
+                  <SubmitButton className="w-full sm:w-auto" size="lg" pendingLabel="Memperbarui...">
+                    <Save data-icon="inline-start" aria-hidden="true" />
+                    Simpan kualifikasi
+                  </SubmitButton>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Penawaran</CardTitle>
@@ -107,7 +131,7 @@ export default async function OpportunityDetailPage({
                             </ConfirmSubmitButton>
                           </form>
                         ) : null}
-                        {(quotation.status === "ISSUED" || quotation.status === "ACCEPTED") && opportunity.stage === "PENAWARAN" ? (
+                        {(quotation.status === "ISSUED" || quotation.status === "ACCEPTED") && canManageQuotation ? (
                           <form action={createQuotationRevisionAction}>
                             <input type="hidden" name="quotationId" value={quotation.id} />
                             <ConfirmSubmitButton
@@ -165,7 +189,7 @@ export default async function OpportunityDetailPage({
                     </section>
                   ))}
                 </div>
-              ) : opportunity.stage === "PENAWARAN" ? (
+              ) : canManageQuotation ? (
                 <QuotationForm opportunityId={opportunity.id} />
               ) : (
                 <Empty className="p-8">
@@ -176,7 +200,7 @@ export default async function OpportunityDetailPage({
                   </EmptyHeader>
                 </Empty>
               )}
-              {opportunity.stage === "PENAWARAN" && opportunity.quotations.length > 0 && !draft ? (
+              {canManageQuotation && opportunity.quotations.length > 0 && !draft ? (
                 <p className="mt-4 text-xs text-muted-foreground">Gunakan “Buat revisi” pada quotation terbit/diterima untuk melanjutkan negosiasi.</p>
               ) : null}
             </CardContent>
@@ -224,41 +248,8 @@ export default async function OpportunityDetailPage({
                 opportunityId={opportunity.id}
                 version={opportunity.version}
                 initialStage={opportunity.stage}
-                followUpAt={opportunity.followUpAt}
                 cancelReason={opportunity.cancelReason}
               />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Detail peluang</CardTitle>
-              <CardDescription>Estimasi operasional sebelum quotation final.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={updateOpportunityAction}>
-                <input type="hidden" name="opportunityId" value={opportunity.id} />
-                <input type="hidden" name="version" value={opportunity.version} />
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="title" required>Judul</FieldLabel>
-                    <Input id="title" name="title" required minLength={3} maxLength={180} defaultValue={opportunity.title} />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="estimatedQuantity">Estimasi jumlah</FieldLabel>
-                    <Input id="estimatedQuantity" name="estimatedQuantity" type="number" min={1} step={1} defaultValue={opportunity.estimatedQuantity ?? ""} />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="estimatedValue">Estimasi nilai</FieldLabel>
-                    <Input id="estimatedValue" name="estimatedValue" type="number" min={0} step={1} defaultValue={opportunity.estimatedValue?.toString() ?? ""} />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="deadline">Deadline</FieldLabel>
-                    <Input id="deadline" name="deadline" type="date" defaultValue={opportunity.deadline?.toISOString().slice(0, 10) ?? ""} />
-                  </Field>
-                  <SubmitButton variant="outline" pendingLabel="Memperbarui...">Simpan detail</SubmitButton>
-                </FieldGroup>
-              </form>
             </CardContent>
           </Card>
 

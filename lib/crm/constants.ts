@@ -1,22 +1,47 @@
 import type { OpportunityStage } from "@prisma/client";
 
 export const PIPELINE_STAGES = [
-  "LEAD",
-  "FOLLOW_UP",
+  "LEAD_BARU",
+  "DIHUBUNGI",
+  "KEBUTUHAN_TERGALI",
   "PENAWARAN",
+  "FOLLOW_UP",
+  "NEGOSIASI",
   "DEAL",
-  "BATAL",
+  "LOST",
 ] as const satisfies readonly OpportunityStage[];
 
 export const STAGE_LABEL: Record<OpportunityStage, string> = {
-  LEAD: "Lead",
-  FOLLOW_UP: "Follow Up",
+  LEAD_BARU: "Lead Baru",
+  DIHUBUNGI: "Dihubungi",
+  KEBUTUHAN_TERGALI: "Kebutuhan Tergali",
   PENAWARAN: "Penawaran",
+  FOLLOW_UP: "Follow Up",
+  NEGOSIASI: "Negosiasi",
   DEAL: "Deal",
-  BATAL: "Batal",
+  LOST: "Lost",
 };
 
-export const OPEN_STAGES: OpportunityStage[] = ["LEAD", "FOLLOW_UP", "PENAWARAN"];
+export const OPEN_STAGES: OpportunityStage[] = [
+  "LEAD_BARU",
+  "DIHUBUNGI",
+  "KEBUTUHAN_TERGALI",
+  "PENAWARAN",
+  "FOLLOW_UP",
+  "NEGOSIASI",
+];
+
+export const DESIGN_STATUS_LABEL = {
+  SUDAH_ADA: "Sudah ada",
+  BELUM_ADA: "Belum ada",
+  PERLU_DIBANTU: "Perlu dibantu",
+} as const;
+
+export function leadClassification(score: number) {
+  if (score >= 80) return "HOT" as const;
+  if (score >= 50) return "WARM" as const;
+  return "COLD" as const;
+}
 
 export const ROLE_LABEL = {
   OWNER: "Owner",

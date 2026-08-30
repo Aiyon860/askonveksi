@@ -20,8 +20,10 @@ import {
   entityIdSchema,
   firstValidationMessage,
   moveOpportunitySchema,
+  opportunityFieldsSchema,
   quotationDraftSchema,
   quotationIdSchema,
+  recordFollowUpResultSchema,
   reverseSalesOrderSchema,
   updateCustomerSchema,
   updateOpportunitySchema,
@@ -121,6 +123,29 @@ function quotationInput(formData: FormData) {
     discountType: formValue(formData, "discountType"),
     discountValue: formValue(formData, "discountValue"),
     items,
+  };
+}
+
+function opportunityInput(formData: FormData) {
+  return {
+    title: formValue(formData, "title"),
+    leadSourceId: formData.has("opportunityLeadSourceId")
+      ? formValue(formData, "opportunityLeadSourceId")
+      : formValue(formData, "leadSourceId"),
+    salesPicId: formData.has("opportunitySalesPicId")
+      ? formValue(formData, "opportunitySalesPicId")
+      : formValue(formData, "salesPicId"),
+    productName: formValue(formData, "productName"),
+    needPurpose: formValue(formData, "needPurpose"),
+    designStatus: formValue(formData, "designStatus"),
+    specification: formValue(formData, "specification"),
+    customerBudget: formValue(formData, "customerBudget"),
+    leadScore: formValue(formData, "leadScore") || "0",
+    estimatedQuantity: formValue(formData, "estimatedQuantity"),
+    estimatedValue: formValue(formData, "estimatedValue"),
+    deadline: formValue(formData, "deadline"),
+    nextAction: formValue(formData, "nextAction"),
+    nextActionAt: formValue(formData, "nextActionAt"),
   };
 }
 
@@ -318,10 +343,7 @@ export async function createOpportunityAction(formData: FormData) {
     const actor = await requireActor();
     const parsed = createOpportunitySchema.safeParse({
       customerId: formValue(formData, "customerId"),
-      title: formValue(formData, "title"),
-      estimatedQuantity: formValue(formData, "estimatedQuantity"),
-      estimatedValue: formValue(formData, "estimatedValue"),
-      deadline: formValue(formData, "deadline"),
+      ...opportunityInput(formData),
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
@@ -330,24 +352,45 @@ export async function createOpportunityAction(formData: FormData) {
       async (tx) => {
         const customer = await tx.customer.findFirst({
           where: { id: parsed.data.customerId, archivedAt: null },
-          select: { id: true },
+          select: { id: true, leadSourceId: true, salesPicId: true },
         });
         if (!customer) throw new UserFacingError("Customer aktif tidak ditemukan.");
+
+        const leadSourceId = parsed.data.leadSourceId ?? customer.leadSourceId;
+        const salesPicId = parsed.data.salesPicId ?? customer.salesPicId;
+        const [leadSource, salesPic] = await Promise.all([
+          leadSourceId ? tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null,
+          salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+        ]);
+        if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+        if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
 
         const created = await tx.opportunity.create({
           data: {
             opportunityNo: await nextOpportunityNo(tx),
             customerId: customer.id,
             title: parsed.data.title,
+            leadSourceId,
+            salesPicId,
+            productName: parsed.data.productName,
+            needPurpose: parsed.data.needPurpose,
+            designStatus: parsed.data.designStatus,
+            specification: parsed.data.specification,
+            customerBudget: parsed.data.customerBudget ? new Prisma.Decimal(parsed.data.customerBudget) : null,
+            leadScore: parsed.data.leadScore,
             estimatedQuantity: parsed.data.estimatedQuantity,
             estimatedValue: parsed.data.estimatedValue ? new Prisma.Decimal(parsed.data.estimatedValue) : null,
             deadline: optionalDate(parsed.data.deadline),
+            nextAction: parsed.data.nextAction,
+            nextActionAt: jakartaDateTime(parsed.data.nextActionAt),
           },
           select: { id: true },
         });
         await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-          "customerId", "title", "estimatedQuantity", "estimatedValue", "deadline", "stage",
-        ], { stage: "LEAD" });
+          "customerId", "title", "leadSourceId", "salesPicId", "productName", "needPurpose", "designStatus",
+          "specification", "customerBudget", "leadScore", "estimatedQuantity", "estimatedValue", "deadline",
+          "nextAction", "nextActionAt", "stage",
+        ], { stage: "LEAD_BARU" });
         return created;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -359,33 +402,128 @@ export async function createOpportunityAction(formData: FormData) {
   });
 }
 
+export async function createLeadAction(formData: FormData) {
+  return runRedirectingAction("/crm", async () => {
+    const actor = await requireActor();
+    const customerMode = formValue(formData, "customerMode");
+    if (customerMode !== "existing" && customerMode !== "new") throw new UserFacingError("Pilih jenis customer untuk lead.");
+    const opportunityParsed = opportunityFieldsSchema.safeParse(opportunityInput(formData));
+    if (!opportunityParsed.success) throw new UserFacingError(firstValidationMessage(opportunityParsed.error));
+    const customerIdParsed = entityIdSchema.safeParse(formValue(formData, "customerId"));
+    const customerParsed = customerMode === "new" ? createCustomerSchema.safeParse(customerFields(formData)) : null;
+    if (customerMode === "existing" && !customerIdParsed.success) throw new UserFacingError("Pilih customer tersimpan.");
+    if (customerParsed && !customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
+
+    const opportunity = await getPrismaClient().$transaction(async (tx) => {
+      let customer: { id: string; leadSourceId: string | null; salesPicId: string | null };
+      if (customerMode === "new" && customerParsed?.success) {
+        const [customerType, customerLeadSource, customerSalesPic] = await Promise.all([
+          tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
+          customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
+          customerParsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: customerParsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+        ]);
+        if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
+        if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+        if (customerParsed.data.salesPicId && !customerSalesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
+        customer = await tx.customer.create({
+          data: { ...customerParsed.data, email: customerParsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+          select: { id: true, leadSourceId: true, salesPicId: true },
+        });
+        await audit(tx, actor, "Customer", customer.id, "CUSTOMER_CREATED", [
+          "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
+        ]);
+      } else {
+        customer = await tx.customer.findFirstOrThrow({
+          where: { id: customerIdParsed.success ? customerIdParsed.data : "", archivedAt: null },
+          select: { id: true, leadSourceId: true, salesPicId: true },
+        }).catch(() => { throw new UserFacingError("Customer aktif tidak ditemukan."); });
+      }
+
+      const leadSourceId = opportunityParsed.data.leadSourceId ?? customer.leadSourceId;
+      const salesPicId = opportunityParsed.data.salesPicId ?? customer.salesPicId;
+      const [leadSource, salesPic] = await Promise.all([
+        leadSourceId ? tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null,
+        salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+      ]);
+      if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+      if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
+
+      const created = await tx.opportunity.create({
+        data: {
+          opportunityNo: await nextOpportunityNo(tx),
+          customerId: customer.id,
+          title: opportunityParsed.data.title,
+          leadSourceId,
+          salesPicId,
+          productName: opportunityParsed.data.productName,
+          needPurpose: opportunityParsed.data.needPurpose,
+          designStatus: opportunityParsed.data.designStatus,
+          specification: opportunityParsed.data.specification,
+          customerBudget: opportunityParsed.data.customerBudget ? new Prisma.Decimal(opportunityParsed.data.customerBudget) : null,
+          leadScore: opportunityParsed.data.leadScore,
+          estimatedQuantity: opportunityParsed.data.estimatedQuantity,
+          estimatedValue: opportunityParsed.data.estimatedValue ? new Prisma.Decimal(opportunityParsed.data.estimatedValue) : null,
+          deadline: optionalDate(opportunityParsed.data.deadline),
+          nextAction: opportunityParsed.data.nextAction,
+          nextActionAt: jakartaDateTime(opportunityParsed.data.nextActionAt),
+        },
+        select: { id: true },
+      });
+      await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
+        "customerId", "title", "leadSourceId", "salesPicId", "productName", "needPurpose", "designStatus",
+        "specification", "customerBudget", "leadScore", "estimatedQuantity", "estimatedValue", "deadline", "nextAction", "nextActionAt", "stage",
+      ], { stage: "LEAD_BARU" });
+      return created;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/pelanggan");
+    revalidatePath("/dashboard");
+    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Lead baru berhasil dibuat.");
+  });
+}
+
 export async function updateOpportunityAction(formData: FormData) {
   return runRedirectingAction("/crm", async () => {
     const actor = await requireActor();
     const parsed = updateOpportunitySchema.safeParse({
       opportunityId: formValue(formData, "opportunityId"),
       version: formValue(formData, "version"),
-      title: formValue(formData, "title"),
-      estimatedQuantity: formValue(formData, "estimatedQuantity"),
-      estimatedValue: formValue(formData, "estimatedValue"),
-      deadline: formValue(formData, "deadline"),
+      ...opportunityInput(formData),
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
     const result = await getPrismaClient().$transaction(async (tx) => {
+      const [leadSource, salesPic] = await Promise.all([
+        parsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: parsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
+        parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+      ]);
+      if (parsed.data.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+      if (parsed.data.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
       const updated = await tx.opportunity.updateMany({
         where: { id: parsed.data.opportunityId, version: parsed.data.version },
         data: {
           title: parsed.data.title,
+          leadSourceId: parsed.data.leadSourceId ?? null,
+          salesPicId: parsed.data.salesPicId ?? null,
+          productName: parsed.data.productName ?? null,
+          needPurpose: parsed.data.needPurpose ?? null,
+          designStatus: parsed.data.designStatus ?? null,
+          specification: parsed.data.specification ?? null,
+          customerBudget: parsed.data.customerBudget ? new Prisma.Decimal(parsed.data.customerBudget) : null,
+          leadScore: parsed.data.leadScore,
           estimatedQuantity: parsed.data.estimatedQuantity,
           estimatedValue: parsed.data.estimatedValue ? new Prisma.Decimal(parsed.data.estimatedValue) : null,
           deadline: optionalDate(parsed.data.deadline),
+          nextAction: parsed.data.nextAction ?? null,
+          nextActionAt: jakartaDateTime(parsed.data.nextActionAt),
           version: { increment: 1 },
         },
       });
       if (updated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
       await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_UPDATED", [
-        "title", "estimatedQuantity", "estimatedValue", "deadline",
+        "title", "leadSourceId", "salesPicId", "productName", "needPurpose", "designStatus", "specification",
+        "customerBudget", "leadScore", "estimatedQuantity", "estimatedValue", "deadline", "nextAction", "nextActionAt",
       ]);
       return updated;
     });
@@ -403,15 +541,9 @@ async function moveOpportunityStage(formData: FormData) {
     opportunityId: formValue(formData, "opportunityId"),
     version: formValue(formData, "version"),
     stage: formValue(formData, "stage"),
-    followUpAt: formValue(formData, "followUpAt"),
     cancelReason: formValue(formData, "cancelReason"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-
-  const followUpAt = jakartaDateTime(parsed.data.followUpAt);
-  if (parsed.data.stage === "FOLLOW_UP" && followUpAt && followUpAt <= new Date()) {
-    throw new UserFacingError("Jadwal follow-up harus berada di masa mendatang.");
-  }
 
   await getPrismaClient().$transaction(async (tx) => {
     const current = await tx.opportunity.findUnique({
@@ -425,14 +557,15 @@ async function moveOpportunityStage(formData: FormData) {
       where: { id: parsed.data.opportunityId, version: parsed.data.version, stage: { not: "DEAL" } },
       data: {
         stage: parsed.data.stage,
-        followUpAt: parsed.data.stage === "FOLLOW_UP" ? followUpAt : null,
-        cancelReason: parsed.data.stage === "BATAL" ? parsed.data.cancelReason : null,
+        nextAction: parsed.data.stage === "LOST" ? null : undefined,
+        nextActionAt: parsed.data.stage === "LOST" ? null : undefined,
+        cancelReason: parsed.data.stage === "LOST" ? parsed.data.cancelReason : null,
         version: { increment: 1 },
       },
     });
     if (updated.count !== 1) throw new UserFacingError("Status sudah berubah. Muat ulang board.");
     await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_STAGE_CHANGED", [
-      "stage", "followUpAt", "cancelReason",
+      "stage", "nextAction", "nextActionAt", "cancelReason",
     ], { from: current.stage, to: parsed.data.stage });
   });
 
@@ -481,6 +614,55 @@ export async function addNoteAction(formData: FormData) {
   });
 }
 
+export async function recordFollowUpResultAction(formData: FormData) {
+  return runRedirectingAction("/crm/follow-up", async () => {
+    const actor = await requireActor();
+    const parsed = recordFollowUpResultSchema.safeParse({
+      opportunityId: formValue(formData, "opportunityId"),
+      version: formValue(formData, "version"),
+      content: formValue(formData, "content"),
+      contactedAt: formValue(formData, "contactedAt"),
+      nextAction: formValue(formData, "nextAction"),
+      nextActionAt: formValue(formData, "nextActionAt"),
+      stage: formValue(formData, "stage"),
+      cancelReason: formValue(formData, "cancelReason"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    const contactedAt = jakartaDateTime(parsed.data.contactedAt);
+    if (!contactedAt || contactedAt > new Date()) throw new UserFacingError("Waktu kontak tidak boleh berada di masa depan.");
+    const nextActionAt = parsed.data.stage === "LOST" ? null : jakartaDateTime(parsed.data.nextActionAt);
+    if (nextActionAt && nextActionAt <= contactedAt) throw new UserFacingError("Jadwal berikutnya harus setelah waktu kontak.");
+
+    await getPrismaClient().$transaction(async (tx) => {
+      const updated = await tx.opportunity.updateMany({
+        where: { id: parsed.data.opportunityId, version: parsed.data.version, stage: { notIn: ["DEAL", "LOST"] } },
+        data: {
+          stage: parsed.data.stage,
+          lastContactedAt: contactedAt,
+          nextAction: parsed.data.stage === "LOST" ? null : parsed.data.nextAction,
+          nextActionAt,
+          cancelReason: parsed.data.stage === "LOST" ? parsed.data.cancelReason : null,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) throw new UserFacingError("Peluang sudah berubah atau telah ditutup. Muat ulang halaman.");
+      const note = await tx.cRMNote.create({
+        data: { opportunityId: parsed.data.opportunityId, authorId: actor.id, content: parsed.data.content },
+        select: { id: true },
+      });
+      await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "FOLLOW_UP_RECORDED", [
+        "lastContactedAt", "nextAction", "nextActionAt", "stage", "cancelReason",
+      ], { noteId: note.id });
+    });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/follow-up");
+    revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
+    return flashMessagePath("/crm/follow-up", "notice", "Hasil follow-up dan langkah berikutnya tersimpan.");
+  });
+}
+
 export async function createQuotationDraftAction(formData: FormData) {
   return runRedirectingAction("/crm", async () => {
     const actor = await requireActor();
@@ -501,7 +683,7 @@ export async function createQuotationDraftAction(formData: FormData) {
           },
         });
         if (!opportunity || opportunity.customer.archivedAt) throw new UserFacingError("Peluang aktif tidak ditemukan.");
-        if (opportunity.stage !== "PENAWARAN") throw new UserFacingError("Quotation hanya dapat dibuat pada stage Penawaran.");
+        if (!(opportunity.stage === "PENAWARAN" || opportunity.stage === "NEGOSIASI")) throw new UserFacingError("Quotation hanya dapat dibuat pada stage Penawaran atau Negosiasi.");
         if (opportunity.quotations.length) throw new UserFacingError("Peluang ini masih memiliki quotation draft.");
         if (opportunity._count.quotations > 0) throw new UserFacingError("Gunakan aksi buat revisi dari quotation sebelumnya.");
 
@@ -599,7 +781,7 @@ export async function issueQuotationAction(formData: FormData) {
         },
       });
       if (!quotation || quotation.status !== "DRAFT") throw new UserFacingError("Quotation draft tidak ditemukan.");
-      if (quotation.opportunity.stage !== "PENAWARAN") throw new UserFacingError("Quotation hanya dapat diterbitkan pada stage Penawaran.");
+      if (!(quotation.opportunity.stage === "PENAWARAN" || quotation.opportunity.stage === "NEGOSIASI")) throw new UserFacingError("Quotation hanya dapat diterbitkan pada stage Penawaran atau Negosiasi.");
       if (!quotation.items.length) throw new UserFacingError("Quotation belum memiliki item.");
 
       const updated = await tx.quotation.updateMany({
@@ -657,8 +839,8 @@ export async function createQuotationRevisionAction(formData: FormData) {
         if (!source || !(["ISSUED", "ACCEPTED"] as const).includes(source.status as "ISSUED" | "ACCEPTED")) {
           throw new UserFacingError("Revisi hanya dapat dibuat dari quotation terbit atau diterima.");
         }
-        if (source.opportunity.stage !== "PENAWARAN") {
-          throw new UserFacingError("Revisi hanya dapat dibuat setelah peluang kembali ke Penawaran.");
+        if (!(source.opportunity.stage === "PENAWARAN" || source.opportunity.stage === "NEGOSIASI")) {
+          throw new UserFacingError("Revisi hanya dapat dibuat pada stage Penawaran atau Negosiasi.");
         }
         const existingDraft = await tx.quotation.findFirst({ where: { opportunityId: source.opportunityId, status: "DRAFT" }, select: { id: true } });
         if (existingDraft) throw new UserFacingError("Selesaikan draft yang sedang aktif sebelum membuat revisi.");
@@ -749,7 +931,7 @@ export async function acceptQuotationAndDealAction(formData: FormData) {
           },
         });
         if (!quotation || quotation.status !== "ISSUED") throw new UserFacingError("Quotation tidak lagi berstatus terbit.");
-        if (quotation.opportunity.stage !== "PENAWARAN") throw new UserFacingError("Peluang tidak lagi berada di stage Penawaran.");
+        if (!(quotation.opportunity.stage === "PENAWARAN" || quotation.opportunity.stage === "NEGOSIASI")) throw new UserFacingError("Peluang tidak lagi berada di stage Penawaran atau Negosiasi.");
         if (quotation.salesOrder) throw new UserFacingError("Quotation ini sudah memiliki Sales Order.");
         const activeOrder = await tx.salesOrder.findFirst({ where: { opportunityId: quotation.opportunityId, status: "ACTIVE" }, select: { id: true } });
         if (activeOrder) throw new UserFacingError("Peluang ini sudah memiliki Sales Order aktif.");
@@ -769,8 +951,8 @@ export async function acceptQuotationAndDealAction(formData: FormData) {
         if (accepted.count !== 1) throw new UserFacingError("Quotation sudah berubah. Muat ulang halaman.");
 
         const opportunityUpdated = await tx.opportunity.updateMany({
-          where: { id: quotation.opportunityId, stage: "PENAWARAN", version: quotation.opportunity.version },
-          data: { stage: "DEAL", followUpAt: null, cancelReason: null, version: { increment: 1 } },
+          where: { id: quotation.opportunityId, stage: { in: ["PENAWARAN", "NEGOSIASI"] }, version: quotation.opportunity.version },
+          data: { stage: "DEAL", nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } },
         });
         if (opportunityUpdated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
 
@@ -799,7 +981,7 @@ export async function acceptQuotationAndDealAction(formData: FormData) {
 
         await audit(tx, actor, "Quotation", quotation.id, "QUOTATION_ACCEPTED", ["status", "acceptedAt", "acceptanceReference", "acceptanceProofPath"]);
         await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["status", "snapshot", "items", "total"], { opportunityId: quotation.opportunityId, quotationId: quotation.id });
-        await audit(tx, actor, "Opportunity", quotation.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage"], { from: "PENAWARAN", to: "DEAL" });
+        await audit(tx, actor, "Opportunity", quotation.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage"], { from: quotation.opportunity.stage, to: "DEAL" });
         return created;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },

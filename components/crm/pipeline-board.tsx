@@ -15,13 +15,12 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
+import { leadClassification, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
-import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
 
 type PendingMove = { opportunity: PipelineOpportunity; stage: OpportunityStage };
@@ -91,7 +90,7 @@ export function PipelineBoard({ opportunities }: { opportunities: PipelineOpport
             <Spinner /> Memindahkan status...
           </div>
         ) : null}
-        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3 xl:grid-cols-5 xl:auto-cols-auto xl:grid-flow-row xl:overflow-visible">
+        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3">
           {PIPELINE_STAGES.map((stage) => {
             const items = boardOpportunities.filter((opportunity) => opportunity.stage === stage);
             return (
@@ -167,6 +166,7 @@ export function PipelineBoard({ opportunities }: { opportunities: PipelineOpport
                       <CardContent>
                         <div className="flex flex-wrap items-center gap-2">
                           <OpportunityStatusBadge stage={opportunity.stage} />
+                          <span className="text-xs font-medium">{leadClassification(opportunity.leadScore)} · {opportunity.leadScore}</span>
                           <span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span>
                         </div>
                         <dl className="grid gap-2 text-xs text-muted-foreground">
@@ -174,12 +174,13 @@ export function PipelineBoard({ opportunities }: { opportunities: PipelineOpport
                             <dt>Estimasi</dt>
                             <dd className="font-mono text-foreground">{formatCurrency(opportunity.estimatedValue)}</dd>
                           </div>
-                          {opportunity.followUpAt ? (
-                            <div className="flex items-center gap-2">
+                          {opportunity.nextActionAt ? (
+                            <div className="flex items-start gap-2">
                               <CalendarClock aria-hidden="true" className="size-3.5" />
-                              <dd>{formatDate(opportunity.followUpAt, true)}</dd>
+                              <dd>{opportunity.nextAction} · {formatDate(opportunity.nextActionAt, true)}</dd>
                             </div>
                           ) : null}
+                          {opportunity.salesPic ? <div className="flex justify-between gap-3"><dt>PIC</dt><dd>{opportunity.salesPic.name}</dd></div> : null}
                           <div className="flex items-center gap-2">
                             <NotebookText aria-hidden="true" className="size-3.5" />
                             <dd>{opportunity.noteCount} catatan</dd>
@@ -248,15 +249,9 @@ export function PipelineBoard({ opportunities }: { opportunities: PipelineOpport
                       ))}
                     </NativeSelect>
                   </Field>
-                  {pendingMove.stage === "FOLLOW_UP" ? (
+                  {pendingMove.stage === "LOST" ? (
                     <Field>
-                      <FieldLabel htmlFor="followUpAt" required>Jadwal follow-up</FieldLabel>
-                      <Input id="followUpAt" name="followUpAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(pendingMove.opportunity.followUpAt)} />
-                    </Field>
-                  ) : null}
-                  {pendingMove.stage === "BATAL" ? (
-                    <Field>
-                      <FieldLabel htmlFor="cancelReason" required>Alasan batal</FieldLabel>
+                      <FieldLabel htmlFor="cancelReason" required>Alasan lost</FieldLabel>
                       <Textarea id="cancelReason" name="cancelReason" required minLength={2} maxLength={1000} rows={4} defaultValue={pendingMove.opportunity.cancelReason ?? ""} />
                     </Field>
                   ) : null}

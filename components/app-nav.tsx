@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronDown, ContactRound, Database, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
+import { CalendarClock, ChevronDown, ContactRound, Database, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -15,7 +15,6 @@ const mainItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/crm", label: "Pipeline CRM", icon: KanbanSquare },
   { href: "/crm/pelanggan", label: "Customer", icon: ContactRound },
-  { href: "/notifications", label: "Notifikasi", icon: Bell, count: 3 },
 ] as const;
 
 const masterItems = [
@@ -56,7 +55,7 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
   );
 }
 
-export function AppNav({ role }: { role: AppRole }) {
+export function AppNav({ role, followUpCount }: { role: AppRole; followUpCount: number }) {
   const pathname = usePathname();
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const canManageMasterData = role === "OWNER" || role === "ADMIN";
@@ -65,6 +64,7 @@ export function AppNav({ role }: { role: AppRole }) {
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
       {mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />)}
+      <NavLink pathname={pathname} item={{ href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock, count: followUpCount }} />
       {canManageMasterData ? (
         <Collapsible open={masterDataActive || masterDataOpen} onOpenChange={setMasterDataOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
           <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">

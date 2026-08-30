@@ -15,7 +15,10 @@ export type PipelineOpportunity = {
   estimatedQuantity: number | null;
   estimatedValue: string | null;
   deadline: string | null;
-  followUpAt: string | null;
+  leadScore: number;
+  productName: string | null;
+  nextAction: string | null;
+  nextActionAt: string | null;
   cancelReason: string | null;
   updatedAt: string;
   customer: {
@@ -25,6 +28,7 @@ export type PipelineOpportunity = {
     companyName: string | null;
   };
   noteCount: number;
+  salesPic: { id: string; name: string } | null;
 };
 
 const opportunitySummarySelect = {
@@ -36,7 +40,10 @@ const opportunitySummarySelect = {
   estimatedQuantity: true,
   estimatedValue: true,
   deadline: true,
-  followUpAt: true,
+  leadScore: true,
+  productName: true,
+  nextAction: true,
+  nextActionAt: true,
   cancelReason: true,
   updatedAt: true,
   customer: {
@@ -47,6 +54,7 @@ const opportunitySummarySelect = {
       companyName: true,
     },
   },
+  salesPic: { select: { id: true, name: true } },
   _count: { select: { notes: true } },
 } satisfies Prisma.OpportunitySelect;
 
@@ -72,11 +80,15 @@ export async function getPipelineData() {
     estimatedQuantity: row.estimatedQuantity,
     estimatedValue: row.estimatedValue?.toString() ?? null,
     deadline: row.deadline?.toISOString() ?? null,
-    followUpAt: row.followUpAt?.toISOString() ?? null,
+    leadScore: row.leadScore,
+    productName: row.productName,
+    nextAction: row.nextAction,
+    nextActionAt: row.nextActionAt?.toISOString() ?? null,
     cancelReason: row.cancelReason,
     updatedAt: row.updatedAt.toISOString(),
     customer: row.customer,
     noteCount: row._count.notes,
+    salesPic: row.salesPic,
   }));
 
   return { opportunities, total, truncated: total > rows.length };
@@ -138,7 +150,7 @@ export async function getCustomers({
       : [{ [sort]: direction }, { id: "asc" as const }]
   ) satisfies Prisma.CustomerOrderByWithRelationInput[];
 
-  const [items, total] = await prisma.$transaction([
+  const [items, total] = await Promise.all([
     prisma.customer.findMany({
       where,
       select: {
@@ -240,10 +252,20 @@ export async function getOpportunityDetail(opportunityId: string) {
       opportunityNo: true,
       title: true,
       stage: true,
+      leadSourceId: true,
+      salesPicId: true,
+      productName: true,
+      needPurpose: true,
+      designStatus: true,
+      specification: true,
+      customerBudget: true,
+      leadScore: true,
       estimatedQuantity: true,
       estimatedValue: true,
       deadline: true,
-      followUpAt: true,
+      lastContactedAt: true,
+      nextAction: true,
+      nextActionAt: true,
       cancelReason: true,
       version: true,
       createdAt: true,
@@ -261,6 +283,8 @@ export async function getOpportunityDetail(opportunityId: string) {
           archivedAt: true,
         },
       },
+      leadSource: { select: { id: true, name: true } },
+      salesPic: { select: { id: true, name: true, isActive: true } },
       notes: {
         select: {
           id: true,
@@ -303,6 +327,114 @@ export async function getOpportunityDetail(opportunityId: string) {
       },
     },
   });
+}
+
+type FollowUpBucket = "overdue" | "today" | "tomorrow" | "upcoming";
+
+function jakartaDayBounds(reference = new Date()) {
+  const shifted = new Date(reference.getTime() + 7 * 60 * 60 * 1000);
+  const start = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 7 * 60 * 60 * 1000);
+  const tomorrow = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
+  return { start, tomorrow, dayAfterTomorrow };
+}
+
+export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucket; picId?: string }) {
+  const actor = await requireActor();
+  const { start, tomorrow, dayAfterTomorrow } = jakartaDayBounds();
+  const timeWhere = bucket === "overdue"
+    ? { lt: start }
+    : bucket === "today"
+      ? { gte: start, lt: tomorrow }
+      : bucket === "tomorrow"
+        ? { gte: tomorrow, lt: dayAfterTomorrow }
+        : { gte: dayAfterTomorrow };
+  const selectedPicId = picId === "all" ? undefined : picId || (actor.role === "SALES" ? actor.id : undefined);
+  const baseWhere = {
+    stage: { in: ["LEAD_BARU", "DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI"] as OpportunityStage[] },
+    nextActionAt: { not: null },
+    customer: { archivedAt: null },
+    ...(selectedPicId ? { salesPicId: selectedPicId } : {}),
+  } satisfies Prisma.OpportunityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, overdue, today, tomorrowCount, upcoming, salesUsers] = await Promise.all([
+    prisma.opportunity.findMany({
+      where: { ...baseWhere, nextActionAt: timeWhere },
+      select: {
+        id: true,
+        opportunityNo: true,
+        title: true,
+        stage: true,
+        version: true,
+        leadScore: true,
+        nextAction: true,
+        nextActionAt: true,
+        lastContactedAt: true,
+        cancelReason: true,
+        customer: { select: { name: true, companyName: true, whatsapp: true } },
+        salesPic: { select: { id: true, name: true } },
+      },
+      orderBy: [{ nextActionAt: "asc" }, { id: "asc" }],
+      take: 200,
+    }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { lt: start } } }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: start, lt: tomorrow } } }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: tomorrow, lt: dayAfterTomorrow } } }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: dayAfterTomorrow } } }),
+    prisma.appUser.findMany({ where: { role: "SALES", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+  return { items, counts: { overdue, today, tomorrow: tomorrowCount, upcoming }, salesUsers, selectedPicId };
+}
+
+export async function getFollowUpBadgeCount() {
+  const actor = await requireActor();
+  const { tomorrow } = jakartaDayBounds();
+  return getPrismaClient().opportunity.count({
+    where: {
+      stage: { in: ["LEAD_BARU", "DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI"] },
+      nextActionAt: { lt: tomorrow },
+      customer: { archivedAt: null },
+      ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+    },
+  });
+}
+
+export async function getSalesDashboardData() {
+  await requireActor();
+  const prisma = getPrismaClient();
+  const { start, tomorrow } = jakartaDayBounds();
+  const shifted = new Date(start.getTime() + 7 * 60 * 60 * 1000);
+  const monthStart = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - 7 * 60 * 60 * 1000);
+  const nextMonth = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) - 7 * 60 * 60 * 1000);
+  const openStages: OpportunityStage[] = ["LEAD_BARU", "DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI"];
+  const [stageGroups, potential, dealRevenue, overdue, dueToday, hotLeads, urgentActions] = await Promise.all([
+    prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
+    prisma.opportunity.aggregate({ where: { stage: { in: openStages }, customer: { archivedAt: null } }, _sum: { estimatedValue: true } }),
+    prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }),
+    prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { lt: start }, customer: { archivedAt: null } } }),
+    prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { gte: start, lt: tomorrow }, customer: { archivedAt: null } } }),
+    prisma.opportunity.findMany({
+      where: { stage: { in: openStages }, leadScore: { gte: 80 }, customer: { archivedAt: null } },
+      select: { id: true, opportunityNo: true, title: true, leadScore: true, estimatedValue: true, customer: { select: { name: true } } },
+      orderBy: [{ leadScore: "desc" }, { updatedAt: "desc" }],
+      take: 5,
+    }),
+    prisma.opportunity.findMany({
+      where: { stage: { in: openStages }, nextActionAt: { not: null }, customer: { archivedAt: null } },
+      select: { id: true, title: true, nextAction: true, nextActionAt: true, customer: { select: { name: true } } },
+      orderBy: { nextActionAt: "asc" },
+      take: 5,
+    }),
+  ]);
+  return {
+    stageCounts: Object.fromEntries(stageGroups.map((group) => [group.stage, group._count])) as Partial<Record<OpportunityStage, number>>,
+    potentialValue: potential._sum.estimatedValue?.toString() ?? "0",
+    dealRevenue: dealRevenue._sum.total?.toString() ?? "0",
+    overdue,
+    dueToday,
+    hotLeads: hotLeads.map((item) => ({ ...item, estimatedValue: item.estimatedValue?.toString() ?? null })),
+    urgentActions,
+  };
 }
 
 export async function getSalesOrderDetail(salesOrderId: string) {
@@ -385,7 +517,7 @@ export async function getUsers({
   } satisfies Prisma.AppUserWhereInput;
   const orderBy = [{ [sort]: direction }, { id: "asc" as const }] satisfies Prisma.AppUserOrderByWithRelationInput[];
   const prisma = getPrismaClient();
-  const [items, total, activeTotal, allTotal] = await prisma.$transaction([
+  const [items, total, activeTotal, allTotal] = await Promise.all([
     prisma.appUser.findMany({
       where,
       select: {

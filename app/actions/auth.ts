@@ -62,12 +62,12 @@ export async function updatePasswordAction(formData: FormData) {
     const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
     if (error) throw new UserFacingError("Password belum dapat diperbarui. Silakan coba lagi.");
 
-    await getPrismaClient().$transaction([
-      getPrismaClient().appUser.update({
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.appUser.update({
         where: { id: actor.id },
         data: { mustChangePassword: false },
-      }),
-      getPrismaClient().auditEvent.create({
+      });
+      await tx.auditEvent.create({
         data: {
           actorId: actor.id,
           entityType: "AppUser",
@@ -75,8 +75,8 @@ export async function updatePasswordAction(formData: FormData) {
           action: "PASSWORD_CHANGED",
           changedFields: ["mustChangePassword"],
         },
-      }),
-    ]);
+      });
+    });
 
     if (actor.mustChangePassword) return "/dashboard";
 

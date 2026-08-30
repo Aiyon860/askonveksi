@@ -19,7 +19,7 @@ export function PipelineSummary({
         </div>
       </dl>
 
-      <dl className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-cols-5 xl:auto-cols-auto xl:grid-flow-row xl:overflow-visible">
+      <dl className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-cols-8 xl:auto-cols-auto xl:grid-flow-row xl:overflow-visible">
         {PIPELINE_STAGES.map((stage) => (
           <div key={stage} className={cn("rounded-xl border p-4", STAGE_SUMMARY_CLASS[stage])}>
             <dt className="text-xs text-muted-foreground">{STAGE_LABEL[stage]}</dt>

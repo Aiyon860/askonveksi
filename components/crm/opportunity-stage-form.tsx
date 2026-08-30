@@ -6,23 +6,19 @@ import type { OpportunityStage } from "@prisma/client";
 import { moveOpportunityStageAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
-import { toDateTimeLocalValue } from "@/lib/crm/format";
 
 export function OpportunityStageForm({
   opportunityId,
   version,
   initialStage,
-  followUpAt,
   cancelReason,
 }: {
   opportunityId: string;
   version: number;
   initialStage: OpportunityStage;
-  followUpAt: Date | null;
   cancelReason: string | null;
 }) {
   const fallbackStage = initialStage === "DEAL" ? "PENAWARAN" : initialStage;
@@ -47,15 +43,9 @@ export function OpportunityStageForm({
             ))}
           </NativeSelect>
         </Field>
-        {stage === "FOLLOW_UP" ? (
+        {stage === "LOST" ? (
           <Field>
-            <FieldLabel htmlFor="detail-followUpAt" required>Jadwal follow-up</FieldLabel>
-            <Input id="detail-followUpAt" name="followUpAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(followUpAt)} />
-          </Field>
-        ) : null}
-        {stage === "BATAL" ? (
-          <Field>
-            <FieldLabel htmlFor="detail-cancelReason" required>Alasan batal</FieldLabel>
+            <FieldLabel htmlFor="detail-cancelReason" required>Alasan lost</FieldLabel>
             <Textarea id="detail-cancelReason" name="cancelReason" required maxLength={1000} rows={4} defaultValue={cancelReason ?? ""} />
           </Field>
         ) : null}

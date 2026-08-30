@@ -13,11 +13,20 @@ enum AppRole {
 }
 
 enum OpportunityStage {
-  LEAD
-  FOLLOW_UP
+  LEAD_BARU
+  DIHUBUNGI
+  KEBUTUHAN_TERGALI
   PENAWARAN
+  FOLLOW_UP
+  NEGOSIASI
   DEAL
-  BATAL
+  LOST
+}
+
+enum DesignStatus {
+  SUDAH_ADA
+  BELUM_ADA
+  PERLU_DIBANTU
 }
 
 enum DiscountType {
@@ -52,6 +61,7 @@ model AppUser {
   cancelledOrders    SalesOrder[] @relation("SalesOrderCancelledBy")
   auditEvents        AuditEvent[]
   assignedCustomers  Customer[]   @relation("CustomerSalesPic")
+  assignedOpportunities Opportunity[] @relation("OpportunitySalesPic")
   createdAt          DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
 
@@ -78,6 +88,7 @@ model LeadSource {
   position    Int        @default(0)
   isActive    Boolean    @default(true)
   customers   Customer[]
+  opportunities Opportunity[]
   createdAt   DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
 
@@ -121,14 +132,27 @@ model Opportunity {
   opportunityNo     String           @unique @db.VarChar(24)
   customerId        String
   title             String           @db.VarChar(180)
-  stage             OpportunityStage @default(LEAD)
+  stage             OpportunityStage @default(LEAD_BARU)
+  leadSourceId      String?
+  salesPicId        String?
+  productName       String?          @db.VarChar(120)
+  needPurpose       String?          @db.VarChar(500)
+  designStatus      DesignStatus?
+  specification     String?          @db.Text
+  customerBudget    Decimal?         @db.Decimal(18, 2)
+  leadScore         Int              @default(0)
   estimatedQuantity Int?
   estimatedValue    Decimal?         @db.Decimal(18, 2)
   deadline          DateTime?        @db.Date
-  followUpAt        DateTime?        @db.Timestamptz(3)
+  lastContactedAt   DateTime?        @db.Timestamptz(3)
+  nextAction        String?          @db.VarChar(500)
+  nextActionAt      DateTime?        @db.Timestamptz(3)
+  publicSubmissionKey String?        @unique @db.Uuid
   cancelReason      String?          @db.Text
   version           Int              @default(1)
   customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  leadSource        LeadSource?      @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  salesPic          AppUser?         @relation("OpportunitySalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
   notes             CRMNote[]
   quotations        Quotation[]
   salesOrders       SalesOrder[]
@@ -137,7 +161,19 @@ model Opportunity {
 
   @@index([customerId, updatedAt])
   @@index([stage, updatedAt])
-  @@index([stage, followUpAt])
+  @@index([salesPicId, stage])
+  @@index([salesPicId, nextActionAt])
+  @@index([leadSourceId, createdAt])
+  @@index([leadScore, stage])
+}
+
+model PublicRateLimitBucket {
+  key         String   @id @db.VarChar(64)
+  windowStart DateTime @db.Timestamptz(3)
+  count       Int      @default(1)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([updatedAt])
 }
 
 model CRMNote {

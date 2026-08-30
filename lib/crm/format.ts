@@ -25,3 +25,12 @@ export function toDateTimeLocalValue(value: Date | string | null | undefined) {
   const jakartaOffsetMs = 7 * 60 * 60 * 1000;
   return new Date(date.getTime() + jakartaOffsetMs).toISOString().slice(0, 16);
 }
+
+export function whatsappHref(value: string | null | undefined) {
+  if (!value) return null;
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `62${digits.slice(1)}`;
+  else if (digits.startsWith("8")) digits = `62${digits}`;
+  if (!/^\d{8,15}$/.test(digits)) return null;
+  return `https://wa.me/${digits}`;
+}

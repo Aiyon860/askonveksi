@@ -11,6 +11,11 @@ const optionalPositiveInteger = z.preprocess(
   z.number().int().positive().max(10_000_000).optional(),
 );
 
+const optionalMoney = (label: string) => optionalText(20).refine(
+  (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
+  `${label} tidak valid.`,
+);
+
 const requiredVersion = z.preprocess(
   (value) => Number(value),
   z.number().int().positive(),
@@ -71,45 +76,85 @@ export const bulkUpdateMasterDataSchema = z
   .min(1, "Minimal satu data harus tersedia.")
   .max(1_000, "Terlalu banyak data untuk diperbarui sekaligus.");
 
-export const createOpportunitySchema = z.object({
-  customerId: entityIdSchema,
+export const opportunityFieldsSchema = z.object({
   title: z.string().trim().min(3, "Judul peluang minimal 3 karakter.").max(180),
-  estimatedQuantity: optionalPositiveInteger,
-  estimatedValue: optionalText(20).refine(
-    (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
-    "Estimasi nilai tidak valid.",
+  leadSourceId: optionalEntityId,
+  salesPicId: optionalEntityId,
+  productName: optionalText(120),
+  needPurpose: optionalText(500),
+  designStatus: z.preprocess(
+    (value) => (value === null || value === "" ? undefined : value),
+    z.enum(["SUDAH_ADA", "BELUM_ADA", "PERLU_DIBANTU"]).optional(),
   ),
+  specification: optionalText(2000),
+  customerBudget: optionalMoney("Budget customer"),
+  leadScore: z.coerce.number().int().min(0, "Skor minimal 0.").max(100, "Skor maksimal 100."),
+  estimatedQuantity: optionalPositiveInteger,
+  estimatedValue: optionalMoney("Estimasi nilai"),
   deadline: optionalText(10),
+  nextAction: optionalText(500),
+  nextActionAt: optionalText(32),
+}).superRefine((value, context) => {
+  if (Boolean(value.nextAction) !== Boolean(value.nextActionAt)) {
+    context.addIssue({
+      code: "custom",
+      path: value.nextAction ? ["nextActionAt"] : ["nextAction"],
+      message: "Next action dan jadwal harus diisi bersamaan.",
+    });
+  }
 });
 
-export const updateOpportunitySchema = z.object({
+export const createOpportunitySchema = opportunityFieldsSchema.and(z.object({
+  customerId: entityIdSchema,
+}));
+
+export const updateOpportunitySchema = opportunityFieldsSchema.and(z.object({
   opportunityId: entityIdSchema,
   version: requiredVersion,
-  title: z.string().trim().min(3).max(180),
-  estimatedQuantity: optionalPositiveInteger,
-  estimatedValue: optionalText(20).refine(
-    (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
-    "Estimasi nilai tidak valid.",
-  ),
-  deadline: optionalText(10),
-});
+}));
 
 export const moveOpportunitySchema = z
   .object({
     opportunityId: entityIdSchema,
     version: requiredVersion,
-    stage: z.enum(["LEAD", "FOLLOW_UP", "PENAWARAN", "BATAL"]),
-    followUpAt: optionalText(32),
+    stage: z.enum(["LEAD_BARU", "DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
     cancelReason: optionalText(1000),
   })
   .superRefine((value, context) => {
-    if (value.stage === "FOLLOW_UP" && !value.followUpAt) {
-      context.addIssue({ code: "custom", path: ["followUpAt"], message: "Tanggal follow-up wajib diisi." });
-    }
-    if (value.stage === "BATAL" && !value.cancelReason) {
-      context.addIssue({ code: "custom", path: ["cancelReason"], message: "Alasan batal wajib diisi." });
+    if (value.stage === "LOST" && !value.cancelReason) {
+      context.addIssue({ code: "custom", path: ["cancelReason"], message: "Alasan lost wajib diisi." });
     }
   });
+
+export const recordFollowUpResultSchema = z.object({
+  opportunityId: entityIdSchema,
+  version: requiredVersion,
+  content: z.string().trim().min(2, "Hasil follow-up terlalu pendek.").max(4000),
+  contactedAt: z.string().trim().min(1, "Waktu kontak wajib diisi."),
+  nextAction: optionalText(500),
+  nextActionAt: optionalText(32),
+  stage: z.enum(["DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
+  cancelReason: optionalText(1000),
+}).superRefine((value, context) => {
+  if (value.stage === "LOST") {
+    if (!value.cancelReason) context.addIssue({ code: "custom", path: ["cancelReason"], message: "Alasan lost wajib diisi." });
+    return;
+  }
+  if (!value.nextAction || !value.nextActionAt) {
+    context.addIssue({ code: "custom", path: ["nextAction"], message: "Opportunity terbuka wajib memiliki next action dan jadwal." });
+  }
+});
+
+export const publicLeadSchema = z.object({
+  submissionKey: z.uuid(),
+  name: z.string().trim().min(2).max(160),
+  whatsapp: z.string().trim().min(8).max(32),
+  productName: z.string().trim().min(2).max(120),
+  estimatedQuantity: optionalPositiveInteger,
+  deadline: optionalText(10),
+  city: optionalText(120),
+  website: optionalText(200),
+});
 
 export const addNoteSchema = z.object({
   opportunityId: entityIdSchema,
