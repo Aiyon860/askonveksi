@@ -92,15 +92,17 @@ function formatRupiah(value: number) {
   return rupiahFormatter.format(value).replace(/\u00a0/g, " ");
 }
 
-function formatCompactRupiah(value: number) {
-  return `Rp ${compactNumberFormatter.format(value)}`;
+function formatCompact(value: number) {
+  return compactNumberFormatter.format(value);
 }
 
 export function BusinessTrendChart() {
-  const [selectedYear, setSelectedYear] = useState<TrendYear>("2026");
-  const trendData = businessTrendData[selectedYear];
+  const [revenueYear, setRevenueYear] = useState<TrendYear>("2026");
+  const [ordersYear, setOrdersYear] = useState<TrendYear>("2026");
+  const trendData = businessTrendData[revenueYear];
+  const ordersTrendData = businessTrendData[ordersYear];
   const totalRevenue = trendData.reduce((total, item) => total + item.revenue, 0);
-  const totalCompletedOrders = trendData.reduce(
+  const totalCompletedOrders = ordersTrendData.reduce(
     (total, item) => total + item.completedOrders,
     0,
   );
@@ -115,15 +117,15 @@ export function BusinessTrendChart() {
       <Card className="xl:col-span-3">
         <CardHeader>
           <CardTitle>Pendapatan per bulan</CardTitle>
-          <CardDescription>Kas masuk aktual · data dummy {selectedYear}.</CardDescription>
+          <CardDescription>Kas masuk aktual · data dummy {revenueYear}.</CardDescription>
           <CardAction>
             <div className="flex items-center gap-2">
-              <label htmlFor="trend-year" className="text-sm font-medium">Tahun</label>
+              <label htmlFor="revenue-year" className="text-sm font-medium">Tahun</label>
               <NativeSelect
-                id="trend-year"
-                value={selectedYear}
-                onChange={(event) => setSelectedYear(event.target.value as TrendYear)}
-                aria-label="Pilih tahun data tren"
+                id="revenue-year"
+                value={revenueYear}
+                onChange={(event) => setRevenueYear(event.target.value as TrendYear)}
+                aria-label="Pilih tahun pendapatan per bulan"
               >
                 {trendYears.map((year) => (
                   <NativeSelectOption key={year} value={year}>{year}</NativeSelectOption>
@@ -134,7 +136,7 @@ export function BusinessTrendChart() {
         </CardHeader>
         <CardContent>
           <p className="flex items-baseline justify-between border-t pt-4">
-            <span className="text-xs font-medium text-muted-foreground">Total {selectedYear}</span>
+            <span className="text-xs font-medium text-muted-foreground">Total {revenueYear}</span>
             <span className="font-mono text-lg font-semibold tabular-nums">{formatRupiah(totalRevenue)}</span>
           </p>
 
@@ -142,9 +144,9 @@ export function BusinessTrendChart() {
             config={revenueChartConfig}
             className="mt-2 h-64 w-full aspect-auto"
             initialDimension={{ width: 720, height: 256 }}
-            aria-label={`Grafik pendapatan bulanan tahun ${selectedYear}`}
+            aria-label={`Grafik pendapatan bulanan tahun ${revenueYear}`}
           >
-            <LineChart accessibilityLayer data={trendData} margin={{ left: 4, right: 12, top: 8 }}>
+            <LineChart accessibilityLayer data={trendData} margin={{ left: 4, right: 12, top: 20 }}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="month" axisLine={false} tickLine={false} tickMargin={10} />
               <YAxis
@@ -152,14 +154,14 @@ export function BusinessTrendChart() {
                 tickLine={false}
                 tickMargin={8}
                 width={66}
-                tickFormatter={(value: number) => formatCompactRupiah(value)}
+                tickFormatter={(value: number) => formatCompact(value)}
               />
               <ChartTooltip
                 cursor={false}
                 content={
                   <ChartTooltipContent
                     indicator="line"
-                    labelFormatter={(label) => `${label} ${selectedYear}`}
+                    labelFormatter={(label) => `${label} ${revenueYear}`}
                     formatter={(value) => (
                       <div className="flex min-w-40 items-center justify-between gap-4">
                         <span className="text-muted-foreground">Kas masuk</span>
@@ -190,10 +192,25 @@ export function BusinessTrendChart() {
         <CardHeader>
           <CardTitle>Order selesai &amp; lunas</CardTitle>
           <CardDescription>Produksi selesai dan seluruh invoice sudah dibayar.</CardDescription>
+          <CardAction>
+            <div className="flex items-center gap-2">
+              <label htmlFor="orders-year" className="text-sm font-medium">Tahun</label>
+              <NativeSelect
+                id="orders-year"
+                value={ordersYear}
+                onChange={(event) => setOrdersYear(event.target.value as TrendYear)}
+                aria-label="Pilih tahun order selesai dan lunas"
+              >
+                {trendYears.map((year) => (
+                  <NativeSelectOption key={year} value={year}>{year}</NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+          </CardAction>
         </CardHeader>
         <CardContent>
           <p className="flex items-baseline justify-between border-t pt-4">
-            <span className="text-xs font-medium text-muted-foreground">Total {selectedYear}</span>
+            <span className="text-xs font-medium text-muted-foreground">Total {ordersYear}</span>
             <span className="font-mono text-lg font-semibold tabular-nums">{totalCompletedOrders} order</span>
           </p>
 
@@ -201,9 +218,9 @@ export function BusinessTrendChart() {
             config={completedOrdersChartConfig}
             className="mt-2 h-64 w-full aspect-auto"
             initialDimension={{ width: 480, height: 256 }}
-            aria-label={`Grafik order selesai dan lunas tahun ${selectedYear}`}
+            aria-label={`Grafik order selesai dan lunas tahun ${ordersYear}`}
           >
-            <BarChart accessibilityLayer data={trendData} margin={{ left: -16, right: 4, top: 8 }}>
+            <BarChart accessibilityLayer data={ordersTrendData} margin={{ left: -16, right: 4, top: 20 }}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="month" axisLine={false} tickLine={false} tickMargin={10} />
               <YAxis axisLine={false} tickLine={false} tickMargin={8} allowDecimals={false} />
@@ -212,7 +229,7 @@ export function BusinessTrendChart() {
                 content={
                   <ChartTooltipContent
                     hideIndicator
-                    labelFormatter={(label) => `${label} ${selectedYear}`}
+                    labelFormatter={(label) => `${label} ${ordersYear}`}
                     formatter={(value) => (
                       <div className="flex min-w-40 items-center justify-between gap-4">
                         <span className="text-muted-foreground">Selesai &amp; lunas</span>
@@ -231,7 +248,7 @@ export function BusinessTrendChart() {
             </BarChart>
           </ChartContainer>
           <p className="sr-only">
-            {trendData.map((item) => `${item.month}: ${item.completedOrders} order`).join("; ")}.
+            {ordersTrendData.map((item) => `${item.month}: ${item.completedOrders} order`).join("; ")}.
           </p>
         </CardContent>
       </Card>
