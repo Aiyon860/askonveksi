@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowLeft, FileCheck2, FileDown, ImageIcon, NotebookPen, Save } from "lucide-react";
+import { notFound, redirect } from "next/navigation";
+import { ArrowLeft, FileCheck2, FileDown, ImageIcon, Save } from "lucide-react";
 
 import {
   acceptQuotationAndDealAction,
-  addNoteAction,
   createQuotationRevisionAction,
   issueQuotationAction,
   updateOpportunityAction,
 } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
+import { CommunicationHistory } from "@/components/crm/communication-history";
 import { OpportunityStageForm } from "@/components/crm/opportunity-stage-form";
 import { OpportunityFields } from "@/components/crm/opportunity-fields";
 import { QuotationForm } from "@/components/crm/quotation-form";
@@ -24,18 +25,27 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { getOpportunityDetail } from "@/lib/crm/data";
+import { getCommunicationTimeline, getOpportunityDetail } from "@/lib/crm/data";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
 import { getCustomerFormOptions } from "@/lib/master-data";
+import { parsePageParam } from "@/lib/pagination";
 
 export default async function OpportunityDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ historyPage?: string | string[] }>;
 }) {
   const { id } = await params;
-  const [opportunity, formOptions] = await Promise.all([getOpportunityDetail(id), getCustomerFormOptions()]);
+  const historyPage = parsePageParam((await searchParams).historyPage);
+  const [opportunity, formOptions, communicationHistory] = await Promise.all([
+    getOpportunityDetail(id),
+    getCustomerFormOptions(),
+    getCommunicationTimeline({ opportunityId: id, page: historyPage }),
+  ]);
   if (!opportunity) notFound();
+  if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?historyPage=${communicationHistory.pageCount}#communication-history`);
   const draft = opportunity.quotations.find((quotation) => quotation.status === "DRAFT");
   const canManageQuotation = opportunity.stage === "PENAWARAN" || opportunity.stage === "NEGOSIASI";
 
@@ -206,35 +216,21 @@ export default async function OpportunityDetailPage({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Catatan sales</CardTitle>
-              <CardDescription>Catatan bersifat append-only agar jejak komunikasi tetap dapat diaudit.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={addNoteAction}>
-                <input type="hidden" name="opportunityId" value={opportunity.id} />
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="content" required>Catatan baru</FieldLabel>
-                    <Textarea id="content" name="content" required minLength={2} maxLength={4000} rows={4} placeholder="Ringkas hasil komunikasi dan langkah berikutnya." />
-                  </Field>
-                  <SubmitButton variant="secondary" pendingLabel="Menambahkan...">
-                    <NotebookPen data-icon="inline-start" aria-hidden="true" />
-                    Tambah catatan
-                  </SubmitButton>
-                </FieldGroup>
-              </form>
-              <div className="mt-6 flex flex-col gap-3">
-                {opportunity.notes.length ? opportunity.notes.map((note) => (
-                  <article key={note.id} className="rounded-lg border bg-muted/30 p-4">
-                    <p className="whitespace-pre-wrap text-sm leading-6">{note.content}</p>
-                    <p className="mt-3 text-xs text-muted-foreground">{note.author.name} · {formatDate(note.createdAt, true)}</p>
-                  </article>
-                )) : <p className="text-sm text-muted-foreground">Belum ada catatan.</p>}
-              </div>
-            </CardContent>
-          </Card>
+          <CommunicationHistory
+            items={communicationHistory.items}
+            total={communicationHistory.total}
+            page={communicationHistory.page}
+            pageCount={communicationHistory.pageCount}
+            pathname={`/crm/peluang/${opportunity.id}`}
+            form={!opportunity.customer.archivedAt ? (
+              <CommunicationEntryForm
+                context="opportunity"
+                customerId={opportunity.customer.id}
+                opportunityId={opportunity.id}
+                initialOccurredAt={toDateTimeLocalValue(new Date())}
+              />
+            ) : undefined}
+          />
         </div>
 
         <aside className="flex flex-col gap-6 rounded-xl border border-sidebar-primary/20 bg-sidebar-primary/6 p-3 sm:p-4">

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  addCommunicationActivitySchema,
   bulkUpdateMasterDataSchema,
   createCustomerSchema,
   createOpportunitySchema,
@@ -22,6 +23,10 @@ import {
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
 import { finalizeSalesPerformanceRows } from "../lib/analytics/sales-performance.ts";
 import { formatPercentage } from "../lib/crm/format.ts";
+import {
+  activityStatusFromSchedule,
+  addCalendarMonthsJakarta,
+} from "../lib/crm/reminder-types.ts";
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 
 test("opportunity tervalidasi dengan customer tersimpan dan field CRM V1", () => {
@@ -108,11 +113,29 @@ test("hasil follow-up mewajibkan next action untuk opportunity terbuka", () => {
     version: "1",
     content: "Customer meminta revisi harga.",
     contactedAt: "2026-08-31T10:00",
+    channel: "WHATSAPP",
+    direction: "OUTBOUND",
     stage: "NEGOSIASI",
   };
   assert.equal(recordFollowUpResultSchema.safeParse(base).success, false);
   assert.equal(recordFollowUpResultSchema.safeParse({ ...base, nextAction: "Kirim revisi", nextActionAt: "2026-09-01T09:00" }).success, true);
   assert.equal(recordFollowUpResultSchema.safeParse({ ...base, stage: "LOST", cancelReason: "Budget tidak cocok" }).success, true);
+});
+
+test("aktivitas komunikasi membedakan komunikasi eksternal dan catatan internal", () => {
+  const base = {
+    context: "customer",
+    customerId: "cm123456789012",
+    opportunityId: "",
+    occurredAt: "2026-08-31T10:00",
+    content: "Customer meminta informasi bahan.",
+  };
+
+  assert.equal(addCommunicationActivitySchema.safeParse({ ...base, channel: "WHATSAPP", direction: "INBOUND" }).success, true);
+  assert.equal(addCommunicationActivitySchema.safeParse({ ...base, channel: "WHATSAPP", direction: "" }).success, false);
+  assert.equal(addCommunicationActivitySchema.safeParse({ ...base, channel: "INTERNAL_NOTE", direction: "" }).success, true);
+  assert.equal(addCommunicationActivitySchema.safeParse({ ...base, channel: "INTERNAL_NOTE", direction: "OUTBOUND" }).success, false);
+  assert.equal(addCommunicationActivitySchema.safeParse({ ...base, context: "opportunity", channel: "INTERNAL_NOTE" }).success, false);
 });
 
 test("lead publik hanya menerima field intake minimum", () => {
@@ -184,6 +207,62 @@ test("migration gap CRM menambah pipeline, next action, scoring, dan rate limit"
   assert.match(sql, /PublicRateLimitBucket/);
   assert.match(sql, /Landing Page/);
   assert.match(sql, /REVOKE ALL ON TABLE "PublicRateLimitBucket" FROM anon, authenticated/);
+});
+
+test("migration riwayat komunikasi menjaga catatan lama dan menutup Data API", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260831120000_communication_history/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /ALTER TABLE "CRMNote" RENAME TO "CommunicationActivity"/);
+  assert.match(sql, /UPDATE "CommunicationActivity"[\s\S]+"customerId"/);
+  assert.match(sql, /CommunicationActivity_shape_valid/);
+  assert.match(sql, /OPPORTUNITY_STAGE_CHANGED/);
+  assert.match(sql, /QUOTATION_ISSUED/);
+  assert.match(sql, /SALES_ORDER_CREATED/);
+  assert.match(sql, /SALES_ORDER_CANCELLED/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql, /REVOKE ALL ON TABLE "CommunicationActivity" FROM anon, authenticated/);
+});
+
+test("jadwal repeat order memakai bulan kalender Jakarta dan menangani akhir bulan", () => {
+  const acceptedAt = new Date("2026-08-30T20:00:00.000Z");
+  assert.equal(addCalendarMonthsJakarta(acceptedAt, 3).toISOString(), "2026-11-29T20:00:00.000Z");
+  assert.equal(addCalendarMonthsJakarta(acceptedAt, 6).toISOString(), "2027-02-27T20:00:00.000Z");
+
+  const januaryEnd = new Date("2026-01-30T20:00:00.000Z");
+  assert.equal(addCalendarMonthsJakarta(januaryEnd, 3).toISOString(), "2026-04-29T20:00:00.000Z");
+});
+
+test("status aktivitas berubah pada bulan ke-3 dan ke-6 serta ditahan oleh peluang terbuka", () => {
+  const schedule = [
+    { type: "REPEAT_ORDER", dueAt: new Date("2026-11-29T20:00:00.000Z") },
+    { type: "REACTIVATION", dueAt: new Date("2027-02-27T20:00:00.000Z") },
+  ];
+  assert.equal(activityStatusFromSchedule([], new Date("2026-09-01T00:00:00.000Z")), "BELUM_ORDER");
+  assert.equal(activityStatusFromSchedule(schedule, new Date("2026-11-01T00:00:00.000Z")), "AKTIF");
+  assert.equal(activityStatusFromSchedule(schedule, new Date("2026-12-01T00:00:00.000Z")), "POTENSI_REPEAT");
+  assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z")), "TIDAK_AKTIF");
+  assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z"), true), "AKTIF");
+});
+
+test("migration reminder membackfill order terakhir dan menutup Data API", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260831150000_customer_repeat_reminders/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /DISTINCT ON \(opportunity\."customerId"\)/);
+  assert.match(sql, /sales_order\."status" = 'ACTIVE'/);
+  assert.match(sql, /INTERVAL '3 months'/);
+  assert.match(sql, /INTERVAL '6 months'/);
+  assert.match(sql, /AT TIME ZONE 'Asia\/Jakarta'/);
+  assert.match(sql, /CustomerReminder_pending_dueAt_idx/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql, /REVOKE ALL ON TABLE "CustomerReminder", "CustomerReminderReceipt" FROM anon, authenticated/);
+});
+
+test("lifecycle Sales Order mengatur ulang reminder tanpa cron per customer", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const reminderSource = await readFile(new URL("../lib/crm/reminders.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /scheduleCustomerReminders\(tx/);
+  assert.match(actionSource, /restoreCustomerRemindersAfterCancellation\(tx/);
+  assert.match(actionSource, /rearmCustomerRemindersAfterLost\(tx/);
+  assert.match(reminderSource, /sourceSalesOrderId: data\.sourceSalesOrderId/);
+  assert.doesNotMatch(reminderSource, /cron/i);
 });
 
 test("periode analytics dibatasi dan mengikuti awal hari Jakarta", () => {

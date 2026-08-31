@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -52,7 +52,7 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
       <Icon aria-hidden="true" className="size-4" />
       {item.label}
       {typeof item.count === "number" ? (
-        <Badge variant={active ? "secondary" : "default"} className="ml-auto size-6 px-0 font-semibold tabular-nums" aria-label={`${item.count} notifikasi contoh`}>
+        <Badge variant={active ? "secondary" : "default"} className="ml-auto size-6 px-0 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
           {item.count}
         </Badge>
       ) : null}
@@ -60,7 +60,7 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
   );
 }
 
-export function AppNav({ role, followUpCount }: { role: AppRole; followUpCount: number }) {
+export function AppNav({ role, followUpCount, reminderCount }: { role: AppRole; followUpCount: number; reminderCount: number }) {
   const pathname = usePathname();
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -73,6 +73,7 @@ export function AppNav({ role, followUpCount }: { role: AppRole; followUpCount: 
     <nav aria-label="Navigasi utama" className="flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
       {mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />)}
       <NavLink pathname={pathname} item={{ href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock, count: followUpCount }} />
+      <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} />
       {canViewAnalytics ? (
         <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
           <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">

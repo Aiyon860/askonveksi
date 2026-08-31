@@ -45,10 +45,37 @@ export function FollowUpResultForm({ opportunity }: { opportunity: FollowUpItem 
           <input type="hidden" name="opportunityId" value={opportunity.id} />
           <input type="hidden" name="version" value={opportunity.version} />
           <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor={`contactedAt-${opportunity.id}`} required>Waktu kontak</FieldLabel>
-              <Input id={`contactedAt-${opportunity.id}`} name="contactedAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(new Date())} />
-            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field>
+                <FieldLabel htmlFor={`channel-${opportunity.id}`} required>Kanal</FieldLabel>
+                <NativeSelect id={`channel-${opportunity.id}`} name="channel" defaultValue="WHATSAPP" required className="w-full">
+                  <NativeSelectOption value="WHATSAPP">WhatsApp</NativeSelectOption>
+                  <NativeSelectOption value="INSTAGRAM">Instagram</NativeSelectOption>
+                  <NativeSelectOption value="PHONE">Telepon</NativeSelectOption>
+                  <NativeSelectOption value="EMAIL">Email</NativeSelectOption>
+                  <NativeSelectOption value="MEETING">Pertemuan</NativeSelectOption>
+                  <NativeSelectOption value="OTHER">Lainnya</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`direction-${opportunity.id}`} required>Arah</FieldLabel>
+                <NativeSelect id={`direction-${opportunity.id}`} name="direction" defaultValue="OUTBOUND" required className="w-full">
+                  <NativeSelectOption value="OUTBOUND">Keluar</NativeSelectOption>
+                  <NativeSelectOption value="INBOUND">Masuk</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`contactedAt-${opportunity.id}`} required>Waktu kontak</FieldLabel>
+                <Input
+                  id={`contactedAt-${opportunity.id}`}
+                  name="contactedAt"
+                  type="datetime-local"
+                  required
+                  defaultValue={toDateTimeLocalValue(new Date())}
+                  max={toDateTimeLocalValue(new Date())}
+                />
+              </Field>
+            </div>
             <Field>
               <FieldLabel htmlFor={`content-${opportunity.id}`} required>Hasil follow-up</FieldLabel>
               <Textarea id={`content-${opportunity.id}`} name="content" required minLength={2} maxLength={4000} rows={4} placeholder="Ringkas respons customer dan keputusan yang diambil." />

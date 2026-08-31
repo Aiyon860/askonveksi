@@ -14,6 +14,7 @@ import {
 } from "@/lib/analytics/sales-performance";
 import { ANALYTICS_ROLES, USER_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { OPEN_STAGES } from "@/lib/crm/constants";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type PipelineOpportunity = {
@@ -37,7 +38,7 @@ export type PipelineOpportunity = {
     name: string;
     companyName: string | null;
   };
-  noteCount: number;
+  activityCount: number;
   salesPic: { id: string; name: string } | null;
 };
 
@@ -65,7 +66,7 @@ const opportunitySummarySelect = {
     },
   },
   salesPic: { select: { id: true, name: true } },
-  _count: { select: { notes: true } },
+  _count: { select: { communicationActivities: true } },
 } satisfies Prisma.OpportunitySelect;
 
 export async function getPipelineData() {
@@ -97,7 +98,7 @@ export async function getPipelineData() {
     cancelReason: row.cancelReason,
     updatedAt: row.updatedAt.toISOString(),
     customer: row.customer,
-    noteCount: row._count.notes,
+    activityCount: row._count.communicationActivities,
     salesPic: row.salesPic,
   }));
 
@@ -116,26 +117,54 @@ export async function getCustomerOptions() {
 
 export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt";
 export type SortDirection = "asc" | "desc";
+export type CustomerSegment = "all" | "repeat" | "inactive" | "archived";
 
 export async function getCustomers({
   query,
-  archived,
+  segment,
   page,
   pageSize,
   sort,
   direction,
 }: {
   query: string;
-  archived: boolean;
+  segment: CustomerSegment;
   page: number;
   pageSize: number;
   sort: CustomerSort;
   direction: SortDirection;
 }) {
-  await requireActor();
+  const actor = await requireActor();
   const normalizedQuery = query.trim().slice(0, 80);
+  const reference = new Date();
+  const segmentWhere = segment === "archived"
+    ? { archivedAt: { not: null } }
+    : segment === "repeat"
+      ? {
+          archivedAt: null,
+          opportunities: { none: { stage: { in: OPEN_STAGES } } },
+          reminders: {
+            some: { type: "REPEAT_ORDER" as const, resolvedAt: null, dueAt: { lte: reference } },
+          },
+          AND: [{
+            reminders: {
+              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { gt: reference } },
+            },
+          }],
+          ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+        }
+      : segment === "inactive"
+        ? {
+            archivedAt: null,
+            opportunities: { none: { stage: { in: OPEN_STAGES } } },
+            reminders: {
+              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { lte: reference } },
+            },
+            ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+          }
+        : { archivedAt: null };
   const where = {
-    archivedAt: archived ? { not: null } : null,
+    ...segmentWhere,
     ...(normalizedQuery
       ? {
           OR: [
@@ -185,9 +214,20 @@ export async function getCustomers({
         updatedAt: true,
         _count: { select: { opportunities: true } },
         opportunities: {
-          select: { updatedAt: true },
+          select: { updatedAt: true, stage: true },
           orderBy: { updatedAt: "desc" },
           take: 1,
+        },
+        reminders: {
+          where: { resolvedAt: null },
+          select: {
+            type: true,
+            dueAt: true,
+            sourceSalesOrder: {
+              select: { id: true, salesOrderNo: true, acceptedAt: true },
+            },
+          },
+          orderBy: { dueAt: "asc" },
         },
       },
       orderBy,
@@ -196,7 +236,20 @@ export async function getCustomers({
     }),
     prisma.customer.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  const customerIds = items.map((item) => item.id);
+  const openOpportunities = customerIds.length
+    ? await prisma.opportunity.findMany({
+        where: { customerId: { in: customerIds }, stage: { in: OPEN_STAGES } },
+        select: { customerId: true },
+        distinct: ["customerId"],
+      })
+    : [];
+  const openCustomerIds = new Set(openOpportunities.map((item) => item.customerId));
+  return {
+    items: items.map((item) => ({ ...item, hasOpenOpportunity: openCustomerIds.has(item.id) })),
+    total,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 export async function getCustomerDetail(customerId: string) {
@@ -249,6 +302,18 @@ export async function getCustomerDetail(customerId: string) {
         },
         orderBy: { updatedAt: "desc" },
       },
+      reminders: {
+        where: { resolvedAt: null },
+        select: {
+          id: true,
+          type: true,
+          dueAt: true,
+          sourceSalesOrder: {
+            select: { id: true, salesOrderNo: true, acceptedAt: true, total: true },
+          },
+        },
+        orderBy: { dueAt: "asc" },
+      },
     },
   });
 }
@@ -295,16 +360,6 @@ export async function getOpportunityDetail(opportunityId: string) {
       },
       leadSource: { select: { id: true, name: true } },
       salesPic: { select: { id: true, name: true, isActive: true } },
-      notes: {
-        select: {
-          id: true,
-          content: true,
-          createdAt: true,
-          author: { select: { name: true, role: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      },
       quotations: {
         select: {
           id: true,
@@ -337,6 +392,62 @@ export async function getOpportunityDetail(opportunityId: string) {
       },
     },
   });
+}
+
+export const COMMUNICATION_PAGE_SIZE = 25;
+
+const communicationActivitySelect = {
+  id: true,
+  kind: true,
+  channel: true,
+  direction: true,
+  systemEvent: true,
+  content: true,
+  metadata: true,
+  occurredAt: true,
+  createdAt: true,
+  author: { select: { name: true, role: true } },
+  opportunity: { select: { id: true, opportunityNo: true, title: true } },
+} satisfies Prisma.CommunicationActivitySelect;
+
+export type CommunicationTimelineItem = Prisma.CommunicationActivityGetPayload<{
+  select: typeof communicationActivitySelect;
+}>;
+
+export async function getCommunicationTimeline({
+  customerId,
+  opportunityId,
+  page,
+}: {
+  customerId?: string;
+  opportunityId?: string;
+  page: number;
+}) {
+  await requireActor();
+  if (!customerId && !opportunityId) throw new Error("Timeline membutuhkan customer atau peluang.");
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
+  const where = {
+    ...(customerId ? { customerId } : {}),
+    ...(opportunityId ? { opportunityId } : {}),
+  } satisfies Prisma.CommunicationActivityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.communicationActivity.findMany({
+      where,
+      select: communicationActivitySelect,
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+      skip: (safePage - 1) * COMMUNICATION_PAGE_SIZE,
+      take: COMMUNICATION_PAGE_SIZE,
+    }),
+    prisma.communicationActivity.count({ where }),
+  ]);
+
+  return {
+    items,
+    total,
+    page: safePage,
+    pageCount: Math.max(1, Math.ceil(total / COMMUNICATION_PAGE_SIZE)),
+  };
 }
 
 type FollowUpBucket = "overdue" | "today" | "tomorrow" | "upcoming";

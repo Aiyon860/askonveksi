@@ -1,12 +1,14 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Archive, ExternalLink } from "lucide-react";
 
 import { archiveCustomerAction, createOpportunityAction, updateCustomerAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
+import { CommunicationHistory } from "@/components/crm/communication-history";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
-import { OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
+import { CustomerActivityBadge, OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,18 +19,34 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { getCurrentActor } from "@/lib/auth/session";
-import { getCustomerDetail } from "@/lib/crm/data";
-import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { getCommunicationTimeline, getCustomerDetail } from "@/lib/crm/data";
+import { OPEN_STAGES } from "@/lib/crm/constants";
+import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { getRepeatOrderDraft } from "@/lib/crm/reminder-data";
+import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import { getCustomerFormOptions } from "@/lib/master-data";
+import { parsePageParam } from "@/lib/pagination";
 
 export default async function CustomerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ historyPage?: string | string[]; repeatFrom?: string | string[] }>;
 }) {
   const { id } = await params;
-  const [customer, actor, formOptions] = await Promise.all([getCustomerDetail(id), getCurrentActor(), getCustomerFormOptions()]);
+  const query = await searchParams;
+  const historyPage = parsePageParam(query.historyPage);
+  const repeatFrom = Array.isArray(query.repeatFrom) ? query.repeatFrom[0] : query.repeatFrom;
+  const [customer, actor, formOptions, communicationHistory, repeatDraft] = await Promise.all([
+    getCustomerDetail(id),
+    getCurrentActor(),
+    getCustomerFormOptions(),
+    getCommunicationTimeline({ customerId: id, page: historyPage }),
+    repeatFrom ? getRepeatOrderDraft(id, repeatFrom) : Promise.resolve(null),
+  ]);
   if (!customer || !actor) notFound();
+  if (historyPage > communicationHistory.pageCount) redirect(`/crm/pelanggan/${id}?historyPage=${communicationHistory.pageCount}#communication-history`);
   const canArchive = (actor.role === "OWNER" || actor.role === "ADMIN") && !customer.archivedAt;
   const salesOrders = customer.opportunities
     .flatMap((opportunity) =>
@@ -46,6 +64,10 @@ export default async function CustomerDetailPage({
   const totalTransaction = validOrders.reduce((total, order) => total + Number(order.total), 0);
   const activeOrderCount = validOrders.filter((order) => order.status === "ACTIVE").length;
   const latestOrder = validOrders[0];
+  const hasOpenOpportunity = customer.opportunities.some((opportunity) => OPEN_STAGES.includes(opportunity.stage));
+  const activityStatus = activityStatusFromSchedule(customer.reminders, new Date(), hasOpenOpportunity);
+  const repeatSchedule = customer.reminders.find((reminder) => reminder.type === "REPEAT_ORDER");
+  const reactivationSchedule = customer.reminders.find((reminder) => reminder.type === "REACTIVATION");
 
   return (
     <>
@@ -56,6 +78,7 @@ export default async function CustomerDetailPage({
       <PageHeader
         title={customer.name}
         description={`${customer.customerNo}${customer.companyName ? ` · ${customer.companyName}` : ""}${customer.archivedAt ? " · Diarsipkan" : ""}`}
+        action={<CustomerActivityBadge status={activityStatus} archived={Boolean(customer.archivedAt)} />}
       />
       <PageMessage />
 
@@ -67,7 +90,7 @@ export default async function CustomerDetailPage({
               <CardDescription>Perhitungan hanya mencakup Sales Order yang tidak dibatalkan.</CardDescription>
             </CardHeader>
             <CardContent>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-5 md:grid-cols-4">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-5 md:grid-cols-5">
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Total order</dt>
                   <dd className="font-mono text-xl font-semibold tabular-nums">{validOrders.length}</dd>
@@ -84,9 +107,41 @@ export default async function CustomerDetailPage({
                   <dt className="text-sm text-muted-foreground">Order terakhir</dt>
                   <dd className="text-sm font-semibold md:text-base">{latestOrder ? formatDate(latestOrder.acceptedAt) : "Belum ada order"}</dd>
                 </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <dt className="text-sm text-muted-foreground">Reminder berikutnya</dt>
+                  <dd className="text-sm font-semibold md:text-base">
+                    {activityStatus === "TIDAK_AKTIF"
+                      ? reactivationSchedule ? `Sejak ${formatDate(reactivationSchedule.dueAt)}` : "Tidak aktif"
+                      : activityStatus === "POTENSI_REPEAT"
+                        ? repeatSchedule ? `Sejak ${formatDate(repeatSchedule.dueAt)}` : "Follow-up repeat"
+                        : repeatSchedule
+                          ? formatDate(repeatSchedule.dueAt)
+                          : "Belum dijadwalkan"}
+                  </dd>
+                </div>
               </dl>
             </CardContent>
           </Card>
+
+          <CommunicationHistory
+            items={communicationHistory.items}
+            total={communicationHistory.total}
+            page={communicationHistory.page}
+            pageCount={communicationHistory.pageCount}
+            pathname={`/crm/pelanggan/${customer.id}`}
+            form={!customer.archivedAt ? (
+              <CommunicationEntryForm
+                context="customer"
+                customerId={customer.id}
+                opportunities={customer.opportunities.map((opportunity) => ({
+                  id: opportunity.id,
+                  opportunityNo: opportunity.opportunityNo,
+                  title: opportunity.title,
+                }))}
+                initialOccurredAt={toDateTimeLocalValue(new Date())}
+              />
+            ) : undefined}
+          />
 
           <Card>
             <CardHeader>
@@ -292,10 +347,14 @@ export default async function CustomerDetailPage({
 
         <aside className="flex flex-col gap-6">
           {!customer.archivedAt ? (
-            <Card>
+            <Card id="repeat-order">
               <CardHeader>
                 <CardTitle>Repeat order / peluang baru</CardTitle>
-                <CardDescription>Lead baru akan langsung terhubung ke customer ini.</CardDescription>
+                <CardDescription>
+                  {repeatDraft
+                    ? `Terisi dari ${repeatDraft.salesOrderNo}. Periksa kembali sebelum membuat peluang.`
+                    : "Lead baru akan langsung terhubung ke customer ini."}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form action={createOpportunityAction}>
@@ -303,15 +362,19 @@ export default async function CustomerDetailPage({
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="title" required>Kebutuhan</FieldLabel>
-                      <Input id="title" name="title" required minLength={3} maxLength={180} placeholder="Contoh: Repeat kaos event" />
+                      <Input id="title" name="title" required minLength={3} maxLength={180} placeholder="Contoh: Repeat kaos event" defaultValue={repeatDraft?.title ?? ""} />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="productName">Produk</FieldLabel>
+                      <Input id="productName" name="productName" maxLength={120} defaultValue={repeatDraft?.productName ?? ""} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="estimatedQuantity">Estimasi jumlah</FieldLabel>
-                      <Input id="estimatedQuantity" name="estimatedQuantity" type="number" min={1} step={1} />
+                      <Input id="estimatedQuantity" name="estimatedQuantity" type="number" min={1} step={1} defaultValue={repeatDraft?.estimatedQuantity ?? ""} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="estimatedValue">Estimasi nilai</FieldLabel>
-                      <Input id="estimatedValue" name="estimatedValue" type="number" min={0} step={1} />
+                      <Input id="estimatedValue" name="estimatedValue" type="number" min={0} step={1} defaultValue={repeatDraft?.estimatedValue ?? ""} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="deadline">Deadline</FieldLabel>

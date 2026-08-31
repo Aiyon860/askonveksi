@@ -9,14 +9,20 @@ import { PageSizeSelect } from "@/components/page-size-select";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-function pageHref(pathname: string, page: number, params: Record<string, string | undefined>) {
+function pageHref(
+  pathname: string,
+  page: number,
+  params: Record<string, string | undefined>,
+  pageParam: string,
+  anchor?: string,
+) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value) search.set(key, value);
   });
-  if (page > 1) search.set("page", String(page));
+  if (page > 1) search.set(pageParam, String(page));
   const query = search.toString();
-  return query ? `${pathname}?${query}` : pathname;
+  return `${query ? `${pathname}?${query}` : pathname}${anchor ? `#${anchor}` : ""}`;
 }
 
 export function DataPagination({
@@ -27,6 +33,8 @@ export function DataPagination({
   pageSize,
   params = {},
   pageSizeOptions,
+  pageParam = "page",
+  anchor,
   className,
 }: {
   pathname: string;
@@ -36,6 +44,8 @@ export function DataPagination({
   pageSize: number;
   params?: Record<string, string | undefined>;
   pageSizeOptions?: readonly number[];
+  pageParam?: string;
+  anchor?: string;
   className?: string;
 }) {
   if (total === 0) return null;
@@ -61,7 +71,7 @@ export function DataPagination({
           <PaginationContent>
             <PaginationItem>
               {page > 1 ? (
-                <PaginationLink href={pageHref(pathname, page - 1, params)} size="icon-sm" aria-label="Ke halaman sebelumnya">
+                <PaginationLink href={pageHref(pathname, page - 1, params, pageParam, anchor)} size="icon-sm" aria-label="Ke halaman sebelumnya">
                   <ChevronLeft aria-hidden="true" />
                 </PaginationLink>
               ) : (
@@ -72,7 +82,7 @@ export function DataPagination({
             </PaginationItem>
             <PaginationItem>
               {page < pageCount ? (
-                <PaginationLink href={pageHref(pathname, page + 1, params)} size="icon-sm" aria-label="Ke halaman berikutnya">
+                <PaginationLink href={pageHref(pathname, page + 1, params, pageParam, anchor)} size="icon-sm" aria-label="Ke halaman berikutnya">
                   <ChevronRight aria-hidden="true" />
                 </PaginationLink>
               ) : (

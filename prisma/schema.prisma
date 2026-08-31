@@ -47,23 +47,56 @@ enum SalesOrderStatus {
   CANCELLED
 }
 
+enum CustomerReminderType {
+  REPEAT_ORDER
+  REACTIVATION
+}
+
+enum CommunicationActivityKind {
+  COMMUNICATION
+  INTERNAL_NOTE
+  SYSTEM
+}
+
+enum CommunicationChannel {
+  WHATSAPP
+  INSTAGRAM
+  PHONE
+  EMAIL
+  MEETING
+  OTHER
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CommunicationSystemEvent {
+  STAGE_CHANGED
+  QUOTATION_ISSUED
+  DEAL_ORDER_CREATED
+  SALES_ORDER_CANCELLED
+}
+
 model AppUser {
-  id                 String       @id @default(cuid())
-  authUserId         String       @unique @db.Uuid
-  email              String       @unique @db.VarChar(320)
-  name               String       @db.VarChar(120)
-  role               AppRole
-  isActive           Boolean      @default(true)
-  mustChangePassword Boolean      @default(true)
-  notes              CRMNote[]
-  quotations         Quotation[]  @relation("QuotationCreatedBy")
-  salesOrders        SalesOrder[] @relation("SalesOrderCreatedBy")
-  cancelledOrders    SalesOrder[] @relation("SalesOrderCancelledBy")
-  auditEvents        AuditEvent[]
-  assignedCustomers  Customer[]   @relation("CustomerSalesPic")
-  assignedOpportunities Opportunity[] @relation("OpportunitySalesPic")
-  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+  id                       String                    @id @default(cuid())
+  authUserId               String                    @unique @db.Uuid
+  email                    String                    @unique @db.VarChar(320)
+  name                     String                    @db.VarChar(120)
+  role                     AppRole
+  isActive                 Boolean                   @default(true)
+  mustChangePassword       Boolean                   @default(true)
+  communicationActivities  CommunicationActivity[]
+  customerReminderReceipts CustomerReminderReceipt[]
+  quotations               Quotation[]               @relation("QuotationCreatedBy")
+  salesOrders              SalesOrder[]              @relation("SalesOrderCreatedBy")
+  cancelledOrders          SalesOrder[]              @relation("SalesOrderCancelledBy")
+  auditEvents              AuditEvent[]
+  assignedCustomers        Customer[]                @relation("CustomerSalesPic")
+  assignedOpportunities    Opportunity[]             @relation("OpportunitySalesPic")
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
 
   @@index([role, isActive])
 }
@@ -82,41 +115,43 @@ model CustomerType {
 }
 
 model LeadSource {
-  id          String     @id @default(cuid())
-  name        String     @unique @db.VarChar(80)
-  description String?    @db.VarChar(500)
-  position    Int        @default(0)
-  isActive    Boolean    @default(true)
-  customers   Customer[]
+  id            String        @id @default(cuid())
+  name          String        @unique @db.VarChar(80)
+  description   String?       @db.VarChar(500)
+  position      Int           @default(0)
+  isActive      Boolean       @default(true)
+  customers     Customer[]
   opportunities Opportunity[]
-  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
 
   @@index([isActive, position, name])
 }
 
 model Customer {
-  id             String        @id @default(cuid())
-  customerNo     String        @unique @db.VarChar(24)
-  name           String        @db.VarChar(160)
-  companyName    String?       @db.VarChar(160)
-  whatsapp       String?       @db.VarChar(32)
-  email          String?       @db.VarChar(320)
-  instagram      String?       @db.VarChar(80)
-  address        String?       @db.Text
-  city           String?       @db.VarChar(120)
-  notes          String?       @db.Text
-  customerTypeId String
-  leadSourceId   String?
-  salesPicId     String?
-  archivedAt     DateTime?     @db.Timestamptz(3)
-  version        Int           @default(1)
-  customerType   CustomerType  @relation(fields: [customerTypeId], references: [id], onDelete: Restrict)
-  leadSource     LeadSource?   @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
-  salesPic       AppUser?      @relation("CustomerSalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
-  opportunities  Opportunity[]
-  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+  id                      String                  @id @default(cuid())
+  customerNo              String                  @unique @db.VarChar(24)
+  name                    String                  @db.VarChar(160)
+  companyName             String?                 @db.VarChar(160)
+  whatsapp                String?                 @db.VarChar(32)
+  email                   String?                 @db.VarChar(320)
+  instagram               String?                 @db.VarChar(80)
+  address                 String?                 @db.Text
+  city                    String?                 @db.VarChar(120)
+  notes                   String?                 @db.Text
+  customerTypeId          String
+  leadSourceId            String?
+  salesPicId              String?
+  archivedAt              DateTime?               @db.Timestamptz(3)
+  version                 Int                     @default(1)
+  customerType            CustomerType            @relation(fields: [customerTypeId], references: [id], onDelete: Restrict)
+  leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  salesPic                AppUser?                @relation("CustomerSalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
+  opportunities           Opportunity[]
+  communicationActivities CommunicationActivity[]
+  reminders               CustomerReminder[]
+  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
 
   @@index([archivedAt, updatedAt])
   @@index([name])
@@ -128,36 +163,36 @@ model Customer {
 }
 
 model Opportunity {
-  id                String           @id @default(cuid())
-  opportunityNo     String           @unique @db.VarChar(24)
-  customerId        String
-  title             String           @db.VarChar(180)
-  stage             OpportunityStage @default(LEAD_BARU)
-  leadSourceId      String?
-  salesPicId        String?
-  productName       String?          @db.VarChar(120)
-  needPurpose       String?          @db.VarChar(500)
-  designStatus      DesignStatus?
-  specification     String?          @db.Text
-  customerBudget    Decimal?         @db.Decimal(18, 2)
-  leadScore         Int              @default(0)
-  estimatedQuantity Int?
-  estimatedValue    Decimal?         @db.Decimal(18, 2)
-  deadline          DateTime?        @db.Date
-  lastContactedAt   DateTime?        @db.Timestamptz(3)
-  nextAction        String?          @db.VarChar(500)
-  nextActionAt      DateTime?        @db.Timestamptz(3)
-  publicSubmissionKey String?        @unique @db.Uuid
-  cancelReason      String?          @db.Text
-  version           Int              @default(1)
-  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  leadSource        LeadSource?      @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
-  salesPic          AppUser?         @relation("OpportunitySalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
-  notes             CRMNote[]
-  quotations        Quotation[]
-  salesOrders       SalesOrder[]
-  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  id                      String                  @id @default(cuid())
+  opportunityNo           String                  @unique @db.VarChar(24)
+  customerId              String
+  title                   String                  @db.VarChar(180)
+  stage                   OpportunityStage        @default(LEAD_BARU)
+  leadSourceId            String?
+  salesPicId              String?
+  productName             String?                 @db.VarChar(120)
+  needPurpose             String?                 @db.VarChar(500)
+  designStatus            DesignStatus?
+  specification           String?                 @db.Text
+  customerBudget          Decimal?                @db.Decimal(18, 2)
+  leadScore               Int                     @default(0)
+  estimatedQuantity       Int?
+  estimatedValue          Decimal?                @db.Decimal(18, 2)
+  deadline                DateTime?               @db.Date
+  lastContactedAt         DateTime?               @db.Timestamptz(3)
+  nextAction              String?                 @db.VarChar(500)
+  nextActionAt            DateTime?               @db.Timestamptz(3)
+  publicSubmissionKey     String?                 @unique @db.Uuid
+  cancelReason            String?                 @db.Text
+  version                 Int                     @default(1)
+  customer                Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  salesPic                AppUser?                @relation("OpportunitySalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
+  communicationActivities CommunicationActivity[]
+  quotations              Quotation[]
+  salesOrders             SalesOrder[]
+  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
 
   @@index([customerId, updatedAt])
   @@index([stage, updatedAt])
@@ -176,17 +211,28 @@ model PublicRateLimitBucket {
   @@index([updatedAt])
 }
 
-model CRMNote {
-  id            String      @id @default(cuid())
-  opportunityId String
-  authorId      String
-  content       String      @db.Text
-  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  author        AppUser     @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+model CommunicationActivity {
+  id                 String                    @id @default(cuid())
+  customerId         String
+  opportunityId      String?
+  authorId           String
+  kind               CommunicationActivityKind
+  channel            CommunicationChannel?
+  direction          CommunicationDirection?
+  systemEvent        CommunicationSystemEvent?
+  content            String                    @db.Text
+  metadata           Json?
+  occurredAt         DateTime                  @db.Timestamptz(3)
+  sourceAuditEventId String?                   @unique
+  customer           Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  opportunity        Opportunity?              @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  author             AppUser                   @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  sourceAuditEvent   AuditEvent?               @relation("CommunicationActivityAuditEvent", fields: [sourceAuditEventId], references: [id], onDelete: Restrict)
+  createdAt          DateTime                  @default(now()) @db.Timestamptz(3)
 
-  @@index([opportunityId, createdAt])
-  @@index([authorId, createdAt])
+  @@index([customerId, occurredAt, id])
+  @@index([opportunityId, occurredAt, id])
+  @@index([authorId, occurredAt])
 }
 
 model Quotation {
@@ -241,33 +287,34 @@ model QuotationItem {
 }
 
 model SalesOrder {
-  id                   String           @id @default(cuid())
-  salesOrderNo         String           @unique @db.VarChar(28)
+  id                   String             @id @default(cuid())
+  salesOrderNo         String             @unique @db.VarChar(28)
   opportunityId        String
-  quotationId          String           @unique
-  quotationNo          String           @db.VarChar(28)
-  status               SalesOrderStatus @default(ACTIVE)
-  snapshotCustomerName String           @db.VarChar(160)
-  snapshotCompanyName  String?          @db.VarChar(160)
-  snapshotWhatsapp     String?          @db.VarChar(32)
-  snapshotEmail        String?          @db.VarChar(320)
-  snapshotInstagram    String?          @db.VarChar(80)
-  snapshotAddress      String?          @db.Text
+  quotationId          String             @unique
+  quotationNo          String             @db.VarChar(28)
+  status               SalesOrderStatus   @default(ACTIVE)
+  snapshotCustomerName String             @db.VarChar(160)
+  snapshotCompanyName  String?            @db.VarChar(160)
+  snapshotWhatsapp     String?            @db.VarChar(32)
+  snapshotEmail        String?            @db.VarChar(320)
+  snapshotInstagram    String?            @db.VarChar(80)
+  snapshotAddress      String?            @db.Text
   discountType         DiscountType
-  discountValue        Decimal          @db.Decimal(18, 2)
-  subtotal             Decimal          @db.Decimal(18, 2)
-  total                Decimal          @db.Decimal(18, 2)
-  acceptedAt           DateTime         @db.Timestamptz(3)
+  discountValue        Decimal            @db.Decimal(18, 2)
+  subtotal             Decimal            @db.Decimal(18, 2)
+  total                Decimal            @db.Decimal(18, 2)
+  acceptedAt           DateTime           @db.Timestamptz(3)
   createdById          String
-  cancelledAt          DateTime?        @db.Timestamptz(3)
-  cancelReason         String?          @db.Text
+  cancelledAt          DateTime?          @db.Timestamptz(3)
+  cancelReason         String?            @db.Text
   cancelledById        String?
-  opportunity          Opportunity      @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  quotation            Quotation        @relation(fields: [quotationId], references: [id], onDelete: Restrict)
-  createdBy            AppUser          @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  cancelledBy          AppUser?         @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  opportunity          Opportunity        @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  quotation            Quotation          @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  createdBy            AppUser            @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy          AppUser?           @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
   items                SalesOrderItem[]
-  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
+  customerReminders    CustomerReminder[] @relation("CustomerReminderSourceOrder")
+  createdAt            DateTime           @default(now()) @db.Timestamptz(3)
 
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
@@ -288,16 +335,48 @@ model SalesOrderItem {
   @@index([salesOrderId])
 }
 
+model CustomerReminder {
+  id                 String                    @id @default(cuid())
+  customerId         String
+  sourceSalesOrderId String
+  type               CustomerReminderType
+  dueAt              DateTime                  @db.Timestamptz(3)
+  resolvedAt         DateTime?                 @db.Timestamptz(3)
+  generation         Int                       @default(1)
+  customer           Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sourceSalesOrder   SalesOrder                @relation("CustomerReminderSourceOrder", fields: [sourceSalesOrderId], references: [id], onDelete: Restrict)
+  receipts           CustomerReminderReceipt[]
+  createdAt          DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                  @updatedAt @db.Timestamptz(3)
+
+  @@unique([sourceSalesOrderId, type])
+  @@index([resolvedAt, dueAt])
+  @@index([customerId, resolvedAt, dueAt])
+}
+
+model CustomerReminderReceipt {
+  id         String           @id @default(cuid())
+  reminderId String
+  actorId    String
+  readAt     DateTime         @default(now()) @db.Timestamptz(3)
+  reminder   CustomerReminder @relation(fields: [reminderId], references: [id], onDelete: Restrict)
+  actor      AppUser          @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([reminderId, actorId])
+  @@index([actorId, readAt])
+}
+
 model AuditEvent {
-  id            String   @id @default(cuid())
-  actorId       String
-  entityType    String   @db.VarChar(64)
-  entityId      String
-  action        String   @db.VarChar(80)
-  changedFields String[]
-  metadata      Json?
-  actor         AppUser  @relation(fields: [actorId], references: [id], onDelete: Restrict)
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  id                    String                 @id @default(cuid())
+  actorId               String
+  entityType            String                 @db.VarChar(64)
+  entityId              String
+  action                String                 @db.VarChar(80)
+  changedFields         String[]
+  metadata              Json?
+  actor                 AppUser                @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  communicationActivity CommunicationActivity? @relation("CommunicationActivityAuditEvent")
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
 
   @@index([entityType, entityId, createdAt])
   @@index([actorId, createdAt])

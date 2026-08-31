@@ -1,19 +1,24 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type CommunicationSystemEvent } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { flashMessagePath, messageForError, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
 import { ARCHIVE_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
-import { OPEN_STAGES } from "@/lib/crm/constants";
+import { OPEN_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import { nextCustomerNo, nextOpportunityNo, nextQuotationNo, nextSalesOrderNo } from "@/lib/crm/numbers";
+import {
+  rearmCustomerRemindersAfterLost,
+  restoreCustomerRemindersAfterCancellation,
+  scheduleCustomerReminders,
+} from "@/lib/crm/reminders";
 import {
   acceptQuotationSchema,
   ACCEPTANCE_PROOF_MAX_BYTES,
   ACCEPTANCE_PROOF_TYPES,
-  addNoteSchema,
+  addCommunicationActivitySchema,
   archiveCustomerSchema,
   createCustomerSchema,
   createOpportunitySchema,
@@ -33,6 +38,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type Tx = Prisma.TransactionClient;
 const ACCEPTANCE_PROOF_BUCKET = "quotation-acceptance-proofs";
+
+function revalidateCustomerReminders() {
+  revalidatePath("/notifications");
+  revalidatePath("/", "layout");
+}
 
 function formValue(formData: FormData, key: string) {
   return formData.get(key);
@@ -84,8 +94,37 @@ async function audit(
   changedFields: string[],
   metadata?: Prisma.InputJsonValue,
 ) {
-  await tx.auditEvent.create({
+  return tx.auditEvent.create({
     data: { actorId: actor.id, entityType, entityId, action, changedFields, metadata },
+    select: { id: true },
+  });
+}
+
+async function addSystemActivity(
+  tx: Tx,
+  actor: Actor,
+  data: {
+    customerId: string;
+    opportunityId: string;
+    systemEvent: CommunicationSystemEvent;
+    content: string;
+    occurredAt?: Date;
+    metadata?: Prisma.InputJsonValue;
+    sourceAuditEventId: string;
+  },
+) {
+  await tx.communicationActivity.create({
+    data: {
+      customerId: data.customerId,
+      opportunityId: data.opportunityId,
+      authorId: actor.id,
+      kind: "SYSTEM",
+      systemEvent: data.systemEvent,
+      content: data.content,
+      occurredAt: data.occurredAt ?? new Date(),
+      metadata: data.metadata,
+      sourceAuditEventId: data.sourceAuditEventId,
+    },
   });
 }
 
@@ -253,6 +292,7 @@ export async function updateCustomerAction(formData: FormData) {
 
     revalidatePath("/crm/pelanggan");
     revalidatePath(`/crm/pelanggan/${customerId}`);
+    revalidateCustomerReminders();
     return flashMessagePath("/crm/pelanggan", "notice", "Data customer diperbarui.");
   });
 }
@@ -303,12 +343,13 @@ export async function archiveCustomerAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath("/crm/pelanggan");
     revalidatePath(`/crm/pelanggan/${parsed.data.customerId}`);
+    revalidateCustomerReminders();
     return flashMessagePath("/crm/pelanggan", "notice", "Customer diarsipkan.");
   });
 }
 
 export async function restoreCustomerAction(formData: FormData) {
-  return runRedirectingAction("/crm/pelanggan?archived=true", async () => {
+  return runRedirectingAction("/crm/pelanggan?segment=archived", async () => {
     const actor = await requireActor(ARCHIVE_ROLES);
     const parsed = archiveCustomerSchema.safeParse({
       customerId: formValue(formData, "customerId"),
@@ -334,7 +375,8 @@ export async function restoreCustomerAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath("/crm/pelanggan");
     revalidatePath(`/crm/pelanggan/${parsed.data.customerId}`);
-    return flashMessagePath("/crm/pelanggan?archived=true", "notice", "Customer diaktifkan kembali.");
+    revalidateCustomerReminders();
+    return flashMessagePath("/crm/pelanggan?segment=archived", "notice", "Customer diaktifkan kembali.");
   });
 }
 
@@ -398,6 +440,7 @@ export async function createOpportunityAction(formData: FormData) {
 
     revalidatePath("/crm");
     revalidatePath("/crm/pelanggan");
+    revalidateCustomerReminders();
     return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Lead baru berhasil dibuat.");
   });
 }
@@ -479,6 +522,7 @@ export async function createLeadAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath("/crm/pelanggan");
     revalidatePath("/dashboard");
+    revalidateCustomerReminders();
     return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Lead baru berhasil dibuat.");
   });
 }
@@ -545,10 +589,10 @@ async function moveOpportunityStage(formData: FormData) {
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
-  await getPrismaClient().$transaction(async (tx) => {
+  const customerId = await getPrismaClient().$transaction(async (tx) => {
     const current = await tx.opportunity.findUnique({
       where: { id: parsed.data.opportunityId },
-      select: { stage: true },
+      select: { stage: true, customerId: true },
     });
     if (!current) throw new UserFacingError("Peluang tidak ditemukan.");
     if (current.stage === "DEAL") throw new UserFacingError("Deal hanya dapat dibalik melalui Sales Order oleh Owner/Admin.");
@@ -564,14 +608,34 @@ async function moveOpportunityStage(formData: FormData) {
       },
     });
     if (updated.count !== 1) throw new UserFacingError("Status sudah berubah. Muat ulang board.");
-    await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_STAGE_CHANGED", [
+    const auditEvent = await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_STAGE_CHANGED", [
       "stage", "nextAction", "nextActionAt", "cancelReason",
     ], { from: current.stage, to: parsed.data.stage });
+    await addSystemActivity(tx, actor, {
+      customerId: current.customerId,
+      opportunityId: parsed.data.opportunityId,
+      systemEvent: "STAGE_CHANGED",
+      content: parsed.data.stage === "LOST" && parsed.data.cancelReason
+        ? `Status peluang berubah dari ${STAGE_LABEL[current.stage]} menjadi Lost. Alasan: ${parsed.data.cancelReason}`
+        : `Status peluang berubah dari ${STAGE_LABEL[current.stage]} menjadi ${STAGE_LABEL[parsed.data.stage]}.`,
+      metadata: {
+        from: current.stage,
+        to: parsed.data.stage,
+        ...(parsed.data.cancelReason ? { cancelReason: parsed.data.cancelReason } : {}),
+      },
+      sourceAuditEventId: auditEvent.id,
+    });
+    if (parsed.data.stage === "LOST") {
+      await rearmCustomerRemindersAfterLost(tx, current.customerId);
+    }
+    return current.customerId;
   });
 
   revalidatePath("/crm");
   revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
-  return parsed.data;
+  revalidatePath(`/crm/pelanggan/${customerId}`);
+  revalidateCustomerReminders();
+  return { ...parsed.data, customerId };
 }
 
 export async function moveOpportunityStageAction(formData: FormData) {
@@ -590,27 +654,61 @@ export async function moveOpportunityStageOptimisticAction(formData: FormData) {
   }
 }
 
-export async function addNoteAction(formData: FormData) {
+export async function addCommunicationActivityAction(formData: FormData) {
   return runRedirectingAction("/crm", async () => {
     const actor = await requireActor();
-    const parsed = addNoteSchema.safeParse({
+    const parsed = addCommunicationActivitySchema.safeParse({
+      context: formValue(formData, "context"),
+      customerId: formValue(formData, "customerId"),
       opportunityId: formValue(formData, "opportunityId"),
+      channel: formValue(formData, "channel"),
+      direction: formValue(formData, "direction"),
+      occurredAt: formValue(formData, "occurredAt"),
       content: formValue(formData, "content"),
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const occurredAt = jakartaDateTime(parsed.data.occurredAt);
+    if (!occurredAt || occurredAt > new Date()) throw new UserFacingError("Waktu aktivitas tidak boleh berada di masa depan.");
 
     await getPrismaClient().$transaction(async (tx) => {
-      const exists = await tx.opportunity.findUnique({ where: { id: parsed.data.opportunityId }, select: { id: true } });
-      if (!exists) throw new UserFacingError("Peluang tidak ditemukan.");
-      const note = await tx.cRMNote.create({
-        data: { opportunityId: parsed.data.opportunityId, authorId: actor.id, content: parsed.data.content },
+      const customer = await tx.customer.findUnique({
+        where: { id: parsed.data.customerId },
+        select: { id: true, archivedAt: true },
+      });
+      if (!customer) throw new UserFacingError("Customer tidak ditemukan.");
+      if (customer.archivedAt) throw new UserFacingError("Pulihkan customer sebelum mencatat aktivitas baru.");
+      if (parsed.data.opportunityId) {
+        const opportunity = await tx.opportunity.findFirst({
+          where: { id: parsed.data.opportunityId, customerId: customer.id },
+          select: { id: true },
+        });
+        if (!opportunity) throw new UserFacingError("Peluang tidak terhubung ke customer ini.");
+      }
+
+      const activity = await tx.communicationActivity.create({
+        data: {
+          customerId: customer.id,
+          opportunityId: parsed.data.opportunityId,
+          authorId: actor.id,
+          kind: parsed.data.channel === "INTERNAL_NOTE" ? "INTERNAL_NOTE" : "COMMUNICATION",
+          channel: parsed.data.channel === "INTERNAL_NOTE" ? null : parsed.data.channel,
+          direction: parsed.data.channel === "INTERNAL_NOTE" ? null : parsed.data.direction,
+          content: parsed.data.content,
+          occurredAt,
+        },
         select: { id: true },
       });
-      await audit(tx, actor, "CRMNote", note.id, "NOTE_ADDED", ["content"], { opportunityId: parsed.data.opportunityId });
+      await audit(tx, actor, "CommunicationActivity", activity.id, "COMMUNICATION_ACTIVITY_ADDED", [
+        "kind", "channel", "direction", "content", "occurredAt",
+      ], { customerId: customer.id, opportunityId: parsed.data.opportunityId ?? null });
     });
 
-    revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
-    return flashMessagePath(`/crm/peluang/${parsed.data.opportunityId}`, "notice", "Catatan ditambahkan.");
+    revalidatePath(`/crm/pelanggan/${parsed.data.customerId}`);
+    if (parsed.data.opportunityId) revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
+    const destination = parsed.data.context === "opportunity" && parsed.data.opportunityId
+      ? `/crm/peluang/${parsed.data.opportunityId}`
+      : `/crm/pelanggan/${parsed.data.customerId}`;
+    return flashMessagePath(destination, "notice", "Aktivitas komunikasi ditambahkan.");
   });
 }
 
@@ -622,6 +720,8 @@ export async function recordFollowUpResultAction(formData: FormData) {
       version: formValue(formData, "version"),
       content: formValue(formData, "content"),
       contactedAt: formValue(formData, "contactedAt"),
+      channel: formValue(formData, "channel"),
+      direction: formValue(formData, "direction"),
       nextAction: formValue(formData, "nextAction"),
       nextActionAt: formValue(formData, "nextActionAt"),
       stage: formValue(formData, "stage"),
@@ -634,7 +734,14 @@ export async function recordFollowUpResultAction(formData: FormData) {
     const nextActionAt = parsed.data.stage === "LOST" ? null : jakartaDateTime(parsed.data.nextActionAt);
     if (nextActionAt && nextActionAt <= contactedAt) throw new UserFacingError("Jadwal berikutnya harus setelah waktu kontak.");
 
-    await getPrismaClient().$transaction(async (tx) => {
+    const customerId = await getPrismaClient().$transaction(async (tx) => {
+      const current = await tx.opportunity.findUnique({
+        where: { id: parsed.data.opportunityId },
+        select: { customerId: true, customer: { select: { archivedAt: true } } },
+      });
+      if (!current) throw new UserFacingError("Peluang tidak ditemukan.");
+      if (current.customer.archivedAt) throw new UserFacingError("Pulihkan customer sebelum mencatat follow-up.");
+
       const updated = await tx.opportunity.updateMany({
         where: { id: parsed.data.opportunityId, version: parsed.data.version, stage: { notIn: ["DEAL", "LOST"] } },
         data: {
@@ -647,18 +754,39 @@ export async function recordFollowUpResultAction(formData: FormData) {
         },
       });
       if (updated.count !== 1) throw new UserFacingError("Peluang sudah berubah atau telah ditutup. Muat ulang halaman.");
-      const note = await tx.cRMNote.create({
-        data: { opportunityId: parsed.data.opportunityId, authorId: actor.id, content: parsed.data.content },
+      const activity = await tx.communicationActivity.create({
+        data: {
+          customerId: current.customerId,
+          opportunityId: parsed.data.opportunityId,
+          authorId: actor.id,
+          kind: "COMMUNICATION",
+          channel: parsed.data.channel,
+          direction: parsed.data.direction,
+          content: parsed.data.content,
+          occurredAt: contactedAt,
+          metadata: {
+            stage: parsed.data.stage,
+            ...(parsed.data.nextAction ? { nextAction: parsed.data.nextAction } : {}),
+            ...(nextActionAt ? { nextActionAt: nextActionAt.toISOString() } : {}),
+            ...(parsed.data.cancelReason ? { cancelReason: parsed.data.cancelReason } : {}),
+          },
+        },
         select: { id: true },
       });
       await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "FOLLOW_UP_RECORDED", [
-        "lastContactedAt", "nextAction", "nextActionAt", "stage", "cancelReason",
-      ], { noteId: note.id });
+        "lastContactedAt", "nextAction", "nextActionAt", "stage", "cancelReason", "communicationActivityId",
+      ], { communicationActivityId: activity.id });
+      if (parsed.data.stage === "LOST") {
+        await rearmCustomerRemindersAfterLost(tx, current.customerId);
+      }
+      return current.customerId;
     });
 
     revalidatePath("/crm");
     revalidatePath("/crm/follow-up");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
+    revalidatePath(`/crm/pelanggan/${customerId}`);
+    revalidateCustomerReminders();
     return flashMessagePath("/crm/follow-up", "notice", "Hasil follow-up dan langkah berikutnya tersimpan.");
   });
 }
@@ -765,16 +893,19 @@ export async function issueQuotationAction(formData: FormData) {
     const parsed = quotationIdSchema.safeParse({ quotationId: formValue(formData, "quotationId"), version: formValue(formData, "version") });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
-    const opportunityId = await getPrismaClient().$transaction(async (tx) => {
+    const issuedQuotation = await getPrismaClient().$transaction(async (tx) => {
       const quotation = await tx.quotation.findUnique({
         where: { id: parsed.data.quotationId },
         select: {
           opportunityId: true,
+          quotationNo: true,
+          revision: true,
           status: true,
           items: { select: { id: true }, take: 1 },
           opportunity: {
             select: {
               stage: true,
+              customerId: true,
               customer: { select: { name: true, companyName: true, whatsapp: true, email: true, instagram: true, address: true } },
             },
           },
@@ -784,11 +915,12 @@ export async function issueQuotationAction(formData: FormData) {
       if (!(quotation.opportunity.stage === "PENAWARAN" || quotation.opportunity.stage === "NEGOSIASI")) throw new UserFacingError("Quotation hanya dapat diterbitkan pada stage Penawaran atau Negosiasi.");
       if (!quotation.items.length) throw new UserFacingError("Quotation belum memiliki item.");
 
+      const issuedAt = new Date();
       const updated = await tx.quotation.updateMany({
         where: { id: parsed.data.quotationId, status: "DRAFT", version: parsed.data.version },
         data: {
           status: "ISSUED",
-          issuedAt: new Date(),
+          issuedAt,
           snapshotCustomerName: quotation.opportunity.customer.name,
           snapshotCompanyName: quotation.opportunity.customer.companyName,
           snapshotWhatsapp: quotation.opportunity.customer.whatsapp,
@@ -799,12 +931,26 @@ export async function issueQuotationAction(formData: FormData) {
         },
       });
       if (updated.count !== 1) throw new UserFacingError("Quotation sudah berubah. Muat ulang halaman.");
-      await audit(tx, actor, "Quotation", parsed.data.quotationId, "QUOTATION_ISSUED", ["status", "issuedAt", "snapshot"]);
-      return quotation.opportunityId;
+      const auditEvent = await audit(tx, actor, "Quotation", parsed.data.quotationId, "QUOTATION_ISSUED", ["status", "issuedAt", "snapshot"]);
+      await addSystemActivity(tx, actor, {
+        customerId: quotation.opportunity.customerId,
+        opportunityId: quotation.opportunityId,
+        systemEvent: "QUOTATION_ISSUED",
+        content: `Quotation ${quotation.quotationNo} diterbitkan.`,
+        occurredAt: issuedAt,
+        metadata: {
+          quotationId: parsed.data.quotationId,
+          quotationNo: quotation.quotationNo,
+          revision: quotation.revision,
+        },
+        sourceAuditEventId: auditEvent.id,
+      });
+      return { opportunityId: quotation.opportunityId, customerId: quotation.opportunity.customerId };
     });
 
-    revalidatePath(`/crm/peluang/${opportunityId}`);
-    return flashMessagePath(`/crm/peluang/${opportunityId}`, "notice", "Quotation diterbitkan dan dikunci.");
+    revalidatePath(`/crm/peluang/${issuedQuotation.opportunityId}`);
+    revalidatePath(`/crm/pelanggan/${issuedQuotation.customerId}`);
+    return flashMessagePath(`/crm/peluang/${issuedQuotation.opportunityId}`, "notice", "Quotation diterbitkan dan dikunci.");
   });
 }
 
@@ -904,7 +1050,7 @@ export async function acceptQuotationAndDealAction(formData: FormData) {
       if (error) throw new UserFacingError("Bukti gambar belum dapat disimpan. Pastikan migrasi Storage sudah diterapkan.");
     }
 
-    let salesOrder: { id: string; salesOrderNo: string };
+    let salesOrder: { id: string; salesOrderNo: string; customerId: string; opportunityId: string };
     try {
       salesOrder = await getPrismaClient().$transaction(
         async (tx) => {
@@ -927,7 +1073,7 @@ export async function acceptQuotationAndDealAction(formData: FormData) {
             total: true,
             salesOrder: { select: { id: true } },
             items: { select: { position: true, description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
-            opportunity: { select: { stage: true, version: true } },
+            opportunity: { select: { stage: true, version: true, customerId: true } },
           },
         });
         if (!quotation || quotation.status !== "ISSUED") throw new UserFacingError("Quotation tidak lagi berstatus terbit.");
@@ -980,9 +1126,32 @@ export async function acceptQuotationAndDealAction(formData: FormData) {
         });
 
         await audit(tx, actor, "Quotation", quotation.id, "QUOTATION_ACCEPTED", ["status", "acceptedAt", "acceptanceReference", "acceptanceProofPath"]);
-        await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["status", "snapshot", "items", "total"], { opportunityId: quotation.opportunityId, quotationId: quotation.id });
+        const salesOrderAudit = await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["status", "snapshot", "items", "total"], { opportunityId: quotation.opportunityId, quotationId: quotation.id });
         await audit(tx, actor, "Opportunity", quotation.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage"], { from: quotation.opportunity.stage, to: "DEAL" });
-        return created;
+        await addSystemActivity(tx, actor, {
+          customerId: quotation.opportunity.customerId,
+          opportunityId: quotation.opportunityId,
+          systemEvent: "DEAL_ORDER_CREATED",
+          content: `Customer deal dan Sales Order ${created.salesOrderNo} terbentuk.`,
+          occurredAt: acceptedAt,
+          metadata: {
+            quotationId: quotation.id,
+            quotationNo: quotation.quotationNo,
+            salesOrderId: created.id,
+            salesOrderNo: created.salesOrderNo,
+          },
+          sourceAuditEventId: salesOrderAudit.id,
+        });
+        await scheduleCustomerReminders(tx, {
+          customerId: quotation.opportunity.customerId,
+          sourceSalesOrderId: created.id,
+          acceptedAt,
+        });
+        return {
+          ...created,
+          customerId: quotation.opportunity.customerId,
+          opportunityId: quotation.opportunityId,
+        };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
@@ -992,6 +1161,9 @@ export async function acceptQuotationAndDealAction(formData: FormData) {
     }
 
     revalidatePath("/crm");
+    revalidatePath(`/crm/peluang/${salesOrder.opportunityId}`);
+    revalidatePath(`/crm/pelanggan/${salesOrder.customerId}`);
+    revalidateCustomerReminders();
     return flashMessagePath(`/sales-orders/${salesOrder.id}`, "notice", `${salesOrder.salesOrderNo} berhasil dibuat.`);
   });
 }
@@ -1005,18 +1177,24 @@ export async function reverseSalesOrderAction(formData: FormData) {
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
-    const opportunityId = await getPrismaClient().$transaction(
+    const cancelledOrder = await getPrismaClient().$transaction(
       async (tx) => {
         const order = await tx.salesOrder.findUnique({
           where: { id: parsed.data.salesOrderId },
-          select: { status: true, opportunityId: true, opportunity: { select: { stage: true, version: true } } },
+          select: {
+            status: true,
+            salesOrderNo: true,
+            opportunityId: true,
+            opportunity: { select: { stage: true, version: true, customerId: true } },
+          },
         });
         if (!order || order.status !== "ACTIVE") throw new UserFacingError("Sales Order tidak aktif atau tidak ditemukan.");
         if (order.opportunity.stage !== "DEAL") throw new UserFacingError("Peluang tidak lagi berada di stage Deal.");
 
+        const cancelledAt = new Date();
         const cancelled = await tx.salesOrder.updateMany({
           where: { id: parsed.data.salesOrderId, status: "ACTIVE" },
-          data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: actor.id, cancelReason: parsed.data.cancelReason },
+          data: { status: "CANCELLED", cancelledAt, cancelledById: actor.id, cancelReason: parsed.data.cancelReason },
         });
         if (cancelled.count !== 1) throw new UserFacingError("Sales Order sudah berubah.");
         const opportunity = await tx.opportunity.updateMany({
@@ -1025,16 +1203,32 @@ export async function reverseSalesOrderAction(formData: FormData) {
         });
         if (opportunity.count !== 1) throw new UserFacingError("Peluang sudah berubah.");
 
-        await audit(tx, actor, "SalesOrder", parsed.data.salesOrderId, "SALES_ORDER_CANCELLED", ["status", "cancelledAt", "cancelledById", "cancelReason"]);
+        const salesOrderAudit = await audit(tx, actor, "SalesOrder", parsed.data.salesOrderId, "SALES_ORDER_CANCELLED", ["status", "cancelledAt", "cancelledById", "cancelReason"]);
         await audit(tx, actor, "Opportunity", order.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage"], { from: "DEAL", to: "PENAWARAN" });
-        return order.opportunityId;
+        await addSystemActivity(tx, actor, {
+          customerId: order.opportunity.customerId,
+          opportunityId: order.opportunityId,
+          systemEvent: "SALES_ORDER_CANCELLED",
+          content: `Sales Order ${order.salesOrderNo} dibatalkan dan peluang dikembalikan ke Penawaran.`,
+          occurredAt: cancelledAt,
+          metadata: {
+            salesOrderId: parsed.data.salesOrderId,
+            salesOrderNo: order.salesOrderNo,
+            cancelReason: parsed.data.cancelReason,
+          },
+          sourceAuditEventId: salesOrderAudit.id,
+        });
+        await restoreCustomerRemindersAfterCancellation(tx, order.opportunity.customerId);
+        return { opportunityId: order.opportunityId, customerId: order.opportunity.customerId };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
     revalidatePath("/crm");
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
-    revalidatePath(`/crm/peluang/${opportunityId}`);
-    return flashMessagePath(`/crm/peluang/${opportunityId}`, "notice", "Sales Order dibatalkan dan peluang dikembalikan ke Penawaran.");
+    revalidatePath(`/crm/peluang/${cancelledOrder.opportunityId}`);
+    revalidatePath(`/crm/pelanggan/${cancelledOrder.customerId}`);
+    revalidateCustomerReminders();
+    return flashMessagePath(`/crm/peluang/${cancelledOrder.opportunityId}`, "notice", "Sales Order dibatalkan dan peluang dikembalikan ke Penawaran.");
   });
 }

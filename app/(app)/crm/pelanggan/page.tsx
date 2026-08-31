@@ -10,6 +10,8 @@ import {
   Check,
   ChevronDown,
   ListFilter,
+  RotateCcw,
+  UserRoundX,
   UsersRound,
 } from "lucide-react";
 
@@ -22,6 +24,7 @@ import { DataPagination } from "@/components/data-pagination";
 import { TableSkeleton } from "@/components/loading-skeletons";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { CustomerActivityBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,9 +40,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ARCHIVE_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
-import { getCustomers, type CustomerSort, type SortDirection } from "@/lib/crm/data";
+import {
+  getCustomers,
+  type CustomerSegment,
+  type CustomerSort,
+  type SortDirection,
+} from "@/lib/crm/data";
 import { getCustomerFormOptions } from "@/lib/master-data";
 import { formatDate } from "@/lib/crm/format";
+import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import {
   DATA_PAGE_SIZE,
   DATA_PAGE_SIZES,
@@ -54,6 +63,7 @@ const SORT_DIRECTIONS = ["asc", "desc"] as const satisfies readonly SortDirectio
 type CustomerSearchParams = Promise<{
   q?: string | string[];
   archived?: string | string[];
+  segment?: string | string[];
   page?: string | string[];
   pageSize?: string | string[];
   sort?: string | string[];
@@ -62,7 +72,7 @@ type CustomerSearchParams = Promise<{
 
 type TableState = {
   query: string;
-  archived: boolean;
+  segment: CustomerSegment;
   page: number;
   pageSize: number;
   sort: CustomerSort;
@@ -91,7 +101,7 @@ function tableHref(state: TableState, changes: Partial<TableState>) {
   const next = { ...state, ...changes };
   const params = new URLSearchParams();
   if (next.query) params.set("q", next.query);
-  if (next.archived) params.set("archived", "true");
+  if (next.segment !== "all") params.set("segment", next.segment);
   if (next.sort !== "updatedAt") params.set("sort", next.sort);
   if (next.direction !== defaultDirection(next.sort)) params.set("order", next.direction);
   if (next.pageSize !== DATA_PAGE_SIZE) params.set("pageSize", String(next.pageSize));
@@ -156,7 +166,7 @@ function CustomersTableFallback() {
         </div>
       </div>
       <div className="min-h-112" aria-hidden="true">
-        <TableSkeleton columns={8} rows={8} className="min-w-5xl" />
+        <TableSkeleton columns={12} rows={8} className="min-w-6xl" />
       </div>
       <div className="flex items-center justify-between gap-4 border-t px-4 py-3" aria-hidden="true">
         <Skeleton className="h-4 w-44" />
@@ -170,18 +180,24 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
   const params = await searchParams;
   const rawQuery = firstParam(params.q) ?? "";
   const query = rawQuery.trim().slice(0, 80);
-  const archived = firstParam(params.archived) === "true";
+  const rawSegment = firstParam(params.segment);
+  const segment: CustomerSegment = rawSegment === "repeat" || rawSegment === "inactive" || rawSegment === "archived"
+    ? rawSegment
+    : firstParam(params.archived) === "true"
+      ? "archived"
+      : "all";
   const page = parsePageParam(params.page);
   const pageSize = parsePageSizeParam(params.pageSize);
   const sort = parseSort(params.sort);
   const direction = parseDirection(params.order, sort);
-  const state = { query, archived, page, pageSize, sort, direction } satisfies TableState;
+  const state = { query, segment, page, pageSize, sort, direction } satisfies TableState;
   const [{ items: customers, total, pageCount }, actor, formOptions] = await Promise.all([
     getCustomers(state),
     getCurrentActor(),
     getCustomerFormOptions(),
   ]);
   const canChangeArchiveStatus = Boolean(actor && hasRole(actor.role, ARCHIVE_ROLES));
+  const archived = segment === "archived";
   const showActions = !archived || canChangeArchiveStatus;
 
   if (page > pageCount) {
@@ -190,7 +206,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
 
   const persistentParams = {
     q: query || undefined,
-    archived: archived ? "true" : undefined,
+    segment: segment !== "all" ? segment : undefined,
     sort: sort !== "updatedAt" ? sort : undefined,
     order: direction !== defaultDirection(sort) ? direction : undefined,
     pageSize: pageSize !== DATA_PAGE_SIZE ? String(pageSize) : undefined,
@@ -199,7 +215,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
   return (
     <section
         className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
-        aria-label={archived ? "Customer terarsip" : "Customer aktif"}
+        aria-label={segment === "repeat" ? "Customer berpotensi repeat order" : segment === "inactive" ? "Customer tidak aktif" : archived ? "Customer terarsip" : "Semua customer aktif"}
       >
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
@@ -216,18 +232,26 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="outline" />}>
                 <ListFilter data-icon="inline-start" aria-hidden="true" />
-                {archived ? "Arsip" : "Filter"}
+                {segment === "repeat" ? "Potensi repeat" : segment === "inactive" ? "Tidak aktif" : archived ? "Arsip" : "Semua customer"}
                 <ChevronDown data-icon="inline-end" aria-hidden="true" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>Status customer</DropdownMenuLabel>
-                  <DropdownMenuItem render={<Link href={tableHref(state, { archived: false, page: 1 })} />}>
-                    <Check className={cn(archived && "opacity-0")} aria-hidden="true" />
-                    Customer aktif
+                  <DropdownMenuItem render={<Link href={tableHref(state, { segment: "all", page: 1 })} />}>
+                    <Check className={cn(segment !== "all" && "opacity-0")} aria-hidden="true" />
+                    Semua customer
                   </DropdownMenuItem>
-                  <DropdownMenuItem render={<Link href={tableHref(state, { archived: true, page: 1 })} />}>
-                    <Check className={cn(!archived && "opacity-0")} aria-hidden="true" />
+                  <DropdownMenuItem render={<Link href={tableHref(state, { segment: "repeat", page: 1 })} />}>
+                    <RotateCcw className={cn(segment !== "repeat" && "opacity-50")} aria-hidden="true" />
+                    Potensi repeat order
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href={tableHref(state, { segment: "inactive", page: 1 })} />}>
+                    <UserRoundX className={cn(segment !== "inactive" && "opacity-50")} aria-hidden="true" />
+                    Customer tidak aktif
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href={tableHref(state, { segment: "archived", page: 1 })} />}>
+                    <Check className={cn(segment !== "archived" && "opacity-0")} aria-hidden="true" />
                     Customer arsip
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
@@ -237,9 +261,9 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
 
           <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
             <p className="text-xs text-muted-foreground">
-              <strong className="font-medium text-foreground">{total}</strong> {archived ? "customer diarsipkan" : "customer aktif"}
+              <strong className="font-medium text-foreground">{total}</strong> {segment === "repeat" ? "potensi repeat" : segment === "inactive" ? "customer tidak aktif" : archived ? "customer diarsipkan" : "customer aktif"}
             </p>
-            <NewCustomerForm key={`new-${archived}-${query}-${total}`} {...formOptions} />
+            <NewCustomerForm key={`new-${segment}-${query}-${total}`} {...formOptions} />
           </div>
         </div>
 
@@ -257,6 +281,8 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                   <TableHead className="min-w-48">Jenis</TableHead>
                   <TableHead className="min-w-48">Perusahaan/komunitas</TableHead>
                   <TableHead className="min-w-48">Sales/PIC</TableHead>
+                  <TableHead className="min-w-40">Status aktivitas</TableHead>
+                  <TableHead className="min-w-36">Order terakhir</TableHead>
                   <TableHead className="min-w-56">Kontak</TableHead>
                   <SortableHead label="Peluang" value="opportunities" state={state} />
                   <SortableHead label="Diperbarui" value="updatedAt" state={state} />
@@ -270,6 +296,12 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                     customer.email,
                     customer.instagram ? `@${customer.instagram}` : null,
                   ].filter((contact): contact is string => Boolean(contact));
+                  const activityStatus = activityStatusFromSchedule(
+                    customer.reminders,
+                    new Date(),
+                    customer.hasOpenOpportunity,
+                  );
+                  const latestOrder = customer.reminders[0]?.sourceSalesOrder;
 
                   return (
                     <TableRow key={customer.id}>
@@ -290,12 +322,18 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                         {customer.leadSource ? <p className="mt-1 text-xs text-muted-foreground">{customer.leadSource.name}</p> : null}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        <p>{customer.companyName ?? "—"}</p>
+                        <p>{customer.companyName ?? "-"}</p>
                         {customer.city ? <p className="mt-1 text-xs">{customer.city}</p> : null}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{customer.salesPic?.name ?? "Belum ditugaskan"}</TableCell>
+                      <TableCell>
+                        <CustomerActivityBadge status={activityStatus} archived={Boolean(customer.archivedAt)} />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {latestOrder ? formatDate(latestOrder.acceptedAt) : "Belum ada"}
+                      </TableCell>
                       <TableCell className="whitespace-normal">
-                        <p className="text-sm">{contacts[0] ?? "—"}</p>
+                        <p className="text-sm">{contacts[0] ?? "-"}</p>
                         {contacts[1] ? <p className="mt-1 text-xs text-muted-foreground">{contacts[1]}</p> : null}
                       </TableCell>
                       <TableCell className="font-mono tabular-nums">{customer._count.opportunities}</TableCell>
@@ -358,8 +396,8 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon"><UsersRound aria-hidden="true" /></EmptyMedia>
-              <EmptyTitle>{query ? "Customer tidak ditemukan" : archived ? "Arsip masih kosong" : "Belum ada customer"}</EmptyTitle>
-              <EmptyDescription>{query ? "Coba kata kunci lain atau hapus filter pencarian." : "Tambahkan customer atau buat lead baru dari pipeline."}</EmptyDescription>
+              <EmptyTitle>{query ? "Customer tidak ditemukan" : archived ? "Arsip masih kosong" : segment === "repeat" ? "Belum ada potensi repeat order" : segment === "inactive" ? "Belum ada customer tidak aktif" : "Belum ada customer"}</EmptyTitle>
+              <EmptyDescription>{query ? "Coba kata kunci lain atau hapus filter pencarian." : segment === "repeat" ? "Customer tanpa peluang terbuka akan muncul 3 bulan setelah order terakhir." : segment === "inactive" ? "Customer tanpa peluang terbuka akan muncul 6 bulan setelah order terakhir." : "Tambahkan customer atau buat lead baru dari pipeline."}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}

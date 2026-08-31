@@ -46,10 +46,11 @@ export default function OpportunityDetailLoading() {
           <Card>
             <CardHeaderSkeleton />
             <CardContent className="gap-5">
+              <FormSkeleton fields={3} columns={3} />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-9 w-36" />
               {Array.from({ length: 2 }, (_, index) => (
-                <Skeleton key={`note-${index}`} className="h-24 w-full" />
+                <Skeleton key={`communication-${index}`} className="h-24 w-full" />
               ))}
             </CardContent>
           </Card>

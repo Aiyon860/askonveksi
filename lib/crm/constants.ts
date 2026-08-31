@@ -60,3 +60,24 @@ export const SALES_ORDER_STATUS_LABEL = {
   ACTIVE: "Aktif",
   CANCELLED: "Dibatalkan",
 } as const;
+
+export const COMMUNICATION_CHANNEL_LABEL = {
+  WHATSAPP: "WhatsApp",
+  INSTAGRAM: "Instagram",
+  PHONE: "Telepon",
+  EMAIL: "Email",
+  MEETING: "Pertemuan",
+  OTHER: "Lainnya",
+} as const;
+
+export const COMMUNICATION_DIRECTION_LABEL = {
+  INBOUND: "Masuk",
+  OUTBOUND: "Keluar",
+} as const;
+
+export const COMMUNICATION_SYSTEM_EVENT_LABEL = {
+  STAGE_CHANGED: "Perubahan status",
+  QUOTATION_ISSUED: "Quotation terbit",
+  DEAL_ORDER_CREATED: "Deal dan Sales Order",
+  SALES_ORDER_CANCELLED: "Sales Order dibatalkan",
+} as const;

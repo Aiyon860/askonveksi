@@ -183,7 +183,7 @@ export function PipelineBoard({ opportunities }: { opportunities: PipelineOpport
                           {opportunity.salesPic ? <div className="flex justify-between gap-3"><dt>PIC</dt><dd>{opportunity.salesPic.name}</dd></div> : null}
                           <div className="flex items-center gap-2">
                             <NotebookText aria-hidden="true" className="size-3.5" />
-                            <dd>{opportunity.noteCount} catatan</dd>
+                            <dd>{opportunity.activityCount} aktivitas</dd>
                           </div>
                         </dl>
                         <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setPendingMove({ opportunity, stage: opportunity.stage })}>

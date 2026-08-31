@@ -131,6 +131,8 @@ export const recordFollowUpResultSchema = z.object({
   version: requiredVersion,
   content: z.string().trim().min(2, "Hasil follow-up terlalu pendek.").max(4000),
   contactedAt: z.string().trim().min(1, "Waktu kontak wajib diisi."),
+  channel: z.enum(["WHATSAPP", "INSTAGRAM", "PHONE", "EMAIL", "MEETING", "OTHER"]),
+  direction: z.enum(["INBOUND", "OUTBOUND"]),
   nextAction: optionalText(500),
   nextActionAt: optionalText(32),
   stage: z.enum(["DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
@@ -156,10 +158,30 @@ export const publicLeadSchema = z.object({
   website: optionalText(200),
 });
 
-export const addNoteSchema = z.object({
-  opportunityId: entityIdSchema,
-  content: z.string().trim().min(2, "Catatan terlalu pendek.").max(4000),
-});
+export const addCommunicationActivitySchema = z
+  .object({
+    context: z.enum(["customer", "opportunity"]),
+    customerId: entityIdSchema,
+    opportunityId: optionalEntityId,
+    channel: z.enum(["INTERNAL_NOTE", "WHATSAPP", "INSTAGRAM", "PHONE", "EMAIL", "MEETING", "OTHER"]),
+    direction: z.preprocess(
+      (value) => (value === null || value === "" ? undefined : value),
+      z.enum(["INBOUND", "OUTBOUND"]).optional(),
+    ),
+    occurredAt: z.string().trim().min(1, "Waktu aktivitas wajib diisi."),
+    content: z.string().trim().min(2, "Ringkasan terlalu pendek.").max(4000),
+  })
+  .superRefine((value, context) => {
+    if (value.context === "opportunity" && !value.opportunityId) {
+      context.addIssue({ code: "custom", path: ["opportunityId"], message: "Peluang wajib tersedia." });
+    }
+    if (value.channel === "INTERNAL_NOTE" && value.direction) {
+      context.addIssue({ code: "custom", path: ["direction"], message: "Catatan internal tidak memiliki arah komunikasi." });
+    }
+    if (value.channel !== "INTERNAL_NOTE" && !value.direction) {
+      context.addIssue({ code: "custom", path: ["direction"], message: "Arah komunikasi wajib dipilih." });
+    }
+  });
 
 export const quotationItemSchema = z.object({
   description: z.string().trim().min(2).max(240),
