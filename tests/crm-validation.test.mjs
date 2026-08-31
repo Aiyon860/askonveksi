@@ -15,6 +15,13 @@ import {
   strongPasswordSchema,
   updateUserSchema,
 } from "../lib/crm/validation.ts";
+import {
+  getAnalyticsPeriodBounds,
+  parseAnalyticsPeriod,
+} from "../lib/analytics/report-period.ts";
+import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
+import { finalizeSalesPerformanceRows } from "../lib/analytics/sales-performance.ts";
+import { formatPercentage } from "../lib/crm/format.ts";
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 
 test("opportunity tervalidasi dengan customer tersimpan dan field CRM V1", () => {
@@ -177,6 +184,76 @@ test("migration gap CRM menambah pipeline, next action, scoring, dan rate limit"
   assert.match(sql, /PublicRateLimitBucket/);
   assert.match(sql, /Landing Page/);
   assert.match(sql, /REVOKE ALL ON TABLE "PublicRateLimitBucket" FROM anon, authenticated/);
+});
+
+test("periode analytics dibatasi dan mengikuti awal hari Jakarta", () => {
+  const reference = new Date("2026-08-31T18:00:00.000Z");
+  assert.equal(parseAnalyticsPeriod("month"), "month");
+  assert.equal(parseAnalyticsPeriod("year"), "year");
+  assert.equal(parseAnalyticsPeriod("invalid"), "month");
+  assert.equal(parseAnalyticsPeriod(["all"]), "month");
+
+  const month = getAnalyticsPeriodBounds("month", reference);
+  assert.equal(month?.start.toISOString(), "2026-08-31T17:00:00.000Z");
+  assert.equal(month?.end.toISOString(), "2026-09-30T17:00:00.000Z");
+
+  const year = getAnalyticsPeriodBounds("year", reference);
+  assert.equal(year?.start.toISOString(), "2025-12-31T17:00:00.000Z");
+  assert.equal(year?.end.toISOString(), "2026-12-31T17:00:00.000Z");
+  assert.equal(getAnalyticsPeriodBounds("all", reference), null);
+
+  const december = getAnalyticsPeriodBounds("month", new Date("2026-12-15T05:00:00.000Z"));
+  assert.equal(december?.start.toISOString(), "2026-11-30T17:00:00.000Z");
+  assert.equal(december?.end.toISOString(), "2026-12-31T17:00:00.000Z");
+});
+
+test("conversion rate menghitung Deal dari seluruh lead dan memakai format Indonesia", () => {
+  const conversionRate = calculateConversionRate(14, 125);
+
+  assert.equal(conversionRate, 0.112);
+  assert.equal(formatPercentage(conversionRate), "11,2%");
+  assert.equal(calculateConversionRate(0, 125), 0);
+  assert.equal(calculateConversionRate(125, 125), 1);
+  assert.equal(calculateConversionRate(0, 0), 0);
+  assert.equal(formatPercentage(calculateConversionRate(0, 0)), "0,0%");
+});
+
+test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async () => {
+  const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  assert.match(dataSource, /requireActor\(ANALYTICS_ROLES\)/);
+  assert.match(dataSource, /o\."leadSourceId"/);
+  assert.match(dataSource, /COUNT\(DISTINCT so\."opportunityId"\)/);
+  assert.match(dataSource, /so\."status" = 'ACTIVE'/);
+});
+
+test("normalisasi performa sales mempertahankan sales aktif dan data historis", () => {
+  const result = finalizeSalesPerformanceRows([
+    { salesId: "andi", salesName: "Andi", isActive: true, leadCount: 0, followUpCount: 0, quotationCount: 0, dealCount: 0, revenue: "0" },
+    { salesId: "budi", salesName: "Budi", isActive: false, leadCount: 0, followUpCount: 0, quotationCount: 0, dealCount: 0, revenue: "0" },
+    { salesId: "cici", salesName: "Cici", isActive: false, leadCount: 1, followUpCount: 2, quotationCount: 1, dealCount: 1, revenue: "50.25" },
+    { salesId: "dodi", salesName: "Dodi", isActive: true, leadCount: 10, followUpCount: 3, quotationCount: 2, dealCount: 0, revenue: "0" },
+    { salesId: null, salesName: "Belum ada PIC", isActive: null, leadCount: 2, followUpCount: 0, quotationCount: 0, dealCount: 1, revenue: "100" },
+  ]);
+
+  assert.deepEqual(result.rows.map((row) => row.salesId), [null, "cici", "dodi", "andi"]);
+  assert.deepEqual(result.totals, {
+    leadCount: 13,
+    followUpCount: 5,
+    quotationCount: 3,
+    dealCount: 2,
+    revenue: "150.25",
+  });
+});
+
+test("laporan performa sales memakai PIC opportunity dan tanggal aktivitas masing-masing", async () => {
+  const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  assert.match(dataSource, /getSalesPerformanceData/);
+  assert.match(dataSource, /o\."salesPicId"/);
+  assert.match(dataSource, /ae\.action = 'FOLLOW_UP_RECORDED'/);
+  assert.match(dataSource, /COUNT\(DISTINCT q\."opportunityId"\)/);
+  assert.match(dataSource, /q\."issuedAt" IS NOT NULL/);
+  assert.match(dataSource, /COUNT\(DISTINCT so\."opportunityId"\)/);
+  assert.match(dataSource, /so\.status = 'ACTIVE'/);
 });
 
 test("flash message tidak membocorkan isi notifikasi ke URL", async () => {

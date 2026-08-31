@@ -9,6 +9,14 @@ export function formatCurrency(value: { toString(): string } | string | number |
   }).format(amount);
 }
 
+export function formatPercentage(value: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
 export function formatDate(value: Date | string | null | undefined, includeTime = false) {
   if (!value) return "—";
 

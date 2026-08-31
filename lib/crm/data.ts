@@ -1,8 +1,18 @@
 import "server-only";
 
-import type { AppRole, OpportunityStage, Prisma } from "@prisma/client";
+import { Prisma, type AppRole, type OpportunityStage } from "@prisma/client";
 
-import { USER_ADMIN_ROLES } from "@/lib/auth/permissions";
+import {
+  analyticsPeriodLabel,
+  getAnalyticsPeriodBounds,
+  type AnalyticsPeriod,
+} from "@/lib/analytics/report-period";
+import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
+import {
+  finalizeSalesPerformanceRows,
+  type SalesPerformanceRow,
+} from "@/lib/analytics/sales-performance";
+import { ANALYTICS_ROLES, USER_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -426,14 +436,209 @@ export async function getSalesDashboardData() {
       take: 5,
     }),
   ]);
+  const stageCounts = Object.fromEntries(
+    stageGroups.map((group) => [group.stage, group._count]),
+  ) as Partial<Record<OpportunityStage, number>>;
+  const totalLeadCount = Object.values(stageCounts).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  const dealCount = stageCounts.DEAL ?? 0;
+
   return {
-    stageCounts: Object.fromEntries(stageGroups.map((group) => [group.stage, group._count])) as Partial<Record<OpportunityStage, number>>,
+    stageCounts,
+    totalLeadCount,
+    dealCount,
+    conversionRate: calculateConversionRate(dealCount, totalLeadCount),
     potentialValue: potential._sum.estimatedValue?.toString() ?? "0",
     dealRevenue: dealRevenue._sum.total?.toString() ?? "0",
     overdue,
     dueToday,
     hotLeads: hotLeads.map((item) => ({ ...item, estimatedValue: item.estimatedValue?.toString() ?? null })),
     urgentActions,
+  };
+}
+
+type LeadSourceRevenueQueryRow = {
+  sourceId: string | null;
+  sourceName: string;
+  leadCount: number;
+  dealCount: number;
+  revenue: string;
+};
+
+export async function getLeadSourceRevenueData(period: AnalyticsPeriod) {
+  await requireActor(ANALYTICS_ROLES);
+  const bounds = getAnalyticsPeriodBounds(period);
+  const leadDateCondition = bounds
+    ? Prisma.sql`WHERE o."createdAt" >= ${bounds.start} AND o."createdAt" < ${bounds.end}`
+    : Prisma.empty;
+  const orderDateCondition = bounds
+    ? Prisma.sql`AND so."acceptedAt" >= ${bounds.start} AND so."acceptedAt" < ${bounds.end}`
+    : Prisma.empty;
+
+  const rows = await getPrismaClient().$queryRaw<LeadSourceRevenueQueryRow[]>(Prisma.sql`
+    WITH lead_totals AS (
+      SELECT
+        o."leadSourceId",
+        COUNT(*)::int AS "leadCount"
+      FROM "Opportunity" o
+      ${leadDateCondition}
+      GROUP BY o."leadSourceId"
+    ),
+    deal_totals AS (
+      SELECT
+        o."leadSourceId",
+        COUNT(DISTINCT so."opportunityId")::int AS "dealCount",
+        COALESCE(SUM(so."total"), 0) AS revenue
+      FROM "SalesOrder" so
+      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
+      WHERE so."status" = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY o."leadSourceId"
+    ),
+    source_rows AS (
+      SELECT ls.id AS "sourceId", ls.name AS "sourceName"
+      FROM "LeadSource" ls
+      UNION ALL
+      SELECT NULL::text AS "sourceId", 'Belum ditentukan' AS "sourceName"
+      WHERE EXISTS (SELECT 1 FROM lead_totals WHERE "leadSourceId" IS NULL)
+         OR EXISTS (SELECT 1 FROM deal_totals WHERE "leadSourceId" IS NULL)
+    )
+    SELECT
+      sr."sourceId",
+      sr."sourceName",
+      COALESCE(lt."leadCount", 0)::int AS "leadCount",
+      COALESCE(dt."dealCount", 0)::int AS "dealCount",
+      COALESCE(dt.revenue, 0)::text AS revenue
+    FROM source_rows sr
+    LEFT JOIN lead_totals lt ON lt."leadSourceId" IS NOT DISTINCT FROM sr."sourceId"
+    LEFT JOIN deal_totals dt ON dt."leadSourceId" IS NOT DISTINCT FROM sr."sourceId"
+    ORDER BY COALESCE(dt.revenue, 0) DESC, COALESCE(lt."leadCount", 0) DESC, sr."sourceName" ASC
+  `);
+
+  const totals = rows.reduce(
+    (result, row) => ({
+      leadCount: result.leadCount + row.leadCount,
+      dealCount: result.dealCount + row.dealCount,
+      revenue: result.revenue.plus(row.revenue),
+    }),
+    { leadCount: 0, dealCount: 0, revenue: new Prisma.Decimal(0) },
+  );
+
+  return {
+    period,
+    periodLabel: analyticsPeriodLabel(period),
+    rows,
+    totals: {
+      leadCount: totals.leadCount,
+      dealCount: totals.dealCount,
+      revenue: totals.revenue.toString(),
+    },
+  };
+}
+
+export async function getSalesPerformanceData(period: AnalyticsPeriod) {
+  await requireActor(ANALYTICS_ROLES);
+  const bounds = getAnalyticsPeriodBounds(period);
+  const leadDateCondition = bounds
+    ? Prisma.sql`WHERE o."createdAt" >= ${bounds.start} AND o."createdAt" < ${bounds.end}`
+    : Prisma.empty;
+  const followUpDateCondition = bounds
+    ? Prisma.sql`AND ae."createdAt" >= ${bounds.start} AND ae."createdAt" < ${bounds.end}`
+    : Prisma.empty;
+  const quotationDateCondition = bounds
+    ? Prisma.sql`AND q."issuedAt" >= ${bounds.start} AND q."issuedAt" < ${bounds.end}`
+    : Prisma.empty;
+  const orderDateCondition = bounds
+    ? Prisma.sql`AND so."acceptedAt" >= ${bounds.start} AND so."acceptedAt" < ${bounds.end}`
+    : Prisma.empty;
+
+  const rawRows = await getPrismaClient().$queryRaw<SalesPerformanceRow[]>(Prisma.sql`
+    WITH lead_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(*)::int AS "leadCount"
+      FROM "Opportunity" o
+      ${leadDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    follow_up_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(*)::int AS "followUpCount"
+      FROM "AuditEvent" ae
+      INNER JOIN "Opportunity" o
+        ON ae."entityType" = 'Opportunity'
+       AND ae."entityId" = o.id
+      WHERE ae.action = 'FOLLOW_UP_RECORDED'
+      ${followUpDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    quotation_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(DISTINCT q."opportunityId")::int AS "quotationCount"
+      FROM "Quotation" q
+      INNER JOIN "Opportunity" o ON o.id = q."opportunityId"
+      WHERE q."issuedAt" IS NOT NULL
+      ${quotationDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    deal_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(DISTINCT so."opportunityId")::int AS "dealCount",
+        COALESCE(SUM(so.total), 0) AS revenue
+      FROM "SalesOrder" so
+      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
+      WHERE so.status = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    sales_rows AS (
+      SELECT
+        u.id AS "salesId",
+        u.name AS "salesName",
+        u."isActive"
+      FROM "AppUser" u
+      WHERE u.role = 'SALES'
+
+      UNION ALL
+
+      SELECT
+        NULL::text AS "salesId",
+        'Belum ada PIC' AS "salesName",
+        NULL::boolean AS "isActive"
+      WHERE EXISTS (SELECT 1 FROM lead_totals WHERE "salesPicId" IS NULL)
+         OR EXISTS (SELECT 1 FROM follow_up_totals WHERE "salesPicId" IS NULL)
+         OR EXISTS (SELECT 1 FROM quotation_totals WHERE "salesPicId" IS NULL)
+         OR EXISTS (SELECT 1 FROM deal_totals WHERE "salesPicId" IS NULL)
+    )
+    SELECT
+      sr."salesId",
+      sr."salesName",
+      sr."isActive",
+      COALESCE(lt."leadCount", 0)::int AS "leadCount",
+      COALESCE(ft."followUpCount", 0)::int AS "followUpCount",
+      COALESCE(qt."quotationCount", 0)::int AS "quotationCount",
+      COALESCE(dt."dealCount", 0)::int AS "dealCount",
+      COALESCE(dt.revenue, 0)::text AS revenue
+    FROM sales_rows sr
+    LEFT JOIN lead_totals lt
+      ON lt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+    LEFT JOIN follow_up_totals ft
+      ON ft."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+    LEFT JOIN quotation_totals qt
+      ON qt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+    LEFT JOIN deal_totals dt
+      ON dt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+  `);
+
+  return {
+    period,
+    periodLabel: analyticsPeriodLabel(period),
+    ...finalizeSalesPerformanceRows(rawRows),
   };
 }
 
