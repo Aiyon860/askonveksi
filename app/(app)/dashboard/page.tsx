@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { BusinessTrendChart } from "@/components/dashboard/business-trend-chart";
 import { PIPELINE_STAGES } from "@/lib/crm/constants";
 import { getSalesDashboardData } from "@/lib/crm/data";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
@@ -67,6 +68,8 @@ export default async function DashboardPage() {
           {PIPELINE_STAGES.map((stage) => <div key={stage} className="rounded-lg border bg-card p-4"><dt><OpportunityStatusBadge stage={stage} /></dt><dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.stageCounts[stage] ?? 0}</dd></div>)}
         </dl>
       </section>
+
+      <BusinessTrendChart />
 
       <section className="grid gap-4 xl:grid-cols-2">
         <Card>
