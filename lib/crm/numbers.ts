@@ -23,10 +23,16 @@ export async function nextOpportunityNo(tx: TransactionClient) {
   return `OPP-${String(value).padStart(6, "0")}`;
 }
 
-export async function nextQuotationNo(tx: TransactionClient, date = new Date()) {
+export async function nextInvoiceNo(tx: TransactionClient, date = new Date()) {
   const year = date.getUTCFullYear();
-  const value = await nextValue(tx, `quotation:${year}`);
-  return `QT-${year}-${String(value).padStart(5, "0")}`;
+  const value = await nextValue(tx, `invoice:${year}`);
+  return `INV-${year}-${String(value).padStart(5, "0")}`;
+}
+
+export async function nextPurchaseOrderNo(tx: TransactionClient, date = new Date()) {
+  const year = date.getUTCFullYear();
+  const value = await nextValue(tx, `purchase-order:${year}`);
+  return `PO-${year}-${String(value).padStart(5, "0")}`;
 }
 
 export async function nextSalesOrderNo(tx: TransactionClient, date = new Date()) {

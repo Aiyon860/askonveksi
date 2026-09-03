@@ -76,7 +76,7 @@ Dashboard adalah halaman pertama setelah login. Owner harus bisa melihat kondisi
 |---|---|
 | Lead | 100 |
 | Follow up | 45 |
-| Penawaran | 20 |
+| Negosiasi | 20 |
 | Deal | 12 |
 | Conversion | 12% |
 
@@ -88,7 +88,7 @@ CRM adalah pusat data customer.
 
 Mencatat seluruh perjalanan customer dari:
 
-**Lead → Follow Up → Penawaran → Deal → Order → Repeat Order**
+**Lead Baru → Follow Up → Negosiasi → Deal / Lost → Repeat Order**
 
 ### Data Customer
 
@@ -120,7 +120,9 @@ Contohnya:
 
 ### Pipeline
 
-LEAD BARU → CONTACTED → FOLLOW UP → PENAWARAN → NEGOSIASI → DEAL → ORDER → SELESAI
+LEAD BARU → FOLLOW UP → NEGOSIASI → DEAL / LOST
+
+Satu kartu kanban mewakili satu peluang. PO customer dan invoice konveksi baru muncul pada Negosiasi. Deal hanya dapat dibuat Admin setelah PO disepakati, invoice diterbitkan, serta pembayaran Lunas atau DP dicatat.
 
 ### Fitur Penting
 

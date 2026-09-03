@@ -1,9 +1,20 @@
 import "server-only";
 
-import type { AppRole, OpportunityStage, Prisma } from "@prisma/client";
+import { Prisma, type AppRole, type OpportunityStage } from "@prisma/client";
 
-import { USER_ADMIN_ROLES } from "@/lib/auth/permissions";
+import {
+  analyticsPeriodLabel,
+  getAnalyticsPeriodBounds,
+  type AnalyticsPeriod,
+} from "@/lib/analytics/report-period";
+import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
+import {
+  finalizeSalesPerformanceRows,
+  type SalesPerformanceRow,
+} from "@/lib/analytics/sales-performance";
+import { ANALYTICS_ROLES, USER_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { OPEN_STAGES } from "@/lib/crm/constants";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type PipelineOpportunity = {
@@ -15,7 +26,10 @@ export type PipelineOpportunity = {
   estimatedQuantity: number | null;
   estimatedValue: string | null;
   deadline: string | null;
-  followUpAt: string | null;
+  leadScore: number;
+  productName: string | null;
+  nextAction: string | null;
+  nextActionAt: string | null;
   cancelReason: string | null;
   updatedAt: string;
   customer: {
@@ -24,7 +38,28 @@ export type PipelineOpportunity = {
     name: string;
     companyName: string | null;
   };
-  noteCount: number;
+  activityCount: number;
+  salesPic: { id: string; name: string } | null;
+  purchaseOrder: {
+    id: string;
+    purchaseOrderNo: string;
+    status: "DRAFT" | "AGREED" | "SUPERSEDED";
+    productName: string;
+    totalQuantity: number;
+  } | null;
+  invoice: {
+    id: string;
+    invoiceNo: string;
+    purchaseOrderId: string;
+    status: "DRAFT" | "ISSUED" | "SUPERSEDED";
+    version: number;
+    total: string;
+  } | null;
+  salesOrder: {
+    id: string;
+    salesOrderNo: string;
+    paymentKind: "LUNAS" | "DP" | null;
+  } | null;
 };
 
 const opportunitySummarySelect = {
@@ -36,7 +71,10 @@ const opportunitySummarySelect = {
   estimatedQuantity: true,
   estimatedValue: true,
   deadline: true,
-  followUpAt: true,
+  leadScore: true,
+  productName: true,
+  nextAction: true,
+  nextActionAt: true,
   cancelReason: true,
   updatedAt: true,
   customer: {
@@ -47,11 +85,33 @@ const opportunitySummarySelect = {
       companyName: true,
     },
   },
-  _count: { select: { notes: true } },
+  salesPic: { select: { id: true, name: true } },
+  purchaseOrders: {
+    select: {
+      id: true,
+      purchaseOrderNo: true,
+      status: true,
+      productName: true,
+      sizes: { select: { quantity: true } },
+    },
+    orderBy: { revision: "desc" },
+    take: 1,
+  },
+  invoices: {
+    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true },
+    orderBy: { revision: "desc" },
+    take: 1,
+  },
+  salesOrders: {
+    where: { status: "ACTIVE" },
+    select: { id: true, salesOrderNo: true, payment: { select: { kind: true } } },
+    take: 1,
+  },
+  _count: { select: { communicationActivities: true } },
 } satisfies Prisma.OpportunitySelect;
 
 export async function getPipelineData() {
-  await requireActor();
+  const actor = await requireActor();
   const prisma = getPrismaClient();
   const [rows, total] = await Promise.all([
     prisma.opportunity.findMany({
@@ -72,14 +132,31 @@ export async function getPipelineData() {
     estimatedQuantity: row.estimatedQuantity,
     estimatedValue: row.estimatedValue?.toString() ?? null,
     deadline: row.deadline?.toISOString() ?? null,
-    followUpAt: row.followUpAt?.toISOString() ?? null,
+    leadScore: row.leadScore,
+    productName: row.productName,
+    nextAction: row.nextAction,
+    nextActionAt: row.nextActionAt?.toISOString() ?? null,
     cancelReason: row.cancelReason,
     updatedAt: row.updatedAt.toISOString(),
     customer: row.customer,
-    noteCount: row._count.notes,
+    activityCount: row._count.communicationActivities,
+    salesPic: row.salesPic,
+    purchaseOrder: row.purchaseOrders[0] ? {
+      id: row.purchaseOrders[0].id,
+      purchaseOrderNo: row.purchaseOrders[0].purchaseOrderNo,
+      status: row.purchaseOrders[0].status,
+      productName: row.purchaseOrders[0].productName,
+      totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
+    } : null,
+    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString() } : null,
+    salesOrder: row.salesOrders[0] ? {
+      id: row.salesOrders[0].id,
+      salesOrderNo: row.salesOrders[0].salesOrderNo,
+      paymentKind: row.salesOrders[0].payment?.kind ?? null,
+    } : null,
   }));
 
-  return { opportunities, total, truncated: total > rows.length };
+  return { opportunities, total, truncated: total > rows.length, actorRole: actor.role };
 }
 
 export async function getCustomerOptions() {
@@ -94,26 +171,54 @@ export async function getCustomerOptions() {
 
 export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt";
 export type SortDirection = "asc" | "desc";
+export type CustomerSegment = "all" | "repeat" | "inactive" | "archived";
 
 export async function getCustomers({
   query,
-  archived,
+  segment,
   page,
   pageSize,
   sort,
   direction,
 }: {
   query: string;
-  archived: boolean;
+  segment: CustomerSegment;
   page: number;
   pageSize: number;
   sort: CustomerSort;
   direction: SortDirection;
 }) {
-  await requireActor();
+  const actor = await requireActor();
   const normalizedQuery = query.trim().slice(0, 80);
+  const reference = new Date();
+  const segmentWhere = segment === "archived"
+    ? { archivedAt: { not: null } }
+    : segment === "repeat"
+      ? {
+          archivedAt: null,
+          opportunities: { none: { stage: { in: OPEN_STAGES } } },
+          reminders: {
+            some: { type: "REPEAT_ORDER" as const, resolvedAt: null, dueAt: { lte: reference } },
+          },
+          AND: [{
+            reminders: {
+              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { gt: reference } },
+            },
+          }],
+          ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+        }
+      : segment === "inactive"
+        ? {
+            archivedAt: null,
+            opportunities: { none: { stage: { in: OPEN_STAGES } } },
+            reminders: {
+              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { lte: reference } },
+            },
+            ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+          }
+        : { archivedAt: null };
   const where = {
-    archivedAt: archived ? { not: null } : null,
+    ...segmentWhere,
     ...(normalizedQuery
       ? {
           OR: [
@@ -138,7 +243,7 @@ export async function getCustomers({
       : [{ [sort]: direction }, { id: "asc" as const }]
   ) satisfies Prisma.CustomerOrderByWithRelationInput[];
 
-  const [items, total] = await prisma.$transaction([
+  const [items, total] = await Promise.all([
     prisma.customer.findMany({
       where,
       select: {
@@ -163,9 +268,20 @@ export async function getCustomers({
         updatedAt: true,
         _count: { select: { opportunities: true } },
         opportunities: {
-          select: { updatedAt: true },
+          select: { updatedAt: true, stage: true },
           orderBy: { updatedAt: "desc" },
           take: 1,
+        },
+        reminders: {
+          where: { resolvedAt: null },
+          select: {
+            type: true,
+            dueAt: true,
+            sourceSalesOrder: {
+              select: { id: true, salesOrderNo: true, acceptedAt: true },
+            },
+          },
+          orderBy: { dueAt: "asc" },
         },
       },
       orderBy,
@@ -174,7 +290,20 @@ export async function getCustomers({
     }),
     prisma.customer.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  const customerIds = items.map((item) => item.id);
+  const openOpportunities = customerIds.length
+    ? await prisma.opportunity.findMany({
+        where: { customerId: { in: customerIds }, stage: { in: OPEN_STAGES } },
+        select: { customerId: true },
+        distinct: ["customerId"],
+      })
+    : [];
+  const openCustomerIds = new Set(openOpportunities.map((item) => item.customerId));
+  return {
+    items: items.map((item) => ({ ...item, hasOpenOpportunity: openCustomerIds.has(item.id) })),
+    total,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
 }
 
 export async function getCustomerDetail(customerId: string) {
@@ -218,7 +347,7 @@ export async function getCustomerDetail(customerId: string) {
               status: true,
               acceptedAt: true,
               items: {
-                select: { id: true, description: true, quantity: true, position: true },
+                select: { id: true, size: true, description: true, quantity: true, position: true },
                 orderBy: { position: "asc" },
               },
             },
@@ -226,6 +355,18 @@ export async function getCustomerDetail(customerId: string) {
           },
         },
         orderBy: { updatedAt: "desc" },
+      },
+      reminders: {
+        where: { resolvedAt: null },
+        select: {
+          id: true,
+          type: true,
+          dueAt: true,
+          sourceSalesOrder: {
+            select: { id: true, salesOrderNo: true, acceptedAt: true, total: true },
+          },
+        },
+        orderBy: { dueAt: "asc" },
       },
     },
   });
@@ -240,10 +381,20 @@ export async function getOpportunityDetail(opportunityId: string) {
       opportunityNo: true,
       title: true,
       stage: true,
+      leadSourceId: true,
+      salesPicId: true,
+      productName: true,
+      needPurpose: true,
+      designStatus: true,
+      specification: true,
+      customerBudget: true,
+      leadScore: true,
       estimatedQuantity: true,
       estimatedValue: true,
       deadline: true,
-      followUpAt: true,
+      lastContactedAt: true,
+      nextAction: true,
+      nextActionAt: true,
       cancelReason: true,
       version: true,
       createdAt: true,
@@ -261,20 +412,34 @@ export async function getOpportunityDetail(opportunityId: string) {
           archivedAt: true,
         },
       },
-      notes: {
+      leadSource: { select: { id: true, name: true } },
+      salesPic: { select: { id: true, name: true, isActive: true } },
+      purchaseOrders: {
         select: {
           id: true,
-          content: true,
+          purchaseOrderNo: true,
+          customerReference: true,
+          revision: true,
+          status: true,
+          productName: true,
+          material: true,
+          color: true,
+          designNotes: true,
+          notes: true,
+          deadline: true,
+          agreedAt: true,
+          version: true,
           createdAt: true,
-          author: { select: { name: true, role: true } },
+          createdBy: { select: { name: true } },
+          sizes: { select: { id: true, position: true, size: true, quantity: true }, orderBy: { position: "asc" } },
+          attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
         },
-        orderBy: { createdAt: "desc" },
-        take: 100,
+        orderBy: { revision: "desc" },
       },
-      quotations: {
+      invoices: {
         select: {
           id: true,
-          quotationNo: true,
+          invoiceNo: true,
           revision: true,
           status: true,
           discountType: true,
@@ -282,15 +447,13 @@ export async function getOpportunityDetail(opportunityId: string) {
           subtotal: true,
           total: true,
           issuedAt: true,
-          acceptedAt: true,
-          acceptanceReference: true,
-          acceptanceProofPath: true,
-          acceptanceProofName: true,
-          acceptanceProofType: true,
+          dueAt: true,
+          notes: true,
+          purchaseOrderId: true,
           version: true,
           createdAt: true,
           items: {
-            select: { id: true, position: true, description: true, quantity: true, unitPrice: true, subtotal: true },
+            select: { id: true, position: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true },
             orderBy: { position: "asc" },
           },
           salesOrder: { select: { id: true, salesOrderNo: true, status: true } },
@@ -298,11 +461,378 @@ export async function getOpportunityDetail(opportunityId: string) {
         orderBy: { revision: "desc" },
       },
       salesOrders: {
-        select: { id: true, salesOrderNo: true, status: true, total: true, createdAt: true, cancelReason: true },
+        select: {
+          id: true,
+          salesOrderNo: true,
+          status: true,
+          total: true,
+          createdAt: true,
+          cancelReason: true,
+          payment: { select: { kind: true, initialAmount: true, outstandingAmount: true } },
+        },
         orderBy: { createdAt: "desc" },
       },
     },
   });
+}
+
+export const COMMUNICATION_PAGE_SIZE = 25;
+
+const communicationActivitySelect = {
+  id: true,
+  kind: true,
+  channel: true,
+  direction: true,
+  systemEvent: true,
+  content: true,
+  metadata: true,
+  occurredAt: true,
+  createdAt: true,
+  author: { select: { name: true, role: true } },
+  opportunity: { select: { id: true, opportunityNo: true, title: true } },
+} satisfies Prisma.CommunicationActivitySelect;
+
+export type CommunicationTimelineItem = Prisma.CommunicationActivityGetPayload<{
+  select: typeof communicationActivitySelect;
+}>;
+
+export async function getCommunicationTimeline({
+  customerId,
+  opportunityId,
+  page,
+}: {
+  customerId?: string;
+  opportunityId?: string;
+  page: number;
+}) {
+  await requireActor();
+  if (!customerId && !opportunityId) throw new Error("Timeline membutuhkan customer atau peluang.");
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
+  const where = {
+    ...(customerId ? { customerId } : {}),
+    ...(opportunityId ? { opportunityId } : {}),
+  } satisfies Prisma.CommunicationActivityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.communicationActivity.findMany({
+      where,
+      select: communicationActivitySelect,
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+      skip: (safePage - 1) * COMMUNICATION_PAGE_SIZE,
+      take: COMMUNICATION_PAGE_SIZE,
+    }),
+    prisma.communicationActivity.count({ where }),
+  ]);
+
+  return {
+    items,
+    total,
+    page: safePage,
+    pageCount: Math.max(1, Math.ceil(total / COMMUNICATION_PAGE_SIZE)),
+  };
+}
+
+type FollowUpBucket = "overdue" | "today" | "tomorrow" | "upcoming";
+
+function jakartaDayBounds(reference = new Date()) {
+  const shifted = new Date(reference.getTime() + 7 * 60 * 60 * 1000);
+  const start = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 7 * 60 * 60 * 1000);
+  const tomorrow = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
+  return { start, tomorrow, dayAfterTomorrow };
+}
+
+export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucket; picId?: string }) {
+  const actor = await requireActor();
+  const { start, tomorrow, dayAfterTomorrow } = jakartaDayBounds();
+  const timeWhere = bucket === "overdue"
+    ? { lt: start }
+    : bucket === "today"
+      ? { gte: start, lt: tomorrow }
+      : bucket === "tomorrow"
+        ? { gte: tomorrow, lt: dayAfterTomorrow }
+        : { gte: dayAfterTomorrow };
+  const selectedPicId = picId === "all" ? undefined : picId || (actor.role === "SALES" ? actor.id : undefined);
+  const baseWhere = {
+    stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] as OpportunityStage[] },
+    nextActionAt: { not: null },
+    customer: { archivedAt: null },
+    ...(selectedPicId ? { salesPicId: selectedPicId } : {}),
+  } satisfies Prisma.OpportunityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, overdue, today, tomorrowCount, upcoming, salesUsers] = await Promise.all([
+    prisma.opportunity.findMany({
+      where: { ...baseWhere, nextActionAt: timeWhere },
+      select: {
+        id: true,
+        opportunityNo: true,
+        title: true,
+        stage: true,
+        version: true,
+        leadScore: true,
+        nextAction: true,
+        nextActionAt: true,
+        lastContactedAt: true,
+        cancelReason: true,
+        customer: { select: { name: true, companyName: true, whatsapp: true } },
+        salesPic: { select: { id: true, name: true } },
+      },
+      orderBy: [{ nextActionAt: "asc" }, { id: "asc" }],
+      take: 200,
+    }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { lt: start } } }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: start, lt: tomorrow } } }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: tomorrow, lt: dayAfterTomorrow } } }),
+    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: dayAfterTomorrow } } }),
+    prisma.appUser.findMany({ where: { role: "SALES", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+  return { items, counts: { overdue, today, tomorrow: tomorrowCount, upcoming }, salesUsers, selectedPicId };
+}
+
+export async function getFollowUpBadgeCount() {
+  const actor = await requireActor();
+  const { tomorrow } = jakartaDayBounds();
+  return getPrismaClient().opportunity.count({
+    where: {
+      stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
+      nextActionAt: { lt: tomorrow },
+      customer: { archivedAt: null },
+      ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+    },
+  });
+}
+
+export async function getSalesDashboardData() {
+  await requireActor();
+  const prisma = getPrismaClient();
+  const { start, tomorrow } = jakartaDayBounds();
+  const shifted = new Date(start.getTime() + 7 * 60 * 60 * 1000);
+  const monthStart = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - 7 * 60 * 60 * 1000);
+  const nextMonth = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) - 7 * 60 * 60 * 1000);
+  const openStages: OpportunityStage[] = ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"];
+  const [stageGroups, potential, dealRevenue, overdue, dueToday, hotLeads, urgentActions] = await Promise.all([
+    prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
+    prisma.opportunity.aggregate({ where: { stage: { in: openStages }, customer: { archivedAt: null } }, _sum: { estimatedValue: true } }),
+    prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }),
+    prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { lt: start }, customer: { archivedAt: null } } }),
+    prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { gte: start, lt: tomorrow }, customer: { archivedAt: null } } }),
+    prisma.opportunity.findMany({
+      where: { stage: { in: openStages }, leadScore: { gte: 80 }, customer: { archivedAt: null } },
+      select: { id: true, opportunityNo: true, title: true, leadScore: true, estimatedValue: true, customer: { select: { name: true } } },
+      orderBy: [{ leadScore: "desc" }, { updatedAt: "desc" }],
+      take: 5,
+    }),
+    prisma.opportunity.findMany({
+      where: { stage: { in: openStages }, nextActionAt: { not: null }, customer: { archivedAt: null } },
+      select: { id: true, title: true, nextAction: true, nextActionAt: true, customer: { select: { name: true } } },
+      orderBy: { nextActionAt: "asc" },
+      take: 5,
+    }),
+  ]);
+  const stageCounts = Object.fromEntries(
+    stageGroups.map((group) => [group.stage, group._count]),
+  ) as Partial<Record<OpportunityStage, number>>;
+  const totalLeadCount = Object.values(stageCounts).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  const dealCount = stageCounts.DEAL ?? 0;
+
+  return {
+    stageCounts,
+    totalLeadCount,
+    dealCount,
+    conversionRate: calculateConversionRate(dealCount, totalLeadCount),
+    potentialValue: potential._sum.estimatedValue?.toString() ?? "0",
+    dealRevenue: dealRevenue._sum.total?.toString() ?? "0",
+    overdue,
+    dueToday,
+    hotLeads: hotLeads.map((item) => ({ ...item, estimatedValue: item.estimatedValue?.toString() ?? null })),
+    urgentActions,
+  };
+}
+
+type LeadSourceRevenueQueryRow = {
+  sourceId: string | null;
+  sourceName: string;
+  leadCount: number;
+  dealCount: number;
+  revenue: string;
+};
+
+export async function getLeadSourceRevenueData(period: AnalyticsPeriod) {
+  await requireActor(ANALYTICS_ROLES);
+  const bounds = getAnalyticsPeriodBounds(period);
+  const leadDateCondition = bounds
+    ? Prisma.sql`WHERE o."createdAt" >= ${bounds.start} AND o."createdAt" < ${bounds.end}`
+    : Prisma.empty;
+  const orderDateCondition = bounds
+    ? Prisma.sql`AND so."acceptedAt" >= ${bounds.start} AND so."acceptedAt" < ${bounds.end}`
+    : Prisma.empty;
+
+  const rows = await getPrismaClient().$queryRaw<LeadSourceRevenueQueryRow[]>(Prisma.sql`
+    WITH lead_totals AS (
+      SELECT
+        o."leadSourceId",
+        COUNT(*)::int AS "leadCount"
+      FROM "Opportunity" o
+      ${leadDateCondition}
+      GROUP BY o."leadSourceId"
+    ),
+    deal_totals AS (
+      SELECT
+        o."leadSourceId",
+        COUNT(DISTINCT so."opportunityId")::int AS "dealCount",
+        COALESCE(SUM(so."total"), 0) AS revenue
+      FROM "SalesOrder" so
+      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
+      WHERE so."status" = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY o."leadSourceId"
+    ),
+    source_rows AS (
+      SELECT ls.id AS "sourceId", ls.name AS "sourceName"
+      FROM "LeadSource" ls
+      UNION ALL
+      SELECT NULL::text AS "sourceId", 'Belum ditentukan' AS "sourceName"
+      WHERE EXISTS (SELECT 1 FROM lead_totals WHERE "leadSourceId" IS NULL)
+         OR EXISTS (SELECT 1 FROM deal_totals WHERE "leadSourceId" IS NULL)
+    )
+    SELECT
+      sr."sourceId",
+      sr."sourceName",
+      COALESCE(lt."leadCount", 0)::int AS "leadCount",
+      COALESCE(dt."dealCount", 0)::int AS "dealCount",
+      COALESCE(dt.revenue, 0)::text AS revenue
+    FROM source_rows sr
+    LEFT JOIN lead_totals lt ON lt."leadSourceId" IS NOT DISTINCT FROM sr."sourceId"
+    LEFT JOIN deal_totals dt ON dt."leadSourceId" IS NOT DISTINCT FROM sr."sourceId"
+    ORDER BY COALESCE(dt.revenue, 0) DESC, COALESCE(lt."leadCount", 0) DESC, sr."sourceName" ASC
+  `);
+
+  const totals = rows.reduce(
+    (result, row) => ({
+      leadCount: result.leadCount + row.leadCount,
+      dealCount: result.dealCount + row.dealCount,
+      revenue: result.revenue.plus(row.revenue),
+    }),
+    { leadCount: 0, dealCount: 0, revenue: new Prisma.Decimal(0) },
+  );
+
+  return {
+    period,
+    periodLabel: analyticsPeriodLabel(period),
+    rows,
+    totals: {
+      leadCount: totals.leadCount,
+      dealCount: totals.dealCount,
+      revenue: totals.revenue.toString(),
+    },
+  };
+}
+
+export async function getSalesPerformanceData(period: AnalyticsPeriod) {
+  await requireActor(ANALYTICS_ROLES);
+  const bounds = getAnalyticsPeriodBounds(period);
+  const leadDateCondition = bounds
+    ? Prisma.sql`WHERE o."createdAt" >= ${bounds.start} AND o."createdAt" < ${bounds.end}`
+    : Prisma.empty;
+  const followUpDateCondition = bounds
+    ? Prisma.sql`AND ae."createdAt" >= ${bounds.start} AND ae."createdAt" < ${bounds.end}`
+    : Prisma.empty;
+  const invoiceDateCondition = bounds
+    ? Prisma.sql`AND q."issuedAt" >= ${bounds.start} AND q."issuedAt" < ${bounds.end}`
+    : Prisma.empty;
+  const orderDateCondition = bounds
+    ? Prisma.sql`AND so."acceptedAt" >= ${bounds.start} AND so."acceptedAt" < ${bounds.end}`
+    : Prisma.empty;
+
+  const rawRows = await getPrismaClient().$queryRaw<SalesPerformanceRow[]>(Prisma.sql`
+    WITH lead_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(*)::int AS "leadCount"
+      FROM "Opportunity" o
+      ${leadDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    follow_up_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(*)::int AS "followUpCount"
+      FROM "AuditEvent" ae
+      INNER JOIN "Opportunity" o
+        ON ae."entityType" = 'Opportunity'
+       AND ae."entityId" = o.id
+      WHERE ae.action = 'FOLLOW_UP_RECORDED'
+      ${followUpDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    invoice_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(DISTINCT q."opportunityId")::int AS "invoiceCount"
+      FROM "Invoice" q
+      INNER JOIN "Opportunity" o ON o.id = q."opportunityId"
+      WHERE q."issuedAt" IS NOT NULL
+      ${invoiceDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    deal_totals AS (
+      SELECT
+        o."salesPicId",
+        COUNT(DISTINCT so."opportunityId")::int AS "dealCount",
+        COALESCE(SUM(so.total), 0) AS revenue
+      FROM "SalesOrder" so
+      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
+      WHERE so.status = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY o."salesPicId"
+    ),
+    sales_rows AS (
+      SELECT
+        u.id AS "salesId",
+        u.name AS "salesName",
+        u."isActive"
+      FROM "AppUser" u
+      WHERE u.role = 'SALES'
+
+      UNION ALL
+
+      SELECT
+        NULL::text AS "salesId",
+        'Belum ada PIC' AS "salesName",
+        NULL::boolean AS "isActive"
+      WHERE EXISTS (SELECT 1 FROM lead_totals WHERE "salesPicId" IS NULL)
+         OR EXISTS (SELECT 1 FROM follow_up_totals WHERE "salesPicId" IS NULL)
+         OR EXISTS (SELECT 1 FROM invoice_totals WHERE "salesPicId" IS NULL)
+         OR EXISTS (SELECT 1 FROM deal_totals WHERE "salesPicId" IS NULL)
+    )
+    SELECT
+      sr."salesId",
+      sr."salesName",
+      sr."isActive",
+      COALESCE(lt."leadCount", 0)::int AS "leadCount",
+      COALESCE(ft."followUpCount", 0)::int AS "followUpCount",
+      COALESCE(qt."invoiceCount", 0)::int AS "invoiceCount",
+      COALESCE(dt."dealCount", 0)::int AS "dealCount",
+      COALESCE(dt.revenue, 0)::text AS revenue
+    FROM sales_rows sr
+    LEFT JOIN lead_totals lt
+      ON lt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+    LEFT JOIN follow_up_totals ft
+      ON ft."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+    LEFT JOIN invoice_totals qt
+      ON qt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+    LEFT JOIN deal_totals dt
+      ON dt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
+  `);
+
+  return {
+    period,
+    periodLabel: analyticsPeriodLabel(period),
+    ...finalizeSalesPerformanceRows(rawRows),
+  };
 }
 
 export async function getSalesOrderDetail(salesOrderId: string) {
@@ -312,7 +842,8 @@ export async function getSalesOrderDetail(salesOrderId: string) {
     select: {
       id: true,
       salesOrderNo: true,
-      quotationNo: true,
+      purchaseOrderNo: true,
+      invoiceNo: true,
       status: true,
       snapshotCustomerName: true,
       snapshotCompanyName: true,
@@ -329,20 +860,37 @@ export async function getSalesOrderDetail(salesOrderId: string) {
       cancelledAt: true,
       cancelReason: true,
       opportunity: { select: { id: true, opportunityNo: true, title: true, stage: true } },
-      quotation: {
+      invoice: {
         select: {
           id: true,
           revision: true,
           status: true,
-          acceptanceReference: true,
-          acceptanceProofPath: true,
-          acceptanceProofName: true,
+        },
+      },
+      purchaseOrder: {
+        select: {
+          id: true,
+          revision: true,
+          productName: true,
+          material: true,
+          color: true,
+          designNotes: true,
+          sizes: { select: { size: true, quantity: true, position: true }, orderBy: { position: "asc" } },
+        },
+      },
+      payment: {
+        select: {
+          kind: true,
+          paidAt: true,
+          initialAmount: true,
+          outstandingAmount: true,
+          terms: { select: { position: true, valueType: true, value: true, amount: true, dueAt: true }, orderBy: { position: "asc" } },
         },
       },
       createdBy: { select: { name: true } },
       cancelledBy: { select: { name: true } },
       items: {
-        select: { id: true, position: true, description: true, quantity: true, unitPrice: true, subtotal: true },
+        select: { id: true, position: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true },
         orderBy: { position: "asc" },
       },
     },
@@ -385,7 +933,7 @@ export async function getUsers({
   } satisfies Prisma.AppUserWhereInput;
   const orderBy = [{ [sort]: direction }, { id: "asc" as const }] satisfies Prisma.AppUserOrderByWithRelationInput[];
   const prisma = getPrismaClient();
-  const [items, total, activeTotal, allTotal] = await prisma.$transaction([
+  const [items, total, activeTotal, allTotal] = await Promise.all([
     prisma.appUser.findMany({
       where,
       select: {

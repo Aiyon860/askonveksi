@@ -35,6 +35,18 @@ export default function CustomerDetailLoading() {
           <Card>
             <CardHeaderSkeleton />
             <CardContent className="gap-5">
+              <FormSkeleton fields={3} columns={3} />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-9 w-32" />
+              {Array.from({ length: 3 }, (_, index) => (
+                <Skeleton key={`communication-${index}`} className="h-24 w-full" />
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeaderSkeleton />
+            <CardContent className="gap-5">
               {Array.from({ length: 3 }, (_, index) => (
                 <div key={`order-${index}`} className="grid gap-4 border-b pb-5 last:border-b-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="flex flex-col gap-3">

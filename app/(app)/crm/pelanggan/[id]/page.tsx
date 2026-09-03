@@ -1,12 +1,14 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Archive, ExternalLink } from "lucide-react";
 
 import { archiveCustomerAction, createOpportunityAction, updateCustomerAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
+import { CommunicationHistory } from "@/components/crm/communication-history";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
-import { OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
+import { CustomerActivityBadge, OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,19 +19,37 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { getCurrentActor } from "@/lib/auth/session";
-import { getCustomerDetail } from "@/lib/crm/data";
-import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { getCommunicationTimeline, getCustomerDetail } from "@/lib/crm/data";
+import { OPEN_STAGES } from "@/lib/crm/constants";
+import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { getRepeatOrderDraft } from "@/lib/crm/reminder-data";
+import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import { getCustomerFormOptions } from "@/lib/master-data";
+import { parsePageParam } from "@/lib/pagination";
 
 export default async function CustomerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ historyPage?: string | string[]; repeatFrom?: string | string[] }>;
 }) {
   const { id } = await params;
-  const [customer, actor, formOptions] = await Promise.all([getCustomerDetail(id), getCurrentActor(), getCustomerFormOptions()]);
+  const query = await searchParams;
+  const historyPage = parsePageParam(query.historyPage);
+  const repeatFrom = Array.isArray(query.repeatFrom) ? query.repeatFrom[0] : query.repeatFrom;
+  const [customer, actor, formOptions, communicationHistory, repeatDraft] = await Promise.all([
+    getCustomerDetail(id),
+    getCurrentActor(),
+    getCustomerFormOptions(),
+    getCommunicationTimeline({ customerId: id, page: historyPage }),
+    repeatFrom ? getRepeatOrderDraft(id, repeatFrom) : Promise.resolve(null),
+  ]);
   if (!customer || !actor) notFound();
-  const canArchive = (actor.role === "OWNER" || actor.role === "ADMIN") && !customer.archivedAt;
+  if (historyPage > communicationHistory.pageCount) redirect(`/crm/pelanggan/${id}?historyPage=${communicationHistory.pageCount}#communication-history`);
+  const canOperate = actor.role === "ADMIN" || actor.role === "SALES";
+  const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
+  const canArchive = canOperate && !customer.archivedAt;
   const salesOrders = customer.opportunities
     .flatMap((opportunity) =>
       opportunity.salesOrders.map((order) => ({
@@ -46,6 +66,10 @@ export default async function CustomerDetailPage({
   const totalTransaction = validOrders.reduce((total, order) => total + Number(order.total), 0);
   const activeOrderCount = validOrders.filter((order) => order.status === "ACTIVE").length;
   const latestOrder = validOrders[0];
+  const hasOpenOpportunity = customer.opportunities.some((opportunity) => OPEN_STAGES.includes(opportunity.stage));
+  const activityStatus = activityStatusFromSchedule(customer.reminders, new Date(), hasOpenOpportunity);
+  const repeatSchedule = customer.reminders.find((reminder) => reminder.type === "REPEAT_ORDER");
+  const reactivationSchedule = customer.reminders.find((reminder) => reminder.type === "REACTIVATION");
 
   return (
     <>
@@ -56,6 +80,7 @@ export default async function CustomerDetailPage({
       <PageHeader
         title={customer.name}
         description={`${customer.customerNo}${customer.companyName ? ` · ${customer.companyName}` : ""}${customer.archivedAt ? " · Diarsipkan" : ""}`}
+        action={<CustomerActivityBadge status={activityStatus} archived={Boolean(customer.archivedAt)} />}
       />
       <PageMessage />
 
@@ -67,7 +92,7 @@ export default async function CustomerDetailPage({
               <CardDescription>Perhitungan hanya mencakup Sales Order yang tidak dibatalkan.</CardDescription>
             </CardHeader>
             <CardContent>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-5 md:grid-cols-4">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-5 md:grid-cols-5">
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Total order</dt>
                   <dd className="font-mono text-xl font-semibold tabular-nums">{validOrders.length}</dd>
@@ -84,9 +109,41 @@ export default async function CustomerDetailPage({
                   <dt className="text-sm text-muted-foreground">Order terakhir</dt>
                   <dd className="text-sm font-semibold md:text-base">{latestOrder ? formatDate(latestOrder.acceptedAt) : "Belum ada order"}</dd>
                 </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <dt className="text-sm text-muted-foreground">Reminder berikutnya</dt>
+                  <dd className="text-sm font-semibold md:text-base">
+                    {activityStatus === "TIDAK_AKTIF"
+                      ? reactivationSchedule ? `Sejak ${formatDate(reactivationSchedule.dueAt)}` : "Tidak aktif"
+                      : activityStatus === "POTENSI_REPEAT"
+                        ? repeatSchedule ? `Sejak ${formatDate(repeatSchedule.dueAt)}` : "Follow-up repeat"
+                        : repeatSchedule
+                          ? formatDate(repeatSchedule.dueAt)
+                          : "Belum dijadwalkan"}
+                  </dd>
+                </div>
               </dl>
             </CardContent>
           </Card>
+
+          <CommunicationHistory
+            items={communicationHistory.items}
+            total={communicationHistory.total}
+            page={communicationHistory.page}
+            pageCount={communicationHistory.pageCount}
+            pathname={`/crm/pelanggan/${customer.id}`}
+            form={canOperate && !customer.archivedAt ? (
+              <CommunicationEntryForm
+                context="customer"
+                customerId={customer.id}
+                opportunities={customer.opportunities.map((opportunity) => ({
+                  id: opportunity.id,
+                  opportunityNo: opportunity.opportunityNo,
+                  title: opportunity.title,
+                }))}
+                initialOccurredAt={toDateTimeLocalValue(new Date())}
+              />
+            ) : undefined}
+          />
 
           <Card>
             <CardHeader>
@@ -113,7 +170,7 @@ export default async function CustomerDetailPage({
                           <ul className="flex flex-col gap-2" aria-label={`Item ${order.salesOrderNo}`}>
                             {order.items.map((item) => (
                               <li key={item.id} className="flex items-start justify-between gap-4 text-sm">
-                                <span className="min-w-0 wrap-break-word">{item.description}</span>
+                                <span className="min-w-0 wrap-break-word">{item.description} · {item.size}</span>
                                 <span className="shrink-0 font-mono tabular-nums">{item.quantity} pcs</span>
                               </li>
                             ))}
@@ -139,7 +196,7 @@ export default async function CustomerDetailPage({
                 <Empty className="p-8">
                   <EmptyHeader>
                     <EmptyTitle>Belum ada order</EmptyTitle>
-                    <EmptyDescription>Riwayat akan muncul setelah quotation customer diterima dan Sales Order terbentuk.</EmptyDescription>
+                    <EmptyDescription>Riwayat akan muncul setelah pembayaran Deal dicatat dan Sales Order terbentuk.</EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               )}
@@ -190,7 +247,7 @@ export default async function CustomerDetailPage({
           <Card>
             <CardHeader>
               <CardTitle>Data customer</CardTitle>
-              <CardDescription>Kontak ini disalin sebagai snapshot ketika quotation diterbitkan.</CardDescription>
+              <CardDescription>Kontak ini disalin sebagai snapshot ketika invoice diterbitkan.</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={updateCustomerAction}>
@@ -200,50 +257,50 @@ export default async function CustomerDetailPage({
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field>
                       <FieldLabel htmlFor="name" required>Nama customer</FieldLabel>
-                      <Input id="name" name="name" required minLength={2} maxLength={160} defaultValue={customer.name} disabled={Boolean(customer.archivedAt)} />
+                      <Input id="name" name="name" required minLength={2} maxLength={160} defaultValue={customer.name} disabled={customerFieldsDisabled} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="companyName">Perusahaan/komunitas</FieldLabel>
-                      <Input id="companyName" name="companyName" maxLength={160} defaultValue={customer.companyName ?? ""} disabled={Boolean(customer.archivedAt)} />
+                      <Input id="companyName" name="companyName" maxLength={160} defaultValue={customer.companyName ?? ""} disabled={customerFieldsDisabled} />
                     </Field>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     <Field>
                       <FieldLabel htmlFor="customerTypeId" required>Jenis customer</FieldLabel>
-                      <NativeSelect id="customerTypeId" name="customerTypeId" required defaultValue={customer.customerTypeId} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                      <NativeSelect id="customerTypeId" name="customerTypeId" required defaultValue={customer.customerTypeId} className="w-full" disabled={customerFieldsDisabled}>
                         {formOptions.customerTypes.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="leadSourceId">Sumber lead</FieldLabel>
-                      <NativeSelect id="leadSourceId" name="leadSourceId" defaultValue={customer.leadSourceId ?? ""} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                      <NativeSelect id="leadSourceId" name="leadSourceId" defaultValue={customer.leadSourceId ?? ""} className="w-full" disabled={customerFieldsDisabled}>
                         <NativeSelectOption value="">Belum ditentukan</NativeSelectOption>
                         {formOptions.leadSources.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="salesPicId">Sales/PIC</FieldLabel>
-                      <NativeSelect id="salesPicId" name="salesPicId" defaultValue={customer.salesPicId ?? ""} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                      <NativeSelect id="salesPicId" name="salesPicId" defaultValue={customer.salesPicId ?? ""} className="w-full" disabled={customerFieldsDisabled}>
                         <NativeSelectOption value="">Belum ditugaskan</NativeSelectOption>
                         {customer.salesPic && !customer.salesPic.isActive && !formOptions.salesUsers.some((item) => item.id === customer.salesPicId) ? <NativeSelectOption value={customer.salesPic.id}>{customer.salesPic.name} (nonaktif)</NativeSelectOption> : null}
                         {formOptions.salesUsers.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
                   </div>
-                  <FieldSet disabled={Boolean(customer.archivedAt)}>
+                  <FieldSet disabled={customerFieldsDisabled}>
                     <FieldLegend variant="label" required>Kontak customer</FieldLegend>
                     <div className="grid gap-4 sm:grid-cols-3">
                       <Field>
                         <FieldLabel htmlFor="whatsapp">WhatsApp</FieldLabel>
-                        <Input id="whatsapp" name="whatsapp" maxLength={32} defaultValue={customer.whatsapp ?? ""} disabled={Boolean(customer.archivedAt)} />
+                        <Input id="whatsapp" name="whatsapp" maxLength={32} defaultValue={customer.whatsapp ?? ""} disabled={customerFieldsDisabled} />
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="email">Email</FieldLabel>
-                        <Input id="email" name="email" type="email" maxLength={320} defaultValue={customer.email ?? ""} disabled={Boolean(customer.archivedAt)} />
+                        <Input id="email" name="email" type="email" maxLength={320} defaultValue={customer.email ?? ""} disabled={customerFieldsDisabled} />
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="instagram">Instagram</FieldLabel>
-                        <Input id="instagram" name="instagram" maxLength={80} defaultValue={customer.instagram ?? ""} disabled={Boolean(customer.archivedAt)} />
+                        <Input id="instagram" name="instagram" maxLength={80} defaultValue={customer.instagram ?? ""} disabled={customerFieldsDisabled} />
                       </Field>
                     </div>
                     <FieldDescription>Minimal satu kontak harus tetap terisi.</FieldDescription>
@@ -251,19 +308,19 @@ export default async function CustomerDetailPage({
                   <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
                     <Field>
                       <FieldLabel htmlFor="city">Kota</FieldLabel>
-                      <Input id="city" name="city" maxLength={120} defaultValue={customer.city ?? ""} disabled={Boolean(customer.archivedAt)} />
+                      <Input id="city" name="city" maxLength={120} defaultValue={customer.city ?? ""} disabled={customerFieldsDisabled} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="address">Alamat</FieldLabel>
-                      <Textarea id="address" name="address" maxLength={2000} rows={3} defaultValue={customer.address ?? ""} disabled={Boolean(customer.archivedAt)} />
+                      <Textarea id="address" name="address" maxLength={2000} rows={3} defaultValue={customer.address ?? ""} disabled={customerFieldsDisabled} />
                     </Field>
                   </div>
                   <Field>
                     <FieldLabel htmlFor="notes">Catatan umum</FieldLabel>
-                    <Textarea id="notes" name="notes" maxLength={4000} rows={4} defaultValue={customer.notes ?? ""} disabled={Boolean(customer.archivedAt)} />
+                    <Textarea id="notes" name="notes" maxLength={4000} rows={4} defaultValue={customer.notes ?? ""} disabled={customerFieldsDisabled} />
                     <FieldDescription>Informasi yang berlaku untuk profil customer, bukan catatan satu peluang.</FieldDescription>
                   </Field>
-                  {!customer.archivedAt ? <SubmitButton pendingLabel="Memperbarui...">Simpan perubahan</SubmitButton> : null}
+                  {canOperate && !customer.archivedAt ? <SubmitButton pendingLabel="Memperbarui...">Simpan perubahan</SubmitButton> : null}
                 </FieldGroup>
               </form>
             </CardContent>
@@ -291,11 +348,15 @@ export default async function CustomerDetailPage({
         </div>
 
         <aside className="flex flex-col gap-6">
-          {!customer.archivedAt ? (
-            <Card>
+          {canOperate && !customer.archivedAt ? (
+            <Card id="repeat-order">
               <CardHeader>
                 <CardTitle>Repeat order / peluang baru</CardTitle>
-                <CardDescription>Lead baru akan langsung terhubung ke customer ini.</CardDescription>
+                <CardDescription>
+                  {repeatDraft
+                    ? `Terisi dari ${repeatDraft.salesOrderNo}. Periksa kembali sebelum membuat peluang.`
+                    : "Lead baru akan langsung terhubung ke customer ini."}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form action={createOpportunityAction}>
@@ -303,15 +364,19 @@ export default async function CustomerDetailPage({
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="title" required>Kebutuhan</FieldLabel>
-                      <Input id="title" name="title" required minLength={3} maxLength={180} placeholder="Contoh: Repeat kaos event" />
+                      <Input id="title" name="title" required minLength={3} maxLength={180} placeholder="Contoh: Repeat kaos event" defaultValue={repeatDraft?.title ?? ""} />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="productName">Produk</FieldLabel>
+                      <Input id="productName" name="productName" maxLength={120} defaultValue={repeatDraft?.productName ?? ""} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="estimatedQuantity">Estimasi jumlah</FieldLabel>
-                      <Input id="estimatedQuantity" name="estimatedQuantity" type="number" min={1} step={1} />
+                      <Input id="estimatedQuantity" name="estimatedQuantity" type="number" min={1} step={1} defaultValue={repeatDraft?.estimatedQuantity ?? ""} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="estimatedValue">Estimasi nilai</FieldLabel>
-                      <Input id="estimatedValue" name="estimatedValue" type="number" min={0} step={1} />
+                      <Input id="estimatedValue" name="estimatedValue" type="number" min={0} step={1} defaultValue={repeatDraft?.estimatedValue ?? ""} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="deadline">Deadline</FieldLabel>

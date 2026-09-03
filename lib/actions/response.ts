@@ -7,9 +7,22 @@ export class UserFacingError extends Error {}
 
 export function messageForError(error: unknown) {
   if (error instanceof UserFacingError) return error.message;
+  if (error instanceof Error && error.message === "UNAUTHORIZED") {
+    return "Sesi atau hak akses Anda sudah berubah. Masuk kembali lalu coba lagi.";
+  }
+  if (error instanceof Error && error.message === "PASSWORD_CHANGE_REQUIRED") {
+    return "Ganti password sementara sebelum menyimpan perubahan.";
+  }
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") return "Data sudah berubah atau sudah pernah dibuat. Muat ulang lalu coba lagi.";
+    if (error.code === "P2003") return "Dokumen terkait sudah berubah atau tidak lagi tersedia. Muat ulang lalu coba lagi.";
+    if (error.code === "P2004") return "Data pembayaran tidak memenuhi aturan Sales Order. Periksa nilainya lalu coba lagi.";
+    if (error.code === "P2028") return "Proses menyimpan Deal melewati batas waktu. Silakan coba sekali lagi.";
     if (error.code === "P2025") return "Data tidak ditemukan atau sudah berubah. Muat ulang halaman.";
+    if (error.code === "P2034") return "Data berubah bersamaan saat Deal disimpan. Muat ulang lalu coba lagi.";
+  }
+  if (error instanceof Prisma.PrismaClientValidationError) {
+    return "Data Sales Order belum dapat diproses. Muat ulang halaman lalu coba lagi.";
   }
   return "Terjadi kendala saat menyimpan data. Silakan coba lagi.";
 }

@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronDown, ContactRound, Database, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -15,12 +15,16 @@ const mainItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/crm", label: "Pipeline CRM", icon: KanbanSquare },
   { href: "/crm/pelanggan", label: "Customer", icon: ContactRound },
-  { href: "/notifications", label: "Notifikasi", icon: Bell, count: 3 },
 ] as const;
 
 const masterItems = [
   { href: "/master-data/customer-types", label: "Jenis customer", icon: Tags },
   { href: "/master-data/lead-sources", label: "Sumber lead", icon: Waypoints },
+] as const;
+
+const analyticsItems = [
+  { href: "/analytics/sales-performance", label: "Performa sales", icon: ChartNoAxesCombined },
+  { href: "/analytics/lead-sources", label: "Sumber & omzet", icon: Waypoints },
 ] as const;
 
 function isPathWithin(pathname: string, href: string) {
@@ -48,7 +52,7 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
       <Icon aria-hidden="true" className="size-4" />
       {item.label}
       {typeof item.count === "number" ? (
-        <Badge variant={active ? "secondary" : "default"} className="ml-auto size-6 px-0 font-semibold tabular-nums" aria-label={`${item.count} notifikasi contoh`}>
+        <Badge variant={active ? "secondary" : "default"} className="ml-auto size-6 px-0 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
           {item.count}
         </Badge>
       ) : null}
@@ -56,15 +60,32 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
   );
 }
 
-export function AppNav({ role }: { role: AppRole }) {
+export function AppNav({ role, followUpCount, reminderCount }: { role: AppRole; followUpCount: number; reminderCount: number }) {
   const pathname = usePathname();
   const [masterDataOpen, setMasterDataOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const canManageMasterData = role === "OWNER" || role === "ADMIN";
+  const canViewAnalytics = role === "OWNER" || role === "ADMIN";
   const masterDataActive = isPathWithin(pathname, "/master-data");
+  const analyticsActive = isPathWithin(pathname, "/analytics");
 
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
       {mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />)}
+      <NavLink pathname={pathname} item={{ href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock, count: followUpCount }} />
+      <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} />
+      {canViewAnalytics ? (
+        <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
+          <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+            <BarChart3 aria-hidden="true" className="size-4" />
+            <span>Analytics</span>
+            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="contents lg:flex lg:flex-col lg:gap-1">
+            {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested />)}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
       {canManageMasterData ? (
         <Collapsible open={masterDataActive || masterDataOpen} onOpenChange={setMasterDataOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
           <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">

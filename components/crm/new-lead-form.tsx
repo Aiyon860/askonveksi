@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 
-import { createOpportunityAction } from "@/app/actions/crm";
+import { createLeadAction } from "@/app/actions/crm";
+import { CustomerFields, type CustomerFormOption } from "@/components/crm/customer-fields";
+import { OpportunityFields } from "@/components/crm/opportunity-fields";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 type CustomerOption = {
@@ -19,64 +19,42 @@ type CustomerOption = {
   companyName: string | null;
 };
 
-export function NewLeadForm({ customers }: { customers: CustomerOption[] }) {
+export function NewLeadForm({ customers, customerTypes, leadSources, salesUsers }: { customers: CustomerOption[]; customerTypes: CustomerFormOption[]; leadSources: CustomerFormOption[]; salesUsers: CustomerFormOption[] }) {
+  const [customerMode, setCustomerMode] = useState<"existing" | "new">(customers.length ? "existing" : "new");
+
   return (
     <Dialog>
-      <DialogTrigger render={<Button />}>
-        <Plus data-icon="inline-start" aria-hidden="true" />
-        Lead baru
-      </DialogTrigger>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
+      <DialogTrigger render={<Button />}><Plus data-icon="inline-start" aria-hidden="true" />Lead baru</DialogTrigger>
+      <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Tambah lead baru</DialogTitle>
-          <DialogDescription>Pilih customer aktif yang sudah tersimpan, lalu catat kebutuhan awalnya.</DialogDescription>
+          <DialogDescription>Simpan customer dan kebutuhan awal dalam satu alur kerja.</DialogDescription>
         </DialogHeader>
-        {customers.length ? (
-          <form action={createOpportunityAction}>
-            <FieldGroup>
+        <form action={createLeadAction}>
+          <FieldGroup>
+            <FieldSet>
+              <FieldLegend>Customer</FieldLegend>
               <Field>
-                <FieldLabel htmlFor="customerId" required>Customer</FieldLabel>
-                <NativeSelect id="customerId" name="customerId" required className="w-full" defaultValue="">
-                  <NativeSelectOption value="" disabled>Pilih customer</NativeSelectOption>
-                  {customers.map((customer) => (
-                    <NativeSelectOption key={customer.id} value={customer.id}>
-                      {customer.name}{customer.companyName ? ` · ${customer.companyName}` : ""} ({customer.customerNo})
-                    </NativeSelectOption>
-                  ))}
+                <FieldLabel htmlFor="customerMode" required>Gunakan data customer</FieldLabel>
+                <NativeSelect id="customerMode" name="customerMode" required value={customerMode} onChange={(event) => setCustomerMode(event.target.value as "existing" | "new")}>
+                  {customers.length ? <NativeSelectOption value="existing">Customer tersimpan</NativeSelectOption> : null}
+                  <NativeSelectOption value="new">Customer baru</NativeSelectOption>
                 </NativeSelect>
               </Field>
-              <Field>
-                <FieldLabel htmlFor="title" required>Kebutuhan / judul peluang</FieldLabel>
-                <Input id="title" name="title" required minLength={3} maxLength={180} placeholder="Contoh: Seragam panitia 150 pcs" />
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-3">
+              {customerMode === "existing" ? (
                 <Field>
-                  <FieldLabel htmlFor="estimatedQuantity">Estimasi jumlah</FieldLabel>
-                  <Input id="estimatedQuantity" name="estimatedQuantity" type="number" min={1} step={1} />
+                  <FieldLabel htmlFor="customerId" required>Customer</FieldLabel>
+                  <NativeSelect id="customerId" name="customerId" required defaultValue="">
+                    <NativeSelectOption value="" disabled>Pilih customer</NativeSelectOption>
+                    {customers.map((customer) => <NativeSelectOption key={customer.id} value={customer.id}>{customer.name}{customer.companyName ? ` · ${customer.companyName}` : ""} ({customer.customerNo})</NativeSelectOption>)}
+                  </NativeSelect>
                 </Field>
-                <Field>
-                  <FieldLabel htmlFor="estimatedValue">Estimasi nilai</FieldLabel>
-                  <Input id="estimatedValue" name="estimatedValue" type="number" min={0} step={1} inputMode="numeric" />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="deadline">Deadline</FieldLabel>
-                  <Input id="deadline" name="deadline" type="date" />
-                </Field>
-              </div>
-              <SubmitButton pendingLabel="Membuat lead...">Buat lead</SubmitButton>
-            </FieldGroup>
-          </form>
-        ) : (
-          <Empty className="border bg-muted/30">
-            <EmptyHeader>
-              <EmptyTitle>Belum ada customer aktif</EmptyTitle>
-              <EmptyDescription>Tambahkan customer dari menu Manajemen Customer sebelum membuat lead.</EmptyDescription>
-            </EmptyHeader>
-            <Button render={<Link href="/crm/pelanggan" />} nativeButton={false}>
-              Buka Manajemen Customer
-            </Button>
-          </Empty>
-        )}
+              ) : <CustomerFields idPrefix="lead-customer" customerTypes={customerTypes} leadSources={leadSources} salesUsers={salesUsers} />}
+            </FieldSet>
+            <OpportunityFields idPrefix="new-lead" leadSources={leadSources} salesUsers={salesUsers} />
+            <SubmitButton pendingLabel="Membuat lead...">Simpan lead</SubmitButton>
+          </FieldGroup>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -11,6 +11,11 @@ const optionalPositiveInteger = z.preprocess(
   z.number().int().positive().max(10_000_000).optional(),
 );
 
+const optionalMoney = (label: string) => optionalText(20).refine(
+  (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
+  `${label} tidak valid.`,
+);
+
 const requiredVersion = z.preprocess(
   (value) => Number(value),
   z.number().int().positive(),
@@ -71,78 +76,197 @@ export const bulkUpdateMasterDataSchema = z
   .min(1, "Minimal satu data harus tersedia.")
   .max(1_000, "Terlalu banyak data untuk diperbarui sekaligus.");
 
-export const createOpportunitySchema = z.object({
-  customerId: entityIdSchema,
+export const opportunityFieldsSchema = z.object({
   title: z.string().trim().min(3, "Judul peluang minimal 3 karakter.").max(180),
-  estimatedQuantity: optionalPositiveInteger,
-  estimatedValue: optionalText(20).refine(
-    (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
-    "Estimasi nilai tidak valid.",
+  leadSourceId: optionalEntityId,
+  salesPicId: optionalEntityId,
+  productName: optionalText(120),
+  needPurpose: optionalText(500),
+  designStatus: z.preprocess(
+    (value) => (value === null || value === "" ? undefined : value),
+    z.enum(["SUDAH_ADA", "BELUM_ADA", "PERLU_DIBANTU"]).optional(),
   ),
+  specification: optionalText(2000),
+  customerBudget: optionalMoney("Budget customer"),
+  leadScore: z.coerce.number().int().min(0, "Skor minimal 0.").max(100, "Skor maksimal 100."),
+  estimatedQuantity: optionalPositiveInteger,
+  estimatedValue: optionalMoney("Estimasi nilai"),
   deadline: optionalText(10),
+  nextAction: optionalText(500),
+  nextActionAt: optionalText(32),
+}).superRefine((value, context) => {
+  if (Boolean(value.nextAction) !== Boolean(value.nextActionAt)) {
+    context.addIssue({
+      code: "custom",
+      path: value.nextAction ? ["nextActionAt"] : ["nextAction"],
+      message: "Next action dan jadwal harus diisi bersamaan.",
+    });
+  }
 });
 
-export const updateOpportunitySchema = z.object({
+export const createOpportunitySchema = opportunityFieldsSchema.and(z.object({
+  customerId: entityIdSchema,
+}));
+
+export const updateOpportunitySchema = opportunityFieldsSchema.and(z.object({
   opportunityId: entityIdSchema,
   version: requiredVersion,
-  title: z.string().trim().min(3).max(180),
-  estimatedQuantity: optionalPositiveInteger,
-  estimatedValue: optionalText(20).refine(
-    (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
-    "Estimasi nilai tidak valid.",
-  ),
-  deadline: optionalText(10),
-});
+}));
 
 export const moveOpportunitySchema = z
   .object({
     opportunityId: entityIdSchema,
     version: requiredVersion,
-    stage: z.enum(["LEAD", "FOLLOW_UP", "PENAWARAN", "BATAL"]),
-    followUpAt: optionalText(32),
+    stage: z.enum(["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
     cancelReason: optionalText(1000),
   })
   .superRefine((value, context) => {
-    if (value.stage === "FOLLOW_UP" && !value.followUpAt) {
-      context.addIssue({ code: "custom", path: ["followUpAt"], message: "Tanggal follow-up wajib diisi." });
-    }
-    if (value.stage === "BATAL" && !value.cancelReason) {
-      context.addIssue({ code: "custom", path: ["cancelReason"], message: "Alasan batal wajib diisi." });
+    if (value.stage === "LOST" && !value.cancelReason) {
+      context.addIssue({ code: "custom", path: ["cancelReason"], message: "Alasan lost wajib diisi." });
     }
   });
 
-export const addNoteSchema = z.object({
+export const recordFollowUpResultSchema = z.object({
   opportunityId: entityIdSchema,
-  content: z.string().trim().min(2, "Catatan terlalu pendek.").max(4000),
+  version: requiredVersion,
+  content: z.string().trim().min(2, "Hasil follow-up terlalu pendek.").max(4000),
+  contactedAt: z.string().trim().min(1, "Waktu kontak wajib diisi."),
+  channel: z.enum(["WHATSAPP", "INSTAGRAM", "PHONE", "EMAIL", "MEETING", "OTHER"]),
+  direction: z.enum(["INBOUND", "OUTBOUND"]),
+  nextAction: optionalText(500),
+  nextActionAt: optionalText(32),
+  stage: z.enum(["FOLLOW_UP", "NEGOSIASI", "LOST"]),
+  cancelReason: optionalText(1000),
+}).superRefine((value, context) => {
+  if (value.stage === "LOST") {
+    if (!value.cancelReason) context.addIssue({ code: "custom", path: ["cancelReason"], message: "Alasan lost wajib diisi." });
+    return;
+  }
+  if (!value.nextAction || !value.nextActionAt) {
+    context.addIssue({ code: "custom", path: ["nextAction"], message: "Opportunity terbuka wajib memiliki next action dan jadwal." });
+  }
 });
 
-export const quotationItemSchema = z.object({
+export const publicLeadSchema = z.object({
+  submissionKey: z.uuid(),
+  name: z.string().trim().min(2).max(160),
+  whatsapp: z.string().trim().min(8).max(32),
+  productName: z.string().trim().min(2).max(120),
+  estimatedQuantity: optionalPositiveInteger,
+  deadline: optionalText(10),
+  city: optionalText(120),
+  website: optionalText(200),
+});
+
+export const addCommunicationActivitySchema = z
+  .object({
+    context: z.enum(["customer", "opportunity"]),
+    customerId: entityIdSchema,
+    opportunityId: optionalEntityId,
+    channel: z.enum(["INTERNAL_NOTE", "WHATSAPP", "INSTAGRAM", "PHONE", "EMAIL", "MEETING", "OTHER"]),
+    direction: z.preprocess(
+      (value) => (value === null || value === "" ? undefined : value),
+      z.enum(["INBOUND", "OUTBOUND"]).optional(),
+    ),
+    occurredAt: z.string().trim().min(1, "Waktu aktivitas wajib diisi."),
+    content: z.string().trim().min(2, "Ringkasan terlalu pendek.").max(4000),
+  })
+  .superRefine((value, context) => {
+    if (value.context === "opportunity" && !value.opportunityId) {
+      context.addIssue({ code: "custom", path: ["opportunityId"], message: "Peluang wajib tersedia." });
+    }
+    if (value.channel === "INTERNAL_NOTE" && value.direction) {
+      context.addIssue({ code: "custom", path: ["direction"], message: "Catatan internal tidak memiliki arah komunikasi." });
+    }
+    if (value.channel !== "INTERNAL_NOTE" && !value.direction) {
+      context.addIssue({ code: "custom", path: ["direction"], message: "Arah komunikasi wajib dipilih." });
+    }
+  });
+
+export const invoiceItemSchema = z.object({
+  size: z.string().trim().min(1).max(40),
   description: z.string().trim().min(2).max(240),
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
 });
 
-export const quotationDraftSchema = z.object({
+export const invoiceDraftSchema = z.object({
   opportunityId: entityIdSchema,
-  quotationId: entityIdSchema.optional(),
+  purchaseOrderId: entityIdSchema,
+  invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
+  dueAt: optionalText(10),
+  notes: optionalText(2000),
   discountType: z.enum(["NONE", "NOMINAL", "PERCENTAGE"]),
   discountValue: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/),
-  items: z.array(quotationItemSchema).min(1, "Minimal satu item penawaran.").max(50),
+  items: z.array(invoiceItemSchema).min(1, "Minimal satu item penawaran.").max(50),
 });
 
-export const quotationIdSchema = z.object({
-  quotationId: entityIdSchema,
+export const invoiceIdSchema = z.object({
+  invoiceId: entityIdSchema,
   version: requiredVersion,
 });
 
-export const acceptQuotationSchema = quotationIdSchema.extend({
-  acceptedAt: z.string().trim().min(1, "Tanggal penerimaan wajib diisi."),
-  acceptanceReference: z.string().trim().min(3, "Referensi penerimaan wajib diisi.").max(2000),
+const purchaseOrderSizeSchema = z.object({
+  size: z.string().trim().min(1, "Ukuran wajib diisi.").max(40),
+  quantity: z.coerce.number().int().positive("Jumlah harus lebih dari nol.").max(10_000_000),
 });
 
-export const ACCEPTANCE_PROOF_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-export const ACCEPTANCE_PROOF_MAX_BYTES = 5 * 1024 * 1024;
+export const purchaseOrderDraftSchema = z.object({
+  opportunityId: entityIdSchema,
+  purchaseOrderId: entityIdSchema.optional(),
+  version: requiredVersion.optional(),
+  customerReference: optionalText(120),
+  productName: z.string().trim().min(2, "Jenis pakaian wajib diisi.").max(120),
+  material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
+  color: optionalText(120),
+  designNotes: optionalText(4000),
+  notes: optionalText(4000),
+  deadline: optionalText(10),
+  sizes: z.array(purchaseOrderSizeSchema).min(1, "Minimal satu ukuran.").max(50),
+}).superRefine((value, context) => {
+  const normalized = value.sizes.map((item) => item.size.toLocaleLowerCase("id-ID"));
+  if (new Set(normalized).size !== normalized.length) {
+    context.addIssue({ code: "custom", path: ["sizes"], message: "Ukuran tidak boleh duplikat." });
+  }
+});
+
+export const purchaseOrderIdSchema = z.object({
+  purchaseOrderId: entityIdSchema,
+  version: requiredVersion,
+});
+
+const moneyValueSchema = z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Nominal tidak valid.");
+
+export const dealPaymentTermSchema = z.object({
+  valueType: z.enum(["NOMINAL", "PERCENTAGE"]),
+  value: moneyValueSchema,
+  dueAt: z.string().trim().min(1, "Tanggal termin wajib diisi."),
+});
+
+export const completeDealSchema = z.object({
+  opportunityId: entityIdSchema,
+  opportunityVersion: requiredVersion,
+  purchaseOrderId: entityIdSchema,
+  invoiceId: entityIdSchema,
+  invoiceVersion: requiredVersion,
+  kind: z.enum(["LUNAS", "DP"]),
+  paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
+  initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
+  initialValue: moneyValueSchema,
+  terms: z.array(dealPaymentTermSchema).max(12),
+}).superRefine((value, context) => {
+  if (value.kind === "DP" && value.terms.length === 0) {
+    context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
+  }
+  if (value.kind === "LUNAS" && value.terms.length > 0) {
+    context.addIssue({ code: "custom", path: ["terms"], message: "Pembayaran lunas tidak memakai termin." });
+  }
+});
+
+export const PURCHASE_ORDER_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;
+export const PURCHASE_ORDER_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+export const PURCHASE_ORDER_ATTACHMENT_MAX_FILES = 5;
 
 export const reverseSalesOrderSchema = z.object({
   salesOrderId: entityIdSchema,

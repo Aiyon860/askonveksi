@@ -1,5 +1,5 @@
 import { entityIdSchema } from "@/lib/crm/validation";
-import { createQuotationPdf } from "@/lib/crm/quotation-pdf";
+import { createInvoicePdf } from "@/lib/crm/invoice-pdf";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -9,15 +9,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   try {
     await requireActor();
   } catch {
-    return new Response("Anda harus masuk untuk mengunduh quotation.", { status: 401 });
+    return new Response("Anda harus masuk untuk mengunduh invoice.", { status: 401 });
   }
   const parsed = entityIdSchema.safeParse((await params).id);
-  if (!parsed.success) return new Response("Quotation tidak ditemukan.", { status: 404 });
+  if (!parsed.success) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
-  const quotation = await getPrismaClient().quotation.findUnique({
+  const invoice = await getPrismaClient().invoice.findUnique({
     where: { id: parsed.data },
     select: {
-      quotationNo: true,
+      invoiceNo: true,
       revision: true,
       status: true,
       snapshotCustomerName: true,
@@ -32,16 +32,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       total: true,
       createdAt: true,
       issuedAt: true,
-      items: { select: { description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
+      dueAt: true,
+      notes: true,
+      purchaseOrder: { select: { purchaseOrderNo: true } },
+      items: { select: { size: true, description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
     },
   });
-  if (!quotation) return new Response("Quotation tidak ditemukan.", { status: 404 });
+  if (!invoice) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
-  const pdf = await createQuotationPdf(quotation);
+  const pdf = await createInvoicePdf(invoice);
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${quotation.quotationNo}.pdf"`,
+      "Content-Disposition": `attachment; filename="${invoice.invoiceNo}.pdf"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

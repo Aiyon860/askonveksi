@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { PublicLeadForm } from "@/components/public-lead-form";
 import { cn } from "@/lib/utils";
 
 const clients = ["AKPOL", "BANK BRI", "BPN", "PMI", "PNM"];
@@ -91,7 +92,7 @@ export default function LandingPage() {
       <section className="border-b bg-muted/50" aria-labelledby="clients-title">
         <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
           <p id="clients-title" className="text-center text-sm font-medium text-muted-foreground">
-            Logo klien — placeholder
+            Logo klien: placeholder
           </p>
           <div className="mt-6 grid grid-cols-2 items-center gap-x-6 gap-y-5 sm:grid-cols-5">
             {clients.map((client) => (
@@ -133,6 +134,16 @@ export default function LandingPage() {
               </a>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="konsultasi" className="border-t bg-muted/30 py-16 sm:py-20" aria-labelledby="consultation-title">
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 sm:px-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
+          <div className="max-w-md">
+            <h2 id="consultation-title" className="text-2xl font-bold leading-8">Ceritakan kebutuhan Anda</h2>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">Isi data singkat berikut. Tim Askonveksi akan menindaklanjuti kebutuhan produk, jumlah, dan deadline Anda.</p>
+          </div>
+          <PublicLeadForm />
         </div>
       </section>
 

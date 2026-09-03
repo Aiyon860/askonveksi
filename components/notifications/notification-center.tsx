@@ -1,8 +1,12 @@
-"use client";
+import Link from "next/link";
+import { BellRing, CheckCheck, Inbox, RotateCcw, UserRoundX } from "lucide-react";
 
-import { useState } from "react";
-import { BellRing, CheckCheck, Inbox } from "lucide-react";
-
+import {
+  markAllCustomerRemindersReadAction,
+  markCustomerReminderReadAction,
+} from "@/app/actions/notifications";
+import { DataPagination } from "@/components/data-pagination";
+import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,180 +20,164 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
+import { formatCurrency, formatDate } from "@/lib/crm/format";
+import type {
+  getCustomerReminders,
+  ReminderReadFilter,
+  ReminderTypeFilter,
+} from "@/lib/crm/reminder-data";
+import { DATA_PAGE_SIZES } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
-type NotificationGroup = "Hari ini" | "Sebelumnya";
-type NotificationFilter = "all" | "unread";
+type ReminderData = Awaited<ReturnType<typeof getCustomerReminders>>;
 
-type NotificationItem = {
-  id: string;
-  group: NotificationGroup;
-  title: string;
-  description: string;
-  source: string;
-  time: string;
-  unread: boolean;
-};
-
-const EXAMPLE_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "example-follow-up",
-    group: "Hari ini",
-    title: "Follow-up perlu ditinjau",
-    description: "Contoh pengingat untuk pekerjaan yang belum diperbarui.",
-    source: "CRM",
-    time: "09.30",
-    unread: true,
-  },
-  {
-    id: "example-order-update",
-    group: "Hari ini",
-    title: "Pekerjaan berpindah tahap",
-    description: "Contoh pembaruan status order tanpa mengunci jenis proses tertentu.",
-    source: "Order",
-    time: "08.10",
-    unread: true,
-  },
-  {
-    id: "example-assignment",
-    group: "Sebelumnya",
-    title: "Tugas baru perlu diperiksa",
-    description: "Contoh pemberitahuan saat pekerjaan masuk ke antrean pengguna.",
-    source: "Pekerjaan",
-    time: "Kemarin",
-    unread: false,
-  },
-  {
-    id: "example-system",
-    group: "Sebelumnya",
-    title: "Ringkasan sistem tersedia",
-    description: "Contoh pemberitahuan umum yang tidak terkait satu modul tertentu.",
-    source: "Sistem",
-    time: "2 hari lalu",
-    unread: false,
-  },
-];
-
-const GROUP_ORDER: NotificationGroup[] = ["Hari ini", "Sebelumnya"];
-
-export function NotificationCenter() {
-  const [notifications, setNotifications] = useState(EXAMPLE_NOTIFICATIONS);
-  const [filter, setFilter] = useState<NotificationFilter>("all");
-
-  const unreadCount = notifications.filter((item) => item.unread).length;
-  const visibleNotifications = filter === "unread"
-    ? notifications.filter((item) => item.unread)
-    : notifications;
-  const visibleGroups = GROUP_ORDER.map((group) => ({
-    group,
-    items: visibleNotifications.filter((item) => item.group === group),
-  })).filter(({ items }) => items.length > 0);
-
-  function markAsRead(id: string) {
-    setNotifications((current) => current.map((item) => (
-      item.id === id ? { ...item, unread: false } : item
-    )));
-  }
-
-  function markAllAsRead() {
-    setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
-  }
+export function NotificationCenter({
+  data,
+  readFilter,
+  typeFilter,
+}: {
+  data: ReminderData;
+  readFilter: ReminderReadFilter;
+  typeFilter: ReminderTypeFilter;
+}) {
+  const unreadCount = data.items.filter((item) => !item.readAt).length;
+  const persistentParams = {
+    read: readFilter !== "all" ? readFilter : undefined,
+    type: typeFilter !== "all" ? typeFilter : undefined,
+    pageSize: data.pageSize !== 20 ? String(data.pageSize) : undefined,
+  };
 
   return (
-    <section aria-labelledby="notification-list-title" className="overflow-hidden rounded-lg border bg-card">
-      <div className="flex flex-col gap-4 border-b bg-muted/30 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5">
+    <section aria-labelledby="notification-list-title" className="overflow-hidden rounded-xl border bg-background">
+      <div className="flex flex-col gap-4 border-b bg-muted/30 px-4 py-4 sm:px-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 id="notification-list-title" className="text-base font-semibold">Aktivitas terbaru</h2>
-            <Badge variant="secondary" aria-live="polite">{unreadCount} belum dibaca</Badge>
+            <h2 id="notification-list-title" className="text-base font-semibold">Reminder customer</h2>
+            <Badge variant={unreadCount ? "default" : "outline"} aria-live="polite">
+              {unreadCount} belum dibaca di halaman ini
+            </Badge>
           </div>
-          <p className="text-sm text-muted-foreground">Pembaruan diurutkan dari yang paling baru.</p>
+          <p className="text-sm text-muted-foreground">Hanya reminder jatuh tempo tanpa peluang terbuka yang ditampilkan.</p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
-            Tampilkan
-            <NativeSelect
-              value={filter}
-              onChange={(event) => setFilter(event.target.value as NotificationFilter)}
-              className="w-full sm:w-40 [&_select]:h-11 sm:[&_select]:h-9"
-              aria-label="Filter notifikasi"
+          <form method="get" className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            {data.pageSize !== 20 ? <input type="hidden" name="pageSize" value={data.pageSize} /> : null}
+            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
+              Status baca
+              <NativeSelect name="read" defaultValue={readFilter} className="w-full sm:w-40" aria-label="Filter status baca">
+                <NativeSelectOption value="all">Semua</NativeSelectOption>
+                <NativeSelectOption value="unread">Belum dibaca</NativeSelectOption>
+              </NativeSelect>
+            </label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
+              Jenis reminder
+              <NativeSelect name="type" defaultValue={typeFilter} className="w-full sm:w-44" aria-label="Filter jenis reminder">
+                <NativeSelectOption value="all">Semua jenis</NativeSelectOption>
+                <NativeSelectOption value="repeat">Potensi repeat</NativeSelectOption>
+                <NativeSelectOption value="reactivation">Tidak aktif</NativeSelectOption>
+              </NativeSelect>
+            </label>
+            <Button type="submit" variant="outline">Terapkan</Button>
+          </form>
+          <form action={markAllCustomerRemindersReadAction}>
+            <SubmitButton
+              type="submit"
+              variant="outline"
+              pendingLabel="Menandai..."
+              disabled={data.total === 0 || (readFilter === "unread" && data.items.length === 0)}
+              className="w-full sm:w-auto"
             >
-              <NativeSelectOption value="all">Semua</NativeSelectOption>
-              <NativeSelectOption value="unread">Belum dibaca</NativeSelectOption>
-            </NativeSelect>
-          </label>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={markAllAsRead}
-            disabled={unreadCount === 0}
-            className="h-11 w-full sm:h-9 sm:w-auto"
-          >
-            <CheckCheck data-icon="inline-start" aria-hidden="true" />
-            Tandai semua dibaca
-          </Button>
+              <CheckCheck data-icon="inline-start" aria-hidden="true" />
+              Tandai semua dibaca
+            </SubmitButton>
+          </form>
         </div>
       </div>
 
-      {visibleGroups.length > 0 ? (
-        <div aria-live="polite">
-          {visibleGroups.map(({ group, items }) => (
-            <section key={group} aria-labelledby={`notification-group-${group.replaceAll(" ", "-").toLowerCase()}`}>
-              <div className="border-b bg-muted/50 px-4 py-2.5 sm:px-5">
-                <h3 id={`notification-group-${group.replaceAll(" ", "-").toLowerCase()}`} className="text-xs font-semibold text-muted-foreground">
-                  {group}
-                </h3>
-              </div>
-              <div className="divide-y">
-                {items.map((item) => (
-                  <article
-                    key={item.id}
-                    className={cn(
-                      "flex min-w-0 flex-col gap-3 px-4 py-4 sm:grid sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:items-start sm:gap-4 sm:px-5",
-                      item.unread && "bg-primary/[0.04]",
-                    )}
+      {data.items.length ? (
+        <div className="divide-y" aria-live="polite">
+          {data.items.map((item) => {
+            const unread = !item.readAt;
+            const isInactive = item.type === "REACTIVATION";
+            const Icon = isInactive ? UserRoundX : RotateCcw;
+            const quantity = item.sourceSalesOrder.items.reduce((total, orderItem) => total + orderItem.quantity, 0);
+            const product = item.sourceSalesOrder.items[0]?.description ?? "Produk order terakhir";
+
+            return (
+              <article
+                key={item.id}
+                className={cn(
+                  "grid min-w-0 gap-4 px-4 py-5 sm:px-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start",
+                  unread && "bg-primary/[0.035]",
+                )}
+              >
+                <div className={cn(
+                  "flex size-10 items-center justify-center rounded-lg border",
+                  isInactive ? "border-destructive/20 bg-destructive/10 text-destructive" : "border-warning/20 bg-warning/10 text-warning",
+                )}>
+                  <Icon aria-hidden="true" className="size-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold">
+                      {isInactive ? "Customer tidak aktif" : "Potensi repeat order"} - {item.customer.companyName ?? item.customer.name}
+                    </h3>
+                    <Badge variant={unread ? "default" : "outline"}>{unread ? "Belum dibaca" : "Dibaca"}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Order terakhir {item.sourceSalesOrder.salesOrderNo} pada {formatDate(item.sourceSalesOrder.acceptedAt)}:
+                    {" "}{product}, {quantity} pcs, {formatCurrency(item.sourceSalesOrder.total)}.
+                  </p>
+                  <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
+                    <div className="flex gap-1.5"><dt>Jatuh tempo</dt><dd className="font-mono text-foreground">{formatDate(item.dueAt)}</dd></div>
+                    <div className="flex gap-1.5"><dt>Customer</dt><dd className="font-mono text-foreground">{item.customer.customerNo}</dd></div>
+                    <div className="flex gap-1.5"><dt>Sales/PIC</dt><dd className="text-foreground">{item.customer.salesPic?.name ?? "Belum ditugaskan"}</dd></div>
+                  </dl>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                  <Button
+                    nativeButton={false}
+                    render={<Link href={`/crm/pelanggan/${item.customer.id}?repeatFrom=${item.id}#repeat-order`} />}
                   >
-                    <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-start">
-                      <span className="font-mono text-xs tabular-nums text-muted-foreground">{item.time}</span>
-                      <Badge variant={item.unread ? "default" : "outline"}>
-                        {item.unread ? "Belum dibaca" : "Dibaca"}
-                      </Badge>
-                    </div>
-
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-semibold leading-5">{item.title}</h4>
-                      <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{item.description}</p>
-                      <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                        <BellRing aria-hidden="true" className="size-3.5" />
-                        <span>Sumber: {item.source}</span>
-                      </div>
-                    </div>
-
-                    {item.unread ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => markAsRead(item.id)}
-                        className="h-11 w-full sm:h-8 sm:w-auto"
-                        aria-label={`Tandai ${item.title} sebagai dibaca`}
-                      >
+                    <BellRing data-icon="inline-start" aria-hidden="true" />
+                    Buat peluang
+                  </Button>
+                  {unread ? (
+                    <form action={markCustomerReminderReadAction}>
+                      <input type="hidden" name="reminderId" value={item.id} />
+                      <SubmitButton type="submit" variant="ghost" size="sm" pendingLabel="Menandai..." className="w-full">
                         Tandai dibaca
-                      </Button>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            </section>
-          ))}
+                      </SubmitButton>
+                    </form>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+          <DataPagination
+            pathname="/notifications"
+            page={data.page}
+            pageCount={data.pageCount}
+            total={data.total}
+            pageSize={data.pageSize}
+            pageSizeOptions={DATA_PAGE_SIZES}
+            params={persistentParams}
+            className="border-t px-4 py-3"
+          />
         </div>
       ) : (
         <Empty className="min-h-80 border-0">
           <EmptyHeader>
             <EmptyMedia variant="icon"><Inbox aria-hidden="true" /></EmptyMedia>
-            <EmptyTitle>Tidak ada notifikasi belum dibaca</EmptyTitle>
-            <EmptyDescription>Semua pembaruan pada data contoh sudah ditandai sebagai dibaca.</EmptyDescription>
+            <EmptyTitle>{readFilter === "unread" ? "Semua reminder sudah dibaca" : "Belum ada reminder jatuh tempo"}</EmptyTitle>
+            <EmptyDescription>
+              {readFilter === "unread"
+                ? "Ubah filter ke semua untuk melihat reminder yang sudah dibaca."
+                : "Reminder akan muncul 3 bulan setelah order, lalu berubah menjadi reaktivasi pada bulan ke-6."}
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}

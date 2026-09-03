@@ -5,19 +5,21 @@ import { PipelineSummary } from "@/components/crm/pipeline-summary";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { getCustomerOptions, getPipelineData } from "@/lib/crm/data";
+import { getCustomerFormOptions } from "@/lib/master-data";
 
 export default async function CRMPage() {
-  const [{ opportunities, total, truncated }, customers] = await Promise.all([
+  const [{ opportunities, total, truncated, actorRole }, customers, formOptions] = await Promise.all([
     getPipelineData(),
     getCustomerOptions(),
+    getCustomerFormOptions(),
   ]);
 
   return (
     <>
       <PageHeader
         title="Pipeline CRM"
-        description="Gerakkan setiap peluang berdasarkan langkah berikutnya. Deal hanya selesai setelah quotation diterima dan Sales Order terbentuk."
-        action={<NewLeadForm customers={customers} />}
+        description="Satu kartu mewakili satu peluang. PO dan invoice disusun saat Negosiasi, lalu Admin mencatat pembayaran untuk Deal."
+        action={actorRole === "ADMIN" || actorRole === "SALES" ? <NewLeadForm customers={customers} {...formOptions} /> : undefined}
       />
       <PageMessage />
 
@@ -30,7 +32,7 @@ export default async function CRMPage() {
         </Alert>
       ) : null}
 
-      <PipelineBoard opportunities={opportunities} />
+      <PipelineBoard opportunities={opportunities} actorRole={actorRole} />
     </>
   );
 }

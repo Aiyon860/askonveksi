@@ -1,457 +1,91 @@
-"use client";
-
-import { useState } from "react";
-import {
-  ArrowRight,
-  BanknoteArrowDown,
-  Box,
-  CircleDollarSign,
-  Clock3,
-  Factory,
-  HandCoins,
-  PackageCheck,
-  Scissors,
-  Shirt,
-  Sparkles,
-  Target,
-  Truck,
-  UsersRound,
-  WalletCards,
-} from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-} from "recharts";
+import Link from "next/link";
+import { AlertTriangle, CalendarClock, CircleDollarSign, Percent, Target } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
+import { OpportunityStatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { BusinessTrendChart } from "@/components/dashboard/business-trend-chart";
+import { PIPELINE_STAGES } from "@/lib/crm/constants";
+import { getSalesDashboardData } from "@/lib/crm/data";
+import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
 
-const metricToneClasses = {
-  destructive: {
-    surface: "bg-card",
-    value: "text-destructive",
-    icon: "bg-destructive/10 text-destructive",
-  },
-  highlight: {
-    surface: "bg-card",
-    value: "text-highlight",
-    icon: "bg-highlight/10 text-highlight",
-  },
-  info: {
-    surface: "bg-card",
-    value: "text-info",
-    icon: "bg-info/10 text-info",
-  },
-  success: {
-    surface: "bg-card",
-    value: "text-success",
-    icon: "bg-success/10 text-success",
-  },
-  warning: {
-    surface: "bg-card",
-    value: "text-warning",
-    icon: "bg-warning/10 text-warning",
-  },
-} as const;
-
-const metrics = [
-  { label: "Omzet bulan ini", value: "Rp 185.500.000", note: "Pendapatan berjalan", icon: CircleDollarSign, tone: "success" },
-  { label: "Piutang", value: "Rp 42.500.000", note: "Perlu ditagihkan", icon: HandCoins, tone: "warning" },
-  { label: "Hutang", value: "Rp 28.750.000", note: "Kewajiban berjalan", icon: BanknoteArrowDown, tone: "warning" },
-  { label: "Pengeluaran", value: "Rp 96.250.000", note: "Bulan berjalan", icon: WalletCards, tone: "highlight" },
-  { label: "Order aktif", value: "37", note: "Sedang diproses", icon: PackageCheck, tone: "info" },
-  { label: "Produksi", value: "21", note: "Order produksi aktif", icon: Factory, tone: "highlight" },
-  { label: "Order terlambat", value: "4", note: "Butuh perhatian", icon: Clock3, tone: "destructive" },
-  { label: "Lead baru", value: "32", note: "Potensi pelanggan", icon: UsersRound, tone: "info" },
-] as const;
-
-const productionToneClasses = {
-  highlight: { icon: "bg-highlight/10 text-highlight", progress: "bg-highlight" },
-  info: { icon: "bg-info/10 text-info", progress: "bg-info" },
-  success: { icon: "bg-success/10 text-success", progress: "bg-success" },
-  warning: { icon: "bg-warning/10 text-warning", progress: "bg-warning" },
-} as const;
-
-const production = [
-  { label: "Menunggu desain", value: 5, icon: Sparkles, tone: "info" },
-  { label: "Menunggu bahan", value: 3, icon: Shirt, tone: "warning" },
-  { label: "Cutting", value: 4, icon: Scissors, tone: "info" },
-  { label: "Printing", value: 6, icon: Box, tone: "highlight" },
-  { label: "Jahit", value: 8, icon: Factory, tone: "warning" },
-  { label: "QC", value: 5, icon: PackageCheck, tone: "highlight" },
-  { label: "Packing", value: 3, icon: Box, tone: "info" },
-  { label: "Pengiriman", value: 7, icon: Truck, tone: "success" },
-] as const;
-
-const highestProductionCount = Math.max(...production.map((stage) => stage.value));
-
-const funnel = [
-  { label: "Lead", value: 100, width: "100%", track: "bg-info/10", fill: "bg-info text-background" },
-  { label: "Follow up", value: 45, width: "45%", track: "bg-warning/10", fill: "bg-warning text-background" },
-  { label: "Penawaran", value: 20, width: "20%", track: "bg-highlight/10", fill: "bg-highlight text-background" },
-  { label: "Deal", value: 12, width: "12%", track: "bg-success/10", fill: "bg-success text-background" },
-] as const;
-
-const trendYears = ["2024", "2025", "2026"] as const;
-
-type TrendYear = (typeof trendYears)[number];
-
-type TrendDatum = {
-  month: string;
-  revenue: number;
-  completedOrders: number;
-};
-
-const businessTrendData: Record<TrendYear, TrendDatum[]> = {
-  "2024": [
-    { month: "Jan", revenue: 96000000, completedOrders: 9 },
-    { month: "Feb", revenue: 112000000, completedOrders: 11 },
-    { month: "Mar", revenue: 104500000, completedOrders: 10 },
-    { month: "Apr", revenue: 126000000, completedOrders: 13 },
-    { month: "Mei", revenue: 119500000, completedOrders: 12 },
-    { month: "Jun", revenue: 138000000, completedOrders: 15 },
-    { month: "Jul", revenue: 131500000, completedOrders: 14 },
-    { month: "Agu", revenue: 146000000, completedOrders: 16 },
-    { month: "Sep", revenue: 152500000, completedOrders: 17 },
-    { month: "Okt", revenue: 149000000, completedOrders: 15 },
-    { month: "Nov", revenue: 161500000, completedOrders: 18 },
-    { month: "Des", revenue: 174000000, completedOrders: 20 },
-  ],
-  "2025": [
-    { month: "Jan", revenue: 124000000, completedOrders: 12 },
-    { month: "Feb", revenue: 132500000, completedOrders: 14 },
-    { month: "Mar", revenue: 141000000, completedOrders: 15 },
-    { month: "Apr", revenue: 136000000, completedOrders: 14 },
-    { month: "Mei", revenue: 154500000, completedOrders: 17 },
-    { month: "Jun", revenue: 163000000, completedOrders: 19 },
-    { month: "Jul", revenue: 158500000, completedOrders: 18 },
-    { month: "Agu", revenue: 171000000, completedOrders: 20 },
-    { month: "Sep", revenue: 168000000, completedOrders: 19 },
-    { month: "Okt", revenue: 182500000, completedOrders: 22 },
-    { month: "Nov", revenue: 176000000, completedOrders: 21 },
-    { month: "Des", revenue: 195500000, completedOrders: 24 },
-  ],
-  "2026": [
-    { month: "Jan", revenue: 142500000, completedOrders: 15 },
-    { month: "Feb", revenue: 151000000, completedOrders: 16 },
-    { month: "Mar", revenue: 165500000, completedOrders: 18 },
-    { month: "Apr", revenue: 158000000, completedOrders: 17 },
-    { month: "Mei", revenue: 177500000, completedOrders: 20 },
-    { month: "Jun", revenue: 184000000, completedOrders: 22 },
-    { month: "Jul", revenue: 172500000, completedOrders: 19 },
-    { month: "Agu", revenue: 191000000, completedOrders: 23 },
-  ],
-};
-
-const revenueChartConfig = {
-  revenue: {
-    label: "Kas masuk",
-    color: "var(--success)",
-  },
-} satisfies ChartConfig;
-
-const completedOrdersChartConfig = {
-  completedOrders: {
-    label: "Order selesai & lunas",
-    color: "var(--info)",
-  },
-} satisfies ChartConfig;
-
-const rupiahFormatter = new Intl.NumberFormat("id-ID", {
-  style: "currency",
-  currency: "IDR",
-  maximumFractionDigits: 0,
-});
-
-const compactNumberFormatter = new Intl.NumberFormat("id-ID", {
-  notation: "compact",
-  maximumFractionDigits: 0,
-});
-
-function formatRupiah(value: number) {
-  return rupiahFormatter.format(value).replace(/\u00a0/g, " ");
-}
-
-function formatCompactRupiah(value: number) {
-  return `Rp ${compactNumberFormatter.format(value)}`;
-}
-
-export default function DashboardPage() {
-  const [selectedYear, setSelectedYear] = useState<TrendYear>("2026");
-  const trendData = businessTrendData[selectedYear];
-  const totalRevenue = trendData.reduce((total, item) => total + item.revenue, 0);
-  const totalCompletedOrders = trendData.reduce(
-    (total, item) => total + item.completedOrders,
-    0,
-  );
+export default async function DashboardPage() {
+  const data = await getSalesDashboardData();
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        description="Ringkasan kondisi bisnis dan operasional."
-        action={(
-          <div className="flex flex-col items-end gap-1.5 text-right">
-            <Badge variant="info">Data dummy · Agustus 2026</Badge>
-            <p className="text-xs text-muted-foreground">Ringkasan bulanan</p>
-          </div>
-        )}
-      />
+      <PageHeader title="Dashboard sales" description="Ringkasan CRM yang perlu ditindaklanjuti hari ini." action={<Button render={<Link href="/crm/follow-up" />} nativeButton={false}>Buka Follow-up</Button>} />
 
-      <div className="flex flex-col gap-6">
-        <section aria-labelledby="ringkasan-title">
-          <div className="mb-4">
-            <h2 id="ringkasan-title" className="text-base font-semibold">Ringkasan bisnis</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Status utama yang perlu dipantau hari ini.</p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-2 xl:grid-cols-4">
-            {metrics.map((metric) => {
-              const Icon = metric.icon;
-              const tone = metricToneClasses[metric.tone];
-              return (
-                <article key={metric.label} className={cn("flex min-w-0 items-start justify-between gap-4 p-4", tone.surface)}>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-muted-foreground">{metric.label}</p>
-                    <p className={cn("mt-3 truncate font-mono text-xl font-semibold tabular-nums", tone.value)}>
-                      {metric.value}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{metric.note}</p>
-                  </div>
-                  <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md", tone.icon)}>
-                    <Icon className="size-4" strokeWidth={1.8} aria-hidden="true" />
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-
-        <section aria-labelledby="tren-bisnis-title">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 id="tren-bisnis-title" className="text-base font-semibold">Tren bisnis</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Kas masuk serta order yang telah selesai dan dibayar lunas.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <label htmlFor="trend-year" className="text-sm font-medium">Tahun</label>
-              <NativeSelect
-                id="trend-year"
-                value={selectedYear}
-                onChange={(event) => setSelectedYear(event.target.value as TrendYear)}
-                aria-label="Pilih tahun tren bisnis"
-              >
-                {trendYears.map((year) => (
-                  <NativeSelectOption key={year} value={year}>{year}</NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-            <article className="overflow-hidden rounded-lg border bg-card xl:col-span-3">
-              <div className="flex flex-col gap-4 border-b bg-success/5 p-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold">Pendapatan per bulan</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">Kas masuk aktual · data dummy {selectedYear}</p>
-                </div>
-                <div className="sm:text-right">
-                  <p className="text-xs font-medium text-muted-foreground">Total {selectedYear}</p>
-                  <p className="mt-1 font-mono text-lg font-semibold text-success tabular-nums">{formatRupiah(totalRevenue)}</p>
-                </div>
+      <section aria-labelledby="sales-summary" className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.45fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle id="sales-summary">Ringkasan hasil sales</CardTitle>
+            <CardDescription>Potensi opportunity terbuka, omzet Deal bulan berjalan, dan conversion rate seluruh waktu.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-3">
+              <div className="bg-info-surface p-5 text-info-surface-foreground">
+                <dt className="flex items-center gap-2 text-sm"><Target aria-hidden="true" className="size-4" />Potensi omzet</dt>
+                <dd className="mt-3 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.potentialValue)}</dd>
               </div>
-
-              <div className="p-4">
-                <ChartContainer
-                  config={revenueChartConfig}
-                  className="h-64 w-full aspect-auto"
-                  initialDimension={{ width: 720, height: 256 }}
-                  aria-label={`Grafik pendapatan bulanan tahun ${selectedYear}`}
-                >
-                  <LineChart accessibilityLayer data={trendData} margin={{ left: 4, right: 12, top: 16 }}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tickMargin={10} />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tickMargin={8}
-                      width={66}
-                      tickFormatter={(value: number) => formatCompactRupiah(value)}
-                    />
-                    <ChartTooltip
-                      cursor={false}
-                      content={
-                        <ChartTooltipContent
-                          indicator="line"
-                          labelFormatter={(label) => `${label} ${selectedYear}`}
-                          formatter={(value) => (
-                            <div className="flex min-w-40 items-center justify-between gap-4">
-                              <span className="text-muted-foreground">Kas masuk</span>
-                              <span className="font-mono font-medium tabular-nums">{formatRupiah(Number(value))}</span>
-                            </div>
-                          )}
-                        />
-                      }
-                    />
-                    <Line
-                      dataKey="revenue"
-                      type="monotone"
-                      stroke="var(--color-revenue)"
-                      strokeWidth={2}
-                      dot={{ fill: "var(--color-revenue)", r: 3 }}
-                      activeDot={{ r: 5 }}
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ChartContainer>
-                <p className="sr-only">
-                  {trendData.map((item) => `${item.month}: ${formatRupiah(item.revenue)}`).join("; ")}.
+              <div className="bg-success-surface p-5 text-success-surface-foreground">
+                <dt className="flex items-center gap-2 text-sm"><CircleDollarSign aria-hidden="true" className="size-4" />Omzet deal bulan ini</dt>
+                <dd className="mt-3 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.dealRevenue)}</dd>
+              </div>
+              <div className="bg-foreground p-5 text-background">
+                <dt className="flex items-center gap-2 text-sm"><Percent aria-hidden="true" className="size-4" />Conversion rate</dt>
+                <dd className="mt-3 font-mono text-2xl font-semibold tabular-nums">{formatPercentage(data.conversionRate)}</dd>
+                <p className="mt-2 text-xs text-background/75">
+                  {data.totalLeadCount > 0
+                    ? `${data.dealCount} Deal dari ${data.totalLeadCount} lead`
+                    : "Belum ada lead untuk dihitung."}
                 </p>
               </div>
-            </article>
+            </dl>
+          </CardContent>
+        </Card>
 
-            <article className="overflow-hidden rounded-lg border bg-card xl:col-span-2">
-              <div className="flex flex-col gap-4 border-b bg-info/5 p-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold">Order selesai &amp; lunas</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">Produksi selesai dan seluruh invoice paid.</p>
-                </div>
-                <div className="sm:text-right">
-                  <p className="text-xs font-medium text-muted-foreground">Total {selectedYear}</p>
-                  <p className="mt-1 font-mono text-lg font-semibold text-info tabular-nums">{totalCompletedOrders} order</p>
-                </div>
-              </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Follow-up mendesak</CardTitle>
+            <CardDescription>Next action sampai akhir hari ini.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border">
+              <div className="bg-destructive-surface p-4 text-destructive-surface-foreground"><dt className="flex items-center gap-2 text-sm"><AlertTriangle aria-hidden="true" className="size-4" />Terlambat</dt><dd className="mt-2 font-mono text-3xl font-semibold tabular-nums">{data.overdue}</dd></div>
+              <div className="bg-warning-surface p-4 text-warning-surface-foreground"><dt className="flex items-center gap-2 text-sm"><CalendarClock aria-hidden="true" className="size-4" />Hari ini</dt><dd className="mt-2 font-mono text-3xl font-semibold tabular-nums">{data.dueToday}</dd></div>
+            </dl>
+          </CardContent>
+        </Card>
+      </section>
 
-              <div className="p-4">
-                <ChartContainer
-                  config={completedOrdersChartConfig}
-                  className="h-64 w-full aspect-auto"
-                  initialDimension={{ width: 480, height: 256 }}
-                  aria-label={`Grafik order selesai dan lunas tahun ${selectedYear}`}
-                >
-                  <BarChart accessibilityLayer data={trendData} margin={{ left: -16, right: 4, top: 8 }}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tickMargin={10} />
-                    <YAxis axisLine={false} tickLine={false} tickMargin={8} allowDecimals={false} />
-                    <ChartTooltip
-                      cursor={false}
-                      content={
-                        <ChartTooltipContent
-                          hideIndicator
-                          labelFormatter={(label) => `${label} ${selectedYear}`}
-                          formatter={(value) => (
-                            <div className="flex min-w-40 items-center justify-between gap-4">
-                              <span className="text-muted-foreground">Selesai &amp; lunas</span>
-                              <span className="font-mono font-medium tabular-nums">{Number(value)} order</span>
-                            </div>
-                          )}
-                        />
-                      }
-                    />
-                    <Bar
-                      dataKey="completedOrders"
-                      fill="var(--color-completedOrders)"
-                      radius={[4, 4, 0, 0]}
-                      isAnimationActive={false}
-                    />
-                  </BarChart>
-                </ChartContainer>
-                <p className="sr-only">
-                  {trendData.map((item) => `${item.month}: ${item.completedOrders} order`).join("; ")}.
-                </p>
-              </div>
-            </article>
-          </div>
-        </section>
+      <section aria-labelledby="pipeline-stage-title">
+        <div className="mb-4"><h2 id="pipeline-stage-title" className="text-base font-semibold">Pipeline aktif</h2><p className="mt-1 text-sm text-muted-foreground">Jumlah opportunity pada setiap tahap kerja.</p></div>
+        <dl className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-cols-8 xl:grid-flow-row xl:overflow-visible">
+          {PIPELINE_STAGES.map((stage) => <div key={stage} className="rounded-lg border bg-card p-4"><dt><OpportunityStatusBadge stage={stage} /></dt><dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.stageCounts[stage] ?? 0}</dd></div>)}
+        </dl>
+      </section>
 
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-2" aria-label="Ruang kerja detail">
-          <article className="rounded-lg border bg-card">
-            <div className="flex items-start justify-between gap-5 border-b p-4">
-              <div>
-                <h2 className="text-base font-semibold">Dashboard produksi</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Order produksi · jumlah job/item aktif per tahap.</p>
-              </div>
-              <Badge variant="warning">Jahit terpadat</Badge>
-            </div>
+      <BusinessTrendChart />
 
-            <div className="grid grid-cols-2 gap-x-4 gap-y-5 p-4 sm:grid-cols-4">
-              {production.map((stage, index) => {
-                const Icon = stage.icon;
-                const tone = productionToneClasses[stage.tone];
-                return (
-                  <div key={stage.label} className="min-w-0">
-                    <div className="mb-3 flex items-center">
-                      <div className={cn("flex size-8 items-center justify-center rounded-md", tone.icon)}>
-                        <Icon className="size-4" strokeWidth={1.8} aria-hidden="true" />
-                      </div>
-                      {index < production.length - 1 && <ArrowRight className="ml-2 hidden size-4 text-muted-foreground/40 sm:block" aria-hidden="true" />}
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">{stage.label}</p>
-                    <p className="mt-1 font-mono text-xl font-semibold tabular-nums">{stage.value}</p>
-                    <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted">
-                      <div className={cn("h-full rounded-full", tone.progress)} style={{ width: `${(stage.value / highestProductionCount) * 100}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Hot lead</CardTitle><CardDescription>Opportunity terbuka dengan skor minimal 80.</CardDescription><CardAction><Button size="sm" variant="link" render={<Link href="/crm" />} nativeButton={false}>Lihat pipeline</Button></CardAction></CardHeader>
+          <CardContent>
+            {data.hotLeads.length ? <div className="flex flex-col divide-y">{data.hotLeads.map((item) => <article key={item.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"><div className="min-w-0"><Link href={`/crm/peluang/${item.id}`} className="font-medium underline-offset-4 hover:underline">{item.title}</Link><p className="mt-1 truncate text-xs text-muted-foreground">{item.customer.name} · {item.opportunityNo}</p></div><div className="shrink-0 text-right"><Badge variant="highlight">HOT · {item.leadScore}</Badge><p className="mt-1 font-mono text-xs">{formatCurrency(item.estimatedValue)}</p></div></article>)}</div> : <Empty className="min-h-48 border-0"><EmptyHeader><EmptyTitle>Belum ada hot lead</EmptyTitle><EmptyDescription>Lead dengan skor 80 atau lebih akan muncul di sini.</EmptyDescription></EmptyHeader></Empty>}
+          </CardContent>
+        </Card>
 
-            <div className="m-4 mt-2 flex items-center gap-3 rounded-md border border-warning/20 bg-warning/5 p-3">
-              <Clock3 className="size-4 shrink-0 text-warning" aria-hidden="true" />
-              <p className="text-sm"><span className="font-medium">Tahap terpadat:</span> Jahit memiliki 8 job/item aktif.</p>
-            </div>
-          </article>
-
-          <article className="rounded-lg border bg-card">
-            <div className="flex items-start justify-between gap-5 border-b p-4">
-              <div>
-                <h2 className="text-base font-semibold">Dashboard sales</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Pergerakan lead menuju deal.</p>
-              </div>
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-highlight/10 text-highlight">
-                <Target className="size-4" aria-hidden="true" />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4 p-4">
-              {funnel.map((step) => (
-                <div key={step.label}>
-                  <div className="mb-2 flex items-baseline justify-between gap-4">
-                    <p className="text-xs font-medium text-muted-foreground">{step.label}</p>
-                    <p className="font-mono text-sm font-medium tabular-nums">{step.value}</p>
-                  </div>
-                  <div className={cn("h-8 overflow-hidden rounded-md", step.track)}>
-                    <div className={cn("flex h-full min-w-12 items-center justify-end rounded-md px-2 font-mono text-xs", step.fill)} style={{ width: step.width }}>
-                      {step.value}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="m-4 mt-2 flex items-center justify-between gap-5 rounded-md bg-success/10 p-4">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Konversi</p>
-                <p className="mt-1 font-mono text-2xl font-semibold text-success tabular-nums">12%</p>
-              </div>
-              <p className="text-right text-xs text-muted-foreground">12 deal dari 100 lead</p>
-            </div>
-          </article>
-        </section>
-      </div>
+        <Card>
+          <CardHeader><CardTitle>Next action terdekat</CardTitle><CardDescription>Urutan kerja berdasarkan waktu yang paling awal.</CardDescription><CardAction><Button size="sm" variant="link" render={<Link href="/crm/follow-up" />} nativeButton={false}>Lihat semua</Button></CardAction></CardHeader>
+          <CardContent>
+            {data.urgentActions.length ? <div className="flex flex-col divide-y">{data.urgentActions.map((item) => <article key={item.id} className="py-3 first:pt-0 last:pb-0"><Link href={`/crm/peluang/${item.id}`} className="font-medium underline-offset-4 hover:underline">{item.nextAction}</Link><p className="mt-1 text-sm text-muted-foreground">{item.customer.name} · {item.title}</p><p className="mt-1 font-mono text-xs">{formatDate(item.nextActionAt, true)}</p></article>)}</div> : <Empty className="min-h-48 border-0"><EmptyHeader><EmptyTitle>Belum ada next action</EmptyTitle><EmptyDescription>Jadwalkan tindakan berikutnya dari detail opportunity.</EmptyDescription></EmptyHeader></Empty>}
+          </CardContent>
+        </Card>
+      </section>
     </>
   );
 }

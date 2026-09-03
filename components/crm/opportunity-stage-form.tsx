@@ -6,30 +6,32 @@ import type { OpportunityStage } from "@prisma/client";
 import { moveOpportunityStageAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
-import { toDateTimeLocalValue } from "@/lib/crm/format";
+import { STAGE_LABEL } from "@/lib/crm/constants";
 
 export function OpportunityStageForm({
   opportunityId,
   version,
   initialStage,
-  followUpAt,
   cancelReason,
 }: {
   opportunityId: string;
   version: number;
   initialStage: OpportunityStage;
-  followUpAt: Date | null;
   cancelReason: string | null;
 }) {
-  const fallbackStage = initialStage === "DEAL" ? "PENAWARAN" : initialStage;
-  const [stage, setStage] = useState<OpportunityStage>(fallbackStage);
+  const allowedStages: Record<Exclude<OpportunityStage, "DEAL">, OpportunityStage[]> = {
+    LEAD_BARU: ["FOLLOW_UP", "LOST"],
+    FOLLOW_UP: ["LEAD_BARU", "NEGOSIASI", "LOST"],
+    NEGOSIASI: ["FOLLOW_UP", "LOST"],
+    LOST: ["FOLLOW_UP"],
+  };
+  const options = initialStage === "DEAL" ? [] : allowedStages[initialStage];
+  const [stage, setStage] = useState<OpportunityStage>(options[0] ?? "FOLLOW_UP");
 
   if (initialStage === "DEAL") {
-    return <p className="text-sm leading-6 text-muted-foreground">Deal dikunci oleh Sales Order. Owner/Admin dapat membaliknya dari halaman Sales Order.</p>;
+    return <p className="text-sm leading-6 text-muted-foreground">Deal dikunci oleh Sales Order. Admin dapat membatalkannya dari halaman Sales Order.</p>;
   }
 
   return (
@@ -40,26 +42,18 @@ export function OpportunityStageForm({
         <Field>
           <FieldLabel htmlFor="detail-stage" required>Status</FieldLabel>
           <NativeSelect id="detail-stage" name="stage" required value={stage} onChange={(event) => setStage(event.target.value as OpportunityStage)} className="w-full">
-            {PIPELINE_STAGES.map((option) => (
-              <NativeSelectOption key={option} value={option} disabled={option === "DEAL"}>
-                {STAGE_LABEL[option]}{option === "DEAL" ? " · melalui quotation" : ""}
-              </NativeSelectOption>
+            {options.map((option) => (
+              <NativeSelectOption key={option} value={option}>{STAGE_LABEL[option]}</NativeSelectOption>
             ))}
           </NativeSelect>
         </Field>
-        {stage === "FOLLOW_UP" ? (
+        {stage === "LOST" ? (
           <Field>
-            <FieldLabel htmlFor="detail-followUpAt" required>Jadwal follow-up</FieldLabel>
-            <Input id="detail-followUpAt" name="followUpAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(followUpAt)} />
-          </Field>
-        ) : null}
-        {stage === "BATAL" ? (
-          <Field>
-            <FieldLabel htmlFor="detail-cancelReason" required>Alasan batal</FieldLabel>
+            <FieldLabel htmlFor="detail-cancelReason" required>Alasan lost</FieldLabel>
             <Textarea id="detail-cancelReason" name="cancelReason" required maxLength={1000} rows={4} defaultValue={cancelReason ?? ""} />
           </Field>
         ) : null}
-        <FieldDescription>Deal hanya dapat dipilih melalui aksi “Diterima &amp; Deal”.</FieldDescription>
+        <FieldDescription>{initialStage === "NEGOSIASI" ? "Deal dilakukan melalui blok pembayaran, bukan form status ini." : "Hanya perpindahan status yang sesuai alur ditampilkan."}</FieldDescription>
         <ConfirmSubmitButton
           pendingLabel="Memindahkan..."
           confirmTitle="Ubah status peluang?"
