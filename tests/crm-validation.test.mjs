@@ -395,6 +395,16 @@ test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", asy
   assert.match(sql, /REVOKE ALL ON TABLE "PurchaseOrder"[\s\S]+FROM anon, authenticated/);
 });
 
+test("transaksi Deal memberi waktu cukup, retry konflik serializable, dan error yang dapat ditindaklanjuti", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const responseSource = await readFile(new URL("../lib/actions/response.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /maxWait:\s*10_000/);
+  assert.match(actionSource, /timeout:\s*20_000/);
+  assert.match(actionSource, /error\.code === "P2034"/);
+  assert.match(responseSource, /error\.code === "P2028"/);
+  assert.match(responseSource, /error\.code === "P2034"/);
+});
+
 test("parameter pagination dibatasi pada nilai aman", () => {
   assert.equal(DATA_PAGE_SIZE, 20);
   assert.equal(parsePageParam(undefined), 1);

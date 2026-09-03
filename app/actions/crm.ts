@@ -41,6 +41,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type Tx = Prisma.TransactionClient;
 const PURCHASE_ORDER_ATTACHMENT_BUCKET = "crm-po-designs";
+const DEAL_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
 
 function revalidateCustomerReminders() {
   revalidatePath("/notifications");
@@ -227,6 +232,21 @@ function completeDealInput(formData: FormData) {
       dueAt: dueDates[index],
     })),
   };
+}
+
+async function runDealTransaction<T>(work: (tx: Tx) => Promise<T>) {
+  const prisma = getPrismaClient();
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await prisma.$transaction(work, DEAL_TRANSACTION_OPTIONS);
+    } catch (error) {
+      const canRetry = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+      if (!canRetry || attempt === 1) throw error;
+    }
+  }
+
+  throw new UserFacingError("Transaksi Deal belum dapat diselesaikan. Silakan coba lagi.");
 }
 
 function opportunityInput(formData: FormData) {
@@ -1415,7 +1435,7 @@ export async function completeDealAction(formData: FormData) {
     if (!paidAt) throw new UserFacingError("Tanggal pembayaran wajib diisi.");
     if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh berada di masa depan.");
 
-    const salesOrder = await getPrismaClient().$transaction(
+    const salesOrder = await runDealTransaction(
         async (tx) => {
         const invoice = await tx.invoice.findUnique({
           where: { id: parsed.data.invoiceId },
@@ -1570,7 +1590,6 @@ export async function completeDealAction(formData: FormData) {
           opportunityId: invoice.opportunityId,
         };
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
 
     revalidatePath("/crm");
