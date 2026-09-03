@@ -53,7 +53,7 @@ export default async function SalesPerformancePage({
   const hasActivity =
     data.totals.leadCount > 0 ||
     data.totals.followUpCount > 0 ||
-    data.totals.quotationCount > 0 ||
+    data.totals.invoiceCount > 0 ||
     data.totals.dealCount > 0 ||
     Number(data.totals.revenue) > 0;
   const hasRevenue = Number(data.totals.revenue) > 0;
@@ -69,7 +69,7 @@ export default async function SalesPerformancePage({
         <CardHeader>
           <CardTitle>Periode laporan</CardTitle>
           <CardDescription>
-            Lead mengikuti tanggal masuk, follow-up mengikuti waktu pencatatan, quotation mengikuti tanggal terbit, serta deal dan omzet mengikuti tanggal Sales Order diterima.
+            Lead mengikuti tanggal masuk, follow-up mengikuti waktu pencatatan, invoice mengikuti tanggal terbit, serta deal dan omzet mengikuti tanggal Sales Order diterima.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -110,8 +110,8 @@ export default async function SalesPerformancePage({
             <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.followUpCount}</dd>
           </div>
           <div className="bg-highlight-surface p-5 text-highlight-surface-foreground">
-            <dt className="text-sm opacity-75">Quotation</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.quotationCount}</dd>
+            <dt className="text-sm opacity-75">Invoice</dt>
+            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.invoiceCount}</dd>
           </div>
           <div className="bg-success-surface p-5 text-success-surface-foreground">
             <dt className="text-sm opacity-75">Deal</dt>
@@ -152,21 +152,21 @@ export default async function SalesPerformancePage({
         <CardHeader>
           <CardTitle>Rincian per sales</CardTitle>
           <CardDescription>
-            Follow-up menghitung setiap hasil yang dicatat. Quotation dan deal menghitung opportunity unik.
+            Follow-up menghitung setiap hasil yang dicatat. Invoice dan deal menghitung opportunity unik.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {data.rows.length ? (
             <Table>
               <TableCaption className="sr-only">
-                Lead, follow-up, quotation, deal, dan omzet setiap sales pada {data.periodLabel}.
+                Lead, follow-up, invoice, deal, dan omzet setiap sales pada {data.periodLabel}.
               </TableCaption>
               <TableHeader>
                 <TableRow>
                   <TableHead>Sales</TableHead>
                   <TableHead className="text-right">Lead</TableHead>
                   <TableHead className="text-right">Follow-up</TableHead>
-                  <TableHead className="text-right">Quotation</TableHead>
+                  <TableHead className="text-right">Invoice</TableHead>
                   <TableHead className="text-right">Deal</TableHead>
                   <TableHead className="text-right">Omzet</TableHead>
                 </TableRow>
@@ -182,7 +182,7 @@ export default async function SalesPerformancePage({
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{row.leadCount}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{row.followUpCount}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">{row.quotationCount}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{row.invoiceCount}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{row.dealCount}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{formatCurrency(row.revenue)}</TableCell>
                   </TableRow>
@@ -193,7 +193,7 @@ export default async function SalesPerformancePage({
                   <TableCell>Total</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{data.totals.leadCount}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{data.totals.followUpCount}</TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">{data.totals.quotationCount}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{data.totals.invoiceCount}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{data.totals.dealCount}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{formatCurrency(data.totals.revenue)}</TableCell>
                 </TableRow>

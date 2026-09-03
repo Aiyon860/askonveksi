@@ -117,7 +117,7 @@ export const moveOpportunitySchema = z
   .object({
     opportunityId: entityIdSchema,
     version: requiredVersion,
-    stage: z.enum(["LEAD_BARU", "DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
+    stage: z.enum(["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
     cancelReason: optionalText(1000),
   })
   .superRefine((value, context) => {
@@ -135,7 +135,7 @@ export const recordFollowUpResultSchema = z.object({
   direction: z.enum(["INBOUND", "OUTBOUND"]),
   nextAction: optionalText(500),
   nextActionAt: optionalText(32),
-  stage: z.enum(["DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
+  stage: z.enum(["FOLLOW_UP", "NEGOSIASI", "LOST"]),
   cancelReason: optionalText(1000),
 }).superRefine((value, context) => {
   if (value.stage === "LOST") {
@@ -183,33 +183,90 @@ export const addCommunicationActivitySchema = z
     }
   });
 
-export const quotationItemSchema = z.object({
+export const invoiceItemSchema = z.object({
+  size: z.string().trim().min(1).max(40),
   description: z.string().trim().min(2).max(240),
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
 });
 
-export const quotationDraftSchema = z.object({
+export const invoiceDraftSchema = z.object({
   opportunityId: entityIdSchema,
-  quotationId: entityIdSchema.optional(),
+  purchaseOrderId: entityIdSchema,
+  invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
+  dueAt: optionalText(10),
+  notes: optionalText(2000),
   discountType: z.enum(["NONE", "NOMINAL", "PERCENTAGE"]),
   discountValue: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/),
-  items: z.array(quotationItemSchema).min(1, "Minimal satu item penawaran.").max(50),
+  items: z.array(invoiceItemSchema).min(1, "Minimal satu item penawaran.").max(50),
 });
 
-export const quotationIdSchema = z.object({
-  quotationId: entityIdSchema,
+export const invoiceIdSchema = z.object({
+  invoiceId: entityIdSchema,
   version: requiredVersion,
 });
 
-export const acceptQuotationSchema = quotationIdSchema.extend({
-  acceptedAt: z.string().trim().min(1, "Tanggal penerimaan wajib diisi."),
-  acceptanceReference: z.string().trim().min(3, "Referensi penerimaan wajib diisi.").max(2000),
+const purchaseOrderSizeSchema = z.object({
+  size: z.string().trim().min(1, "Ukuran wajib diisi.").max(40),
+  quantity: z.coerce.number().int().positive("Jumlah harus lebih dari nol.").max(10_000_000),
 });
 
-export const ACCEPTANCE_PROOF_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-export const ACCEPTANCE_PROOF_MAX_BYTES = 5 * 1024 * 1024;
+export const purchaseOrderDraftSchema = z.object({
+  opportunityId: entityIdSchema,
+  purchaseOrderId: entityIdSchema.optional(),
+  version: requiredVersion.optional(),
+  customerReference: optionalText(120),
+  productName: z.string().trim().min(2, "Jenis pakaian wajib diisi.").max(120),
+  material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
+  color: optionalText(120),
+  designNotes: optionalText(4000),
+  notes: optionalText(4000),
+  deadline: optionalText(10),
+  sizes: z.array(purchaseOrderSizeSchema).min(1, "Minimal satu ukuran.").max(50),
+}).superRefine((value, context) => {
+  const normalized = value.sizes.map((item) => item.size.toLocaleLowerCase("id-ID"));
+  if (new Set(normalized).size !== normalized.length) {
+    context.addIssue({ code: "custom", path: ["sizes"], message: "Ukuran tidak boleh duplikat." });
+  }
+});
+
+export const purchaseOrderIdSchema = z.object({
+  purchaseOrderId: entityIdSchema,
+  version: requiredVersion,
+});
+
+const moneyValueSchema = z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Nominal tidak valid.");
+
+export const dealPaymentTermSchema = z.object({
+  valueType: z.enum(["NOMINAL", "PERCENTAGE"]),
+  value: moneyValueSchema,
+  dueAt: z.string().trim().min(1, "Tanggal termin wajib diisi."),
+});
+
+export const completeDealSchema = z.object({
+  opportunityId: entityIdSchema,
+  opportunityVersion: requiredVersion,
+  purchaseOrderId: entityIdSchema,
+  invoiceId: entityIdSchema,
+  invoiceVersion: requiredVersion,
+  kind: z.enum(["LUNAS", "DP"]),
+  paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
+  initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
+  initialValue: moneyValueSchema,
+  terms: z.array(dealPaymentTermSchema).max(12),
+}).superRefine((value, context) => {
+  if (value.kind === "DP" && value.terms.length === 0) {
+    context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
+  }
+  if (value.kind === "LUNAS" && value.terms.length > 0) {
+    context.addIssue({ code: "custom", path: ["terms"], message: "Pembayaran lunas tidak memakai termin." });
+  }
+});
+
+export const PURCHASE_ORDER_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;
+export const PURCHASE_ORDER_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+export const PURCHASE_ORDER_ATTACHMENT_MAX_FILES = 5;
 
 export const reverseSalesOrderSchema = z.object({
   salesOrderId: entityIdSchema,

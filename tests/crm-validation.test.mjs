@@ -11,7 +11,9 @@ import {
   masterDataFieldsSchema,
   moveOpportunitySchema,
   publicLeadSchema,
-  quotationDraftSchema,
+  invoiceDraftSchema,
+  purchaseOrderDraftSchema,
+  completeDealSchema,
   recordFollowUpResultSchema,
   strongPasswordSchema,
   updateUserSchema,
@@ -102,7 +104,7 @@ test("field status yang tidak dirender boleh bernilai null dari FormData", () =>
     true,
   );
   assert.equal(
-    moveOpportunitySchema.safeParse({ ...base, stage: "PENAWARAN", cancelReason: null }).success,
+    moveOpportunitySchema.safeParse({ ...base, stage: "NEGOSIASI", cancelReason: null }).success,
     true,
   );
 });
@@ -151,17 +153,46 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
   assert.match(actionSource, /function customerFields[\s\S]+leadSourceId: formValue\(formData, "leadSourceId"\),[\s\S]+salesPicId: formValue\(formData, "salesPicId"\),/);
 });
 
-test("password kuat dan item quotation divalidasi pada boundary", () => {
+test("password kuat dan item invoice divalidasi pada boundary", () => {
   assert.equal(strongPasswordSchema.safeParse("password123").success, false);
   assert.equal(strongPasswordSchema.safeParse("Valid-Password-123!").success, true);
 
-  const invalidQuotation = quotationDraftSchema.safeParse({
+  const invalidInvoice = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
     discountType: "PERCENTAGE",
     discountValue: "10",
     items: [{ description: "Kaos", quantity: 0, unitPrice: "50000" }],
   });
-  assert.equal(invalidQuotation.success, false);
+  assert.equal(invalidInvoice.success, false);
+});
+
+test("PO mewajibkan satu bahan dan jumlah per ukuran yang unik", () => {
+  const valid = {
+    opportunityId: "cm123456789012",
+    productName: "Jersey tim",
+    material: "Dry fit",
+    sizes: [{ size: "M", quantity: 12 }, { size: "L", quantity: 18 }],
+  };
+  assert.equal(purchaseOrderDraftSchema.safeParse(valid).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ size: "M", quantity: 12 }, { size: "m", quantity: 2 }] }).success, false);
+});
+
+test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
+  const base = {
+    opportunityId: "cm123456789012",
+    opportunityVersion: "1",
+    purchaseOrderId: "cm123456789013",
+    invoiceId: "cm123456789014",
+    invoiceVersion: "1",
+    paidAt: "2026-09-03T10:00",
+    initialValueType: "NOMINAL",
+    initialValue: "500000",
+  };
+  assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
+  assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
+  assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
+  assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);
 });
 
 test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", () => {
@@ -307,18 +338,18 @@ test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async (
 
 test("normalisasi performa sales mempertahankan sales aktif dan data historis", () => {
   const result = finalizeSalesPerformanceRows([
-    { salesId: "andi", salesName: "Andi", isActive: true, leadCount: 0, followUpCount: 0, quotationCount: 0, dealCount: 0, revenue: "0" },
-    { salesId: "budi", salesName: "Budi", isActive: false, leadCount: 0, followUpCount: 0, quotationCount: 0, dealCount: 0, revenue: "0" },
-    { salesId: "cici", salesName: "Cici", isActive: false, leadCount: 1, followUpCount: 2, quotationCount: 1, dealCount: 1, revenue: "50.25" },
-    { salesId: "dodi", salesName: "Dodi", isActive: true, leadCount: 10, followUpCount: 3, quotationCount: 2, dealCount: 0, revenue: "0" },
-    { salesId: null, salesName: "Belum ada PIC", isActive: null, leadCount: 2, followUpCount: 0, quotationCount: 0, dealCount: 1, revenue: "100" },
+    { salesId: "andi", salesName: "Andi", isActive: true, leadCount: 0, followUpCount: 0, invoiceCount: 0, dealCount: 0, revenue: "0" },
+    { salesId: "budi", salesName: "Budi", isActive: false, leadCount: 0, followUpCount: 0, invoiceCount: 0, dealCount: 0, revenue: "0" },
+    { salesId: "cici", salesName: "Cici", isActive: false, leadCount: 1, followUpCount: 2, invoiceCount: 1, dealCount: 1, revenue: "50.25" },
+    { salesId: "dodi", salesName: "Dodi", isActive: true, leadCount: 10, followUpCount: 3, invoiceCount: 2, dealCount: 0, revenue: "0" },
+    { salesId: null, salesName: "Belum ada PIC", isActive: null, leadCount: 2, followUpCount: 0, invoiceCount: 0, dealCount: 1, revenue: "100" },
   ]);
 
   assert.deepEqual(result.rows.map((row) => row.salesId), [null, "cici", "dodi", "andi"]);
   assert.deepEqual(result.totals, {
     leadCount: 13,
     followUpCount: 5,
-    quotationCount: 3,
+    invoiceCount: 3,
     dealCount: 2,
     revenue: "150.25",
   });
@@ -342,11 +373,26 @@ test("flash message tidak membocorkan isi notifikasi ke URL", async () => {
   assert.match(responseSource, /sameSite:\s*"lax"/);
 });
 
-test("bukti persetujuan memakai bucket privat dengan batas file", async () => {
-  const sql = await readFile(new URL("../prisma/migrations/20260827120000_quotation_acceptance_proof/migration.sql", import.meta.url), "utf8");
-  assert.match(sql, /quotation-acceptance-proofs/);
-  assert.match(sql, /public, file_size_limit, allowed_mime_types/);
-  assert.match(sql, /false,[\s\S]+5242880/);
+test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260902000000_crm_purchase_order_invoice/migration.sql", import.meta.url), "utf8");
+  const storageScript = await readFile(new URL("../scripts/reset-crm-storage.mjs", import.meta.url), "utf8");
+  assert.match(sql, /CREATE TYPE "OpportunityStage" AS ENUM \('LEAD_BARU', 'FOLLOW_UP', 'NEGOSIASI', 'DEAL', 'LOST'\)/);
+  assert.match(sql, /CREATE TABLE "PurchaseOrder"/);
+  assert.match(sql, /CREATE TABLE "Invoice"/);
+  assert.match(sql, /CREATE TABLE "DealPayment"/);
+  assert.match(sql, /CREATE TABLE "PaymentTerm"/);
+  assert.match(sql, /PurchaseOrder_one_agreed_per_opportunity/);
+  assert.match(sql, /Invoice_one_issued_per_opportunity/);
+  assert.match(sql, /BEGIN;[\s\S]+COMMIT;/);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS "Opportunity_lost_reason_required"/);
+  assert.doesNotMatch(sql, /DELETE FROM storage\./);
+  assert.doesNotMatch(sql, /INSERT INTO storage\./);
+  assert.match(storageScript, /emptyBucket\(bucketId\)/);
+  assert.match(storageScript, /deleteBucket\(bucketId\)/);
+  assert.match(storageScript, /crm-po-designs/);
+  assert.match(storageScript, /public: false/);
+  assert.match(storageScript, /fileSizeLimit: 5 \* 1024 \* 1024/);
+  assert.match(sql, /REVOKE ALL ON TABLE "PurchaseOrder"[\s\S]+FROM anon, authenticated/);
 });
 
 test("parameter pagination dibatasi pada nilai aman", () => {

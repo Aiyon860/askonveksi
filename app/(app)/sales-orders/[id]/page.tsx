@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ImageIcon, LockKeyhole } from "lucide-react";
+import { ArrowLeft, LockKeyhole } from "lucide-react";
 
 import { reverseSalesOrderAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
@@ -24,7 +24,7 @@ export default async function SalesOrderPage({
   const { id } = await params;
   const [order, actor] = await Promise.all([getSalesOrderDetail(id), getCurrentActor()]);
   if (!order || !actor) notFound();
-  const canReverse = order.status === "ACTIVE" && (actor.role === "OWNER" || actor.role === "ADMIN");
+  const canReverse = order.status === "ACTIVE" && actor.role === "ADMIN";
 
   return (
     <>
@@ -44,17 +44,17 @@ export default async function SalesOrderPage({
           <Card>
             <CardHeader>
               <CardTitle>Item Sales Order</CardTitle>
-              <CardDescription>Snapshot immutable dari {order.quotationNo}.</CardDescription>
+              <CardDescription>Snapshot immutable dari {order.invoiceNo}.</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow><TableHead>Item</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Subtotal</TableHead></TableRow>
+                  <TableRow><TableHead>Ukuran</TableHead><TableHead>Item</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Subtotal</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
                   {order.items.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell>{item.description}</TableCell>
+                      <TableCell>{item.size}</TableCell><TableCell>{item.description}</TableCell>
                       <TableCell className="text-right font-mono">{item.quantity}</TableCell>
                       <TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell>
                       <TableCell className="text-right font-mono">{formatCurrency(item.subtotal)}</TableCell>
@@ -97,18 +97,18 @@ export default async function SalesOrderPage({
             <CardContent>
               <div className="flex items-start gap-3 rounded-lg border border-info/20 bg-info/5 p-3 text-info">
                 <LockKeyhole aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                <p className="text-sm leading-6">Dibentuk dari quotation revisi {order.quotation.revision}, diterima {formatDate(order.acceptedAt, true)} oleh {order.createdBy.name}.</p>
+                <p className="text-sm leading-6">Dibentuk dari {order.purchaseOrderNo} dan {order.invoiceNo} pada {formatDate(order.acceptedAt, true)} oleh {order.createdBy.name}.</p>
               </div>
-              <p className="text-sm leading-6"><span className="text-muted-foreground">Referensi:</span><br />{order.quotation.acceptanceReference ?? "-"}</p>
-              {order.quotation.acceptanceProofPath ? (
-                <Button
-                  variant="outline"
-                  render={<Link href={`/api/crm/quotation/${order.quotation.id}/acceptance-proof`} target="_blank" rel="noreferrer" />}
-                  nativeButton={false}
-                >
-                  <ImageIcon data-icon="inline-start" aria-hidden="true" />
-                  Lihat bukti persetujuan
-                </Button>
+              <dl className="grid gap-3 text-sm">
+                <div><dt className="text-xs text-muted-foreground">Jenis pembayaran</dt><dd className="mt-1 font-medium">{order.payment?.kind ?? "-"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Pembayaran awal</dt><dd className="mt-1 font-mono">{formatCurrency(order.payment?.initialAmount)}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Sisa terjadwal</dt><dd className="mt-1 font-mono">{formatCurrency(order.payment?.outstandingAmount)}</dd></div>
+              </dl>
+              {order.payment?.terms.length ? (
+                <Table>
+                  <TableHeader><TableRow><TableHead>Termin</TableHead><TableHead>Jatuh tempo</TableHead><TableHead className="text-right">Nominal</TableHead></TableRow></TableHeader>
+                  <TableBody>{order.payment.terms.map((term) => <TableRow key={term.position}><TableCell>{term.position + 1}</TableCell><TableCell>{formatDate(term.dueAt)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(term.amount)}</TableCell></TableRow>)}</TableBody>
+                </Table>
               ) : null}
               {order.status === "CANCELLED" ? (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -124,7 +124,7 @@ export default async function SalesOrderPage({
             <Card>
               <CardHeader>
                 <CardTitle>Batalkan Deal</CardTitle>
-                <CardDescription>Sales Order dibatalkan dan peluang kembali ke Penawaran. Riwayat Sales Order tetap tersimpan.</CardDescription>
+                <CardDescription>Sales Order dibatalkan dan peluang dipindahkan ke Lost. Riwayat transaksi tetap tersimpan.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form action={reverseSalesOrderAction}>
@@ -140,7 +140,7 @@ export default async function SalesOrderPage({
                       className="h-auto min-h-11 w-full whitespace-normal py-2.5 text-center leading-5"
                       pendingLabel="Membatalkan..."
                       confirmTitle="Batalkan Sales Order?"
-                      confirmDescription="Peluang akan kembali ke Penawaran. Sales Order tetap tersimpan sebagai riwayat dan tidak dapat diaktifkan kembali."
+                      confirmDescription="Peluang akan dipindahkan ke Lost. Sales Order tetap tersimpan sebagai riwayat dan tidak dapat diaktifkan kembali."
                       confirmLabel="Ya, batalkan Sales Order"
                     >
                       Batalkan Deal dan kembalikan peluang

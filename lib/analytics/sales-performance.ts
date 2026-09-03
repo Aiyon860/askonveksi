@@ -6,7 +6,7 @@ export type SalesPerformanceRow = {
   isActive: boolean | null;
   leadCount: number;
   followUpCount: number;
-  quotationCount: number;
+  invoiceCount: number;
   dealCount: number;
   revenue: string;
 };
@@ -15,7 +15,7 @@ function hasActivity(row: SalesPerformanceRow) {
   return (
     row.leadCount > 0 ||
     row.followUpCount > 0 ||
-    row.quotationCount > 0 ||
+    row.invoiceCount > 0 ||
     row.dealCount > 0 ||
     !new Prisma.Decimal(row.revenue).isZero()
   );
@@ -25,7 +25,7 @@ function compareRows(a: SalesPerformanceRow, b: SalesPerformanceRow) {
   const revenueComparison = new Prisma.Decimal(b.revenue).comparedTo(a.revenue);
   if (revenueComparison !== 0) return revenueComparison;
   if (b.dealCount !== a.dealCount) return b.dealCount - a.dealCount;
-  if (b.quotationCount !== a.quotationCount) return b.quotationCount - a.quotationCount;
+  if (b.invoiceCount !== a.invoiceCount) return b.invoiceCount - a.invoiceCount;
   if (b.followUpCount !== a.followUpCount) return b.followUpCount - a.followUpCount;
   if (b.leadCount !== a.leadCount) return b.leadCount - a.leadCount;
   return a.salesName.localeCompare(b.salesName, "id-ID");
@@ -40,14 +40,14 @@ export function finalizeSalesPerformanceRows(rawRows: SalesPerformanceRow[]) {
     (result, row) => ({
       leadCount: result.leadCount + row.leadCount,
       followUpCount: result.followUpCount + row.followUpCount,
-      quotationCount: result.quotationCount + row.quotationCount,
+      invoiceCount: result.invoiceCount + row.invoiceCount,
       dealCount: result.dealCount + row.dealCount,
       revenue: result.revenue.plus(row.revenue),
     }),
     {
       leadCount: 0,
       followUpCount: 0,
-      quotationCount: 0,
+      invoiceCount: 0,
       dealCount: 0,
       revenue: new Prisma.Decimal(0),
     },
@@ -58,7 +58,7 @@ export function finalizeSalesPerformanceRows(rawRows: SalesPerformanceRow[]) {
     totals: {
       leadCount: totals.leadCount,
       followUpCount: totals.followUpCount,
-      quotationCount: totals.quotationCount,
+      invoiceCount: totals.invoiceCount,
       dealCount: totals.dealCount,
       revenue: totals.revenue.toString(),
     },

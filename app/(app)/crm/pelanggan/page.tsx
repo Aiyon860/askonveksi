@@ -197,8 +197,9 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
     getCustomerFormOptions(),
   ]);
   const canChangeArchiveStatus = Boolean(actor && hasRole(actor.role, ARCHIVE_ROLES));
+  const canOperate = actor?.role === "ADMIN" || actor?.role === "SALES";
   const archived = segment === "archived";
-  const showActions = !archived || canChangeArchiveStatus;
+  const showActions = Boolean(canOperate && (!archived || canChangeArchiveStatus));
 
   if (page > pageCount) {
     redirect(tableHref(state, { page: pageCount }));
@@ -263,7 +264,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
             <p className="text-xs text-muted-foreground">
               <strong className="font-medium text-foreground">{total}</strong> {segment === "repeat" ? "potensi repeat" : segment === "inactive" ? "customer tidak aktif" : archived ? "customer diarsipkan" : "customer aktif"}
             </p>
-            <NewCustomerForm key={`new-${segment}-${query}-${total}`} {...formOptions} />
+            {canOperate ? <NewCustomerForm key={`new-${segment}-${query}-${total}`} {...formOptions} /> : null}
           </div>
         </div>
 
@@ -343,7 +344,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                       {showActions ? (
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {!archived ? (
+                            {!archived && canOperate ? (
                               <EditCustomerForm
                                 key={`edit-${customer.id}-${customer.version}`}
                                 customer={customer}

@@ -92,7 +92,7 @@ export default function LandingPage() {
       <section className="border-b bg-muted/50" aria-labelledby="clients-title">
         <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
           <p id="clients-title" className="text-center text-sm font-medium text-muted-foreground">
-            Logo klien — placeholder
+            Logo klien: placeholder
           </p>
           <div className="mt-6 grid grid-cols-2 items-center gap-x-6 gap-y-5 sm:grid-cols-5">
             {clients.map((client) => (

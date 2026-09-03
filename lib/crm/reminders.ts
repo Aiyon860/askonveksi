@@ -102,7 +102,7 @@ export async function rearmCustomerRemindersAfterLost(
   const openOpportunityCount = await tx.opportunity.count({
     where: {
       customerId,
-      stage: { in: ["LEAD_BARU", "DIHUBUNGI", "KEBUTUHAN_TERGALI", "PENAWARAN", "FOLLOW_UP", "NEGOSIASI"] },
+      stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
     },
   });
   if (openOpportunityCount > 0) return;

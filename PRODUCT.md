@@ -9,8 +9,8 @@ web
 ## Users
 
 - Owner, yang membutuhkan ringkasan kondisi bisnis dan visibilitas lintas divisi tanpa harus meminta laporan satu per satu.
-- Admin/CS, yang mengelola customer, lead, dan order.
-- Sales/Marketing, yang mengelola lead, follow-up, penawaran, dan progres menuju deal.
+- Admin/CS, yang mengelola customer, lead, dokumen pesanan, pembayaran awal, dan Deal.
+- Sales/Marketing, yang mengelola lead, follow-up, PO customer, invoice konveksi, dan progres negosiasi.
 - Finance, yang nantinya mengelola invoice, pembayaran, serta transaksi keuangan.
 - Purchasing, yang nantinya mengelola supplier, purchase request, purchase order, dan penerimaan barang.
 - Produksi, yang nantinya mengelola work order dan progres produksi.
@@ -35,8 +35,11 @@ Produk dirancang khusus mengikuti alur kerja bisnis konveksi, termasuk detail pe
 ## Operating Context
 
 - Lead berasal dari input internal maupun formulir landing page, kemudian masuk ke CRM sebagai Lead Baru.
-- Perjalanan customer dikelola melalui Lead Baru, Contacted, Follow Up, Penawaran, Negosiasi, Deal, Order, hingga Selesai.
-- Customer yang sudah menyepakati pesanan dibuatkan Sales Order dengan produk, variasi, ukuran, warna, kuantitas, harga, desain, deadline, dan catatan produksi.
+- Satu kartu CRM mewakili satu peluang dengan alur Lead Baru, Follow Up, Negosiasi, Deal, atau Lost.
+- PO customer mulai dicatat saat Negosiasi dan memuat satu bahan, desain, ukuran, serta jumlah per ukuran.
+- Invoice konveksi mengikuti ukuran dan jumlah PO Disepakati, lalu menambahkan harga per ukuran.
+- Admin memindahkan peluang ke Deal setelah pembayaran Lunas atau DP dicatat. DP memiliki jadwal termin sisa yang totalnya harus sama dengan nilai invoice.
+- Sales Order dibentuk sebagai snapshot immutable dari PO, invoice, dan pembayaran saat Deal.
 - Owner menggunakan dashboard sebagai halaman pertama setelah login untuk memantau metrik bisnis, sales, order aktif, serta kondisi produksi.
 - Sistem digunakan oleh beberapa divisi dengan tanggung jawab dan tingkat akses berbeda.
 - Bahasa antarmuka dan konten produk adalah Bahasa Indonesia.
@@ -57,9 +60,9 @@ Persyaratan fondasi produk:
 - Role-based access sesuai struktur pengguna.
 - Audit log untuk mencatat siapa melakukan apa dan kapan.
 
-Kemampuan CRM mencakup pencarian dan filter customer, reminder follow-up, catatan sales, riwayat order beserta tanggal, total transaksi, order aktif, dan tanggal order terakhir. Riwayat komunikasi lengkap tidak termasuk kebutuhan saat ini.
+Kemampuan CRM mencakup pencarian dan filter customer, reminder follow-up, riwayat komunikasi, revisi PO dan invoice, pencatatan pembayaran Deal, riwayat order beserta tanggal, total transaksi, order aktif, dan tanggal order terakhir.
 
-Fase lanjutan mencakup invoice, pembayaran, piutang, purchasing, produksi, QC, packing, pengiriman, keuangan, HR, absensi, notifikasi, dan laporan otomatis. Purchasing ditunda dari fokus awal. Payroll tidak termasuk versi pertama.
+Fase lanjutan mencakup pelunasan termin aktual, piutang, purchasing internal, produksi, QC, packing, pengiriman, keuangan, HR, absensi, notifikasi, dan laporan otomatis. Purchase Order pada CRM saat ini berarti permintaan pesanan dari customer, bukan PO ke supplier. Payroll tidak termasuk versi pertama.
 
 Workflow produksi nantinya harus dapat dikonfigurasi. Data dan status antar-modul harus tetap terhubung dalam satu sumber data. Akses dan perubahan data sensitif harus dibatasi berdasarkan peran, dan transaksi yang sudah final tidak boleh bebas diubah.
 

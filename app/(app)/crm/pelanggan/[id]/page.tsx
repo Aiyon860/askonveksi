@@ -47,7 +47,9 @@ export default async function CustomerDetailPage({
   ]);
   if (!customer || !actor) notFound();
   if (historyPage > communicationHistory.pageCount) redirect(`/crm/pelanggan/${id}?historyPage=${communicationHistory.pageCount}#communication-history`);
-  const canArchive = (actor.role === "OWNER" || actor.role === "ADMIN") && !customer.archivedAt;
+  const canOperate = actor.role === "ADMIN" || actor.role === "SALES";
+  const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
+  const canArchive = canOperate && !customer.archivedAt;
   const salesOrders = customer.opportunities
     .flatMap((opportunity) =>
       opportunity.salesOrders.map((order) => ({
@@ -129,7 +131,7 @@ export default async function CustomerDetailPage({
             page={communicationHistory.page}
             pageCount={communicationHistory.pageCount}
             pathname={`/crm/pelanggan/${customer.id}`}
-            form={!customer.archivedAt ? (
+            form={canOperate && !customer.archivedAt ? (
               <CommunicationEntryForm
                 context="customer"
                 customerId={customer.id}
@@ -168,7 +170,7 @@ export default async function CustomerDetailPage({
                           <ul className="flex flex-col gap-2" aria-label={`Item ${order.salesOrderNo}`}>
                             {order.items.map((item) => (
                               <li key={item.id} className="flex items-start justify-between gap-4 text-sm">
-                                <span className="min-w-0 wrap-break-word">{item.description}</span>
+                                <span className="min-w-0 wrap-break-word">{item.description} · {item.size}</span>
                                 <span className="shrink-0 font-mono tabular-nums">{item.quantity} pcs</span>
                               </li>
                             ))}
@@ -194,7 +196,7 @@ export default async function CustomerDetailPage({
                 <Empty className="p-8">
                   <EmptyHeader>
                     <EmptyTitle>Belum ada order</EmptyTitle>
-                    <EmptyDescription>Riwayat akan muncul setelah quotation customer diterima dan Sales Order terbentuk.</EmptyDescription>
+                    <EmptyDescription>Riwayat akan muncul setelah pembayaran Deal dicatat dan Sales Order terbentuk.</EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               )}
@@ -245,7 +247,7 @@ export default async function CustomerDetailPage({
           <Card>
             <CardHeader>
               <CardTitle>Data customer</CardTitle>
-              <CardDescription>Kontak ini disalin sebagai snapshot ketika quotation diterbitkan.</CardDescription>
+              <CardDescription>Kontak ini disalin sebagai snapshot ketika invoice diterbitkan.</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={updateCustomerAction}>
@@ -255,50 +257,50 @@ export default async function CustomerDetailPage({
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field>
                       <FieldLabel htmlFor="name" required>Nama customer</FieldLabel>
-                      <Input id="name" name="name" required minLength={2} maxLength={160} defaultValue={customer.name} disabled={Boolean(customer.archivedAt)} />
+                      <Input id="name" name="name" required minLength={2} maxLength={160} defaultValue={customer.name} disabled={customerFieldsDisabled} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="companyName">Perusahaan/komunitas</FieldLabel>
-                      <Input id="companyName" name="companyName" maxLength={160} defaultValue={customer.companyName ?? ""} disabled={Boolean(customer.archivedAt)} />
+                      <Input id="companyName" name="companyName" maxLength={160} defaultValue={customer.companyName ?? ""} disabled={customerFieldsDisabled} />
                     </Field>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     <Field>
                       <FieldLabel htmlFor="customerTypeId" required>Jenis customer</FieldLabel>
-                      <NativeSelect id="customerTypeId" name="customerTypeId" required defaultValue={customer.customerTypeId} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                      <NativeSelect id="customerTypeId" name="customerTypeId" required defaultValue={customer.customerTypeId} className="w-full" disabled={customerFieldsDisabled}>
                         {formOptions.customerTypes.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="leadSourceId">Sumber lead</FieldLabel>
-                      <NativeSelect id="leadSourceId" name="leadSourceId" defaultValue={customer.leadSourceId ?? ""} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                      <NativeSelect id="leadSourceId" name="leadSourceId" defaultValue={customer.leadSourceId ?? ""} className="w-full" disabled={customerFieldsDisabled}>
                         <NativeSelectOption value="">Belum ditentukan</NativeSelectOption>
                         {formOptions.leadSources.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="salesPicId">Sales/PIC</FieldLabel>
-                      <NativeSelect id="salesPicId" name="salesPicId" defaultValue={customer.salesPicId ?? ""} className="w-full" disabled={Boolean(customer.archivedAt)}>
+                      <NativeSelect id="salesPicId" name="salesPicId" defaultValue={customer.salesPicId ?? ""} className="w-full" disabled={customerFieldsDisabled}>
                         <NativeSelectOption value="">Belum ditugaskan</NativeSelectOption>
                         {customer.salesPic && !customer.salesPic.isActive && !formOptions.salesUsers.some((item) => item.id === customer.salesPicId) ? <NativeSelectOption value={customer.salesPic.id}>{customer.salesPic.name} (nonaktif)</NativeSelectOption> : null}
                         {formOptions.salesUsers.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
                       </NativeSelect>
                     </Field>
                   </div>
-                  <FieldSet disabled={Boolean(customer.archivedAt)}>
+                  <FieldSet disabled={customerFieldsDisabled}>
                     <FieldLegend variant="label" required>Kontak customer</FieldLegend>
                     <div className="grid gap-4 sm:grid-cols-3">
                       <Field>
                         <FieldLabel htmlFor="whatsapp">WhatsApp</FieldLabel>
-                        <Input id="whatsapp" name="whatsapp" maxLength={32} defaultValue={customer.whatsapp ?? ""} disabled={Boolean(customer.archivedAt)} />
+                        <Input id="whatsapp" name="whatsapp" maxLength={32} defaultValue={customer.whatsapp ?? ""} disabled={customerFieldsDisabled} />
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="email">Email</FieldLabel>
-                        <Input id="email" name="email" type="email" maxLength={320} defaultValue={customer.email ?? ""} disabled={Boolean(customer.archivedAt)} />
+                        <Input id="email" name="email" type="email" maxLength={320} defaultValue={customer.email ?? ""} disabled={customerFieldsDisabled} />
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="instagram">Instagram</FieldLabel>
-                        <Input id="instagram" name="instagram" maxLength={80} defaultValue={customer.instagram ?? ""} disabled={Boolean(customer.archivedAt)} />
+                        <Input id="instagram" name="instagram" maxLength={80} defaultValue={customer.instagram ?? ""} disabled={customerFieldsDisabled} />
                       </Field>
                     </div>
                     <FieldDescription>Minimal satu kontak harus tetap terisi.</FieldDescription>
@@ -306,19 +308,19 @@ export default async function CustomerDetailPage({
                   <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
                     <Field>
                       <FieldLabel htmlFor="city">Kota</FieldLabel>
-                      <Input id="city" name="city" maxLength={120} defaultValue={customer.city ?? ""} disabled={Boolean(customer.archivedAt)} />
+                      <Input id="city" name="city" maxLength={120} defaultValue={customer.city ?? ""} disabled={customerFieldsDisabled} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="address">Alamat</FieldLabel>
-                      <Textarea id="address" name="address" maxLength={2000} rows={3} defaultValue={customer.address ?? ""} disabled={Boolean(customer.archivedAt)} />
+                      <Textarea id="address" name="address" maxLength={2000} rows={3} defaultValue={customer.address ?? ""} disabled={customerFieldsDisabled} />
                     </Field>
                   </div>
                   <Field>
                     <FieldLabel htmlFor="notes">Catatan umum</FieldLabel>
-                    <Textarea id="notes" name="notes" maxLength={4000} rows={4} defaultValue={customer.notes ?? ""} disabled={Boolean(customer.archivedAt)} />
+                    <Textarea id="notes" name="notes" maxLength={4000} rows={4} defaultValue={customer.notes ?? ""} disabled={customerFieldsDisabled} />
                     <FieldDescription>Informasi yang berlaku untuk profil customer, bukan catatan satu peluang.</FieldDescription>
                   </Field>
-                  {!customer.archivedAt ? <SubmitButton pendingLabel="Memperbarui...">Simpan perubahan</SubmitButton> : null}
+                  {canOperate && !customer.archivedAt ? <SubmitButton pendingLabel="Memperbarui...">Simpan perubahan</SubmitButton> : null}
                 </FieldGroup>
               </form>
             </CardContent>
@@ -346,7 +348,7 @@ export default async function CustomerDetailPage({
         </div>
 
         <aside className="flex flex-col gap-6">
-          {!customer.archivedAt ? (
+          {canOperate && !customer.archivedAt ? (
             <Card id="repeat-order">
               <CardHeader>
                 <CardTitle>Repeat order / peluang baru</CardTitle>

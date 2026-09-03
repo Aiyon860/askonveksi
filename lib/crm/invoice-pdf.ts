@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-type PdfQuotation = {
-  quotationNo: string;
+type PdfInvoice = {
+  invoiceNo: string;
   revision: number;
   status: string;
   snapshotCustomerName: string;
@@ -20,7 +20,11 @@ type PdfQuotation = {
   total: { toString(): string };
   createdAt: Date;
   issuedAt: Date | null;
+  dueAt: Date | null;
+  notes: string | null;
+  purchaseOrder: { purchaseOrderNo: string };
   items: Array<{
+    size: string;
     description: string;
     quantity: number;
     unitPrice: { toString(): string };
@@ -44,7 +48,7 @@ function date(value: Date) {
 }
 
 function statusLabel(status: string) {
-  return ({ DRAFT: "Draft", ISSUED: "Terbit", ACCEPTED: "Diterima", SUPERSEDED: "Digantikan" } as Record<string, string>)[status] ?? status;
+  return ({ DRAFT: "Draft", ISSUED: "Terbit", SUPERSEDED: "Digantikan" } as Record<string, string>)[status] ?? status;
 }
 
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number) {
@@ -63,7 +67,7 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number) {
   return lines.length ? lines : [""];
 }
 
-export async function createQuotationPdf(quotation: PdfQuotation) {
+export async function createInvoicePdf(invoice: PdfInvoice) {
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
@@ -76,9 +80,9 @@ export async function createQuotationPdf(quotation: PdfQuotation) {
     page = document.addPage([A4.width, A4.height]);
     y = A4.height - margin;
     page.drawText("AS Konveksi", { x: margin, y: 24, size: 8, font: regular, color: rgb(0.45, 0.45, 0.45) });
-    const footerQuotation = `Quotation ${safeText(quotation.quotationNo)}`;
-    page.drawText(footerQuotation, {
-      x: A4.width - margin - regular.widthOfTextAtSize(footerQuotation, 8),
+    const footerInvoice = `Invoice ${safeText(invoice.invoiceNo)}`;
+    page.drawText(footerInvoice, {
+      x: A4.width - margin - regular.widthOfTextAtSize(footerInvoice, 8),
       y: 24,
       size: 8,
       font: regular,
@@ -102,29 +106,32 @@ export async function createQuotationPdf(quotation: PdfQuotation) {
   addPage();
   const scaledLogo = logo.scaleToFit(150, 44);
   page.drawImage(logo, { x: margin, y: y - scaledLogo.height, width: scaledLogo.width, height: scaledLogo.height });
-  text("QUOTATION", A4.width - margin - 116, 18, bold);
+  text("INVOICE", A4.width - margin - 116, 18, bold);
   y -= 25;
-  text(quotation.quotationNo, A4.width - margin - 116, 10, regular, rgb(0.35, 0.35, 0.35));
+  text(invoice.invoiceNo, A4.width - margin - 116, 10, regular, rgb(0.35, 0.35, 0.35));
   y -= 15;
-  text(`Status: ${statusLabel(quotation.status)}`, A4.width - margin - 116, 9, bold);
+  text(`Status: ${statusLabel(invoice.status)}`, A4.width - margin - 116, 9, bold);
   y -= 48;
 
   text("Ditujukan kepada", margin, 9, bold, rgb(0.35, 0.35, 0.35));
-  text(`Tanggal: ${date(quotation.issuedAt ?? quotation.createdAt)}`, 340, 9);
+  text(`Tanggal: ${date(invoice.issuedAt ?? invoice.createdAt)}`, 340, 9);
   y -= 18;
-  text(quotation.snapshotCustomerName, margin, 12, bold);
-  text(`Revisi: ${quotation.revision}`, 340, 9);
+  text(invoice.snapshotCustomerName, margin, 12, bold);
+  text(`Revisi: ${invoice.revision}`, 340, 9);
+  y -= 14;
+  text(`PO: ${safeText(invoice.purchaseOrder.purchaseOrderNo)}`, 340, 9);
+  if (invoice.dueAt) { y -= 14; text(`Jatuh tempo: ${date(invoice.dueAt)}`, 340, 9); }
   y -= 16;
-  if (quotation.snapshotCompanyName) { text(quotation.snapshotCompanyName, margin, 9); y -= 14; }
-  const contacts = [quotation.snapshotWhatsapp, quotation.snapshotEmail, quotation.snapshotInstagram ? `@${quotation.snapshotInstagram}` : null].filter(Boolean).join(" · ");
+  if (invoice.snapshotCompanyName) { text(invoice.snapshotCompanyName, margin, 9); y -= 14; }
+  const contacts = [invoice.snapshotWhatsapp, invoice.snapshotEmail, invoice.snapshotInstagram ? `@${invoice.snapshotInstagram}` : null].filter(Boolean).join(" · ");
   if (contacts) { text(contacts, margin, 9, regular, rgb(0.35, 0.35, 0.35)); y -= 14; }
-  if (quotation.snapshotAddress) {
-    for (const line of wrap(quotation.snapshotAddress, regular, 9, 285)) { text(line, margin, 9, regular, rgb(0.35, 0.35, 0.35)); y -= 12; }
+  if (invoice.snapshotAddress) {
+    for (const line of wrap(invoice.snapshotAddress, regular, 9, 285)) { text(line, margin, 9, regular, rgb(0.35, 0.35, 0.35)); y -= 12; }
   }
   y -= 20;
 
   const tableRight = A4.width - margin;
-  const columns = { item: margin, qtyRight: 375, priceRight: 465, subtotalRight: tableRight };
+  const columns = { size: margin, item: 92, qtyRight: 375, priceRight: 465, subtotalRight: tableRight };
   const headerHorizontalInset = 8;
   ensure(32);
   page.drawRectangle({
@@ -134,17 +141,19 @@ export async function createQuotationPdf(quotation: PdfQuotation) {
     height: 22,
     color: rgb(0.94, 0.94, 0.94),
   });
+  text("Ukuran", columns.size, 9, bold);
   text("Item", columns.item, 9, bold);
   rightText("Qty", columns.qtyRight, 9, bold);
   rightText("Harga", columns.priceRight, 9, bold);
   rightText("Subtotal", columns.subtotalRight, 9, bold);
   y -= 28;
 
-  quotation.items.forEach((item) => {
-    const lines = wrap(item.description, regular, 9, 275);
+  invoice.items.forEach((item) => {
+    const lines = wrap(item.description, regular, 9, 225);
     const rowHeight = Math.max(24, lines.length * 12 + 8);
     ensure(rowHeight);
     const rowTop = y;
+    page.drawText(safeText(item.size), { x: columns.size, y: rowTop, size: 9, font: regular });
     lines.forEach((line, index) => page.drawText(line, { x: columns.item, y: rowTop - index * 12, size: 9, font: regular }));
     const quantity = String(item.quantity);
     const unitPrice = currency(item.unitPrice);
@@ -160,25 +169,25 @@ export async function createQuotationPdf(quotation: PdfQuotation) {
   y -= 8;
   const summaryX = 340;
   text("Subtotal", summaryX, 9);
-  rightText(currency(quotation.subtotal), columns.subtotalRight, 9);
+  rightText(currency(invoice.subtotal), columns.subtotalRight, 9);
   y -= 18;
   text("Diskon", summaryX, 9);
-  const discount = quotation.discountType === "PERCENTAGE" ? `${quotation.discountValue.toString()}%` : currency(quotation.discountValue);
+  const discount = invoice.discountType === "PERCENTAGE" ? `${invoice.discountValue.toString()}%` : currency(invoice.discountValue);
   rightText(discount, columns.subtotalRight, 9);
   y -= 22;
   page.drawLine({ start: { x: summaryX, y: y + 12 }, end: { x: A4.width - margin, y: y + 12 }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
   text("TOTAL", summaryX, 11, bold);
-  rightText(currency(quotation.total), columns.subtotalRight, 11, bold);
+  rightText(currency(invoice.total), columns.subtotalRight, 11, bold);
   y -= 52;
   ensure(56);
   text("Catatan", margin, 9, bold);
   y -= 16;
-  for (const line of wrap("Quotation ini dibuat berdasarkan rincian di atas. Mohon periksa ukuran, jumlah, harga, dan detail pekerjaan sebelum memberikan persetujuan.", regular, 9, A4.width - margin * 2)) {
+  for (const line of wrap(invoice.notes ?? "Invoice ini dibuat berdasarkan PO yang telah disepakati. Mohon periksa ukuran, jumlah, dan harga sebelum melakukan pembayaran.", regular, 9, A4.width - margin * 2)) {
     text(line, margin, 9, regular, rgb(0.35, 0.35, 0.35));
     y -= 12;
   }
 
-  document.setTitle(`Quotation ${quotation.quotationNo}`);
+  document.setTitle(`Invoice ${invoice.invoiceNo}`);
   document.setAuthor("AS Konveksi");
   return document.save();
 }

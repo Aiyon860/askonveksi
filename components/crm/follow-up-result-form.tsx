@@ -26,7 +26,7 @@ type FollowUpItem = {
 };
 
 export function FollowUpResultForm({ opportunity }: { opportunity: FollowUpItem }) {
-  const fallbackStage = opportunity.stage === "LEAD_BARU" ? "DIHUBUNGI" : opportunity.stage;
+  const fallbackStage = opportunity.stage === "LEAD_BARU" ? "FOLLOW_UP" : opportunity.stage;
   const [stage, setStage] = useState<OpportunityStage>(fallbackStage);
   const closesOpportunity = stage === "LOST";
 

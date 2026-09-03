@@ -1,5 +1,5 @@
 export function formatCurrency(value: { toString(): string } | string | number | null | undefined) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
 
   const amount = Number(typeof value === "object" ? value.toString() : value);
   return new Intl.NumberFormat("id-ID", {
@@ -18,7 +18,7 @@ export function formatPercentage(value: number) {
 }
 
 export function formatDate(value: Date | string | null | undefined, includeTime = false) {
-  if (!value) return "—";
+  if (!value) return "-";
 
   return new Intl.DateTimeFormat("id-ID", {
     dateStyle: "medium",

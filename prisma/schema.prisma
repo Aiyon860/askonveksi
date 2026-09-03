@@ -14,9 +14,6 @@ enum AppRole {
 
 enum OpportunityStage {
   LEAD_BARU
-  DIHUBUNGI
-  KEBUTUHAN_TERGALI
-  PENAWARAN
   FOLLOW_UP
   NEGOSIASI
   DEAL
@@ -35,11 +32,26 @@ enum DiscountType {
   PERCENTAGE
 }
 
-enum QuotationStatus {
+enum PurchaseOrderStatus {
+  DRAFT
+  AGREED
+  SUPERSEDED
+}
+
+enum InvoiceStatus {
   DRAFT
   ISSUED
-  ACCEPTED
   SUPERSEDED
+}
+
+enum PaymentKind {
+  LUNAS
+  DP
+}
+
+enum PaymentValueType {
+  NOMINAL
+  PERCENTAGE
 }
 
 enum SalesOrderStatus {
@@ -74,7 +86,8 @@ enum CommunicationDirection {
 
 enum CommunicationSystemEvent {
   STAGE_CHANGED
-  QUOTATION_ISSUED
+  PURCHASE_ORDER_AGREED
+  INVOICE_ISSUED
   DEAL_ORDER_CREATED
   SALES_ORDER_CANCELLED
 }
@@ -89,7 +102,9 @@ model AppUser {
   mustChangePassword       Boolean                   @default(true)
   communicationActivities  CommunicationActivity[]
   customerReminderReceipts CustomerReminderReceipt[]
-  quotations               Quotation[]               @relation("QuotationCreatedBy")
+  purchaseOrders           PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
+  invoices                 Invoice[]                 @relation("InvoiceCreatedBy")
+  dealPayments             DealPayment[]             @relation("DealPaymentCreatedBy")
   salesOrders              SalesOrder[]              @relation("SalesOrderCreatedBy")
   cancelledOrders          SalesOrder[]              @relation("SalesOrderCancelledBy")
   auditEvents              AuditEvent[]
@@ -189,7 +204,8 @@ model Opportunity {
   leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
   salesPic                AppUser?                @relation("OpportunitySalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
   communicationActivities CommunicationActivity[]
-  quotations              Quotation[]
+  purchaseOrders          PurchaseOrder[]
+  invoices                Invoice[]
   salesOrders             SalesOrder[]
   createdAt               DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
@@ -235,63 +251,123 @@ model CommunicationActivity {
   @@index([authorId, occurredAt])
 }
 
-model Quotation {
-  id                   String          @id @default(cuid())
-  quotationNo          String          @unique @db.VarChar(28)
-  opportunityId        String
-  revision             Int
-  status               QuotationStatus @default(DRAFT)
-  snapshotCustomerName String          @db.VarChar(160)
-  snapshotCompanyName  String?         @db.VarChar(160)
-  snapshotWhatsapp     String?         @db.VarChar(32)
-  snapshotEmail        String?         @db.VarChar(320)
-  snapshotInstagram    String?         @db.VarChar(80)
-  snapshotAddress      String?         @db.Text
-  discountType         DiscountType    @default(NONE)
-  discountValue        Decimal         @default(0) @db.Decimal(18, 2)
-  subtotal             Decimal         @db.Decimal(18, 2)
-  total                Decimal         @db.Decimal(18, 2)
-  issuedAt             DateTime?       @db.Timestamptz(3)
-  acceptedAt           DateTime?       @db.Timestamptz(3)
-  acceptanceReference  String?         @db.Text
-  acceptanceProofPath  String?         @db.VarChar(500)
-  acceptanceProofName  String?         @db.VarChar(255)
-  acceptanceProofType  String?         @db.VarChar(64)
-  version              Int             @default(1)
-  createdById          String
-  opportunity          Opportunity     @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  createdBy            AppUser         @relation("QuotationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  items                QuotationItem[]
-  salesOrder           SalesOrder?
-  createdAt            DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime        @updatedAt @db.Timestamptz(3)
+model PurchaseOrder {
+  id                String                    @id @default(cuid())
+  purchaseOrderNo   String                    @unique @db.VarChar(28)
+  customerReference String?                   @db.VarChar(120)
+  opportunityId     String
+  revision          Int
+  status            PurchaseOrderStatus       @default(DRAFT)
+  productName       String                    @db.VarChar(120)
+  material          String                    @db.VarChar(120)
+  color             String?                   @db.VarChar(120)
+  designNotes       String?                   @db.Text
+  notes             String?                   @db.Text
+  deadline          DateTime?                 @db.Date
+  agreedAt          DateTime?                 @db.Timestamptz(3)
+  version           Int                       @default(1)
+  createdById       String
+  opportunity       Opportunity               @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  createdBy         AppUser                   @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  sizes             PurchaseOrderSize[]
+  attachments       PurchaseOrderAttachment[]
+  invoices          Invoice[]
+  salesOrder        SalesOrder?
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
 
   @@unique([opportunityId, revision])
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
 }
 
-model QuotationItem {
-  id          String    @id @default(cuid())
-  quotationId String
-  position    Int
-  description String    @db.VarChar(240)
-  quantity    Int
-  unitPrice   Decimal   @db.Decimal(18, 2)
-  subtotal    Decimal   @db.Decimal(18, 2)
-  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Restrict)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+model PurchaseOrderSize {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  position        Int
+  size            String        @db.VarChar(40)
+  quantity        Int
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
 
-  @@unique([quotationId, position])
-  @@index([quotationId])
+  @@unique([purchaseOrderId, position])
+  @@unique([purchaseOrderId, size])
+  @@index([purchaseOrderId])
+}
+
+model PurchaseOrderAttachment {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  path            String        @db.VarChar(500)
+  originalName    String        @db.VarChar(255)
+  contentType     String        @db.VarChar(64)
+  sizeBytes       Int
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([purchaseOrderId, createdAt])
+}
+
+model Invoice {
+  id                   String        @id @default(cuid())
+  invoiceNo            String        @unique @db.VarChar(28)
+  opportunityId        String
+  purchaseOrderId      String
+  revision             Int
+  status               InvoiceStatus @default(DRAFT)
+  snapshotCustomerName String        @db.VarChar(160)
+  snapshotCompanyName  String?       @db.VarChar(160)
+  snapshotWhatsapp     String?       @db.VarChar(32)
+  snapshotEmail        String?       @db.VarChar(320)
+  snapshotInstagram    String?       @db.VarChar(80)
+  snapshotAddress      String?       @db.Text
+  discountType         DiscountType  @default(NONE)
+  discountValue        Decimal       @default(0) @db.Decimal(18, 2)
+  subtotal             Decimal       @db.Decimal(18, 2)
+  total                Decimal       @db.Decimal(18, 2)
+  issuedAt             DateTime?     @db.Timestamptz(3)
+  dueAt                DateTime?     @db.Date
+  notes                String?       @db.Text
+  version              Int           @default(1)
+  createdById          String
+  opportunity          Opportunity   @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  purchaseOrder        PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  createdBy            AppUser       @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  items                InvoiceItem[]
+  salesOrder           SalesOrder?
+  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@unique([opportunityId, revision])
+  @@index([opportunityId, status])
+  @@index([purchaseOrderId, status])
+  @@index([createdById, createdAt])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  position    Int
+  size        String   @db.VarChar(40)
+  description String   @db.VarChar(240)
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(18, 2)
+  subtotal    Decimal  @db.Decimal(18, 2)
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([invoiceId, position])
+  @@unique([invoiceId, size])
+  @@index([invoiceId])
 }
 
 model SalesOrder {
   id                   String             @id @default(cuid())
   salesOrderNo         String             @unique @db.VarChar(28)
   opportunityId        String
-  quotationId          String             @unique
-  quotationNo          String             @db.VarChar(28)
+  purchaseOrderId      String             @unique
+  invoiceId            String             @unique
+  purchaseOrderNo      String             @db.VarChar(28)
+  invoiceNo            String             @db.VarChar(28)
   status               SalesOrderStatus   @default(ACTIVE)
   snapshotCustomerName String             @db.VarChar(160)
   snapshotCompanyName  String?            @db.VarChar(160)
@@ -309,10 +385,12 @@ model SalesOrder {
   cancelReason         String?            @db.Text
   cancelledById        String?
   opportunity          Opportunity        @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  quotation            Quotation          @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  purchaseOrder        PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  invoice              Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   createdBy            AppUser            @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   cancelledBy          AppUser?           @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
   items                SalesOrderItem[]
+  payment              DealPayment?
   customerReminders    CustomerReminder[] @relation("CustomerReminderSourceOrder")
   createdAt            DateTime           @default(now()) @db.Timestamptz(3)
 
@@ -321,10 +399,43 @@ model SalesOrder {
   @@index([status, createdAt])
 }
 
+model DealPayment {
+  id                String           @id @default(cuid())
+  salesOrderId      String           @unique
+  kind              PaymentKind
+  paidAt            DateTime         @db.Timestamptz(3)
+  initialValueType  PaymentValueType
+  initialValue      Decimal          @db.Decimal(18, 2)
+  initialAmount     Decimal          @db.Decimal(18, 2)
+  outstandingAmount Decimal          @db.Decimal(18, 2)
+  createdById       String
+  salesOrder        SalesOrder       @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  createdBy         AppUser          @relation("DealPaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  terms             PaymentTerm[]
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@index([createdById, createdAt])
+}
+
+model PaymentTerm {
+  id        String           @id @default(cuid())
+  paymentId String
+  position  Int
+  valueType PaymentValueType
+  value     Decimal          @db.Decimal(18, 2)
+  amount    Decimal          @db.Decimal(18, 2)
+  dueAt     DateTime         @db.Date
+  payment   DealPayment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, position])
+  @@index([paymentId, dueAt])
+}
+
 model SalesOrderItem {
   id           String     @id @default(cuid())
   salesOrderId String
   position     Int
+  size         String     @db.VarChar(40)
   description  String     @db.VarChar(240)
   quantity     Int
   unitPrice    Decimal    @db.Decimal(18, 2)

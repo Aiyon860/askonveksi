@@ -12,6 +12,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { getFollowUpData } from "@/lib/crm/data";
+import { getCurrentActor } from "@/lib/auth/session";
 import { formatDate, whatsappHref } from "@/lib/crm/format";
 import { leadClassification } from "@/lib/crm/constants";
 import { cn } from "@/lib/utils";
@@ -35,7 +36,8 @@ export default async function FollowUpPage({ searchParams }: { searchParams: Pro
   const rawBucket = first(params.bucket);
   const bucket: Bucket = BUCKETS.includes(rawBucket as Bucket) ? rawBucket as Bucket : "today";
   const picId = first(params.pic);
-  const { items, counts, salesUsers, selectedPicId } = await getFollowUpData({ bucket, picId });
+  const [{ items, counts, salesUsers, selectedPicId }, actor] = await Promise.all([getFollowUpData({ bucket, picId }), getCurrentActor()]);
+  const canOperate = actor?.role === "ADMIN" || actor?.role === "SALES";
   const countsByBucket: Record<Bucket, number> = { overdue: counts.overdue, today: counts.today, tomorrow: counts.tomorrow, upcoming: counts.upcoming };
 
   return (
@@ -109,7 +111,7 @@ export default async function FollowUpPage({ searchParams }: { searchParams: Pro
                           Buka WhatsApp
                         </Button>
                       ) : null}
-                      <FollowUpResultForm opportunity={item} />
+                      {canOperate ? <FollowUpResultForm opportunity={item} /> : null}
                     </div>
                   </article>
                 );
