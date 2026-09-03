@@ -37,6 +37,7 @@ import {
   updateOpportunitySchema,
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
+import { createProductionWorkOrder } from "@/lib/production/service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Tx = Prisma.TransactionClient;
@@ -231,6 +232,9 @@ function completeDealInput(formData: FormData) {
       value: values[index],
       dueAt: dueDates[index],
     })),
+    productionRoute: formValue(formData, "productionRoute"),
+    productionProductName: formValue(formData, "productionProductName"),
+    productionDeadline: formValue(formData, "productionDeadline"),
   };
 }
 
@@ -1434,6 +1438,8 @@ export async function completeDealAction(formData: FormData) {
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt) throw new UserFacingError("Tanggal pembayaran wajib diisi.");
     if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh berada di masa depan.");
+    const productionDeadline = optionalDate(parsed.data.productionDeadline);
+    if (!productionDeadline || productionDeadline.toISOString().slice(0, 10) !== parsed.data.productionDeadline) throw new UserFacingError("Deadline produksi tidak valid.");
 
     const salesOrder = await runDealTransaction(
         async (tx) => {
@@ -1555,6 +1561,14 @@ export async function completeDealAction(formData: FormData) {
           select: { id: true, salesOrderNo: true },
         });
 
+        await createProductionWorkOrder(tx, actor, {
+          salesOrderId: created.id,
+          route: parsed.data.productionRoute,
+          productName: parsed.data.productionProductName,
+          quantity: invoice.items.reduce((sum, item) => sum + item.quantity, 0),
+          deadline: productionDeadline,
+        });
+
         const salesOrderAudit = await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["status", "snapshot", "items", "total", "payment", "terms"], {
           opportunityId: invoice.opportunityId,
           purchaseOrderId: invoice.purchaseOrderId,
@@ -1618,6 +1632,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
             salesOrderNo: true,
             opportunityId: true,
             opportunity: { select: { stage: true, version: true, customerId: true } },
+            productionWorkOrder: { select: { id: true, status: true, currentStage: true } },
           },
         });
         if (!order || order.status !== "ACTIVE") throw new UserFacingError("Sales Order tidak aktif atau tidak ditemukan.");
@@ -1634,6 +1649,23 @@ export async function reverseSalesOrderAction(formData: FormData) {
           data: { stage: "LOST", cancelReason: parsed.data.cancelReason, version: { increment: 1 } },
         });
         if (opportunity.count !== 1) throw new UserFacingError("Peluang sudah berubah.");
+
+        if (order.productionWorkOrder && order.productionWorkOrder.status !== "CANCELLED") {
+          await tx.productionWorkOrder.update({
+            where: { id: order.productionWorkOrder.id },
+            data: { status: "CANCELLED", cancelledAt, version: { increment: 1 } },
+          });
+          await tx.productionActivity.create({
+            data: {
+              workOrderId: order.productionWorkOrder.id,
+              actorId: actor.id,
+              type: "CANCELLED",
+              fromStage: order.productionWorkOrder.currentStage,
+              note: parsed.data.cancelReason,
+            },
+          });
+          await audit(tx, actor, "ProductionWorkOrder", order.productionWorkOrder.id, "PRODUCTION_WORK_ORDER_CANCELLED", ["status", "cancelledAt"], { salesOrderId: parsed.data.salesOrderId });
+        }
 
         const salesOrderAudit = await audit(tx, actor, "SalesOrder", parsed.data.salesOrderId, "SALES_ORDER_CANCELLED", ["status", "cancelledAt", "cancelledById", "cancelReason"]);
         await audit(tx, actor, "Opportunity", order.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage", "cancelReason"], { from: "DEAL", to: "LOST" });

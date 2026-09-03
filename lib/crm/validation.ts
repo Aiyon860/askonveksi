@@ -255,6 +255,9 @@ export const completeDealSchema = z.object({
   initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
+  productionRoute: z.enum(["JERSEY", "NON_JERSEY"]),
+  productionProductName: z.string().trim().min(2, "Nama produk produksi wajib diisi.").max(160),
+  productionDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi tidak valid."),
 }).superRefine((value, context) => {
   if (value.kind === "DP" && value.terms.length === 0) {
     context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
@@ -300,7 +303,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES"]),
+  role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
   temporaryPassword: strongPasswordSchema,
 });
 
@@ -309,7 +312,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES"]),
+  role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
 });
 
 export const toggleUserSchema = z.object({

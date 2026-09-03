@@ -19,6 +19,16 @@ rtk npm run dev
 
 Setelah Owner berhasil login dan mengganti password sementara, hapus `BOOTSTRAP_OWNER_PASSWORD` dari environment.
 
+### Data demo Produksi
+
+Setelah migration dan bootstrap Owner selesai, buat masing-masing satu kartu demo Jersey dan Non-Jersey:
+
+```bash
+ALLOW_DEMO_DATA=true npm run db:seed:production-demo
+```
+
+Script aman dijalankan ulang, menolak berjalan saat `NODE_ENV=production`, dan menandai data dengan awalan `[DEMO]`/`DEMO-`.
+
 ## Kontrak akses data
 
 - Supabase SDK hanya menangani Auth dan cookie session.

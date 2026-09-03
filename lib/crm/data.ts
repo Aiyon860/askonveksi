@@ -893,6 +893,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
         select: { id: true, position: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true },
         orderBy: { position: "asc" },
       },
+      productionWorkOrder: { select: { id: true, workOrderNo: true, status: true, currentStage: true } },
     },
   });
 }

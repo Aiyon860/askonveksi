@@ -188,6 +188,9 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
     paidAt: "2026-09-03T10:00",
     initialValueType: "NOMINAL",
     initialValue: "500000",
+    productionRoute: "JERSEY",
+    productionProductName: "Jersey tim",
+    productionDeadline: "2026-09-30",
   };
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);

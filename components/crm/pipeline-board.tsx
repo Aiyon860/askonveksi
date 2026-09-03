@@ -264,6 +264,8 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                   invoiceVersion={pendingMove.opportunity.invoice.version}
                   total={pendingMove.opportunity.invoice.total}
                   initialPaidAt={toDateTimeLocalValue(new Date())}
+                  productName={pendingMove.opportunity.purchaseOrder.productName}
+                  productionDeadline=""
                 />
               )
             ) : (

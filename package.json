@@ -11,6 +11,7 @@
     "lint": "eslint",
     "bootstrap:owner": "node scripts/bootstrap-owner.mjs",
     "crm:reset-storage": "node scripts/reset-crm-storage.mjs",
+    "db:seed:production-demo": "node scripts/seed-production-demo.mjs",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate"
   },

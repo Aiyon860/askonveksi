@@ -10,6 +10,55 @@ enum AppRole {
   OWNER
   ADMIN
   SALES
+  PRODUCTION
+  QC
+}
+
+enum ProductionRoute {
+  JERSEY
+  NON_JERSEY
+}
+
+enum ProductionStage {
+  POTONG
+  BORDIR
+  SABLON
+  PRINTING
+  JAHIT
+  QC
+  PACKING
+  PENGIRIMAN
+  TEST_PRINT
+  PERSETUJUAN_SAMPEL
+  LAYOUT_PRODUKSI
+  PRINT
+  CUTTING
+  SELESAI
+}
+
+enum ProductionWorkOrderStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ProductionStepStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  SKIPPED
+}
+
+enum ProductionActivityType {
+  CREATED
+  STAGE_MOVED
+  STAGE_SKIPPED
+  SAMPLE_REJECTED
+  QC_REJECTED
+  PIC_ASSIGNED
+  NOTE_ADDED
+  REOPENED
+  CANCELLED
 }
 
 enum OpportunityStage {
@@ -110,6 +159,8 @@ model AppUser {
   auditEvents              AuditEvent[]
   assignedCustomers        Customer[]                @relation("CustomerSalesPic")
   assignedOpportunities    Opportunity[]             @relation("OpportunitySalesPic")
+  assignedProductionSteps  ProductionStep[]          @relation("ProductionStepAssignee")
+  productionActivities     ProductionActivity[]
   createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -392,11 +443,78 @@ model SalesOrder {
   items                SalesOrderItem[]
   payment              DealPayment?
   customerReminders    CustomerReminder[] @relation("CustomerReminderSourceOrder")
+  productionWorkOrder  ProductionWorkOrder?
   createdAt            DateTime           @default(now()) @db.Timestamptz(3)
 
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
   @@index([status, createdAt])
+}
+
+model ProductionWorkOrder {
+  id                String                    @id @default(cuid())
+  workOrderNo       String                    @unique @db.VarChar(28)
+  salesOrderId      String                    @unique
+  route             ProductionRoute
+  productName       String                    @db.VarChar(160)
+  quantity          Int
+  deadline          DateTime                  @db.Date
+  stageSequence     ProductionStage[]
+  currentStage      ProductionStage
+  status            ProductionWorkOrderStatus @default(ACTIVE)
+  sampleRevision    Int                       @default(1)
+  needsRepair       Boolean                   @default(false)
+  repairReason      String?                   @db.Text
+  repairRequestedAt DateTime?                 @db.Timestamptz(3)
+  version           Int                       @default(1)
+  completedAt       DateTime?                 @db.Timestamptz(3)
+  cancelledAt       DateTime?                 @db.Timestamptz(3)
+  salesOrder        SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  steps             ProductionStep[]
+  activities        ProductionActivity[]
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
+
+  @@index([route, status, updatedAt])
+  @@index([currentStage, status, updatedAt])
+  @@index([deadline, status])
+}
+
+model ProductionStep {
+  id           String               @id @default(cuid())
+  workOrderId  String
+  stage        ProductionStage
+  position     Int
+  status       ProductionStepStatus @default(PENDING)
+  assigneeId   String?
+  attemptCount Int                  @default(0)
+  startedAt    DateTime?            @db.Timestamptz(3)
+  completedAt  DateTime?            @db.Timestamptz(3)
+  workOrder    ProductionWorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  assignee     AppUser?             @relation("ProductionStepAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime             @updatedAt @db.Timestamptz(3)
+
+  @@unique([workOrderId, stage])
+  @@unique([workOrderId, position])
+  @@index([assigneeId, status])
+}
+
+model ProductionActivity {
+  id          String                 @id @default(cuid())
+  workOrderId String
+  actorId     String
+  type        ProductionActivityType
+  fromStage   ProductionStage?
+  toStage     ProductionStage?
+  note        String?                @db.Text
+  metadata    Json?
+  workOrder   ProductionWorkOrder    @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  actor       AppUser                 @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt   DateTime                @default(now()) @db.Timestamptz(3)
+
+  @@index([workOrderId, createdAt, id])
+  @@index([actorId, createdAt])
 }
 
 model DealPayment {

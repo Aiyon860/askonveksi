@@ -38,6 +38,8 @@ export const ROLE_LABEL = {
   OWNER: "Owner",
   ADMIN: "Admin",
   SALES: "Sales",
+  PRODUCTION: "Produksi",
+  QC: "QC",
 } as const;
 
 export const INVOICE_STATUS_LABEL = {

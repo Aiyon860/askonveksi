@@ -239,7 +239,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
               </CardHeader>
               <CardContent>
                 {agreedPo && issuedInvoice && !poDraft && !invoiceDraft ? (
-                  <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} initialPaidAt={toDateTimeLocalValue(new Date())} />
+                  <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} initialPaidAt={toDateTimeLocalValue(new Date())} productName={agreedPo.productName} productionDeadline={dateInputValue(agreedPo.deadline ?? opportunity.deadline)} />
                 ) : (
                   <Alert>
                     <AlertTitle>Dokumen belum lengkap</AlertTitle>

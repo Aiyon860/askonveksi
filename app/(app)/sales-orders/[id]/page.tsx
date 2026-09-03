@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getSalesOrderDetail } from "@/lib/crm/data";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { PRODUCTION_STAGE_LABEL } from "@/lib/production/workflow";
 
 export default async function SalesOrderPage({
   params,
@@ -69,6 +70,18 @@ export default async function SalesOrderPage({
               </dl>
             </CardContent>
           </Card>
+
+          {order.productionWorkOrder ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Produksi</CardTitle>
+                <CardDescription>{order.productionWorkOrder.workOrderNo} · {order.productionWorkOrder.status === "COMPLETED" ? "Selesai" : order.productionWorkOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[order.productionWorkOrder.currentStage]}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" render={<Link href={`/produksi/${order.productionWorkOrder.id}`} />} nativeButton={false}>Buka Work Order</Button>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>

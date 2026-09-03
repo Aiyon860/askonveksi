@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, Factory, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -66,14 +66,17 @@ export function AppNav({ role, followUpCount, reminderCount }: { role: AppRole; 
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const canManageMasterData = role === "OWNER" || role === "ADMIN";
   const canViewAnalytics = role === "OWNER" || role === "ADMIN";
+  const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "SALES";
+  const canViewProduction = role === "OWNER" || role === "ADMIN" || role === "PRODUCTION" || role === "QC";
   const masterDataActive = isPathWithin(pathname, "/master-data");
   const analyticsActive = isPathWithin(pathname, "/analytics");
 
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
-      {mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />)}
-      <NavLink pathname={pathname} item={{ href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock, count: followUpCount }} />
-      <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} />
+      {canViewCrm ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />) : null}
+      {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} /> : null}
+      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock, count: followUpCount }} /> : null}
+      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} /> : null}
       {canViewAnalytics ? (
         <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
           <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
