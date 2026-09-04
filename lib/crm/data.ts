@@ -898,6 +898,190 @@ export async function getSalesOrderDetail(salesOrderId: string) {
   });
 }
 
+export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED";
+export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED";
+
+function yearBounds(year: number | null) {
+  return year
+    ? { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) }
+    : undefined;
+}
+
+export async function getPurchaseOrders({
+  query,
+  status,
+  year,
+  page,
+  pageSize,
+}: {
+  query: string;
+  status: PurchaseOrderListStatus;
+  year: number | null;
+  page: number;
+  pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    status: status === "all" ? { in: ["DRAFT", "AGREED"] as const } : status,
+    ...(year ? { createdAt: yearBounds(year) } : {}),
+    ...(normalizedQuery ? {
+      OR: [
+        { productName: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { customerReference: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { opportunity: { customer: { name: { contains: normalizedQuery, mode: "insensitive" as const } } } },
+      ],
+    } : {}),
+  } satisfies Prisma.PurchaseOrderWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total, dates] = await Promise.all([
+    prisma.purchaseOrder.findMany({
+      where,
+      select: {
+        id: true,
+        purchaseOrderNo: true,
+        productName: true,
+        status: true,
+        deadline: true,
+        createdAt: true,
+        opportunity: { select: { id: true, customer: { select: { name: true } } } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.purchaseOrder.count({ where }),
+    prisma.purchaseOrder.findMany({
+      where: { status: { in: ["DRAFT", "AGREED"] } },
+      select: { createdAt: true },
+      distinct: ["createdAt"],
+    }),
+  ]);
+  return {
+    items,
+    total,
+    years: [...new Set(dates.map(({ createdAt }) => createdAt.getUTCFullYear()))].sort((a, b) => b - a),
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+export async function getInvoices({
+  query,
+  status,
+  year,
+  page,
+  pageSize,
+}: {
+  query: string;
+  status: InvoiceListStatus;
+  year: number | null;
+  page: number;
+  pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    status: status === "all" ? { in: ["DRAFT", "ISSUED"] as const } : status,
+    ...(year ? { createdAt: yearBounds(year) } : {}),
+    ...(normalizedQuery ? {
+      OR: [
+        { invoiceNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { snapshotCustomerName: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { snapshotCompanyName: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { purchaseOrder: { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } } },
+      ],
+    } : {}),
+  } satisfies Prisma.InvoiceWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total, dates] = await Promise.all([
+    prisma.invoice.findMany({
+      where,
+      select: {
+        id: true,
+        invoiceNo: true,
+        snapshotCustomerName: true,
+        snapshotCompanyName: true,
+        status: true,
+        total: true,
+        createdAt: true,
+        opportunityId: true,
+        purchaseOrder: { select: { purchaseOrderNo: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.invoice.count({ where }),
+    prisma.invoice.findMany({
+      where: { status: { in: ["DRAFT", "ISSUED"] } },
+      select: { createdAt: true },
+      distinct: ["createdAt"],
+    }),
+  ]);
+  return {
+    items: items.map((item) => ({ ...item, total: item.total.toString() })),
+    total,
+    years: [...new Set(dates.map(({ createdAt }) => createdAt.getUTCFullYear()))].sort((a, b) => b - a),
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+export async function getPurchaseOrderDetail(purchaseOrderId: string) {
+  await requireActor();
+  return getPrismaClient().purchaseOrder.findUnique({
+    where: { id: purchaseOrderId },
+    select: {
+      id: true,
+      purchaseOrderNo: true,
+      customerReference: true,
+      productName: true,
+      material: true,
+      color: true,
+      deadline: true,
+      status: true,
+      designNotes: true,
+      notes: true,
+      createdAt: true,
+      sizes: { select: { id: true, size: true, quantity: true }, orderBy: { position: "asc" } },
+      attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
+      opportunity: { select: { id: true, opportunityNo: true, customer: { select: { name: true, companyName: true } } } },
+    },
+  });
+}
+
+export async function getInvoiceDetail(invoiceId: string) {
+  await requireActor();
+  const invoice = await getPrismaClient().invoice.findUnique({
+    where: { id: invoiceId },
+    select: {
+      id: true,
+      invoiceNo: true,
+      snapshotCustomerName: true,
+      snapshotCompanyName: true,
+      status: true,
+      discountType: true,
+      discountValue: true,
+      subtotal: true,
+      total: true,
+      issuedAt: true,
+      dueAt: true,
+      notes: true,
+      createdAt: true,
+      opportunity: { select: { id: true, opportunityNo: true } },
+      purchaseOrder: { select: { purchaseOrderNo: true } },
+      items: { select: { id: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
+    },
+  });
+  return invoice ? {
+    ...invoice,
+    discountValue: invoice.discountValue.toString(),
+    subtotal: invoice.subtotal.toString(),
+    total: invoice.total.toString(),
+    items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), subtotal: item.subtotal.toString() })),
+  } : null;
+}
+
 export type UserStatusFilter = "active" | "all" | "inactive";
 export type UserSort = "createdAt" | "email" | "isActive" | "name" | "role";
 
