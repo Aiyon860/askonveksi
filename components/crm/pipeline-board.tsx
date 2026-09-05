@@ -18,6 +18,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
 import { leadClassification, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
@@ -27,7 +28,7 @@ import { cn } from "@/lib/utils";
 type PendingMove = { opportunity: PipelineOpportunity; stage: OpportunityStage };
 
 const DEFAULT_DESTINATION: Record<OpportunityStage, OpportunityStage> = {
-  LEAD_BARU: "FOLLOW_UP",
+  LEAD_BARU: "NEGOSIASI",
   FOLLOW_UP: "NEGOSIASI",
   NEGOSIASI: "DEAL",
   DEAL: "DEAL",
@@ -42,7 +43,6 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
       current.map((item) => item.id === move.opportunityId ? { ...item, stage: move.stage } : item),
   );
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
-  const [moveError, setMoveError] = useState<string | null>(null);
   const [isMoving, startMoving] = useTransition();
   const dragImageRef = useRef<HTMLElement | null>(null);
   const canOperate = actorRole === "ADMIN" || actorRole === "SALES";
@@ -73,16 +73,16 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
 
     const data = new FormData(event.currentTarget);
     const { opportunity, stage } = pendingMove;
-    setMoveError(null);
     setPendingMove(null);
 
     startMoving(async () => {
       moveOptimistically({ opportunityId: opportunity.id, stage });
       const result = await moveOpportunityStageOptimisticAction(data);
       if (!result.ok) {
-        setMoveError(result.message);
+        toast.add({ title: "Status tidak berubah", description: result.message, type: result.kind });
         return;
       }
+      toast.add({ title: "Status diperbarui", description: `${opportunity.opportunityNo} dipindahkan ke ${STAGE_LABEL[stage]}.`, type: "success" });
       router.refresh();
     });
   }
@@ -90,12 +90,6 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
   return (
     <>
       <div className="relative">
-        {moveError ? (
-          <Alert variant="destructive" className="mb-3">
-            <AlertTitle>Status dikembalikan</AlertTitle>
-            <AlertDescription>{moveError}</AlertDescription>
-          </Alert>
-        ) : null}
         {isMoving ? (
           <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs shadow-sm" role="status">
             <Spinner /> Memindahkan status...
@@ -205,12 +199,12 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                           ) : null}
                         </dl>
                         {canOperate && opportunity.stage === "NEGOSIASI" && !opportunity.purchaseOrder ? (
-                          <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}#purchase-orders`} />} nativeButton={false}>
+                          <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}?tab=po`} />} nativeButton={false}>
                             <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah PO
                           </Button>
                         ) : null}
                         {canOperate && opportunity.stage === "NEGOSIASI" && opportunity.purchaseOrder?.status === "AGREED" && (!opportunity.invoice || opportunity.invoice.status === "SUPERSEDED") ? (
-                          <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}#invoices`} />} nativeButton={false}>
+                          <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}?tab=invoice`} />} nativeButton={false}>
                             <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah invoice
                           </Button>
                         ) : null}
@@ -264,6 +258,9 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                   invoiceVersion={pendingMove.opportunity.invoice.version}
                   total={pendingMove.opportunity.invoice.total}
                   initialPaidAt={toDateTimeLocalValue(new Date())}
+                  productName={pendingMove.opportunity.purchaseOrder.productName}
+                  garmentType={pendingMove.opportunity.purchaseOrder.garmentType}
+                  productionDeadline=""
                 />
               )
             ) : (

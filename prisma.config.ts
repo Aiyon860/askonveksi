@@ -4,8 +4,8 @@ import { defineConfig } from "prisma/config";
 export default defineConfig({
   schema: "prisma/schema.prisma",
   datasource: {
-    // Generation does not need a database connection. Commands such as
-    // `prisma db pull` will require DATABASE_URL to be set in .env.
-    url: process.env.DATABASE_URL,
+    // Runtime uses DATABASE_URL. Prisma CLI prefers a direct or Supavisor
+    // session-mode connection because transaction pooling cannot run migrations.
+    url: process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL,
   },
 });

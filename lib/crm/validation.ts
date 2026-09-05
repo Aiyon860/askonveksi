@@ -81,6 +81,10 @@ export const opportunityFieldsSchema = z.object({
   leadSourceId: optionalEntityId,
   salesPicId: optionalEntityId,
   productName: optionalText(120),
+  garmentType: z.preprocess(
+    (value) => (value === null || value === "" ? undefined : value),
+    z.enum(["JERSEY", "NON_JERSEY"]).optional(),
+  ),
   needPurpose: optionalText(500),
   designStatus: z.preprocess(
     (value) => (value === null || value === "" ? undefined : value),
@@ -184,10 +188,16 @@ export const addCommunicationActivitySchema = z
   });
 
 export const invoiceItemSchema = z.object({
+  purchaseOrderSizeId: entityIdSchema,
+  productName: z.string().trim().min(2).max(120),
   size: z.string().trim().min(1).max(40),
+  sleeveLength: z.enum(["PENDEK", "PANJANG"]),
   description: z.string().trim().min(2).max(240),
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
+  discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
+  discountCapAmount: optionalMoney("Batas nominal diskon"),
+  taxRate: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase pajak tidak valid."),
 });
 
 export const invoiceDraftSchema = z.object({
@@ -197,9 +207,7 @@ export const invoiceDraftSchema = z.object({
   version: requiredVersion.optional(),
   dueAt: optionalText(10),
   notes: optionalText(2000),
-  discountType: z.enum(["NONE", "NOMINAL", "PERCENTAGE"]),
-  discountValue: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/),
-  items: z.array(invoiceItemSchema).min(1, "Minimal satu item penawaran.").max(50),
+  items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
 });
 
 export const invoiceIdSchema = z.object({
@@ -208,8 +216,25 @@ export const invoiceIdSchema = z.object({
 });
 
 const purchaseOrderSizeSchema = z.object({
-  size: z.string().trim().min(1, "Ukuran wajib diisi.").max(40),
-  quantity: z.coerce.number().int().positive("Jumlah harus lebih dari nol.").max(10_000_000),
+  sizeId: entityIdSchema,
+  sleeveLength: z.enum(["PENDEK", "PANJANG"]),
+  quantity: z.preprocess(
+    (value) => {
+      if (value === "" || value === null || value === undefined) return undefined;
+      if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value);
+      return value;
+    },
+    z.number({ message: "Jumlah harus berupa bilangan bulat nol atau lebih." })
+      .int("Jumlah harus berupa bilangan bulat.")
+      .min(0, "Jumlah tidak boleh negatif.")
+      .max(10_000_000, "Jumlah terlalu besar."),
+  ),
+});
+
+const purchaseOrderRosterSchema = z.object({
+  memberId: z.string().trim().min(1, "ID anggota wajib diisi.").max(80),
+  name: z.string().trim().min(2, "Nama anggota minimal 2 karakter.").max(160),
+  sizeId: entityIdSchema,
 });
 
 export const purchaseOrderDraftSchema = z.object({
@@ -217,17 +242,33 @@ export const purchaseOrderDraftSchema = z.object({
   purchaseOrderId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
   customerReference: optionalText(120),
-  productName: z.string().trim().min(2, "Jenis pakaian wajib diisi.").max(120),
+  garmentType: z.enum(["JERSEY", "NON_JERSEY"], { message: "Jenis pakaian wajib dipilih." }),
+  productName: z.string().trim().min(2, "Nama produk atau pola wajib diisi.").max(120),
   material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
-  color: optionalText(120),
+  baseColor: optionalText(120),
+  variationColor: optionalText(240),
+  decorationMethod: z.enum(["NONE", "TINTA", "SABLON", "BORDIR"], {
+    message: "Metode dekorasi wajib dipilih.",
+  }),
+  orderDate: optionalText(10),
+  sampleSize: optionalText(40),
   designNotes: optionalText(4000),
   notes: optionalText(4000),
   deadline: optionalText(10),
-  sizes: z.array(purchaseOrderSizeSchema).min(1, "Minimal satu ukuran.").max(50),
+  sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
+  roster: z.array(purchaseOrderRosterSchema).max(5_000),
 }).superRefine((value, context) => {
-  const normalized = value.sizes.map((item) => item.size.toLocaleLowerCase("id-ID"));
-  if (new Set(normalized).size !== normalized.length) {
-    context.addIssue({ code: "custom", path: ["sizes"], message: "Ukuran tidak boleh duplikat." });
+  const positiveSizes = value.sizes.filter((item) => item.quantity > 0);
+  if (!positiveSizes.length) {
+    context.addIssue({ code: "custom", path: ["sizes"], message: "Isi minimal satu jumlah pada matriks ukuran." });
+  }
+  const matrixKeys = value.sizes.map((item) => `${item.sleeveLength}:${item.sizeId}`);
+  if (new Set(matrixKeys).size !== matrixKeys.length) {
+    context.addIssue({ code: "custom", path: ["sizes"], message: "Baris matriks ukuran tidak boleh duplikat." });
+  }
+  const rosterIds = value.roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
+  if (new Set(rosterIds).size !== rosterIds.length) {
+    context.addIssue({ code: "custom", path: ["roster"], message: "ID anggota roster tidak boleh duplikat." });
   }
 });
 
@@ -255,6 +296,8 @@ export const completeDealSchema = z.object({
   initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
+  productionProductName: z.string().trim().min(2, "Nama produk produksi wajib diisi.").max(160),
+  productionDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi tidak valid."),
 }).superRefine((value, context) => {
   if (value.kind === "DP" && value.terms.length === 0) {
     context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
@@ -267,10 +310,44 @@ export const completeDealSchema = z.object({
 export const PURCHASE_ORDER_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;
 export const PURCHASE_ORDER_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 export const PURCHASE_ORDER_ATTACHMENT_MAX_FILES = 5;
+export const PURCHASE_ORDER_ROSTER_MAX_BYTES = 2 * 1024 * 1024;
+export const PURCHASE_ORDER_ROSTER_MAX_ROWS = 5_000;
 
 export const reverseSalesOrderSchema = z.object({
   salesOrderId: entityIdSchema,
   cancelReason: z.string().trim().min(5, "Alasan pembatalan minimal 5 karakter.").max(2000),
+});
+
+export const payPaymentTermSchema = z.object({
+  salesOrderId: entityIdSchema,
+  paymentTermId: entityIdSchema,
+  paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
+  reference: optionalText(120),
+  note: optionalText(1000),
+});
+
+export const recordInitialPaymentSchema = z.object({
+  salesOrderId: entityIdSchema,
+  paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
+  reference: optionalText(120),
+  note: optionalText(1000),
+});
+
+export const voidPaymentTransactionSchema = z.object({
+  salesOrderId: entityIdSchema,
+  transactionId: entityIdSchema,
+  reason: z.string().trim().min(5, "Alasan pembatalan minimal 5 karakter.").max(1000),
+});
+
+export const businessProfileSchema = z.object({
+  version: requiredVersion,
+  name: z.string().trim().min(2, "Nama perusahaan minimal 2 karakter.").max(160),
+  phone: optionalText(32),
+  email: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.email("Format email perusahaan tidak valid.").trim().max(320).optional(),
+  ),
+  address: optionalText(2000),
 });
 
 export const loginSchema = z.object({
@@ -300,7 +377,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES"]),
+  role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
   temporaryPassword: strongPasswordSchema,
 });
 
@@ -309,7 +386,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES"]),
+  role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
 });
 
 export const toggleUserSchema = z.object({

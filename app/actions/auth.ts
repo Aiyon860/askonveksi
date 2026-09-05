@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { flashMessagePath, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
-import { CRM_ROLES } from "@/lib/auth/permissions";
+import { APP_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { firstValidationMessage, loginSchema, updatePasswordSchema } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
@@ -30,7 +30,7 @@ export async function loginAction(formData: FormData) {
 
     const profile = await getPrismaClient().appUser.findUnique({
       where: { authUserId: data.user.id },
-      select: { isActive: true, mustChangePassword: true },
+      select: { isActive: true, mustChangePassword: true, role: true },
     });
 
     if (!profile?.isActive) {
@@ -38,7 +38,7 @@ export async function loginAction(formData: FormData) {
       throw new UserFacingError("Akun tidak aktif atau belum terdaftar di aplikasi.");
     }
 
-    return profile.mustChangePassword ? "/account/password" : "/dashboard";
+    return profile.mustChangePassword ? "/account/password" : profile.role === "PRODUCTION" || profile.role === "QC" ? "/produksi" : "/dashboard";
   });
 }
 
@@ -50,7 +50,7 @@ export async function logoutAction() {
 
 export async function updatePasswordAction(formData: FormData) {
   return runRedirectingAction("/account/password", async () => {
-    const actor = await requireActor(CRM_ROLES, { allowPasswordChange: true });
+    const actor = await requireActor(APP_ROLES, { allowPasswordChange: true });
     const parsed = updatePasswordSchema.safeParse({
       password: formData.get("password"),
       confirmPassword: formData.get("confirmPassword"),
@@ -78,7 +78,7 @@ export async function updatePasswordAction(formData: FormData) {
       });
     });
 
-    if (actor.mustChangePassword) return "/dashboard";
+    if (actor.mustChangePassword) return actor.role === "PRODUCTION" || actor.role === "QC" ? "/produksi" : "/dashboard";
 
     return flashMessagePath("/dashboard", "notice", "Password berhasil diperbarui.");
   });

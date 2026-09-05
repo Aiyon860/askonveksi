@@ -1,4 +1,5 @@
 import { requireActor } from "@/lib/auth/session";
+import { CRM_ROLES } from "@/lib/auth/permissions";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -10,7 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string; attachmentId: string }> },
 ) {
   try {
-    await requireActor();
+    await requireActor(CRM_ROLES);
   } catch {
     return new Response("Anda harus masuk untuk membuka lampiran desain.", { status: 401 });
   }

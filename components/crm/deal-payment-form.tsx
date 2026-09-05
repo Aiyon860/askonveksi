@@ -13,7 +13,7 @@ import { formatCurrency } from "@/lib/crm/format";
 
 type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE" };
 
-export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, initialPaidAt }: {
+export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, initialPaidAt, productName, garmentType, productionDeadline }: {
   opportunityId: string;
   opportunityVersion: number;
   purchaseOrderId: string;
@@ -21,6 +21,9 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   invoiceVersion: number;
   total: string;
   initialPaidAt: string;
+  productName: string;
+  garmentType: "JERSEY" | "NON_JERSEY" | null;
+  productionDeadline: string;
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
   const [initialValueType, setInitialValueType] = useState<"NOMINAL" | "PERCENTAGE">("NOMINAL");
@@ -34,6 +37,21 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
       <input type="hidden" name="invoiceId" value={invoiceId} />
       <input type="hidden" name="invoiceVersion" value={invoiceVersion} />
       <FieldGroup>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor={`production-product-${invoiceId}`} required>Produk produksi</FieldLabel>
+            <Input id={`production-product-${invoiceId}`} name="productionProductName" required minLength={2} maxLength={160} defaultValue={productName} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`production-route-${invoiceId}`}>Jalur produksi</FieldLabel>
+            <Input id={`production-route-${invoiceId}`} value={garmentType === "JERSEY" ? "Jersey" : garmentType === "NON_JERSEY" ? "Non-jersey" : "Belum ditentukan"} readOnly aria-readonly="true" />
+            <FieldDescription>Ditentukan otomatis dari jenis pakaian pada PO.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`production-deadline-${invoiceId}`} required>Deadline produksi</FieldLabel>
+            <Input id={`production-deadline-${invoiceId}`} name="productionDeadline" type="date" required defaultValue={productionDeadline} />
+          </Field>
+        </div>
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Total invoice</p>
           <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(total)}</p>

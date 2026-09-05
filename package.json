@@ -11,6 +11,8 @@
     "lint": "eslint",
     "bootstrap:owner": "node scripts/bootstrap-owner.mjs",
     "crm:reset-storage": "node scripts/reset-crm-storage.mjs",
+    "crm:setup-storage": "node scripts/setup-crm-storage.mjs",
+    "db:seed:production-demo": "node scripts/seed-production-demo.mjs",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate"
   },
@@ -26,6 +28,7 @@
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "exceljs": "4.4.0",
     "lucide-react": "^1.34.0",
     "next": "16.3.3",
     "pdf-lib": "^1.17.1",
@@ -33,7 +36,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.8.0",
-    "shadcn": "^4.19.0",
+    "sharp": "0.35.3",
     "tailwind-merge": "^3.6.0",
     "tw-animate-css": "^1.4.0",
     "zod": "^4.4.3",
@@ -48,7 +51,13 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "prisma": "^7.10.0",
+    "shadcn": "^4.19.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   }
 }

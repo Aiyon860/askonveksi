@@ -12,7 +12,7 @@ import { getCurrentActor } from "@/lib/auth/session";
 
 export default async function LoginPage() {
   const actor = await getCurrentActor();
-  if (actor) redirect(actor.mustChangePassword ? "/account/password" : "/dashboard");
+  if (actor) redirect(actor.mustChangePassword ? "/account/password" : actor.role === "PRODUCTION" || actor.role === "QC" ? "/produksi" : "/dashboard");
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-10">

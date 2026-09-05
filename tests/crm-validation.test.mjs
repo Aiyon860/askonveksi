@@ -14,6 +14,8 @@ import {
   invoiceDraftSchema,
   purchaseOrderDraftSchema,
   completeDealSchema,
+  payPaymentTermSchema,
+  recordInitialPaymentSchema,
   recordFollowUpResultSchema,
   strongPasswordSchema,
   updateUserSchema,
@@ -24,6 +26,7 @@ import {
 } from "../lib/analytics/report-period.ts";
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
 import { finalizeSalesPerformanceRows } from "../lib/analytics/sales-performance.ts";
+import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
 import { formatPercentage } from "../lib/crm/format.ts";
 import {
   activityStatusFromSchedule,
@@ -166,16 +169,76 @@ test("password kuat dan item invoice divalidasi pada boundary", () => {
   assert.equal(invalidInvoice.success, false);
 });
 
-test("PO mewajibkan satu bahan dan jumlah per ukuran yang unik", () => {
+test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () => {
   const valid = {
     opportunityId: "cm123456789012",
+    garmentType: "JERSEY",
+    decorationMethod: "NONE",
     productName: "Jersey tim",
     material: "Dry fit",
-    sizes: [{ size: "M", quantity: 12 }, { size: "L", quantity: 18 }],
+    sizes: [
+      { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
+      { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 },
+    ],
+    roster: [
+      { memberId: "G-1", name: "Budi", sizeId: "garment-size-m" },
+      { memberId: "G-2", name: "Siti", sizeId: "garment-size-m" },
+    ],
   };
   assert.equal(purchaseOrderDraftSchema.safeParse(valid).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ size: "M", quantity: 12 }, { size: "m", quantity: 2 }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
+});
+
+test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesanan", () => {
+  const base = {
+    opportunityId: "cm123456789012",
+    garmentType: "NON_JERSEY",
+    decorationMethod: "SABLON",
+    productName: "Kaos komunitas",
+    material: "Cotton combed",
+    roster: [],
+  };
+  const size = { sizeId: "garment-size-m", sleeveLength: "PENDEK" };
+
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: 1 }] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: -1 }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: 1.5 }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "1.5" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "1e3" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "abc" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: 0 }] }).success, false);
+});
+
+test("PO hanya menerima metode dekorasi yang tersedia", () => {
+  const base = {
+    opportunityId: "cm123456789012",
+    garmentType: "JERSEY",
+    productName: "Jersey tim",
+    material: "Dry fit",
+    sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
+    roster: [],
+  };
+
+  for (const decorationMethod of ["NONE", "TINTA", "SABLON", "BORDIR"]) {
+    assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod }).success, true);
+  }
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod: "Bordir komputer bebas" }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod: "" }).success, false);
+});
+
+test("tab peluang dan label dekorasi memiliki fallback yang aman", () => {
+  assert.equal(parseOpportunityDetailTab(undefined), "peluang");
+  assert.equal(parseOpportunityDetailTab("invoice"), "invoice");
+  assert.equal(parseOpportunityDetailTab(["aktivitas", "po"]), "aktivitas");
+  assert.equal(parseOpportunityDetailTab("tidak-valid"), "peluang");
+  assert.equal(decorationMethodLabel("BORDIR"), "Bordir");
+  assert.equal(decorationMethodLabel("Nilai lama"), "Nilai lama");
+});
+
+test("lead baru dapat divalidasi untuk langsung masuk negosiasi", () => {
+  assert.equal(moveOpportunitySchema.safeParse({ opportunityId: "cm123456789012", version: "1", stage: "NEGOSIASI", cancelReason: "" }).success, true);
 });
 
 test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
@@ -188,11 +251,21 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
     paidAt: "2026-09-03T10:00",
     initialValueType: "NOMINAL",
     initialValue: "500000",
+    productionProductName: "Jersey tim",
+    productionDeadline: "2026-09-30",
   };
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);
+});
+
+test("pencatatan pembayaran memvalidasi waktu, referensi, dan identitas transaksi", () => {
+  const initial = { salesOrderId: "cm123456789012", paidAt: "2026-09-05T10:00", reference: "TRX-001", note: "Transfer bank" };
+  assert.equal(recordInitialPaymentSchema.safeParse(initial).success, true);
+  assert.equal(recordInitialPaymentSchema.safeParse({ ...initial, salesOrderId: "pendek" }).success, false);
+  assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "cm123456789013" }).success, true);
+  assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "" }).success, false);
 });
 
 test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", () => {
@@ -403,6 +476,23 @@ test("transaksi Deal memberi waktu cukup, retry konflik serializable, dan error 
   assert.match(actionSource, /error\.code === "P2034"/);
   assert.match(responseSource, /error\.code === "P2028"/);
   assert.match(responseSource, /error\.code === "P2034"/);
+});
+
+test("migration dokumen CRM v2 menjaga nilai invoice dan relasi pembayaran", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260904000000_crm_order_documents_v2/migration.sql", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const rosterSource = await readFile(new URL("../lib/crm/roster-import.ts", import.meta.url), "utf8");
+  assert.match(sql, /InvoiceItem_charges_valid[\s\S]+"grossAmount" = ROUND\("quantity" \* "unitPrice", 2\)/);
+  assert.match(sql, /PaymentTransaction_one_active_initial/);
+  assert.match(sql, /FOREIGN KEY \("paymentTermId", "paymentId"\)[\s\S]+REFERENCES "PaymentTerm"\("id", "paymentId"\)/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql, /REVOKE ALL ON TABLE[\s\S]+FROM anon, authenticated/);
+  assert.doesNotMatch(sql, /(?:DELETE|INSERT|UPDATE)\s+(?:FROM\s+)?storage\./i);
+  assert.doesNotMatch(actionSource, /productionRoute/);
+  assert.match(actionSource, /salesOrder:\s*\{ status: "ACTIVE" \}/);
+  assert.match(actionSource, /const roster = replaceRosterFromFile \? fileRoster : manualRoster/);
+  assert.match(rosterSource, /XLSX_MAX_UNCOMPRESSED_BYTES/);
+  assert.match(rosterSource, /TextDecoder\("utf-8", \{ fatal: true \}\)/);
 });
 
 test("parameter pagination dibatasi pada nilai aman", () => {

@@ -5,19 +5,30 @@ Aplikasi operasional internal berbasis Next.js 16, Prisma, PostgreSQL Supabase, 
 ## Menjalankan secara lokal
 
 1. Salin `.env.example` menjadi `.env` dan isi seluruh konfigurasi Supabase/database.
-2. Untuk migration reset CRM 2026-09-02, siapkan storage melalui Storage API, lalu terapkan migration dan buat Prisma Client. Perintah storage mengosongkan serta menghapus bucket bukti persetujuan lama secara permanen.
+2. Isi `DIRECT_DATABASE_URL` dengan direct connection atau Supavisor session mode. Untuk migration reset CRM 2026-09-02, siapkan storage melalui Storage API, lalu terapkan migration dan buat Prisma Client. Perintah storage mengosongkan serta menghapus bucket bukti persetujuan lama secara permanen.
 3. Buat Owner pertama satu kali.
 4. Jalankan development server.
 
 ```bash
 rtk npm run crm:reset-storage
 rtk npx prisma migrate deploy
+rtk npm run crm:setup-storage
 rtk npm run db:generate
 rtk npm run bootstrap:owner
 rtk npm run dev
 ```
 
 Setelah Owner berhasil login dan mengganti password sementara, hapus `BOOTSTRAP_OWNER_PASSWORD` dari environment.
+
+### Data demo Produksi
+
+Setelah migration dan bootstrap Owner selesai, buat masing-masing satu kartu demo Jersey dan Non-Jersey:
+
+```bash
+ALLOW_DEMO_DATA=true npm run db:seed:production-demo
+```
+
+Script aman dijalankan ulang, menolak berjalan saat `NODE_ENV=production`, dan menandai data dengan awalan `[DEMO]`/`DEMO-`.
 
 ## Kontrak akses data
 
