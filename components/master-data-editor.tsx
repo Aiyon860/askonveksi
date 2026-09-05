@@ -220,10 +220,12 @@ export function MasterDataEditor({
   items,
   singularLabel,
   updateAction,
+  usageLabel = "Jumlah customer",
 }: {
   items: MasterItem[];
   singularLabel: string;
   updateAction: MasterAction;
+  usageLabel?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftItems, setDraftItems] = useState(() => createDraft(items));
@@ -362,7 +364,7 @@ export function MasterDataEditor({
                     <TableHead className="w-24">No</TableHead>
                     <TableHead className="min-w-56">Nama</TableHead>
                     <TableHead className="min-w-80">Deskripsi</TableHead>
-                    <TableHead className="w-32 text-center">Jumlah customer</TableHead>
+                    <TableHead className="w-32 text-center">{usageLabel}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

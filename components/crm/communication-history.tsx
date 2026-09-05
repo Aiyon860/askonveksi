@@ -34,6 +34,7 @@ export function CommunicationHistory({
   page,
   pageCount,
   pathname,
+  paginationParams,
   form,
 }: {
   items: CommunicationTimelineItem[];
@@ -41,6 +42,7 @@ export function CommunicationHistory({
   page: number;
   pageCount: number;
   pathname: string;
+  paginationParams?: Record<string, string | undefined>;
   form?: ReactNode;
 }) {
   return (
@@ -131,6 +133,7 @@ export function CommunicationHistory({
           pageCount={pageCount}
           total={total}
           pageSize={COMMUNICATION_PAGE_SIZE}
+          params={paginationParams}
           pageParam="historyPage"
           anchor="communication-history"
         />

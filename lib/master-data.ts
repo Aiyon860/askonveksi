@@ -40,3 +40,35 @@ export async function getLeadSources() {
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
 }
+
+export async function getGarmentSizes() {
+  await requireActor(MASTER_DATA_ROLES);
+  const items = await getPrismaClient().garmentSize.findMany({
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      position: true,
+      _count: { select: { purchaseRows: true, rosterEntries: true } },
+    },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+  });
+  return items.map((item) => ({
+    ...item,
+    _count: { customers: item._count.purchaseRows + item._count.rosterEntries },
+  }));
+}
+
+export async function getActiveGarmentSizes() {
+  await requireActor();
+  return getPrismaClient().garmentSize.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function getBusinessProfile() {
+  await requireActor(MASTER_DATA_ROLES);
+  return getPrismaClient().businessProfile.findUnique({ where: { id: "default" } });
+}

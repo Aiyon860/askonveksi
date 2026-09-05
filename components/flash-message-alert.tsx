@@ -1,42 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { CircleAlert, CircleCheck, XIcon } from "lucide-react";
+import { useEffect } from "react";
 
 import { FlashMessageClearer } from "@/components/flash-message-clearer";
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import type { FlashMessage } from "@/lib/actions/response";
 
 export function FlashMessageAlert({ flash }: { flash: FlashMessage }) {
-  const [isVisible, setIsVisible] = useState(true);
-
-  if (!isVisible) return null;
-
-  const isError = flash.kind === "error";
-
-  return (
-    <Alert variant={isError ? "destructive" : "success"}>
-      <FlashMessageClearer id={flash.id} />
-      {isError ? <CircleAlert aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
-      <AlertTitle>{isError ? "Tindakan belum berhasil" : "Berhasil"}</AlertTitle>
-      <AlertDescription>{flash.message}</AlertDescription>
-      <AlertAction>
-        <Button
-          aria-label="Tutup pesan"
-          onClick={() => setIsVisible(false)}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <XIcon />
-        </Button>
-      </AlertAction>
-    </Alert>
-  );
+  useEffect(() => {
+    toast.add({
+      title: flash.kind === "error" ? "Tindakan belum berhasil" : flash.kind === "warning" ? "Periksa kembali" : "Berhasil",
+      description: flash.message,
+      type: flash.kind === "notice" ? "success" : flash.kind,
+    });
+  }, [flash]);
+  return <FlashMessageClearer id={flash.id} />;
 }

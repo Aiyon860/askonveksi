@@ -11,6 +11,7 @@ type Values = {
   leadSourceId: string | null;
   salesPicId: string | null;
   productName: string | null;
+  garmentType: "JERSEY" | "NON_JERSEY" | null;
   needPurpose: string | null;
   designStatus: keyof typeof DESIGN_STATUS_LABEL | null;
   specification: string | null;
@@ -30,7 +31,8 @@ export function OpportunityFields({ idPrefix, leadSources, salesUsers, values }:
         <FieldLegend>Data kebutuhan</FieldLegend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field className="sm:col-span-2"><FieldLabel htmlFor={`${idPrefix}-title`} required>Judul peluang</FieldLabel><Input id={`${idPrefix}-title`} name="title" required minLength={3} maxLength={180} defaultValue={values?.title ?? ""} placeholder="Contoh: Seragam panitia 150 pcs" /></Field>
-          <Field><FieldLabel htmlFor={`${idPrefix}-productName`}>Produk</FieldLabel><Input id={`${idPrefix}-productName`} name="productName" maxLength={120} defaultValue={values?.productName ?? ""} placeholder="Jersey, PDH, kaos, atau lainnya" /></Field>
+          <Field><FieldLabel htmlFor={`${idPrefix}-garmentType`}>Jenis pakaian</FieldLabel><NativeSelect id={`${idPrefix}-garmentType`} name="garmentType" defaultValue={values?.garmentType ?? ""}><NativeSelectOption value="">Belum ditentukan</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
+          <Field><FieldLabel htmlFor={`${idPrefix}-productName`}>Nama produk atau pola</FieldLabel><Input id={`${idPrefix}-productName`} name="productName" maxLength={120} defaultValue={values?.productName ?? ""} placeholder="Contoh: Jersey solid atau jaket" /></Field>
           <Field><FieldLabel htmlFor={`${idPrefix}-needPurpose`}>Untuk kebutuhan</FieldLabel><Input id={`${idPrefix}-needPurpose`} name="needPurpose" maxLength={500} defaultValue={values?.needPurpose ?? ""} placeholder="Event, perusahaan, komunitas, sekolah" /></Field>
           <Field><FieldLabel htmlFor={`${idPrefix}-estimatedQuantity`}>Estimasi jumlah</FieldLabel><Input id={`${idPrefix}-estimatedQuantity`} name="estimatedQuantity" type="number" min={1} step={1} defaultValue={values?.estimatedQuantity ?? ""} /></Field>
           <Field><FieldLabel htmlFor={`${idPrefix}-deadline`}>Deadline</FieldLabel><Input id={`${idPrefix}-deadline`} name="deadline" type="date" defaultValue={values?.deadline?.toISOString().slice(0, 10) ?? ""} /></Field>

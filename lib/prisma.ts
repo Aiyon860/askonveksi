@@ -16,7 +16,24 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
+function hasCurrentModelDelegates(client: PrismaClient) {
+  const delegates = client as unknown as Record<string, { findMany?: unknown } | undefined>;
+  return ["garmentSize", "businessProfile", "paymentTransaction"].every(
+    (model) => typeof delegates[model]?.findMany === "function",
+  );
+}
+
 export function getPrismaClient() {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    globalForPrisma.prisma &&
+    !hasCurrentModelDelegates(globalForPrisma.prisma)
+  ) {
+    const staleClient = globalForPrisma.prisma;
+    globalForPrisma.prisma = undefined;
+    void staleClient.$disconnect().catch(() => undefined);
+  }
+
   if (!globalForPrisma.prisma) {
     globalForPrisma.prisma = createPrismaClient();
   }

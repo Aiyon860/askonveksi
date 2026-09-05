@@ -14,6 +14,7 @@ type MasterDataPageProps = {
   createDescription: string;
   createAction: MasterAction;
   bulkUpdateAction: MasterAction;
+  usageLabel?: string;
 };
 
 export function MasterDataPage({
@@ -22,6 +23,7 @@ export function MasterDataPage({
   createDescription,
   createAction,
   bulkUpdateAction,
+  usageLabel,
 }: MasterDataPageProps) {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -31,6 +33,7 @@ export function MasterDataPage({
           items={items}
           singularLabel={singularLabel}
           updateAction={bulkUpdateAction}
+          usageLabel={usageLabel}
         />
       ) : (
         <section

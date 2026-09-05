@@ -13,7 +13,7 @@ import { formatCurrency } from "@/lib/crm/format";
 
 type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE" };
 
-export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, initialPaidAt, productName, productionDeadline }: {
+export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, initialPaidAt, productName, garmentType, productionDeadline }: {
   opportunityId: string;
   opportunityVersion: number;
   purchaseOrderId: string;
@@ -22,6 +22,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   total: string;
   initialPaidAt: string;
   productName: string;
+  garmentType: "JERSEY" | "NON_JERSEY" | null;
   productionDeadline: string;
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
@@ -42,11 +43,9 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
             <Input id={`production-product-${invoiceId}`} name="productionProductName" required minLength={2} maxLength={160} defaultValue={productName} />
           </Field>
           <Field>
-            <FieldLabel htmlFor={`production-route-${invoiceId}`} required>Jalur produksi</FieldLabel>
-            <NativeSelect id={`production-route-${invoiceId}`} name="productionRoute" required className="w-full">
-              <NativeSelectOption value="JERSEY">Jersey</NativeSelectOption>
-              <NativeSelectOption value="NON_JERSEY">Non-Jersey</NativeSelectOption>
-            </NativeSelect>
+            <FieldLabel htmlFor={`production-route-${invoiceId}`}>Jalur produksi</FieldLabel>
+            <Input id={`production-route-${invoiceId}`} value={garmentType === "JERSEY" ? "Jersey" : garmentType === "NON_JERSEY" ? "Non-jersey" : "Belum ditentukan"} readOnly aria-readonly="true" />
+            <FieldDescription>Ditentukan otomatis dari jenis pakaian pada PO.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor={`production-deadline-${invoiceId}`} required>Deadline produksi</FieldLabel>

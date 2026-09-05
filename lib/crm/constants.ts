@@ -54,6 +54,35 @@ export const PURCHASE_ORDER_STATUS_LABEL = {
   SUPERSEDED: "Digantikan",
 } as const;
 
+export const DECORATION_METHODS = ["NONE", "TINTA", "SABLON", "BORDIR"] as const;
+
+export type DecorationMethod = (typeof DECORATION_METHODS)[number];
+
+export const DECORATION_METHOD_LABEL: Record<DecorationMethod, string> = {
+  NONE: "Tanpa dekorasi",
+  TINTA: "Tinta",
+  SABLON: "Sablon",
+  BORDIR: "Bordir",
+};
+
+export function decorationMethodLabel(value: string | null | undefined) {
+  if (!value) return "-";
+  return DECORATION_METHODS.includes(value as DecorationMethod)
+    ? DECORATION_METHOD_LABEL[value as DecorationMethod]
+    : value;
+}
+
+export const OPPORTUNITY_DETAIL_TABS = ["peluang", "po", "invoice", "deal", "aktivitas"] as const;
+
+export type OpportunityDetailTab = (typeof OPPORTUNITY_DETAIL_TABS)[number];
+
+export function parseOpportunityDetailTab(value: string | string[] | undefined): OpportunityDetailTab {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return OPPORTUNITY_DETAIL_TABS.includes(candidate as OpportunityDetailTab)
+    ? candidate as OpportunityDetailTab
+    : "peluang";
+}
+
 export const PAYMENT_KIND_LABEL = {
   LUNAS: "Lunas",
   DP: "DP",

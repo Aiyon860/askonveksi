@@ -22,7 +22,7 @@ export function OpportunityStageForm({
   cancelReason: string | null;
 }) {
   const allowedStages: Record<Exclude<OpportunityStage, "DEAL">, OpportunityStage[]> = {
-    LEAD_BARU: ["FOLLOW_UP", "LOST"],
+    LEAD_BARU: ["FOLLOW_UP", "NEGOSIASI", "LOST"],
     FOLLOW_UP: ["LEAD_BARU", "NEGOSIASI", "LOST"],
     NEGOSIASI: ["FOLLOW_UP", "LOST"],
     LOST: ["FOLLOW_UP"],

@@ -12,7 +12,7 @@ export async function PageMessage() {
     if (
       parsed &&
       typeof parsed.id === "string" &&
-      (parsed.kind === "notice" || parsed.kind === "error") &&
+      (parsed.kind === "notice" || parsed.kind === "warning" || parsed.kind === "error") &&
       typeof parsed.message === "string"
     ) {
       flash = parsed as FlashMessage;

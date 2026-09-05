@@ -45,6 +45,7 @@ export type PipelineOpportunity = {
     purchaseOrderNo: string;
     status: "DRAFT" | "AGREED" | "SUPERSEDED";
     productName: string;
+    garmentType: "JERSEY" | "NON_JERSEY" | null;
     totalQuantity: number;
   } | null;
   invoice: {
@@ -92,6 +93,7 @@ const opportunitySummarySelect = {
       purchaseOrderNo: true,
       status: true,
       productName: true,
+      garmentType: true,
       sizes: { select: { quantity: true } },
     },
     orderBy: { revision: "desc" },
@@ -146,6 +148,7 @@ export async function getPipelineData() {
       purchaseOrderNo: row.purchaseOrders[0].purchaseOrderNo,
       status: row.purchaseOrders[0].status,
       productName: row.purchaseOrders[0].productName,
+      garmentType: row.purchaseOrders[0].garmentType,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
     } : null,
     invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString() } : null,
@@ -384,6 +387,7 @@ export async function getOpportunityDetail(opportunityId: string) {
       leadSourceId: true,
       salesPicId: true,
       productName: true,
+      garmentType: true,
       needPurpose: true,
       designStatus: true,
       specification: true,
@@ -421,9 +425,15 @@ export async function getOpportunityDetail(opportunityId: string) {
           customerReference: true,
           revision: true,
           status: true,
+          garmentType: true,
           productName: true,
           material: true,
           color: true,
+          baseColor: true,
+          variationColor: true,
+          decorationMethod: true,
+          orderDate: true,
+          sampleSize: true,
           designNotes: true,
           notes: true,
           deadline: true,
@@ -431,8 +441,9 @@ export async function getOpportunityDetail(opportunityId: string) {
           version: true,
           createdAt: true,
           createdBy: { select: { name: true } },
-          sizes: { select: { id: true, position: true, size: true, quantity: true }, orderBy: { position: "asc" } },
-          attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
+          sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true }, orderBy: { position: "asc" } },
+          attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
         },
         orderBy: { revision: "desc" },
       },
@@ -445,6 +456,8 @@ export async function getOpportunityDetail(opportunityId: string) {
           discountType: true,
           discountValue: true,
           subtotal: true,
+          totalDiscount: true,
+          totalTax: true,
           total: true,
           issuedAt: true,
           dueAt: true,
@@ -453,7 +466,11 @@ export async function getOpportunityDetail(opportunityId: string) {
           version: true,
           createdAt: true,
           items: {
-            select: { id: true, position: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true },
+            select: {
+              id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
+              unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
+              discountAmount: true, taxRate: true, taxAmount: true, total: true, subtotal: true,
+            },
             orderBy: { position: "asc" },
           },
           salesOrder: { select: { id: true, salesOrderNo: true, status: true } },
@@ -880,17 +897,31 @@ export async function getSalesOrderDetail(salesOrderId: string) {
       },
       payment: {
         select: {
+          id: true,
           kind: true,
           paidAt: true,
           initialAmount: true,
           outstandingAmount: true,
-          terms: { select: { position: true, valueType: true, value: true, amount: true, dueAt: true }, orderBy: { position: "asc" } },
+          terms: {
+            select: { id: true, position: true, valueType: true, value: true, amount: true, dueAt: true, transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 } },
+            orderBy: { position: "asc" },
+          },
+          transactions: {
+            select: {
+              id: true, paymentTermId: true, amount: true, paidAt: true, reference: true, note: true, status: true,
+              voidedAt: true, voidReason: true, createdBy: { select: { name: true } }, voidedBy: { select: { name: true } },
+            },
+            orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+          },
         },
       },
       createdBy: { select: { name: true } },
       cancelledBy: { select: { name: true } },
       items: {
-        select: { id: true, position: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true },
+        select: {
+          id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
+          unitPrice: true, grossAmount: true, discountAmount: true, taxAmount: true, total: true, subtotal: true,
+        },
         orderBy: { position: "asc" },
       },
       productionWorkOrder: { select: { id: true, workOrderNo: true, status: true, currentStage: true } },

@@ -31,9 +31,16 @@ export const FLASH_MESSAGE_COOKIE = "askonveksi_flash";
 
 export type FlashMessage = {
   id: string;
-  kind: "notice" | "error";
+  kind: "notice" | "warning" | "error";
   message: string;
 };
+
+export function flashKindForError(error: unknown): Exclude<FlashMessage["kind"], "notice"> {
+  if (error instanceof UserFacingError) return "warning";
+  if (error instanceof Prisma.PrismaClientKnownRequestError || error instanceof Prisma.PrismaClientValidationError) return "warning";
+  if (error instanceof Error && (error.message === "UNAUTHORIZED" || error.message === "PASSWORD_CHANGE_REQUIRED")) return "warning";
+  return "error";
+}
 
 export async function flashMessagePath(path: string, kind: FlashMessage["kind"], message: string) {
   const value: FlashMessage = { id: randomUUID(), kind, message: message.slice(0, 500) };
@@ -57,7 +64,7 @@ export async function runRedirectingAction(
   try {
     destination = await work();
   } catch (error) {
-    destination = await flashMessagePath(fallbackPath, "error", messageForError(error));
+    destination = await flashMessagePath(fallbackPath, flashKindForError(error), messageForError(error));
   }
 
   redirect(destination);

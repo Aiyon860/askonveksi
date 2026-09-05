@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, Factory, KanbanSquare, LayoutDashboard, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, Factory, KanbanSquare, LayoutDashboard, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -20,6 +20,8 @@ const mainItems = [
 const masterItems = [
   { href: "/master-data/customer-types", label: "Jenis customer", icon: Tags },
   { href: "/master-data/lead-sources", label: "Sumber lead", icon: Waypoints },
+  { href: "/master-data/garment-sizes", label: "Ukuran pakaian", icon: Ruler },
+  { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
 ] as const;
 
 const analyticsItems = [
