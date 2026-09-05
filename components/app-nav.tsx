@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, ContactRound, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, Building2, ChartNoAxesCombined, ChevronDown, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
