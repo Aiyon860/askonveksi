@@ -1,5 +1,6 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { Prisma, type CustomerReminderType } from "@prisma/client";
 
 import type { Actor } from "@/lib/auth/session";
@@ -135,16 +136,24 @@ export async function getCustomerReminders({
   };
 }
 
+async function countUnreadReminders(actorId: string, actorRole: string) {
+  const where = {
+    AND: [
+      customerReminderVisibilityWhere({ id: actorId, role: actorRole } as Actor),
+      { receipts: { none: { actorId } } },
+    ],
+  };
+  return getPrismaClient().customerReminder.count({ where });
+}
+
 export async function getUnreadCustomerReminderCount() {
   const actor = await requireActor();
-  return getPrismaClient().customerReminder.count({
-    where: {
-      AND: [
-        customerReminderVisibilityWhere(actor),
-        { receipts: { none: { actorId: actor.id } } },
-      ],
-    },
-  });
+  const cached = unstable_cache(
+    () => countUnreadReminders(actor.id, actor.role),
+    ["unread-reminders", actor.id, actor.role],
+    { tags: ["badge-counts"], revalidate: 30 },
+  );
+  return cached();
 }
 
 export async function getRepeatOrderDraft(customerId: string, reminderId: string) {

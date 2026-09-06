@@ -1,6 +1,6 @@
 import { ChartNoAxesCombined } from "lucide-react";
 
-import { LeadSourceRevenueChart } from "@/components/analytics/lead-source-revenue-chart";
+import { LazyLeadSourceRevenueChart } from "@/components/analytics/lazy-lead-source-revenue-chart";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
 } from "@/lib/analytics/report-period";
 import { getLeadSourceRevenueData } from "@/lib/crm/data";
 import { formatCurrency } from "@/lib/crm/format";
+
+export const revalidate = 60;
 
 const PERIOD_LABEL = {
   month: "Bulan berjalan",
@@ -113,7 +115,7 @@ export default async function LeadSourceRevenuePage({
             </CardHeader>
             <CardContent>
               {hasRevenue ? (
-                <LeadSourceRevenueChart rows={data.rows} />
+                <LazyLeadSourceRevenueChart rows={data.rows} />
               ) : (
                 <Empty className="min-h-64 border-0">
                   <EmptyHeader>

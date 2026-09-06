@@ -20,8 +20,8 @@ export async function createClient() {
             cookieStore.set(name, value, options);
           }
         } catch {
-          // Server Components cannot always write cookies. proxy.ts performs
-          // the refresh before protected routes are rendered.
+        // Server Components cannot always write cookies. middleware.ts performs
+        // the refresh before protected routes are rendered.
         }
       },
     },

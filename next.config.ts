@@ -1,8 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  compress: true,
+  productionBrowserSourceMaps: false,
   experimental: {
     useTypeScriptCli: false,
+    serverSourceMaps: false,
+    webpackMemoryOptimizations: true,
+    optimizePackageImports: ["lucide-react", "recharts"],
+    useCache: true,
+  },
+  images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 86400,
   },
   async headers() {
     return [

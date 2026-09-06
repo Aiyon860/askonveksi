@@ -3,9 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/landing"]);
-
-export async function proxy(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
   const { url, publishableKey } = getSupabasePublicConfig();
 
@@ -28,15 +26,7 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getClaims();
-  const isPublic = PUBLIC_PATHS.has(request.nextUrl.pathname);
-
-  if (!data?.claims && !isPublic) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    loginUrl.search = "";
-    return NextResponse.redirect(loginUrl);
-  }
+  await supabase.auth.getClaims();
 
   return response;
 }
