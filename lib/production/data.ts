@@ -11,6 +11,7 @@ export async function getProductionBoard(route: ProductionRoute) {
   const prisma = getPrismaClient();
   const [rows, total, legacyOrders] = await Promise.all([
     prisma.productionWorkOrder.findMany({
+      relationLoadStrategy: "join",
       where: { route, status: { not: "CANCELLED" } },
       select: {
         id: true,
@@ -40,6 +41,7 @@ export async function getProductionBoard(route: ProductionRoute) {
     prisma.productionWorkOrder.count({ where: { route, status: { not: "CANCELLED" } } }),
     PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN")
       ? prisma.salesOrder.findMany({
+          relationLoadStrategy: "join",
           where: { status: "ACTIVE", productionWorkOrder: null },
           select: {
             id: true,
@@ -76,6 +78,7 @@ export async function getProductionBoard(route: ProductionRoute) {
 export async function getProductionDetail(id: string) {
   const actor = await requireActor(PRODUCTION_ROLES);
   const workOrder = await getPrismaClient().productionWorkOrder.findUnique({
+    relationLoadStrategy: "join",
     where: { id },
     select: {
       id: true,

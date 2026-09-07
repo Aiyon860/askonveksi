@@ -31,30 +31,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {process.env.NEXT_PUBLIC_SUPABASE_URL ? (
           <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         ) : null}
-        <script
-          type="speculationrules"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              prerender: [
-                {
-                  source: "document",
-                  where: { href_matches: "/dashboard" },
-                  eagerness: "moderate",
-                },
-                {
-                  source: "document",
-                  where: { href_matches: "/crm" },
-                  eagerness: "moderate",
-                },
-                {
-                  source: "document",
-                  where: { href_matches: "/produksi" },
-                  eagerness: "moderate",
-                },
-              ],
-            }),
-          }}
-        />
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <span

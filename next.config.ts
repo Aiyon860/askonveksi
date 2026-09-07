@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
     serverSourceMaps: false,
     webpackMemoryOptimizations: true,
     optimizePackageImports: ["lucide-react", "recharts"],
-    useCache: true,
   },
   images: {
     formats: ["image/avif", "image/webp"],

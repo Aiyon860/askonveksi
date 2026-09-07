@@ -49,7 +49,8 @@ function DashboardFallback({ children }: { children: ReactNode }) {
 export function DashboardContentClient({ initialData }: { initialData: DashboardData }) {
   const { data } = useSWR<DashboardData>("/api/crm/dashboard", fetcher, {
     fallbackData: initialData,
-    revalidateOnFocus: true,
+    revalidateOnMount: false,
+    revalidateOnFocus: false,
     revalidateOnReconnect: true,
     refreshInterval: 30000,
     dedupingInterval: 5000,

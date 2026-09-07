@@ -37,7 +37,8 @@ export function PipelineBoardSectionClient({
 }) {
   const { data } = useSWR<PipelineData>("/api/crm/pipeline", fetcher, {
     fallbackData: initialData,
-    revalidateOnFocus: true,
+    revalidateOnMount: false,
+    revalidateOnFocus: false,
     revalidateOnReconnect: true,
     refreshInterval: 60000,
     dedupingInterval: 10000,

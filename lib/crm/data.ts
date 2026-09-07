@@ -2,6 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 import { Prisma, type AppRole, type OpportunityStage } from "@prisma/client";
+import { cache } from "react";
 
 import {
   analyticsPeriodLabel,
@@ -118,6 +119,7 @@ const getCachedPipelineData = unstable_cache(
     const prisma = getPrismaClient();
     const [rows, total] = await Promise.all([
       prisma.opportunity.findMany({
+        relationLoadStrategy: "join",
         where: { customer: { archivedAt: null } },
         select: opportunitySummarySelect,
         orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
@@ -392,9 +394,10 @@ export async function getCustomerDetail(customerId: string) {
   });
 }
 
-export async function getOpportunityDetail(opportunityId: string) {
+export const getOpportunityDetail = cache(async function getOpportunityDetail(opportunityId: string) {
   await requireActor();
   return getPrismaClient().opportunity.findUnique({
+    relationLoadStrategy: "join",
     where: { id: opportunityId },
     select: {
       id: true,
@@ -508,7 +511,7 @@ export async function getOpportunityDetail(opportunityId: string) {
       },
     },
   });
-}
+});
 
 export const COMMUNICATION_PAGE_SIZE = 25;
 
@@ -881,6 +884,7 @@ export async function getSalesPerformanceData(period: AnalyticsPeriod) {
 export async function getSalesOrderDetail(salesOrderId: string) {
   await requireActor();
   return getPrismaClient().salesOrder.findUnique({
+    relationLoadStrategy: "join",
     where: { id: salesOrderId },
     select: {
       id: true,

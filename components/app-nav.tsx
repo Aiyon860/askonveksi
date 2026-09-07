@@ -48,7 +48,6 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
   return (
     <Link
       href={item.href}
-      prefetch={true}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -72,14 +71,12 @@ export const AppNav = memo(function AppNav({ role }: { role: AppRole }) {
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
-  const [followUpCount, setFollowUpCount] = useState(0);
   const [reminderCount, setReminderCount] = useState(0);
 
   useEffect(() => {
     fetch("/api/crm/badge-counts", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
-        setFollowUpCount(data.followUpCount ?? 0);
         setReminderCount(data.reminderCount ?? 0);
       })
       .catch(() => {});
