@@ -24,6 +24,7 @@ import {
   getAnalyticsPeriodBounds,
   parseAnalyticsPeriod,
 } from "../lib/analytics/report-period.ts";
+import { parseFinanceDateRange } from "../lib/finance/date-range.ts";
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
 import { finalizeSalesPerformanceRows } from "../lib/analytics/sales-performance.ts";
 import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
@@ -390,6 +391,28 @@ test("periode analytics dibatasi dan mengikuti awal hari Jakarta", () => {
   assert.equal(december?.end.toISOString(), "2026-12-31T17:00:00.000Z");
 });
 
+test("rentang tanggal finance default ke bulan berjalan Jakarta", () => {
+  const reference = new Date("2026-08-31T18:00:00.000Z");
+  const defaultRange = parseFinanceDateRange(undefined, undefined, reference);
+
+  assert.equal(defaultRange.from, "2026-09-01");
+  assert.equal(defaultRange.to, "2026-09-30");
+  assert.equal(defaultRange.start.toISOString(), "2026-08-31T17:00:00.000Z");
+  assert.equal(defaultRange.end.toISOString(), "2026-09-30T17:00:00.000Z");
+  assert.equal(defaultRange.label, "Bulan berjalan");
+  assert.equal(defaultRange.isDefault, true);
+
+  const custom = parseFinanceDateRange("2026-09-05", "2026-09-07", reference);
+  assert.equal(custom.start.toISOString(), "2026-09-04T17:00:00.000Z");
+  assert.equal(custom.end.toISOString(), "2026-09-07T17:00:00.000Z");
+  assert.equal(custom.label, "2026-09-05 sampai 2026-09-07");
+  assert.equal(custom.isDefault, false);
+
+  const invalid = parseFinanceDateRange("2026-09-10", "2026-09-01", reference);
+  assert.equal(invalid.from, "2026-09-01");
+  assert.equal(invalid.to, "2026-09-30");
+});
+
 test("conversion rate menghitung Deal dari seluruh lead dan memakai format Indonesia", () => {
   const conversionRate = calculateConversionRate(14, 125);
 
@@ -407,6 +430,18 @@ test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async (
   assert.match(dataSource, /o\."leadSourceId"/);
   assert.match(dataSource, /COUNT\(DISTINCT so\."opportunityId"\)/);
   assert.match(dataSource, /so\."status" = 'ACTIVE'/);
+});
+
+test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", async () => {
+  const dataSource = await readFile(new URL("../lib/finance/data.ts", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/keuangan/page.tsx", import.meta.url), "utf8");
+
+  assert.match(dataSource, /requireActor\(FINANCE_ROLES\)/);
+  assert.match(dataSource, /status: "ACTIVE"/);
+  assert.match(dataSource, /payment: \{ salesOrder: \{ status: "ACTIVE" \} \}/);
+  assert.match(dataSource, /outstandingAmount/);
+  assert.match(pageSource, /Sisa pembayaran/);
+  assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
 });
 
 test("normalisasi performa sales mempertahankan sales aktif dan data historis", () => {

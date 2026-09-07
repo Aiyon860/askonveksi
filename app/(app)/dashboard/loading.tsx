@@ -47,12 +47,31 @@ export default function DashboardLoading() {
         </Card>
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-2" aria-hidden="true">
+        {Array.from({ length: 2 }, (_, cardIndex) => (
+          <Card key={`document-preview-${cardIndex}`}>
+            <CardHeadingSkeleton />
+            <CardContent>
+              {Array.from({ length: 5 }, (_, rowIndex) => (
+                <div key={`document-preview-${cardIndex}-${rowIndex}`} className="flex min-h-20 items-center justify-between gap-4 border-b last:border-b-0">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <Skeleton className="h-4 w-36 max-w-full" />
+                    <Skeleton className="h-3 w-48 max-w-full" />
+                  </div>
+                  <Skeleton className="h-6 w-20 shrink-0" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
       <section className="flex flex-col gap-4" aria-hidden="true">
         <div className="flex flex-col gap-2">
           <Skeleton className="h-5 w-28" />
           <Skeleton className="h-4 w-72 max-w-full" />
         </div>
-        <div className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-hidden pb-1 xl:grid-cols-8 xl:grid-flow-row">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
           {Array.from({ length: 8 }, (_, index) => (
             <div key={`pipeline-stage-${index}`} className="flex min-h-24 flex-col gap-3 rounded-lg border bg-card p-4">
               <Skeleton className="h-5 w-24" />

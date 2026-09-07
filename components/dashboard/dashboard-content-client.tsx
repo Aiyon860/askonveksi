@@ -1,11 +1,13 @@
 "use client";
 
 import useSWR from "swr";
-import { AlertTriangle, CalendarClock, CircleDollarSign, Percent, Target } from "lucide-react";
+import { AlertTriangle, CalendarClock, CircleDollarSign, HandCoins, Percent, Target } from "lucide-react";
 import Link from "next/link";
 
 import { fetcher } from "@/lib/fetcher";
-import { OpportunityStatusBadge } from "@/components/status-badge";
+import { InvoiceDetail } from "@/components/crm/invoice-detail";
+import { PurchaseOrderDetail } from "@/components/crm/purchase-order-detail";
+import { InvoiceStatusBadge, OpportunityStatusBadge, PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +16,7 @@ import { LazyBusinessTrendChart } from "@/components/dashboard/lazy-business-tre
 import { PIPELINE_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
 import type { ReactNode } from "react";
-import type { OpportunityStage } from "@prisma/client";
+import type { InvoiceStatus, OpportunityStage, PurchaseOrderStatus } from "@prisma/client";
 
 export type DashboardData = {
   stageCounts: Partial<Record<OpportunityStage, number>>;
@@ -40,6 +42,33 @@ export type DashboardData = {
     nextActionAt: string | null;
     customer: { name: string };
   }>;
+  latestPurchaseOrders: Array<{
+    id: string;
+    opportunityId: string;
+    purchaseOrderNo: string;
+    customerName: string;
+    productName: string;
+    status: PurchaseOrderStatus;
+    createdAt: string;
+    deadline: string | null;
+  }>;
+  latestInvoices: Array<{
+    id: string;
+    opportunityId: string;
+    invoiceNo: string;
+    purchaseOrderNo: string;
+    customerName: string;
+    status: InvoiceStatus;
+    total: string;
+    createdAt: string;
+    dueAt: string | null;
+  }>;
+  financeSummary: {
+    moneyInThisMonth: string;
+    transactionCountThisMonth: number;
+    outstandingAmount: string;
+    outstandingOrderCount: number;
+  } | null;
 };
 
 function DashboardFallback({ children }: { children: ReactNode }) {
@@ -103,9 +132,120 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
         </Card>
       </section>
 
+      {data.financeSummary ? (
+        <section aria-labelledby="finance-summary">
+          <Card>
+            <CardHeader>
+              <CardTitle id="finance-summary">Ringkasan keuangan</CardTitle>
+              <CardDescription>Uang masuk bulan berjalan dan sisa pembayaran dari Sales Order aktif.</CardDescription>
+              <CardAction><Button size="sm" variant="link" render={<Link href="/keuangan" />} nativeButton={false}>Buka keuangan</Button></CardAction>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2">
+                <div className="bg-success-surface p-5 text-success-surface-foreground">
+                  <dt className="flex items-center gap-2 text-sm text-success-surface-foreground/75"><HandCoins aria-hidden="true" className="size-4" />Uang masuk bulan ini</dt>
+                  <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.financeSummary.moneyInThisMonth)}</dd>
+                  <p className="mt-2 text-xs text-success-surface-foreground/75">{data.financeSummary.transactionCountThisMonth} transaksi aktif</p>
+                </div>
+                <div className="bg-warning-surface p-5 text-warning-surface-foreground">
+                  <dt className="flex items-center gap-2 text-sm text-warning-surface-foreground/75"><CircleDollarSign aria-hidden="true" className="size-4" />Sisa pembayaran aktif</dt>
+                  <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.financeSummary.outstandingAmount)}</dd>
+                  <p className="mt-2 text-xs text-warning-surface-foreground/75">{data.financeSummary.outstandingOrderCount} order belum lunas</p>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
+      <section aria-labelledby="latest-documents-title">
+        <div className="mb-4">
+          <h2 id="latest-documents-title" className="text-base font-semibold">Dokumen terbaru</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Aktivitas PO customer dan invoice yang baru dibuat, termasuk revisi yang sudah digantikan.</p>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Purchase order terbaru</CardTitle>
+              <CardDescription>Lima PO terakhir berdasarkan tanggal dibuat.</CardDescription>
+              <CardAction><Button size="sm" variant="link" render={<Link href="/crm/purchase-orders" />} nativeButton={false}>Lihat semua PO</Button></CardAction>
+            </CardHeader>
+            <CardContent className="gap-0">
+              {data.latestPurchaseOrders.length ? data.latestPurchaseOrders.map((item, index) => (
+                <PurchaseOrderDetail
+                  key={item.id}
+                  id={item.id}
+                  triggerVariant="preview"
+                  triggerClassName={index > 0 ? "border-t" : undefined}
+                >
+                  <div className="min-w-0">
+                    <p className="font-mono font-medium">{item.purchaseOrderNo}</p>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{item.customerName}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{item.productName}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
+                    <PurchaseOrderStatusBadge status={item.status} />
+                    <div className="text-right text-xs text-muted-foreground">
+                      <p>Dibuat {formatDate(item.createdAt)}</p>
+                      {item.deadline ? <p className="mt-1">Deadline {formatDate(item.deadline)}</p> : null}
+                    </div>
+                  </div>
+                </PurchaseOrderDetail>
+              )) : (
+                <Empty className="min-h-48 border-0 p-6">
+                  <EmptyHeader>
+                    <EmptyTitle>Belum ada purchase order</EmptyTitle>
+                    <EmptyDescription>PO yang dibuat dari opportunity akan muncul di sini.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Invoice terbaru</CardTitle>
+              <CardDescription>Lima invoice terakhir berdasarkan tanggal dibuat.</CardDescription>
+              <CardAction><Button size="sm" variant="link" render={<Link href="/crm/invoices" />} nativeButton={false}>Lihat semua invoice</Button></CardAction>
+            </CardHeader>
+            <CardContent className="gap-0">
+              {data.latestInvoices.length ? data.latestInvoices.map((item, index) => (
+                <InvoiceDetail
+                  key={item.id}
+                  id={item.id}
+                  triggerVariant="preview"
+                  triggerClassName={index > 0 ? "border-t" : undefined}
+                >
+                  <div className="min-w-0">
+                    <p className="font-mono font-medium">{item.invoiceNo}</p>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{item.customerName}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">PO {item.purchaseOrderNo}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
+                    <InvoiceStatusBadge status={item.status} />
+                    <div className="text-right text-xs">
+                      <p className="font-medium tabular-nums text-foreground">{formatCurrency(item.total)}</p>
+                      <p className="mt-1 text-muted-foreground">Dibuat {formatDate(item.createdAt)}</p>
+                      {item.dueAt ? <p className="mt-1 text-muted-foreground">Jatuh tempo {formatDate(item.dueAt)}</p> : null}
+                    </div>
+                  </div>
+                </InvoiceDetail>
+              )) : (
+                <Empty className="min-h-48 border-0 p-6">
+                  <EmptyHeader>
+                    <EmptyTitle>Belum ada invoice</EmptyTitle>
+                    <EmptyDescription>Invoice yang dibuat dari PO akan muncul di sini.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
       <section aria-labelledby="pipeline-stage-title">
         <div className="mb-4"><h2 id="pipeline-stage-title" className="text-base font-semibold">Pipeline aktif</h2><p className="mt-1 text-sm text-muted-foreground">Jumlah opportunity pada setiap tahap kerja.</p></div>
-        <dl className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-cols-8 xl:grid-flow-row xl:overflow-visible">
+        <dl className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
           {PIPELINE_STAGES.map((stage) => <div key={stage} className="rounded-lg border bg-card p-4"><dt><OpportunityStatusBadge stage={stage} /></dt><dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.stageCounts[stage] ?? 0}</dd></div>)}
         </dl>
       </section>
