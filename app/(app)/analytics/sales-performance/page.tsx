@@ -7,7 +7,7 @@ FORM: Laporan operasional code-led, ENERGY 1 / RHYTHM 2 / MOTION 1.
 */
 import { ChartNoAxesCombined, UserRoundX } from "lucide-react";
 
-import { SalesPerformanceRevenueChart } from "@/components/analytics/sales-performance-revenue-chart";
+import { LazySalesPerformanceRevenueChart } from "@/components/analytics/lazy-sales-performance-revenue-chart";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ import {
 } from "@/lib/analytics/report-period";
 import { getSalesPerformanceData } from "@/lib/crm/data";
 import { formatCurrency } from "@/lib/crm/format";
+
+export const revalidate = 60;
 
 const PERIOD_LABEL = {
   month: "Bulan berjalan",
@@ -131,7 +133,7 @@ export default async function SalesPerformancePage({
         </CardHeader>
         <CardContent>
           {hasRevenue ? (
-            <SalesPerformanceRevenueChart rows={data.rows} />
+            <LazySalesPerformanceRevenueChart rows={data.rows} />
           ) : (
             <Empty className="min-h-64 border-0">
               <EmptyHeader>

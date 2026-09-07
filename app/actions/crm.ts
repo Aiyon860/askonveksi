@@ -2,7 +2,7 @@
 
 import { Prisma, type CommunicationSystemEvent } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
 import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, DEAL_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
@@ -56,6 +56,7 @@ const DEAL_TRANSACTION_OPTIONS = {
 function revalidateCustomerReminders() {
   revalidatePath("/notifications");
   revalidatePath("/", "layout");
+  updateTag("badge-counts");
 }
 
 function formValue(formData: FormData, key: string) {

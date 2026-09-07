@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { getLeadSources } from "@/lib/master-data";
 
+export const revalidate = 60;
+
 export default async function LeadSourcesPage() {
   const items = await getLeadSources();
   return (

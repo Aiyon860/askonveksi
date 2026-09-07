@@ -23,7 +23,7 @@ export default async function BusinessProfilePage() {
           <CardDescription>Perubahan hanya berlaku untuk dokumen baru atau revisi yang belum dikunci.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={updateBusinessProfileAction} encType="multipart/form-data">
+          <form action={updateBusinessProfileAction}>
             <input type="hidden" name="version" value={profile.version} />
             <FieldGroup>
               <div className="grid gap-4 sm:grid-cols-2">

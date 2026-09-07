@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
 import { requireActor } from "@/lib/auth/session";
@@ -11,6 +11,7 @@ import { getPrismaClient } from "@/lib/prisma";
 function refreshNotifications() {
   revalidatePath("/notifications");
   revalidatePath("/", "layout");
+  updateTag("badge-counts");
 }
 
 export async function markCustomerReminderReadAction(formData: FormData) {

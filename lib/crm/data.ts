@@ -1,6 +1,8 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { Prisma, type AppRole, type OpportunityStage } from "@prisma/client";
+import { cache } from "react";
 
 import {
   analyticsPeriodLabel,
@@ -112,20 +114,21 @@ const opportunitySummarySelect = {
   _count: { select: { communicationActivities: true } },
 } satisfies Prisma.OpportunitySelect;
 
-export async function getPipelineData() {
-  const actor = await requireActor();
-  const prisma = getPrismaClient();
-  const [rows, total] = await Promise.all([
-    prisma.opportunity.findMany({
-      where: { customer: { archivedAt: null } },
-      select: opportunitySummarySelect,
-      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-      take: 500,
-    }),
-    prisma.opportunity.count({ where: { customer: { archivedAt: null } } }),
-  ]);
+const getCachedPipelineData = unstable_cache(
+  async (actorRole: AppRole) => {
+    const prisma = getPrismaClient();
+    const [rows, total] = await Promise.all([
+      prisma.opportunity.findMany({
+        relationLoadStrategy: "join",
+        where: { customer: { archivedAt: null } },
+        select: opportunitySummarySelect,
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: 500,
+      }),
+      prisma.opportunity.count({ where: { customer: { archivedAt: null } } }),
+    ]);
 
-  const opportunities: PipelineOpportunity[] = rows.map((row) => ({
+    const opportunities: PipelineOpportunity[] = rows.map((row) => ({
     id: row.id,
     opportunityNo: row.opportunityNo,
     title: row.title,
@@ -159,17 +162,33 @@ export async function getPipelineData() {
     } : null,
   }));
 
-  return { opportunities, total, truncated: total > rows.length, actorRole: actor.role };
+  return { opportunities, total, truncated: total > rows.length, actorRole };
+  },
+  ["pipeline-data"],
+  { tags: ["pipeline-data"], revalidate: 30 },
+);
+
+export async function getPipelineData() {
+  const actor = await requireActor();
+  return getCachedPipelineData(actor.role);
 }
+
+const getCachedCustomerOptions = unstable_cache(
+  async () => {
+    return getPrismaClient().customer.findMany({
+      where: { archivedAt: null },
+      select: { id: true, customerNo: true, name: true, companyName: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 500,
+    });
+  },
+  ["customer-options"],
+  { tags: ["customer-options"], revalidate: 60 },
+);
 
 export async function getCustomerOptions() {
   await requireActor();
-  return getPrismaClient().customer.findMany({
-    where: { archivedAt: null },
-    select: { id: true, customerNo: true, name: true, companyName: true },
-    orderBy: [{ name: "asc" }, { id: "asc" }],
-    take: 500,
-  });
+  return getCachedCustomerOptions();
 }
 
 export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt";
@@ -375,9 +394,10 @@ export async function getCustomerDetail(customerId: string) {
   });
 }
 
-export async function getOpportunityDetail(opportunityId: string) {
+export const getOpportunityDetail = cache(async function getOpportunityDetail(opportunityId: string) {
   await requireActor();
   return getPrismaClient().opportunity.findUnique({
+    relationLoadStrategy: "join",
     where: { id: opportunityId },
     select: {
       id: true,
@@ -491,7 +511,7 @@ export async function getOpportunityDetail(opportunityId: string) {
       },
     },
   });
-}
+});
 
 export const COMMUNICATION_PAGE_SIZE = 25;
 
@@ -606,17 +626,26 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
   return { items, counts: { overdue, today, tomorrow: tomorrowCount, upcoming }, salesUsers, selectedPicId };
 }
 
-export async function getFollowUpBadgeCount() {
-  const actor = await requireActor();
+async function countFollowUpBadge(actorId: string, actorRole: string) {
   const { tomorrow } = jakartaDayBounds();
   return getPrismaClient().opportunity.count({
     where: {
       stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
       nextActionAt: { lt: tomorrow },
       customer: { archivedAt: null },
-      ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+      ...(actorRole === "SALES" ? { salesPicId: actorId } : {}),
     },
   });
+}
+
+export async function getFollowUpBadgeCount() {
+  const actor = await requireActor();
+  const cached = unstable_cache(
+    () => countFollowUpBadge(actor.id, actor.role),
+    ["follow-up-badge", actor.id, actor.role],
+    { tags: ["badge-counts"], revalidate: 30 },
+  );
+  return cached();
 }
 
 export async function getSalesDashboardData() {
@@ -855,6 +884,7 @@ export async function getSalesPerformanceData(period: AnalyticsPeriod) {
 export async function getSalesOrderDetail(salesOrderId: string) {
   await requireActor();
   return getPrismaClient().salesOrder.findUnique({
+    relationLoadStrategy: "join",
     where: { id: salesOrderId },
     select: {
       id: true,
@@ -938,6 +968,64 @@ function yearBounds(year: number | null) {
     : undefined;
 }
 
+const getCachedPurchaseOrders = unstable_cache(
+  async ({
+    query,
+    status,
+    year,
+    page,
+    pageSize,
+  }: {
+    query: string;
+    status: PurchaseOrderListStatus;
+    year: number | null;
+    page: number;
+    pageSize: number;
+  }) => {
+    const normalizedQuery = query.trim().slice(0, 80);
+    const where = {
+      status: status === "all" ? { in: ["DRAFT", "AGREED"] as const } : status,
+      ...(year ? { createdAt: yearBounds(year) } : {}),
+      ...(normalizedQuery ? {
+        OR: [
+          { productName: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { customerReference: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { opportunity: { customer: { name: { contains: normalizedQuery, mode: "insensitive" as const } } } },
+        ],
+      } : {}),
+    } satisfies Prisma.PurchaseOrderWhereInput;
+    const prisma = getPrismaClient();
+    const [items, total, yearRows] = await Promise.all([
+      prisma.purchaseOrder.findMany({
+        where,
+        select: {
+          id: true,
+          purchaseOrderNo: true,
+          productName: true,
+          status: true,
+          deadline: true,
+          createdAt: true,
+          opportunity: { select: { id: true, customer: { select: { name: true } } } },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.purchaseOrder.count({ where }),
+      prisma.$queryRaw<{ year: number }[]>`SELECT DISTINCT EXTRACT(YEAR FROM "createdAt")::int AS year FROM "PurchaseOrder" WHERE status IN ('DRAFT','AGREED') ORDER BY year DESC`,
+    ]);
+    return {
+      items,
+      total,
+      years: yearRows.map((r) => r.year),
+      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  },
+  ["purchase-orders"],
+  { tags: ["purchase-orders"], revalidate: 30 },
+);
+
 export async function getPurchaseOrders({
   query,
   status,
@@ -952,50 +1040,68 @@ export async function getPurchaseOrders({
   pageSize: number;
 }) {
   await requireActor();
-  const normalizedQuery = query.trim().slice(0, 80);
-  const where = {
-    status: status === "all" ? { in: ["DRAFT", "AGREED"] as const } : status,
-    ...(year ? { createdAt: yearBounds(year) } : {}),
-    ...(normalizedQuery ? {
-      OR: [
-        { productName: { contains: normalizedQuery, mode: "insensitive" as const } },
-        { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
-        { customerReference: { contains: normalizedQuery, mode: "insensitive" as const } },
-        { opportunity: { customer: { name: { contains: normalizedQuery, mode: "insensitive" as const } } } },
-      ],
-    } : {}),
-  } satisfies Prisma.PurchaseOrderWhereInput;
-  const prisma = getPrismaClient();
-  const [items, total, dates] = await Promise.all([
-    prisma.purchaseOrder.findMany({
-      where,
-      select: {
-        id: true,
-        purchaseOrderNo: true,
-        productName: true,
-        status: true,
-        deadline: true,
-        createdAt: true,
-        opportunity: { select: { id: true, customer: { select: { name: true } } } },
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.purchaseOrder.count({ where }),
-    prisma.purchaseOrder.findMany({
-      where: { status: { in: ["DRAFT", "AGREED"] } },
-      select: { createdAt: true },
-      distinct: ["createdAt"],
-    }),
-  ]);
-  return {
-    items,
-    total,
-    years: [...new Set(dates.map(({ createdAt }) => createdAt.getUTCFullYear()))].sort((a, b) => b - a),
-    pageCount: Math.max(1, Math.ceil(total / pageSize)),
-  };
+  return getCachedPurchaseOrders({ query, status, year, page, pageSize });
 }
+
+const getCachedInvoices = unstable_cache(
+  async ({
+    query,
+    status,
+    year,
+    page,
+    pageSize,
+  }: {
+    query: string;
+    status: InvoiceListStatus;
+    year: number | null;
+    page: number;
+    pageSize: number;
+  }) => {
+    const normalizedQuery = query.trim().slice(0, 80);
+    const where = {
+      status: status === "all" ? { in: ["DRAFT", "ISSUED"] as const } : status,
+      ...(year ? { createdAt: yearBounds(year) } : {}),
+      ...(normalizedQuery ? {
+        OR: [
+          { invoiceNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { snapshotCustomerName: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { snapshotCompanyName: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { purchaseOrder: { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } } },
+        ],
+      } : {}),
+    } satisfies Prisma.InvoiceWhereInput;
+    const prisma = getPrismaClient();
+    const [items, total, yearRows] = await Promise.all([
+      prisma.invoice.findMany({
+        where,
+        select: {
+          id: true,
+          invoiceNo: true,
+          snapshotCustomerName: true,
+          snapshotCompanyName: true,
+          status: true,
+          total: true,
+          createdAt: true,
+          opportunityId: true,
+          purchaseOrder: { select: { purchaseOrderNo: true } },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.invoice.count({ where }),
+      prisma.$queryRaw<{ year: number }[]>`SELECT DISTINCT EXTRACT(YEAR FROM "createdAt")::int AS year FROM "Invoice" WHERE status IN ('DRAFT','ISSUED') ORDER BY year DESC`,
+    ]);
+    return {
+      items: items.map((item) => ({ ...item, total: item.total.toString() })),
+      total,
+      years: yearRows.map((r) => r.year),
+      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  },
+  ["invoices"],
+  { tags: ["invoices"], revalidate: 30 },
+);
 
 export async function getInvoices({
   query,
@@ -1011,51 +1117,7 @@ export async function getInvoices({
   pageSize: number;
 }) {
   await requireActor();
-  const normalizedQuery = query.trim().slice(0, 80);
-  const where = {
-    status: status === "all" ? { in: ["DRAFT", "ISSUED"] as const } : status,
-    ...(year ? { createdAt: yearBounds(year) } : {}),
-    ...(normalizedQuery ? {
-      OR: [
-        { invoiceNo: { contains: normalizedQuery, mode: "insensitive" as const } },
-        { snapshotCustomerName: { contains: normalizedQuery, mode: "insensitive" as const } },
-        { snapshotCompanyName: { contains: normalizedQuery, mode: "insensitive" as const } },
-        { purchaseOrder: { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } } },
-      ],
-    } : {}),
-  } satisfies Prisma.InvoiceWhereInput;
-  const prisma = getPrismaClient();
-  const [items, total, dates] = await Promise.all([
-    prisma.invoice.findMany({
-      where,
-      select: {
-        id: true,
-        invoiceNo: true,
-        snapshotCustomerName: true,
-        snapshotCompanyName: true,
-        status: true,
-        total: true,
-        createdAt: true,
-        opportunityId: true,
-        purchaseOrder: { select: { purchaseOrderNo: true } },
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.invoice.count({ where }),
-    prisma.invoice.findMany({
-      where: { status: { in: ["DRAFT", "ISSUED"] } },
-      select: { createdAt: true },
-      distinct: ["createdAt"],
-    }),
-  ]);
-  return {
-    items: items.map((item) => ({ ...item, total: item.total.toString() })),
-    total,
-    years: [...new Set(dates.map(({ createdAt }) => createdAt.getUTCFullYear()))].sort((a, b) => b - a),
-    pageCount: Math.max(1, Math.ceil(total / pageSize)),
-  };
+  return getCachedInvoices({ query, status, year, page, pageSize });
 }
 
 export async function getPurchaseOrderDetail(purchaseOrderId: string) {

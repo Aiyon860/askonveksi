@@ -1,28 +1,38 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
+
 import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 
+const getCachedCustomerFormOptions = unstable_cache(
+  async () => {
+    const prisma = getPrismaClient();
+    const [customerTypes, leadSources, salesUsers] = await Promise.all([
+      prisma.customerType.findMany({
+        select: { id: true, name: true },
+        orderBy: [{ position: "asc" }, { name: "asc" }],
+      }),
+      prisma.leadSource.findMany({
+        select: { id: true, name: true },
+        orderBy: [{ position: "asc" }, { name: "asc" }],
+      }),
+      prisma.appUser.findMany({
+        where: { role: "SALES", isActive: true },
+        select: { id: true, name: true },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+      }),
+    ]);
+    return { customerTypes, leadSources, salesUsers };
+  },
+  ["customer-form-options"],
+  { tags: ["customer-form-options"], revalidate: 60 },
+);
+
 export async function getCustomerFormOptions() {
   await requireActor();
-  const prisma = getPrismaClient();
-  const [customerTypes, leadSources, salesUsers] = await Promise.all([
-    prisma.customerType.findMany({
-      select: { id: true, name: true },
-      orderBy: [{ position: "asc" }, { name: "asc" }],
-    }),
-    prisma.leadSource.findMany({
-      select: { id: true, name: true },
-      orderBy: [{ position: "asc" }, { name: "asc" }],
-    }),
-    prisma.appUser.findMany({
-      where: { role: "SALES", isActive: true },
-      select: { id: true, name: true },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-    }),
-  ]);
-  return { customerTypes, leadSources, salesUsers };
+  return getCachedCustomerFormOptions();
 }
 
 export async function getCustomerTypes() {

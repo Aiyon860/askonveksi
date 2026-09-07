@@ -2,7 +2,7 @@
 
 import type { AppRole } from "@prisma/client";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, BellRing, Building2, ChartNoAxesCombined, ChevronDown, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
@@ -66,11 +66,22 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
   );
 }
 
-export function AppNav({ role, reminderCount }: { role: AppRole; followUpCount: number; reminderCount: number }) {
+export const AppNav = memo(function AppNav({ role }: { role: AppRole }) {
   const pathname = usePathname();
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
+  const [reminderCount, setReminderCount] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/crm/badge-counts", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        setReminderCount(data.reminderCount ?? 0);
+      })
+      .catch(() => {});
+  }, []);
+
   const canManageMasterData = role === "OWNER" || role === "ADMIN";
   const canViewAnalytics = role === "OWNER" || role === "ADMIN";
   const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "SALES";
@@ -123,4 +134,4 @@ export function AppNav({ role, reminderCount }: { role: AppRole; followUpCount: 
       {role === "OWNER" ? <NavLink pathname={pathname} item={{ href: "/admin/users", label: "Pengguna", icon: UsersRound }} /> : null}
     </nav>
   );
-}
+});

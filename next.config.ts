@@ -1,8 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: process.env.VERCEL ? undefined : "standalone",
+  compress: true,
+  productionBrowserSourceMaps: false,
   experimental: {
     useTypeScriptCli: false,
+    serverSourceMaps: false,
+    webpackMemoryOptimizations: true,
+    optimizePackageImports: ["lucide-react", "recharts"],
+  },
+  images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 86400,
   },
   async headers() {
     return [

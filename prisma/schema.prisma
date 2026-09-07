@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -322,6 +323,8 @@ model Opportunity {
   @@index([salesPicId, nextActionAt])
   @@index([leadSourceId, createdAt])
   @@index([leadScore, stage])
+  @@index([nextActionAt])
+  @@index([stage, customerId, leadScore, nextActionAt, estimatedValue])
 }
 
 model PublicRateLimitBucket {
@@ -725,6 +728,7 @@ model CustomerReminder {
   @@unique([sourceSalesOrderId, type])
   @@index([resolvedAt, dueAt])
   @@index([customerId, resolvedAt, dueAt])
+  @@index([type, resolvedAt, dueAt])
 }
 
 model CustomerReminderReceipt {
