@@ -39,6 +39,7 @@ export function DocumentDetailTrigger({
       aria-haspopup="dialog"
       onClick={onActivate}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onActivate();

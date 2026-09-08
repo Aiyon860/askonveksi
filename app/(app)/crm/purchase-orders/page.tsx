@@ -8,6 +8,7 @@ import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { PageHeader } from "@/components/page-header";
+import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { SortableTableHead } from "@/components/sortable-table-head";
 import { PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -108,9 +109,9 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
     </div>
     {items.length ? <div className="flex min-h-112 flex-1 flex-col">
       <Table className="min-w-4xl" containerClassName="min-h-0 flex-1 overflow-auto">
-        <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-16 text-center">No</TableHead><SortableTableHead label="No. PO" href={sortHref(state, "purchaseOrderNo")} active={sort === "purchaseOrderNo"} direction={direction} /><SortableTableHead label="Jenis pakaian" href={sortHref(state, "productName")} active={sort === "productName"} direction={direction} /><SortableTableHead label="Customer" href={sortHref(state, "customer")} active={sort === "customer"} direction={direction} /><SortableTableHead label="Status" href={sortHref(state, "status")} active={sort === "status"} direction={direction} /><SortableTableHead label="Tanggal dibuat" href={sortHref(state, "createdAt")} active={sort === "createdAt"} direction={direction} /><SortableTableHead label="Deadline" href={sortHref(state, "deadline")} active={sort === "deadline"} direction={direction} /></TableRow></TableHeader>
+        <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-16 text-center">No</TableHead><SortableTableHead label="No. PO" href={sortHref(state, "purchaseOrderNo")} active={sort === "purchaseOrderNo"} direction={direction} /><SortableTableHead label="Jenis pakaian" href={sortHref(state, "productName")} active={sort === "productName"} direction={direction} /><SortableTableHead label="Customer" href={sortHref(state, "customer")} active={sort === "customer"} direction={direction} /><SortableTableHead label="Status" href={sortHref(state, "status")} active={sort === "status"} direction={direction} /><SortableTableHead label="Tanggal dibuat" href={sortHref(state, "createdAt")} active={sort === "createdAt"} direction={direction} /><SortableTableHead label="Deadline" href={sortHref(state, "deadline")} active={sort === "deadline"} direction={direction} /><TableHead className="w-14 text-center"><span className="sr-only">Print</span></TableHead></TableRow></TableHeader>
         <TableBody>{items.map((item, index) => <PurchaseOrderDetail key={item.id} id={item.id}>
-          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono">{item.purchaseOrderNo}</TableCell><TableCell>{item.productName}</TableCell><TableCell>{item.opportunity.customer.name}</TableCell><TableCell><PurchaseOrderStatusBadge status={item.status} /></TableCell><TableCell>{formatDate(item.createdAt)}</TableCell><TableCell>{formatDate(item.deadline)}</TableCell>
+          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono">{item.purchaseOrderNo}</TableCell><TableCell>{item.productName}</TableCell><TableCell>{item.opportunity.customer.name}</TableCell><TableCell><PurchaseOrderStatusBadge status={item.status} /></TableCell><TableCell>{formatDate(item.createdAt)}</TableCell><TableCell>{formatDate(item.deadline)}</TableCell><TableCell className="text-center"><DocumentPrintButton href={`/api/crm/purchase-order/${item.id}/pdf`} label={`Print ${item.purchaseOrderNo}`} /></TableCell>
         </PurchaseOrderDetail>)}</TableBody>
       </Table>
       <DataPagination pathname="/crm/purchase-orders" page={page} pageCount={pageCount} total={total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
@@ -135,10 +136,10 @@ function PurchaseOrdersTableFallback() {
       <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={5} />
       <div className="flex min-h-112 flex-1 flex-col">
         <TableSkeleton
-          columns={7}
+          columns={8}
           rows={8}
           className="min-w-4xl"
-          columnWidths={["w-12", "w-32", "w-32", "w-36", "w-20", "w-24", "w-24"]}
+          columnWidths={["w-12", "w-32", "w-32", "w-36", "w-20", "w-24", "w-24", "w-14"]}
         />
       </div>
       <div className="flex items-center justify-between gap-4 border-t px-4 py-3">
