@@ -7,6 +7,12 @@
       "skillPath": "skills/antislop/SKILL.md",
       "computedHash": "27e4040ca350b497a4726056f4c1ef3385f28f49c9343861359419d848c40ad7"
     },
+    "emil-design-eng": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/emil-design-eng/SKILL.md",
+      "computedHash": "41b0a4dc1a27164fe297845a6c6850a39e9242c42c9be999967fcee9df2c5974"
+    },
     "grill-me": {
       "source": "mattpocock/skills",
       "sourceType": "github",

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { MetricGroup, MetricItem } from "@/components/ui/metric";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Table,
@@ -102,28 +103,13 @@ export default async function SalesPerformancePage({
             Semua hasil mengikuti PIC opportunity saat ini. Hanya Sales Order aktif yang dihitung sebagai deal dan omzet.
           </p>
         </div>
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(14rem,1.35fr)]">
-          <div className="bg-info-surface p-5 text-info-surface-foreground">
-            <dt className="text-sm opacity-75">Lead</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.leadCount}</dd>
-          </div>
-          <div className="bg-warning-surface p-5 text-warning-surface-foreground">
-            <dt className="text-sm opacity-75">Follow-up</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.followUpCount}</dd>
-          </div>
-          <div className="bg-highlight-surface p-5 text-highlight-surface-foreground">
-            <dt className="text-sm opacity-75">Invoice</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.invoiceCount}</dd>
-          </div>
-          <div className="bg-success-surface p-5 text-success-surface-foreground">
-            <dt className="text-sm opacity-75">Deal</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.dealCount}</dd>
-          </div>
-          <div className="col-span-2 bg-foreground p-5 text-background lg:col-span-1">
-            <dt className="text-sm text-background/75">Omzet</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.revenue)}</dd>
-          </div>
-        </dl>
+        <MetricGroup className="grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(14rem,1.35fr)]">
+          <MetricItem label="Lead" value={data.totals.leadCount} />
+          <MetricItem label="Follow-up" value={data.totals.followUpCount} />
+          <MetricItem label="Invoice" value={data.totals.invoiceCount} />
+          <MetricItem label="Deal" value={data.totals.dealCount} tone="success" />
+          <MetricItem className="col-span-2 lg:col-span-1" label="Omzet" value={formatCurrency(data.totals.revenue)} tone="primary" emphasis />
+        </MetricGroup>
       </section>
 
       <Card>

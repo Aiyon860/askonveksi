@@ -96,8 +96,8 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
   return (
     <>
       <div className="relative">
-        {isMoving ? <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs shadow-sm" role="status"><Spinner /> Menyimpan progres...</div> : null}
-        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3" aria-label={`Kanban produksi ${route === "JERSEY" ? "Jersey" : "Non-Jersey"}`}>
+        {isMoving ? <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs shadow-sm" role="status"><Spinner /> Menyimpan progres...</div> : null}
+        <div className="grid auto-cols-[17.5rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3" aria-label={`Kanban produksi ${route === "JERSEY" ? "Jersey" : "Non-Jersey"}`}>
           {columns.map((stage) => {
             const stageItems = boardItems.filter((item) => item.currentStage === stage);
             return (
@@ -106,7 +106,7 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                 aria-labelledby={`production-stage-${stage}`}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => handleDrop(event, stage)}
-                className={cn("min-h-[24rem] rounded-xl border p-2", STAGE_SURFACE_CLASS[stage])}
+                className={cn("min-h-[24rem] snap-start rounded-lg border p-2", STAGE_SURFACE_CLASS[stage])}
               >
                 <div className="flex items-center justify-between gap-3 px-2 py-2">
                   <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{PRODUCTION_STAGE_LABEL[stage]}</h2>

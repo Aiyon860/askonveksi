@@ -6,7 +6,7 @@ export default function CustomersLoading() {
     <LoadingPage label="Memuat data customer">
       <PageHeaderSkeleton />
 
-      <section className="overflow-hidden rounded-xl border bg-background" aria-hidden="true">
+      <section className="overflow-hidden rounded-lg border bg-card" aria-hidden="true">
         <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={2} />
         <TableSkeleton
           columns={8}

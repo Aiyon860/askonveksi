@@ -19,10 +19,10 @@ const BUCKETS = ["overdue", "today", "tomorrow", "upcoming"] as const;
 type Bucket = (typeof BUCKETS)[number];
 const BUCKET_LABEL: Record<Bucket, string> = { overdue: "Terlambat", today: "Hari ini", tomorrow: "Besok", upcoming: "Mendatang" };
 const BUCKET_THEME: Record<Bucket, { surface: string; count: string }> = {
-  overdue: { surface: "border-destructive/25 bg-destructive/5 hover:bg-destructive/10", count: "text-destructive" },
-  today: { surface: "border-warning/25 bg-warning/5 hover:bg-warning/10", count: "text-warning" },
-  tomorrow: { surface: "border-info/25 bg-info/5 hover:bg-info/10", count: "text-info" },
-  upcoming: { surface: "border-success/25 bg-success/5 hover:bg-success/10", count: "text-success" },
+  overdue: { surface: "bg-card hover:bg-muted", count: "text-destructive" },
+  today: { surface: "bg-card hover:bg-muted", count: "text-warning" },
+  tomorrow: { surface: "bg-card hover:bg-muted", count: "text-primary" },
+  upcoming: { surface: "bg-card hover:bg-muted", count: "text-success" },
 };
 
 export async function FollowUpContent({ bucket, picId }: { bucket: Bucket; picId: string | undefined }) {
@@ -32,16 +32,16 @@ export async function FollowUpContent({ bucket, picId }: { bucket: Bucket; picId
 
   return (
     <>
-      <nav aria-label="Status waktu follow-up" className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 lg:grid-cols-4 lg:grid-flow-row lg:overflow-visible">
+      <nav aria-label="Status waktu follow-up" className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-px overflow-x-auto overflow-y-hidden rounded-lg border bg-border lg:grid-cols-4 lg:grid-flow-row lg:overflow-visible">
         {BUCKETS.map((item) => (
           <Link
             key={item}
             href={`/crm/follow-up?bucket=${item}${selectedPicId ? `&pic=${selectedPicId}` : ""}`}
             aria-current={bucket === item ? "page" : undefined}
             className={cn(
-              "rounded-xl border p-4 outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
+              "p-4 outline-none transition-colors focus-visible:relative focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/50",
               BUCKET_THEME[item].surface,
-              bucket === item && "ring-2 ring-ring/30",
+              bucket === item && "bg-primary/[0.045]",
             )}
           >
             <span className="text-sm text-muted-foreground">{BUCKET_LABEL[item]}</span>

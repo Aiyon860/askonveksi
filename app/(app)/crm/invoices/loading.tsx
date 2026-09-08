@@ -5,7 +5,7 @@ export default function InvoicesLoading() {
   return (
     <LoadingPage label="Memuat invoice">
       <PageHeaderSkeleton action />
-      <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-hidden="true">
+      <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
         <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={3} />
         <div className="flex min-h-112 flex-1 flex-col">
           <TableSkeleton

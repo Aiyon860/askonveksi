@@ -46,16 +46,17 @@ function isNavItemActive(pathname: string, href: string) {
   return isPathWithin(pathname, href);
 }
 
-function NavLink({ pathname, item, nested = false }: { pathname: string; item: { href: string; label: string; icon: LucideIcon; count?: number }; nested?: boolean }) {
+function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: string; item: { href: string; label: string; icon: LucideIcon; count?: number }; nested?: boolean; onNavigate?: () => void }) {
   const active = isNavItemActive(pathname, item.href);
   const Icon = item.icon;
   return (
     <Link
       href={item.href}
+      onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
-        nested && "lg:ml-3",
+        nested && "ml-3",
         active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
@@ -70,7 +71,7 @@ function NavLink({ pathname, item, nested = false }: { pathname: string; item: {
   );
 }
 
-export const AppNav = memo(function AppNav({ role }: { role: AppRole }) {
+export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole; onNavigate?: () => void }) {
   const pathname = usePathname();
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -96,48 +97,48 @@ export const AppNav = memo(function AppNav({ role }: { role: AppRole }) {
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
 
   return (
-    <nav aria-label="Navigasi utama" className="flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
-      {canViewCrm ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />) : null}
-      {canViewFinance ? financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />) : null}
+    <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
+      {canViewCrm ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
+      {canViewFinance ? financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewCrm ? (
-        <Collapsible open={crmActive || crmOpen} onOpenChange={setCrmOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
-          <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+        <Collapsible open={crmActive || crmOpen} onOpenChange={setCrmOpen} className="group/collapsible flex flex-col gap-1">
+          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
             <KanbanSquare aria-hidden="true" className="size-4" />
             <span>CRM</span>
             <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
           </CollapsibleTrigger>
-          <CollapsibleContent className="contents lg:flex lg:flex-col lg:gap-1">
-            {crmItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested />)}
+          <CollapsibleContent className="flex flex-col gap-1">
+            {crmItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} /> : null}
-      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} /> : null}
+      {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
+      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (
-        <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
-          <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+        <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible flex flex-col gap-1">
+          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
             <BarChart3 aria-hidden="true" className="size-4" />
             <span>Analytics</span>
             <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
           </CollapsibleTrigger>
-          <CollapsibleContent className="contents lg:flex lg:flex-col lg:gap-1">
-            {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested />)}
+          <CollapsibleContent className="flex flex-col gap-1">
+            {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
           </CollapsibleContent>
         </Collapsible>
       ) : null}
       {canManageMasterData ? (
-        <Collapsible open={masterDataActive || masterDataOpen} onOpenChange={setMasterDataOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
-          <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+        <Collapsible open={masterDataActive || masterDataOpen} onOpenChange={setMasterDataOpen} className="group/collapsible flex flex-col gap-1">
+          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
             <Database aria-hidden="true" className="size-4" />
             <span>Data Master</span>
             <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
           </CollapsibleTrigger>
-          <CollapsibleContent className="contents lg:flex lg:flex-col lg:gap-1">
-            {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested />)}
+          <CollapsibleContent className="flex flex-col gap-1">
+            {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      {role === "OWNER" ? <NavLink pathname={pathname} item={{ href: "/admin/users", label: "Pengguna", icon: UsersRound }} /> : null}
+      {role === "OWNER" ? <NavLink pathname={pathname} item={{ href: "/admin/users", label: "Pengguna", icon: UsersRound }} onNavigate={onNavigate} /> : null}
     </nav>
   );
 });

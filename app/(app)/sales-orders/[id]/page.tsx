@@ -128,7 +128,7 @@ export default async function SalesOrderPage({
           </Card>
         </div>
 
-        <aside className="flex flex-col gap-6 rounded-xl border border-sidebar-primary/20 bg-sidebar-primary/6 p-3 sm:p-4">
+        <aside className="flex flex-col gap-5 self-start">
           <Card>
             <CardHeader>
               <CardTitle>Jejak transaksi</CardTitle>

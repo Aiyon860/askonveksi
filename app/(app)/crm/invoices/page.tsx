@@ -34,7 +34,7 @@ async function InvoicesTableSection({ searchParams }: { searchParams: SearchPara
   const persistent = { q: query || undefined, status: status === "all" ? undefined : status, year: year ? String(year) : undefined, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   if (page > pageCount) redirect(`/crm/invoices?${new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1]))).toString()}`);
 
-  return <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-label="Daftar invoice">
+  return <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Daftar invoice">
     <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
       <DebouncedSearchInput key={query} initialValue={query} pathname="/crm/invoices" params={persistent} placeholder="Cari no. invoice, customer, atau no. PO..." ariaLabel="Cari invoice" className="sm:max-w-md" />
       <form action="/crm/invoices" className="flex flex-wrap items-center gap-2">
@@ -69,7 +69,7 @@ export default function InvoicesPage({ searchParams }: { searchParams: SearchPar
 
 function InvoicesTableFallback() {
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-hidden="true">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
       <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={3} />
       <div className="flex min-h-112 flex-1 flex-col">
         <TableSkeleton

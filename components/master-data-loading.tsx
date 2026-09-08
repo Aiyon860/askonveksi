@@ -7,7 +7,7 @@ export function MasterDataLoading() {
     <LoadingPage label="Memuat master data">
       <PageHeaderSkeleton />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]" aria-hidden="true">
-        <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background">
+        <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
           <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={2} />
           <div className="min-h-112">
             <TableSkeleton

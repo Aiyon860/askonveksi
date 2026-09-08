@@ -56,7 +56,7 @@ function ProductionSkeleton({ route }: { route: ProductionRoute }) {
     <div aria-hidden="true" className="grid gap-3">
       <div className="grid gap-3 sm:grid-cols-3">
         {Array.from({ length: 3 }, (_, index) => (
-          <div key={`total-${index}`} className="flex flex-col gap-2 rounded-xl border p-4">
+          <div key={`total-${index}`} className="flex min-h-26 flex-col gap-2 rounded-lg border bg-card p-4">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="h-6 w-10" />
           </div>
@@ -64,27 +64,27 @@ function ProductionSkeleton({ route }: { route: ProductionRoute }) {
       </div>
       <div
         className={cn(
-          "grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-x-hidden pb-1 xl:auto-cols-auto xl:grid-flow-row",
+          "grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3",
           route === "JERSEY" ? "xl:grid-cols-7" : "xl:grid-cols-9",
         )}
       >
         {stages.map((stage) => (
-          <div key={stage} className="flex flex-col gap-2 rounded-xl border p-4">
+          <div key={stage} className="flex min-h-26 flex-col gap-2 bg-card p-4">
             <Skeleton className="h-3 w-20" />
             <Skeleton className="h-6 w-10" />
           </div>
         ))}
       </div>
-      <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-hidden pb-3">
+      <div className="grid auto-cols-[17.5rem] grid-flow-col gap-3 overflow-x-hidden pb-3">
         {stages.map((stage, column) => (
-          <section key={`column-${stage}`} className="min-h-[24rem] rounded-xl border bg-muted/20 p-2">
+          <section key={`column-${stage}`} className="min-h-[24rem] rounded-lg border bg-muted/30 p-2">
             <div className="flex items-center justify-between gap-3 px-2 py-2">
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-4 w-5" />
             </div>
             <div className="flex flex-col gap-2">
               {Array.from({ length: column === 0 ? 2 : 1 }, (_, item) => (
-                <div key={`column-${stage}-card-${item}`} className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+                <div key={`column-${stage}-card-${item}`} className="flex flex-col gap-3 rounded-lg border bg-card p-4">
                   <Skeleton className="h-4 w-4/5" />
                   <Skeleton className="h-3 w-1/2" />
                   <div className="flex gap-2"><Skeleton className="h-5 w-20" /><Skeleton className="h-5 w-16" /></div>

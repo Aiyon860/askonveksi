@@ -49,7 +49,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
       />
       <PageMessage />
 
-      {workOrder.needsRepair ? <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
+      {workOrder.needsRepair ? <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">

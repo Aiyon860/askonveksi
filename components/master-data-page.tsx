@@ -37,7 +37,7 @@ export function MasterDataPage({
         />
       ) : (
         <section
-          className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
+          className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
           aria-label={`Daftar ${singularLabel.toLowerCase()}`}
         >
           <Empty className="min-h-112">

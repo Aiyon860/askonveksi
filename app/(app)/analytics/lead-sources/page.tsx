@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { MetricGroup, MetricItem } from "@/components/ui/metric";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Table,
@@ -82,20 +83,11 @@ export default async function LeadSourceRevenuePage({
           <h2 id="lead-source-summary" className="text-base font-semibold">Ringkasan {data.periodLabel}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Hanya Sales Order aktif yang masuk ke perhitungan deal dan omzet.</p>
         </div>
-        <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-3">
-          <div className="bg-info-surface p-5 text-info-surface-foreground">
-            <dt className="text-sm text-info-surface-foreground/75">Lead</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.leadCount}</dd>
-          </div>
-          <div className="bg-highlight/10 p-5 text-highlight">
-            <dt className="text-sm text-highlight/80">Deal</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.dealCount}</dd>
-          </div>
-          <div className="bg-success-surface p-5 text-success-surface-foreground">
-            <dt className="text-sm text-success-surface-foreground/75">Omzet</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.revenue)}</dd>
-          </div>
-        </dl>
+        <MetricGroup className="sm:grid-cols-3">
+          <MetricItem label="Lead" value={data.totals.leadCount} />
+          <MetricItem label="Deal" value={data.totals.dealCount} tone="success" />
+          <MetricItem label="Omzet" value={formatCurrency(data.totals.revenue)} tone="primary" emphasis />
+        </MetricGroup>
       </section>
 
       {!hasActivity ? (

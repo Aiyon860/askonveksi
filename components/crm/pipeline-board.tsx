@@ -91,11 +91,11 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
     <>
       <div className="relative">
         {isMoving ? (
-          <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs shadow-sm" role="status">
+          <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs shadow-sm" role="status">
             <Spinner /> Memindahkan status...
           </div>
         ) : null}
-        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3">
+        <div className="grid auto-cols-[17.5rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3">
           {PIPELINE_STAGES.map((stage) => {
             const items = boardOpportunities.filter((opportunity) => opportunity.stage === stage);
             return (
@@ -104,7 +104,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                 aria-labelledby={`stage-${stage}`}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => handleDrop(event, stage)}
-                className={cn("min-h-[24rem] rounded-xl border p-2", STAGE_SURFACE_CLASS[stage])}
+                className={cn("min-h-[24rem] snap-start rounded-lg border p-2", STAGE_SURFACE_CLASS[stage])}
               >
                 <div className="flex items-center justify-between gap-3 px-2 py-2">
                   <h2 id={`stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{STAGE_LABEL[stage]}</h2>

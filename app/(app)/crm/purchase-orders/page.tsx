@@ -34,7 +34,7 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
   const persistent = { q: query || undefined, status: status === "all" ? undefined : status, year: year ? String(year) : undefined, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   if (page > pageCount) redirect(`/crm/purchase-orders?${new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1]))).toString()}`);
 
-  return <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-label="Daftar purchase order">
+  return <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Daftar purchase order">
     <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
       <DebouncedSearchInput key={query} initialValue={query} pathname="/crm/purchase-orders" params={persistent} placeholder="Cari no. PO, produk, atau customer..." ariaLabel="Cari purchase order" className="sm:max-w-md" />
       <form action="/crm/purchase-orders" className="flex flex-wrap items-center gap-2">
@@ -71,7 +71,7 @@ export default function PurchaseOrdersPage({ searchParams }: { searchParams: Sea
 
 function PurchaseOrdersTableFallback() {
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-hidden="true">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
       <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={3} />
       <div className="flex min-h-112 flex-1 flex-col">
         <TableSkeleton

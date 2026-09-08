@@ -14,7 +14,7 @@ export default async function PasswordPage() {
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-10">
-      <Card className="w-full max-w-lg">
+      <Card className="w-full max-w-lg" size="lg">
         <CardHeader>
           <CardTitle>Amankan akun Anda</CardTitle>
           <CardDescription>

@@ -149,7 +149,7 @@ function SortableHead({
 function CustomersTableFallback() {
   return (
     <section
-      className="overflow-hidden rounded-xl border bg-background"
+      className="overflow-hidden rounded-lg border bg-card"
       role="status"
       aria-live="polite"
       aria-label="Memuat tabel customer"
@@ -211,7 +211,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
 
   return (
     <section
-        className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
+        className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
         aria-label={segment === "repeat" ? "Customer berpotensi repeat order" : segment === "inactive" ? "Customer tidak aktif" : archived ? "Customer terarsip" : "Semua customer aktif"}
       >
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">

@@ -60,7 +60,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>
           <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} />
         </Suspense>
-        <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl border" />}>
+        <Suspense fallback={<Skeleton className="h-64 w-full rounded-lg border" />}>
           <OpportunitySidebar id={id} />
         </Suspense>
       </div>
@@ -384,7 +384,7 @@ async function OpportunitySidebar({ id }: { id: string }) {
   const canOperate = actor.role === "ADMIN" || actor.role === "SALES";
 
   return (
-    <aside className="flex flex-col self-start gap-6 rounded-xl border border-sidebar-primary/20 bg-sidebar-primary/6 p-3 sm:p-4 xl:mt-[4.75rem]">
+    <aside className="flex flex-col self-start gap-5 xl:mt-[4.75rem]">
       {canOperate ? (
         <Card>
           <CardHeader><CardTitle>Status pipeline</CardTitle><CardDescription>Tentukan langkah kerja berikutnya.</CardDescription></CardHeader>

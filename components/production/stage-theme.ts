@@ -1,24 +1,19 @@
 import type { ProductionStage } from "@prisma/client";
 
 /**
- * Tahapan produksi dipetakan ke fase kerjanya agar warna bermakna,
- * mengikuti kosakata warna semantik yang sama dengan Pipeline CRM:
- * - Fase desain dan persetujuan sampel -> highlight
- * - Fase eksekusi produksi -> primary
- * - QC -> warning
- * - Packing dan pengiriman -> info
- * - Selesai -> success
+ * Kolom tetap netral agar board mudah dipindai. Warna hanya menandai
+ * label fase: pekerjaan aktif, pemeriksaan, pengiriman, dan selesai.
  */
 const PHASE_SURFACE_CLASS = {
-  DESIGN: "border-highlight/20 bg-highlight/5",
-  EXECUTION: "border-primary/20 bg-primary/5",
-  CHECK: "border-warning/20 bg-warning/5",
-  OUTBOUND: "border-info/20 bg-info/5",
-  DONE: "border-success/20 bg-success/5",
+  DESIGN: "border-border bg-muted/30",
+  EXECUTION: "border-border bg-muted/30",
+  CHECK: "border-border bg-muted/30",
+  OUTBOUND: "border-border bg-muted/30",
+  DONE: "border-border bg-muted/30",
 } as const;
 
 const PHASE_TEXT_CLASS = {
-  DESIGN: "text-highlight",
+  DESIGN: "text-foreground",
   EXECUTION: "text-primary",
   CHECK: "text-warning",
   OUTBOUND: "text-info",
@@ -26,15 +21,15 @@ const PHASE_TEXT_CLASS = {
 } as const;
 
 const PHASE_SUMMARY_CLASS = {
-  DESIGN: "bg-highlight/5",
-  EXECUTION: "bg-primary/5",
-  CHECK: "bg-warning/5",
-  OUTBOUND: "bg-info/5",
-  DONE: "bg-success/5",
+  DESIGN: "bg-card",
+  EXECUTION: "bg-card",
+  CHECK: "bg-card",
+  OUTBOUND: "bg-card",
+  DONE: "bg-card",
 } as const;
 
 const PHASE_BADGE_VARIANT = {
-  DESIGN: "highlight",
+  DESIGN: "outline",
   EXECUTION: "default",
   CHECK: "warning",
   OUTBOUND: "info",
@@ -92,7 +87,7 @@ export const STAGE_SUMMARY_CLASS: Record<ProductionStage, string> = {
   SELESAI: PHASE_SUMMARY_CLASS.DONE,
 };
 
-export const STAGE_BADGE_VARIANT: Record<ProductionStage, "highlight" | "default" | "warning" | "info" | "success"> = {
+export const STAGE_BADGE_VARIANT: Record<ProductionStage, "outline" | "default" | "warning" | "info" | "success"> = {
   TEST_PRINT: PHASE_BADGE_VARIANT.DESIGN,
   PERSETUJUAN_SAMPEL: PHASE_BADGE_VARIANT.DESIGN,
   LAYOUT_PRODUKSI: PHASE_BADGE_VARIANT.DESIGN,

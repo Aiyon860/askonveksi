@@ -48,7 +48,7 @@ export function NotificationCenter({
   };
 
   return (
-    <section aria-labelledby="notification-list-title" className="overflow-hidden rounded-xl border bg-background">
+    <section aria-labelledby="notification-list-title" className="overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-col gap-4 border-b bg-muted/30 px-4 py-4 sm:px-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">

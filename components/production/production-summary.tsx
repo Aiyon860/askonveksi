@@ -2,7 +2,9 @@
 
 import type { ProductionRoute } from "@prisma/client";
 
-import { STAGE_SUMMARY_CLASS, STAGE_TEXT_CLASS } from "@/components/production/stage-theme";
+import { STAGE_BADGE_VARIANT } from "@/components/production/stage-theme";
+import { Badge } from "@/components/ui/badge";
+import { MetricGroup, MetricItem } from "@/components/ui/metric";
 import { PRODUCTION_STAGE_LABEL, productionStages } from "@/lib/production/workflow";
 import { cn } from "@/lib/utils";
 
@@ -29,36 +31,26 @@ export function ProductionSummary({
 
   return (
     <section aria-label="Ringkasan produksi" className="grid gap-3">
-      <dl className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
-          <dt className="text-xs text-muted-foreground">Total Work Order</dt>
-          <dd className="mt-2 font-mono text-xl font-semibold tabular-nums text-primary">{total}</dd>
-        </div>
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
-          <dt className="text-xs text-muted-foreground">Terlambat</dt>
-          <dd className="mt-2 font-mono text-xl font-semibold tabular-nums text-destructive">{overdue}</dd>
-        </div>
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
-          <dt className="text-xs text-muted-foreground">Perlu perbaikan</dt>
-          <dd className="mt-2 font-mono text-xl font-semibold tabular-nums text-destructive">{needsRepair}</dd>
-        </div>
-      </dl>
+      <MetricGroup className="sm:grid-cols-3">
+        <MetricItem label="Total Work Order" value={total} tone="primary" emphasis />
+        <MetricItem label="Terlambat" value={overdue} tone="danger" />
+        <MetricItem label="Perlu perbaikan" value={needsRepair} tone="danger" />
+      </MetricGroup>
 
-      <dl
+      <MetricGroup
         className={cn(
-          "grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:auto-cols-auto xl:grid-flow-row xl:overflow-visible",
+          "grid-cols-2 sm:grid-cols-3",
           route === "JERSEY" ? "xl:grid-cols-7" : "xl:grid-cols-9",
         )}
       >
         {stages.map((stage) => (
-          <div key={stage} className={cn("rounded-xl border p-4", STAGE_SUMMARY_CLASS[stage])}>
-            <dt className="text-xs text-muted-foreground">{PRODUCTION_STAGE_LABEL[stage]}</dt>
-            <dd className={cn("mt-2 font-mono text-xl font-semibold tabular-nums", STAGE_TEXT_CLASS[stage])}>
-              {items.filter((item) => item.currentStage === stage).length}
-            </dd>
-          </div>
+          <MetricItem
+            key={stage}
+            label={<Badge variant={STAGE_BADGE_VARIANT[stage]}>{PRODUCTION_STAGE_LABEL[stage]}</Badge>}
+            value={items.filter((item) => item.currentStage === stage).length}
+          />
         ))}
-      </dl>
+      </MetricGroup>
     </section>
   );
 }

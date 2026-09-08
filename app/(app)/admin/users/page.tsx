@@ -161,7 +161,7 @@ function SortableHead({
 function UsersTableFallback() {
   return (
     <section
-      className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
+      className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
       role="status"
       aria-live="polite"
       aria-label="Memuat daftar pengguna"
@@ -213,7 +213,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
   const activeFilterCount = Number(role !== "all") + Number(status !== "all");
 
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-label="Daftar pengguna">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Daftar pengguna">
           <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
               <DebouncedSearchInput

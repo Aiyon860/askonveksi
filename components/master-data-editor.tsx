@@ -306,7 +306,7 @@ export function MasterDataEditor({
         />
       ) : null}
       <section
-        className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
+        className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
         aria-label={`Daftar ${singularLabel.toLowerCase()}`}
       >
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">

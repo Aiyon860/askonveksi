@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { MetricGroup, MetricItem } from "@/components/ui/metric";
 import { LazyBusinessTrendChart } from "@/components/dashboard/lazy-business-trend-chart";
 import { PIPELINE_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
@@ -90,70 +91,48 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
   return (
     <>
       <section aria-labelledby="sales-summary" className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.45fr)]">
-        <Card>
-          <CardHeader>
+        <Card className="gap-0 py-0">
+          <CardHeader className="py-5">
             <CardTitle id="sales-summary">Ringkasan hasil sales</CardTitle>
             <CardDescription>Potensi opportunity terbuka, omzet Deal bulan berjalan, dan conversion rate seluruh waktu.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <dl className="grid gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-3">
-              <div className="bg-info-surface p-5 text-info-surface-foreground">
-                <dt className="flex items-center gap-2 text-sm"><Target aria-hidden="true" className="size-4" />Potensi omzet</dt>
-                <dd className="mt-3 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.potentialValue)}</dd>
-              </div>
-              <div className="bg-success-surface p-5 text-success-surface-foreground">
-                <dt className="flex items-center gap-2 text-sm"><CircleDollarSign aria-hidden="true" className="size-4" />Omzet deal bulan ini</dt>
-                <dd className="mt-3 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.dealRevenue)}</dd>
-              </div>
-              <div className="bg-foreground p-5 text-background">
-                <dt className="flex items-center gap-2 text-sm"><Percent aria-hidden="true" className="size-4" />Conversion rate</dt>
-                <dd className="mt-3 font-mono text-2xl font-semibold tabular-nums">{formatPercentage(data.conversionRate)}</dd>
-                <p className="mt-2 text-xs text-background/75">
-                  {data.totalLeadCount > 0
-                    ? `${data.dealCount} Deal dari ${data.totalLeadCount} lead`
-                    : "Belum ada lead untuk dihitung."}
-                </p>
-              </div>
-            </dl>
-          </CardContent>
+          <MetricGroup className="rounded-none border-x-0 border-b-0 md:grid-cols-3">
+            <MetricItem label="Potensi omzet" value={formatCurrency(data.potentialValue)} icon={Target} tone="primary" emphasis />
+            <MetricItem label="Omzet deal bulan ini" value={formatCurrency(data.dealRevenue)} icon={CircleDollarSign} tone="success" emphasis />
+            <MetricItem
+              label="Conversion rate"
+              value={formatPercentage(data.conversionRate)}
+              icon={Percent}
+              emphasis
+              meta={data.totalLeadCount > 0 ? `${data.dealCount} Deal dari ${data.totalLeadCount} lead` : "Belum ada lead untuk dihitung."}
+            />
+          </MetricGroup>
         </Card>
 
-        <Card>
-          <CardHeader>
+        <Card className="gap-0 py-0">
+          <CardHeader className="py-5">
             <CardTitle>Follow-up mendesak</CardTitle>
             <CardDescription>Next action sampai akhir hari ini.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border">
-              <div className="bg-destructive-surface p-4 text-destructive-surface-foreground"><dt className="flex items-center gap-2 text-sm"><AlertTriangle aria-hidden="true" className="size-4" />Terlambat</dt><dd className="mt-2 font-mono text-3xl font-semibold tabular-nums">{data.overdue}</dd></div>
-              <div className="bg-warning-surface p-4 text-warning-surface-foreground"><dt className="flex items-center gap-2 text-sm"><CalendarClock aria-hidden="true" className="size-4" />Hari ini</dt><dd className="mt-2 font-mono text-3xl font-semibold tabular-nums">{data.dueToday}</dd></div>
-            </dl>
-          </CardContent>
+          <MetricGroup className="grid-cols-2 rounded-none border-x-0 border-b-0">
+            <MetricItem label="Terlambat" value={data.overdue} icon={AlertTriangle} tone="danger" emphasis />
+            <MetricItem label="Hari ini" value={data.dueToday} icon={CalendarClock} tone="warning" emphasis />
+          </MetricGroup>
         </Card>
       </section>
 
       {data.financeSummary ? (
         <section aria-labelledby="finance-summary">
-          <Card>
-            <CardHeader>
+          <Card className="gap-0 py-0">
+            <CardHeader className="py-5">
               <CardTitle id="finance-summary">Ringkasan keuangan</CardTitle>
               <CardDescription>Uang masuk bulan berjalan dan sisa pembayaran dari Sales Order aktif.</CardDescription>
               <CardAction><Button size="sm" variant="link" render={<Link href="/keuangan" />} nativeButton={false}>Buka keuangan</Button></CardAction>
             </CardHeader>
-            <CardContent>
-              <dl className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2">
-                <div className="bg-success-surface p-5 text-success-surface-foreground">
-                  <dt className="flex items-center gap-2 text-sm text-success-surface-foreground/75"><HandCoins aria-hidden="true" className="size-4" />Uang masuk bulan ini</dt>
-                  <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.financeSummary.moneyInThisMonth)}</dd>
-                  <p className="mt-2 text-xs text-success-surface-foreground/75">{data.financeSummary.transactionCountThisMonth} transaksi aktif</p>
-                </div>
-                <div className="bg-warning-surface p-5 text-warning-surface-foreground">
-                  <dt className="flex items-center gap-2 text-sm text-warning-surface-foreground/75"><CircleDollarSign aria-hidden="true" className="size-4" />Sisa pembayaran aktif</dt>
-                  <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.financeSummary.outstandingAmount)}</dd>
-                  <p className="mt-2 text-xs text-warning-surface-foreground/75">{data.financeSummary.outstandingOrderCount} order belum lunas</p>
-                </div>
-              </dl>
-            </CardContent>
+            <MetricGroup className="rounded-none border-x-0 border-b-0 sm:grid-cols-2">
+              <MetricItem label="Uang masuk bulan ini" value={formatCurrency(data.financeSummary.moneyInThisMonth)} meta={`${data.financeSummary.transactionCountThisMonth} transaksi aktif`} icon={HandCoins} tone="success" emphasis />
+              <MetricItem label="Sisa pembayaran aktif" value={formatCurrency(data.financeSummary.outstandingAmount)} meta={`${data.financeSummary.outstandingOrderCount} order belum lunas`} icon={CircleDollarSign} tone="warning" emphasis />
+            </MetricGroup>
           </Card>
         </section>
       ) : null}
@@ -245,9 +224,9 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
 
       <section aria-labelledby="pipeline-stage-title">
         <div className="mb-4"><h2 id="pipeline-stage-title" className="text-base font-semibold">Pipeline aktif</h2><p className="mt-1 text-sm text-muted-foreground">Jumlah opportunity pada setiap tahap kerja.</p></div>
-        <dl className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
-          {PIPELINE_STAGES.map((stage) => <div key={stage} className="rounded-lg border bg-card p-4"><dt><OpportunityStatusBadge stage={stage} /></dt><dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.stageCounts[stage] ?? 0}</dd></div>)}
-        </dl>
+        <MetricGroup className="grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
+          {PIPELINE_STAGES.map((stage) => <MetricItem key={stage} label={<OpportunityStatusBadge stage={stage} />} value={data.stageCounts[stage] ?? 0} />)}
+        </MetricGroup>
       </section>
 
       <LazyBusinessTrendChart />
