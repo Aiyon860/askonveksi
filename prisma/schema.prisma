@@ -676,6 +676,7 @@ model PaymentTransaction {
   voidedAt      DateTime?                @db.Timestamptz(3)
   voidReason    String?                  @db.VarChar(1000)
   voidedById    String?
+  version       Int                      @default(1)
   payment       DealPayment              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   paymentTerm   PaymentTerm?             @relation("PaymentTermTransactions", fields: [paymentTermId, paymentId], references: [id, paymentId], onDelete: Restrict)
   createdBy     AppUser                  @relation("PaymentTransactionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

@@ -122,13 +122,14 @@ try {
 
         const purchaseOrder = await tx.purchaseOrder.upsert({
           where: { id: ids.purchaseOrder },
-          update: {},
+          update: { garmentType: demo.route },
           create: {
             id: ids.purchaseOrder,
             purchaseOrderNo: ids.purchaseOrder,
             opportunityId: opportunity.id,
             revision: 1,
             status: "AGREED",
+            garmentType: demo.route,
             productName: demo.title,
             material: "[DEMO] Dry-fit",
             deadline: deadlineAfter(demo.deadlineDays),

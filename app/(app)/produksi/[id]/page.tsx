@@ -11,8 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { STAGE_BADGE_VARIANT } from "@/components/production/stage-theme";
 import { getProductionDetail } from "@/lib/production/data";
 import { isStageRole, PRODUCTION_ROUTE_LABEL, PRODUCTION_STAGE_LABEL } from "@/lib/production/workflow";
+import { cn } from "@/lib/utils";
 
 const ACTIVITY_LABEL = {
   CREATED: "Work Order dibuat",
@@ -43,7 +45,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
       <PageHeader
         title={workOrder.productName}
         description={`${workOrder.workOrderNo} · ${workOrder.salesOrder.salesOrderNo} · ${workOrder.salesOrder.snapshotCustomerName}`}
-        action={<Badge variant={workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : "secondary"}>{workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
+        action={<Badge variant={workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
       />
       <PageMessage />
 
@@ -59,7 +61,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
                   const candidates = users.filter((user) => step.stage === "QC" ? user.role === "QC" : user.role === "PRODUCTION");
                   const canClaim = !manager && !step.assignee && isStageRole(actor.role, step.stage);
                   return (
-                    <li key={step.id} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <li key={step.id} className={cn("grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center", step.status === "ACTIVE" && "border-primary/25 bg-primary/5")}>
                       <div className="flex min-w-0 items-start gap-3">
                         {step.status === "COMPLETED" ? <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" /> : step.status === "ACTIVE" ? <RotateCcw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" /> : <Circle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
                         <div className="min-w-0">

@@ -13,6 +13,7 @@
     "crm:reset-storage": "node scripts/reset-crm-storage.mjs",
     "crm:setup-storage": "node scripts/setup-crm-storage.mjs",
     "db:seed:production-demo": "node scripts/seed-production-demo.mjs",
+    "db:backfill:production": "node scripts/backfill-production-work-orders.mjs",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate"
   },

@@ -254,7 +254,7 @@ export const purchaseOrderDraftSchema = z.object({
   sampleSize: optionalText(40),
   designNotes: optionalText(4000),
   notes: optionalText(4000),
-  deadline: optionalText(10),
+  deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline customer wajib diisi."),
   sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
   roster: z.array(purchaseOrderRosterSchema).max(5_000),
 }).superRefine((value, context) => {
@@ -296,8 +296,6 @@ export const completeDealSchema = z.object({
   initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
-  productionProductName: z.string().trim().min(2, "Nama produk produksi wajib diisi.").max(160),
-  productionDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi tidak valid."),
 }).superRefine((value, context) => {
   if (value.kind === "DP" && value.terms.length === 0) {
     context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
@@ -337,6 +335,16 @@ export const voidPaymentTransactionSchema = z.object({
   salesOrderId: entityIdSchema,
   transactionId: entityIdSchema,
   reason: z.string().trim().min(5, "Alasan pembatalan minimal 5 karakter.").max(1000),
+});
+
+export const editPaymentTransactionSchema = z.object({
+  salesOrderId: entityIdSchema,
+  transactionId: entityIdSchema,
+  version: requiredVersion,
+  amount: moneyValueSchema,
+  paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
+  reference: optionalText(120),
+  note: optionalText(1000),
 });
 
 export const businessProfileSchema = z.object({

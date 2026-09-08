@@ -14,6 +14,7 @@ import {
   invoiceDraftSchema,
   purchaseOrderDraftSchema,
   completeDealSchema,
+  editPaymentTransactionSchema,
   payPaymentTermSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
@@ -177,6 +178,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     decorationMethod: "NONE",
     productName: "Jersey tim",
     material: "Dry fit",
+    deadline: "2026-09-30",
     sizes: [
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
       { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 },
@@ -187,6 +189,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     ],
   };
   assert.equal(purchaseOrderDraftSchema.safeParse(valid).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, deadline: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
 });
@@ -198,6 +201,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     decorationMethod: "SABLON",
     productName: "Kaos komunitas",
     material: "Cotton combed",
+    deadline: "2026-09-30",
     roster: [],
   };
   const size = { sizeId: "garment-size-m", sleeveLength: "PENDEK" };
@@ -218,6 +222,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     garmentType: "JERSEY",
     productName: "Jersey tim",
     material: "Dry fit",
+    deadline: "2026-09-30",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     roster: [],
   };
@@ -252,8 +257,6 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
     paidAt: "2026-09-03T10:00",
     initialValueType: "NOMINAL",
     initialValue: "500000",
-    productionProductName: "Jersey tim",
-    productionDeadline: "2026-09-30",
   };
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
@@ -267,6 +270,9 @@ test("pencatatan pembayaran memvalidasi waktu, referensi, dan identitas transaks
   assert.equal(recordInitialPaymentSchema.safeParse({ ...initial, salesOrderId: "pendek" }).success, false);
   assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "cm123456789013" }).success, true);
   assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "" }).success, false);
+  const edit = { ...initial, transactionId: "cm123456789013", version: "1", amount: "450000" };
+  assert.equal(editPaymentTransactionSchema.safeParse(edit).success, true);
+  assert.equal(editPaymentTransactionSchema.safeParse({ ...edit, amount: "-1" }).success, false);
 });
 
 test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", () => {
