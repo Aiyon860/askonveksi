@@ -34,6 +34,12 @@ type SearchParams = Promise<{ mode?: string | string[]; from?: string | string[]
 
 export const revalidate = 30;
 
+function paymentKindBadgeVariant(paymentKind: string | null) {
+  if (paymentKind === "LUNAS") return "success";
+  if (paymentKind === "DP") return "warning";
+  return "outline";
+}
+
 async function FinanceOverview({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const mode = parseFinanceReportMode(params.mode);
@@ -158,7 +164,7 @@ async function FinanceOverview({ searchParams }: { searchParams: SearchParams })
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span>{item.transactionKind}</span>
-                        <Badge variant="outline">{item.paymentKind}</Badge>
+                        <Badge variant={paymentKindBadgeVariant(item.paymentKind)}>{item.paymentKind}</Badge>
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell>
