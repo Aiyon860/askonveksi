@@ -7,7 +7,7 @@ import { toast } from "@/components/ui/toast";
 import type { FlashMessage } from "@/lib/actions/response";
 
 export function FlashMessageAlert({ flash }: { flash: FlashMessage }) {
-  const shownId = useRef<string>();
+  const shownId = useRef<string | null>(null);
 
   useEffect(() => {
     if (shownId.current === flash.id) return;

@@ -13,6 +13,7 @@ import {
   firstValidationMessage,
   sortableMasterDataFieldsSchema,
 } from "@/lib/crm/validation";
+import { parseMasterDataWorkbook, type MasterDataExcelRow } from "@/lib/master-data-excel";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -27,6 +28,144 @@ async function assertUniqueName(kind: "customerType" | "leadSource", name: strin
     ? await prisma.customerType.findFirst({ where, select: { id: true } })
     : await prisma.leadSource.findFirst({ where, select: { id: true } });
   if (existing) throw new UserFacingError("Nama sudah digunakan. Gunakan nama lain.");
+}
+
+function excelFile(formData: FormData) {
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new UserFacingError("Pilih file Excel terlebih dahulu.");
+  return file;
+}
+
+async function importCustomerTypeRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.customerType.findMany({
+      select: { id: true, name: true, description: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data jenis customer memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.customerType.create({ data: { ...row, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "CustomerType", entityId: created.id, action: "CUSTOMER_TYPE_CREATED", changedFields: ["name", "description", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.description !== row.description ? "description" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.customerType.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "CustomerType", entityId: current.id, action: "CUSTOMER_TYPE_UPDATED", changedFields } });
+    }
+
+    let position = rows.length;
+    for (const item of currentItems) {
+      if (importedIds.has(item.id)) continue;
+      if (item.position === position) {
+        position += 1;
+        continue;
+      }
+      await tx.customerType.update({ where: { id: item.id }, data: { position } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "CustomerType", entityId: item.id, action: "CUSTOMER_TYPE_UPDATED", changedFields: ["position"] } });
+      position += 1;
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+async function importLeadSourceRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.leadSource.findMany({
+      select: { id: true, name: true, description: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data sumber lead memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.leadSource.create({ data: { ...row, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "LeadSource", entityId: created.id, action: "LEAD_SOURCE_CREATED", changedFields: ["name", "description", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.description !== row.description ? "description" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.leadSource.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "LeadSource", entityId: current.id, action: "LEAD_SOURCE_UPDATED", changedFields } });
+    }
+
+    let position = rows.length;
+    for (const item of currentItems) {
+      if (importedIds.has(item.id)) continue;
+      if (item.position === position) {
+        position += 1;
+        continue;
+      }
+      await tx.leadSource.update({ where: { id: item.id }, data: { position } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "LeadSource", entityId: item.id, action: "LEAD_SOURCE_UPDATED", changedFields: ["position"] } });
+      position += 1;
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+async function importGarmentSizeRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.garmentSize.findMany({
+      select: { id: true, name: true, description: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data ukuran memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.garmentSize.create({ data: { ...row, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: created.id, action: "GARMENT_SIZE_CREATED", changedFields: ["name", "description", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.description !== row.description ? "description" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.garmentSize.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: current.id, action: "GARMENT_SIZE_UPDATED", changedFields } });
+    }
+
+    let position = rows.length;
+    for (const item of currentItems) {
+      if (importedIds.has(item.id)) continue;
+      if (item.position === position) {
+        position += 1;
+        continue;
+      }
+      await tx.garmentSize.update({ where: { id: item.id }, data: { position } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: item.id, action: "GARMENT_SIZE_UPDATED", changedFields: ["position"] } });
+      position += 1;
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function createCustomerTypeAction(formData: FormData) {
@@ -45,6 +184,17 @@ export async function createCustomerTypeAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     revalidatePath("/master-data/customer-types");
     return flashMessagePath("/master-data/customer-types", "notice", "Jenis customer berhasil dibuat.");
+  });
+}
+
+export async function importCustomerTypesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/customer-types", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
+    await importCustomerTypeRows(actor.id, rows);
+    revalidatePath("/master-data/customer-types");
+    revalidatePath("/crm/pelanggan");
+    return flashMessagePath("/master-data/customer-types", "notice", "Import jenis customer berhasil.");
   });
 }
 
@@ -147,6 +297,17 @@ export async function createLeadSourceAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     revalidatePath("/master-data/lead-sources");
     return flashMessagePath("/master-data/lead-sources", "notice", "Sumber lead berhasil dibuat.");
+  });
+}
+
+export async function importLeadSourcesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/lead-sources", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
+    await importLeadSourceRows(actor.id, rows);
+    revalidatePath("/master-data/lead-sources");
+    revalidatePath("/crm/pelanggan");
+    return flashMessagePath("/master-data/lead-sources", "notice", "Import sumber lead berhasil.");
   });
 }
 
@@ -256,6 +417,17 @@ export async function createGarmentSizeAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     revalidatePath("/master-data/garment-sizes");
     return flashMessagePath("/master-data/garment-sizes", "notice", "Ukuran pakaian berhasil dibuat.");
+  });
+}
+
+export async function importGarmentSizesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/garment-sizes", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 40);
+    await importGarmentSizeRows(actor.id, rows);
+    revalidatePath("/master-data/garment-sizes");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/garment-sizes", "notice", "Import ukuran pakaian berhasil.");
   });
 }
 
