@@ -22,18 +22,6 @@ export const OPEN_STAGES: OpportunityStage[] = [
   "NEGOSIASI",
 ];
 
-export const DESIGN_STATUS_LABEL = {
-  SUDAH_ADA: "Sudah ada",
-  BELUM_ADA: "Belum ada",
-  PERLU_DIBANTU: "Perlu dibantu",
-} as const;
-
-export function leadClassification(score: number) {
-  if (score >= 80) return "HOT" as const;
-  if (score >= 50) return "WARM" as const;
-  return "COLD" as const;
-}
-
 export const ROLE_LABEL = {
   OWNER: "Owner",
   ADMIN: "Admin",

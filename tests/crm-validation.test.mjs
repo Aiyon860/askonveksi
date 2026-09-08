@@ -20,6 +20,7 @@ import {
   recordFollowUpResultSchema,
   strongPasswordSchema,
   updateUserSchema,
+  validateOpenOpportunitySchedule,
 } from "../lib/crm/validation.ts";
 import {
   getAnalyticsPeriodBounds,
@@ -35,11 +36,17 @@ import {
   addCalendarMonthsJakarta,
 } from "../lib/crm/reminder-types.ts";
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
+import {
+  CRM_OPERATOR_ROLES,
+  DEAL_ROLES,
+  ARCHIVE_ROLES,
+  REVERSE_DEAL_ROLES,
+  hasRole,
+} from "../lib/auth/permissions.ts";
 
-test("opportunity tervalidasi dengan customer tersimpan dan field CRM V1", () => {
+test("opportunity hanya menerima field peluang yang masih digunakan", () => {
   const inlineCustomer = createOpportunitySchema.safeParse({
     title: "Seragam panitia",
-    leadScore: "80",
     name: "Customer inline",
     whatsapp: "08123456789",
   });
@@ -48,12 +55,23 @@ test("opportunity tervalidasi dengan customer tersimpan dan field CRM V1", () =>
   const valid = createOpportunitySchema.safeParse({
     customerId: "cm123456789012",
     title: "Seragam panitia",
-    leadScore: "80",
     estimatedQuantity: "150",
     estimatedValue: "15000000",
     deadline: "2026-12-01",
+    nextAction: "Hubungi customer",
+    nextActionAt: "2026-09-09T09:00",
   });
   assert.equal(valid.success, true);
+  assert.equal("estimatedQuantity" in valid.data, false);
+  assert.equal("estimatedValue" in valid.data, false);
+  assert.equal("deadline" in valid.data, false);
+  assert.equal(
+    validateOpenOpportunitySchedule({
+      nextAction: "Hubungi customer",
+      nextActionAt: "2026-09-09T09:00",
+    }),
+    null,
+  );
 });
 
 test("customer membutuhkan nama dan minimal satu kontak", () => {
@@ -147,7 +165,10 @@ test("aktivitas komunikasi membedakan komunikasi eksternal dan catatan internal"
 
 test("lead publik hanya menerima field intake minimum", () => {
   const valid = { submissionKey: "9d414d3c-1e40-4ad4-944b-74f8cba7a723", name: "Budi", whatsapp: "08123456789", productName: "Jersey", estimatedQuantity: "100", deadline: "2026-09-15", city: "Semarang", website: "" };
-  assert.equal(publicLeadSchema.safeParse(valid).success, true);
+  const parsed = publicLeadSchema.safeParse(valid);
+  assert.equal(parsed.success, true);
+  assert.equal("estimatedQuantity" in parsed.data, false);
+  assert.equal("deadline" in parsed.data, false);
   assert.equal(publicLeadSchema.safeParse({ ...valid, whatsapp: "123" }).success, false);
 });
 
@@ -232,6 +253,15 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
   }
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod: "Bordir komputer bebas" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod: "" }).success, false);
+});
+
+test("owner menjadi role tertinggi pada permission aplikasi", () => {
+  for (const roles of [CRM_OPERATOR_ROLES, DEAL_ROLES, ARCHIVE_ROLES, REVERSE_DEAL_ROLES]) {
+    assert.equal(roles.includes("OWNER"), true);
+    assert.equal(hasRole("OWNER", roles), true);
+  }
+  assert.equal(hasRole("OWNER", ["SALES"]), true);
+  assert.equal(hasRole("SALES", DEAL_ROLES), false);
 });
 
 test("tab peluang dan label dekorasi memiliki fallback yang aman", () => {

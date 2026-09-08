@@ -95,12 +95,6 @@ enum OpportunityStage {
   LOST
 }
 
-enum DesignStatus {
-  SUDAH_ADA
-  BELUM_ADA
-  PERLU_DIBANTU
-}
-
 enum DiscountType {
   NONE
   NOMINAL
@@ -294,13 +288,7 @@ model Opportunity {
   productName             String?                 @db.VarChar(120)
   garmentType             GarmentType?
   needPurpose             String?                 @db.VarChar(500)
-  designStatus            DesignStatus?
   specification           String?                 @db.Text
-  customerBudget          Decimal?                @db.Decimal(18, 2)
-  leadScore               Int                     @default(0)
-  estimatedQuantity       Int?
-  estimatedValue          Decimal?                @db.Decimal(18, 2)
-  deadline                DateTime?               @db.Date
   lastContactedAt         DateTime?               @db.Timestamptz(3)
   nextAction              String?                 @db.VarChar(500)
   nextActionAt            DateTime?               @db.Timestamptz(3)
@@ -322,9 +310,7 @@ model Opportunity {
   @@index([salesPicId, stage])
   @@index([salesPicId, nextActionAt])
   @@index([leadSourceId, createdAt])
-  @@index([leadScore, stage])
   @@index([nextActionAt])
-  @@index([stage, customerId, leadScore, nextActionAt, estimatedValue])
 }
 
 model PublicRateLimitBucket {

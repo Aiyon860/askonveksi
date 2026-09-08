@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail } from "@/lib/crm/data";
 import { decorationMethodLabel, parseOpportunityDetailTab, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
@@ -92,8 +93,8 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   if (!opportunity || !actor) notFound();
   if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?tab=aktivitas&historyPage=${communicationHistory.pageCount}#communication-history`);
 
-  const canOperate = actor.role === "ADMIN" || actor.role === "SALES";
-  const canCompleteDeal = actor.role === "ADMIN";
+  const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
+  const canCompleteDeal = hasRole(actor.role, DEAL_ROLES);
   const inNegotiation = opportunity.stage === "NEGOSIASI";
   const poDraft = opportunity.purchaseOrders.find((item) => item.status === "DRAFT");
   const agreedPo = opportunity.purchaseOrders.find((item) => item.status === "AGREED");
@@ -381,7 +382,7 @@ async function OpportunitySidebar({ id }: { id: string }) {
   ]);
   if (!opportunity || !actor) notFound();
 
-  const canOperate = actor.role === "ADMIN" || actor.role === "SALES";
+  const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
 
   return (
     <aside className="flex flex-col self-start gap-5 xl:mt-[4.75rem]">
@@ -416,8 +417,6 @@ function OpportunityReadOnly({ opportunity }: { opportunity: OpportunityDetail }
     <dl className="grid gap-4 text-sm sm:grid-cols-2">
       <div><dt className="text-xs text-muted-foreground">Produk awal</dt><dd className="mt-1">{opportunity.productName ?? "-"}</dd></div>
       <div><dt className="text-xs text-muted-foreground">PIC sales</dt><dd className="mt-1">{opportunity.salesPic?.name ?? "-"}</dd></div>
-      <div><dt className="text-xs text-muted-foreground">Estimasi jumlah</dt><dd className="mt-1 font-mono">{opportunity.estimatedQuantity ?? "-"}</dd></div>
-      <div><dt className="text-xs text-muted-foreground">Estimasi nilai</dt><dd className="mt-1 font-mono">{formatCurrency(opportunity.estimatedValue)}</dd></div>
       <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Spesifikasi awal</dt><dd className="mt-1 whitespace-pre-wrap">{opportunity.specification ?? "-"}</dd></div>
       <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Next action</dt><dd className="mt-1">{opportunity.nextAction ? `${opportunity.nextAction} · ${formatDate(opportunity.nextActionAt, true)}` : "-"}</dd></div>
     </dl>
@@ -448,11 +447,18 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
       </Table>
       {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead><TableHead>Ukuran</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell><TableCell>{entry.size}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
       {purchaseOrder.attachments.length ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="grid gap-2 sm:grid-cols-2">
           {purchaseOrder.attachments.map((attachment) => (
-            <Button key={attachment.id} size="sm" variant="outline" render={<Link href={`/api/crm/purchase-order/${purchaseOrder.id}/attachments/${attachment.id}`} target="_blank" rel="noreferrer" />} nativeButton={false}>
+            <Button
+              key={attachment.id}
+              size="sm"
+              variant="outline"
+              className="h-auto min-h-9 max-w-full shrink justify-start whitespace-normal py-2 text-left leading-5"
+              render={<Link href={`/api/crm/purchase-order/${purchaseOrder.id}/attachments/${attachment.id}`} />}
+              nativeButton={false}
+            >
               <Paperclip data-icon="inline-start" aria-hidden="true" />
-              {attachment.originalName}
+              <span className="min-w-0">{attachment.originalName}</span>
             </Button>
           ))}
         </div>

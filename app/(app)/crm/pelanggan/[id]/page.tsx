@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getCustomerDetail } from "@/lib/crm/data";
 import { OPEN_STAGES } from "@/lib/crm/constants";
@@ -47,7 +48,7 @@ export default async function CustomerDetailPage({
   ]);
   if (!customer || !actor) notFound();
   if (historyPage > communicationHistory.pageCount) redirect(`/crm/pelanggan/${id}?historyPage=${communicationHistory.pageCount}#communication-history`);
-  const canOperate = actor.role === "ADMIN" || actor.role === "SALES";
+  const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
   const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
   const canArchive = canOperate && !customer.archivedAt;
   const salesOrders = customer.opportunities
@@ -215,8 +216,6 @@ export default async function CustomerDetailPage({
                     <TableRow>
                       <TableHead>Peluang</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Deadline</TableHead>
-                      <TableHead className="text-right">Estimasi nilai</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -227,8 +226,6 @@ export default async function CustomerDetailPage({
                           <p className="mt-1 font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</p>
                         </TableCell>
                         <TableCell><OpportunityStatusBadge stage={opportunity.stage} /></TableCell>
-                        <TableCell>{opportunity.deadline ? formatDate(opportunity.deadline) : "Belum ditentukan"}</TableCell>
-                        <TableCell className="text-right font-mono">{opportunity.estimatedValue ? formatCurrency(opportunity.estimatedValue) : "Belum diisi"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -371,16 +368,12 @@ export default async function CustomerDetailPage({
                       <Input id="productName" name="productName" maxLength={120} defaultValue={repeatDraft?.productName ?? ""} />
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="estimatedQuantity">Estimasi jumlah</FieldLabel>
-                      <Input id="estimatedQuantity" name="estimatedQuantity" type="number" min={1} step={1} defaultValue={repeatDraft?.estimatedQuantity ?? ""} />
+                      <FieldLabel htmlFor="nextAction" required>Tindakan berikutnya</FieldLabel>
+                      <Input id="nextAction" name="nextAction" required minLength={2} maxLength={500} placeholder="Contoh: Follow-up repeat order" />
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="estimatedValue">Estimasi nilai</FieldLabel>
-                      <Input id="estimatedValue" name="estimatedValue" type="number" min={0} step={1} defaultValue={repeatDraft?.estimatedValue ?? ""} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="deadline">Deadline</FieldLabel>
-                      <Input id="deadline" name="deadline" type="date" />
+                      <FieldLabel htmlFor="nextActionAt" required>Jadwal follow-up</FieldLabel>
+                      <Input id="nextActionAt" name="nextActionAt" type="datetime-local" required />
                     </Field>
                     <SubmitButton pendingLabel="Membuat peluang...">Buat peluang</SubmitButton>
                   </FieldGroup>

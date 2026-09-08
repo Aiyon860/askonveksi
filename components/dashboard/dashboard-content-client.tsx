@@ -1,14 +1,13 @@
 "use client";
 
 import useSWR from "swr";
-import { AlertTriangle, CalendarClock, CircleDollarSign, HandCoins, Percent, Target } from "lucide-react";
+import { AlertTriangle, CalendarClock, CircleDollarSign, HandCoins, Percent } from "lucide-react";
 import Link from "next/link";
 
 import { fetcher } from "@/lib/fetcher";
 import { InvoiceDetail } from "@/components/crm/invoice-detail";
 import { PurchaseOrderDetail } from "@/components/crm/purchase-order-detail";
 import { InvoiceStatusBadge, OpportunityStatusBadge, PurchaseOrderStatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -24,18 +23,9 @@ export type DashboardData = {
   totalLeadCount: number;
   dealCount: number;
   conversionRate: number;
-  potentialValue: string;
   dealRevenue: string;
   overdue: number;
   dueToday: number;
-  hotLeads: Array<{
-    id: string;
-    opportunityNo: string;
-    title: string;
-    leadScore: number;
-    estimatedValue: string | null;
-    customer: { name: string };
-  }>;
   urgentActions: Array<{
     id: string;
     title: string;
@@ -94,10 +84,9 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
         <Card className="gap-0 py-0">
           <CardHeader className="py-5">
             <CardTitle id="sales-summary">Ringkasan hasil sales</CardTitle>
-            <CardDescription>Potensi opportunity terbuka, omzet Deal bulan berjalan, dan conversion rate seluruh waktu.</CardDescription>
+            <CardDescription>Omzet Deal bulan berjalan dan conversion rate seluruh waktu.</CardDescription>
           </CardHeader>
-          <MetricGroup className="rounded-none border-x-0 border-b-0 md:grid-cols-3">
-            <MetricItem label="Potensi omzet" value={formatCurrency(data.potentialValue)} icon={Target} tone="primary" emphasis />
+          <MetricGroup className="rounded-none border-x-0 border-b-0 sm:grid-cols-2">
             <MetricItem label="Omzet deal bulan ini" value={formatCurrency(data.dealRevenue)} icon={CircleDollarSign} tone="success" emphasis />
             <MetricItem
               label="Conversion rate"
@@ -231,16 +220,9 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
 
       <LazyBusinessTrendChart />
 
-      <section className="grid gap-4 xl:grid-cols-2">
+      <section aria-labelledby="next-action-title">
         <Card>
-          <CardHeader><CardTitle>Hot lead</CardTitle><CardDescription>Opportunity terbuka dengan skor minimal 80.</CardDescription><CardAction><Button size="sm" variant="link" render={<Link href="/crm" />} nativeButton={false}>Lihat pipeline</Button></CardAction></CardHeader>
-          <CardContent>
-            {data.hotLeads.length ? <div className="flex flex-col divide-y">{data.hotLeads.map((item) => <article key={item.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"><div className="min-w-0"><Link href={`/crm/peluang/${item.id}`} className="font-medium underline-offset-4 hover:underline">{item.title}</Link><p className="mt-1 truncate text-xs text-muted-foreground">{item.customer.name} · {item.opportunityNo}</p></div><div className="shrink-0 text-right"><Badge variant="highlight">HOT · {item.leadScore}</Badge><p className="mt-1 font-mono text-xs">{formatCurrency(item.estimatedValue)}</p></div></article>)}</div> : <Empty className="min-h-48 border-0"><EmptyHeader><EmptyTitle>Belum ada hot lead</EmptyTitle><EmptyDescription>Lead dengan skor 80 atau lebih akan muncul di sini.</EmptyDescription></EmptyHeader></Empty>}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Next action terdekat</CardTitle><CardDescription>Urutan kerja berdasarkan waktu yang paling awal.</CardDescription><CardAction><Button size="sm" variant="link" render={<Link href="/crm/follow-up" />} nativeButton={false}>Lihat semua</Button></CardAction></CardHeader>
+          <CardHeader><CardTitle id="next-action-title">Next action terdekat</CardTitle><CardDescription>Urutan kerja berdasarkan waktu yang paling awal.</CardDescription><CardAction><Button size="sm" variant="link" render={<Link href="/crm/follow-up" />} nativeButton={false}>Lihat semua</Button></CardAction></CardHeader>
           <CardContent>
             {data.urgentActions.length ? <div className="flex flex-col divide-y">{data.urgentActions.map((item) => <article key={item.id} className="py-3 first:pt-0 last:pb-0"><Link href={`/crm/peluang/${item.id}`} className="font-medium underline-offset-4 hover:underline">{item.nextAction}</Link><p className="mt-1 text-sm text-muted-foreground">{item.customer.name} · {item.title}</p><p className="mt-1 font-mono text-xs">{formatDate(item.nextActionAt, true)}</p></article>)}</div> : <Empty className="min-h-48 border-0"><EmptyHeader><EmptyTitle>Belum ada next action</EmptyTitle><EmptyDescription>Jadwalkan tindakan berikutnya dari detail opportunity.</EmptyDescription></EmptyHeader></Empty>}
           </CardContent>

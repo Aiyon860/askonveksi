@@ -3,16 +3,15 @@ import { CalendarClock, MessageCircle } from "lucide-react";
 
 import { FollowUpResultForm } from "@/components/crm/follow-up-result-form";
 import { OpportunityStatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getFollowUpData } from "@/lib/crm/data";
 import { getCurrentActor } from "@/lib/auth/session";
 import { formatDate, whatsappHref } from "@/lib/crm/format";
-import { leadClassification } from "@/lib/crm/constants";
 import { cn } from "@/lib/utils";
 
 const BUCKETS = ["overdue", "today", "tomorrow", "upcoming"] as const;
@@ -27,28 +26,30 @@ const BUCKET_THEME: Record<Bucket, { surface: string; count: string }> = {
 
 export async function FollowUpContent({ bucket, picId }: { bucket: Bucket; picId: string | undefined }) {
   const [{ items, counts, salesUsers, selectedPicId }, actor] = await Promise.all([getFollowUpData({ bucket, picId }), getCurrentActor()]);
-  const canOperate = actor?.role === "ADMIN" || actor?.role === "SALES";
+  const canOperate = Boolean(actor && hasRole(actor.role, CRM_OPERATOR_ROLES));
   const countsByBucket: Record<Bucket, number> = { overdue: counts.overdue, today: counts.today, tomorrow: counts.tomorrow, upcoming: counts.upcoming };
 
   return (
     <>
-      <nav aria-label="Status waktu follow-up" className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-px overflow-x-auto overflow-y-hidden rounded-lg border bg-border lg:grid-cols-4 lg:grid-flow-row lg:overflow-visible">
-        {BUCKETS.map((item) => (
-          <Link
-            key={item}
-            href={`/crm/follow-up?bucket=${item}${selectedPicId ? `&pic=${selectedPicId}` : ""}`}
-            aria-current={bucket === item ? "page" : undefined}
-            className={cn(
-              "p-4 outline-none transition-colors focus-visible:relative focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/50",
-              BUCKET_THEME[item].surface,
-              bucket === item && "bg-primary/[0.045]",
-            )}
-          >
-            <span className="text-sm text-muted-foreground">{BUCKET_LABEL[item]}</span>
-            <strong className={cn("mt-2 block font-mono text-2xl tabular-nums", BUCKET_THEME[item].count)}>{countsByBucket[item]}</strong>
-          </Link>
-        ))}
-      </nav>
+      <div className="overflow-hidden rounded-lg border bg-border">
+        <nav aria-label="Status waktu follow-up" className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-px overflow-x-auto overflow-y-hidden lg:grid-cols-4 lg:grid-flow-row lg:overflow-visible">
+          {BUCKETS.map((item) => (
+            <Link
+              key={item}
+              href={`/crm/follow-up?bucket=${item}${selectedPicId ? `&pic=${selectedPicId}` : ""}`}
+              aria-current={bucket === item ? "page" : undefined}
+              className={cn(
+                "p-4 outline-none transition-colors focus-visible:relative focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/50",
+                BUCKET_THEME[item].surface,
+                bucket === item && "bg-primary/[0.045]",
+              )}
+            >
+              <span className="text-sm text-muted-foreground">{BUCKET_LABEL[item]}</span>
+              <strong className={cn("mt-2 block font-mono text-2xl tabular-nums", BUCKET_THEME[item].count)}>{countsByBucket[item]}</strong>
+            </Link>
+          ))}
+        </nav>
+      </div>
 
       <Card>
         <CardHeader>
@@ -79,7 +80,6 @@ export async function FollowUpContent({ bucket, picId }: { bucket: Bucket; picId
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <OpportunityStatusBadge stage={item.stage} />
-                        <Badge variant="outline">{leadClassification(item.leadScore)} · {item.leadScore}</Badge>
                         <span className="font-mono text-xs text-muted-foreground">{item.opportunityNo}</span>
                       </div>
                       <Link href={`/crm/peluang/${item.id}`} className="mt-3 block w-fit font-semibold underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.title}</Link>

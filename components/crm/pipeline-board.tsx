@@ -20,9 +20,10 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
-import { leadClassification, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
+import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
+import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
-import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
 
 type PendingMove = { opportunity: PipelineOpportunity; stage: OpportunityStage };
@@ -45,7 +46,8 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [isMoving, startMoving] = useTransition();
   const dragImageRef = useRef<HTMLElement | null>(null);
-  const canOperate = actorRole === "ADMIN" || actorRole === "SALES";
+  const canOperate = hasRole(actorRole, CRM_OPERATOR_ROLES);
+  const canCompleteDeal = hasRole(actorRole, DEAL_ROLES);
 
   function removeDragImage() {
     dragImageRef.current?.remove();
@@ -171,14 +173,9 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       <CardContent>
                         <div className="flex flex-wrap items-center gap-2">
                           <OpportunityStatusBadge stage={opportunity.stage} />
-                          <span className="text-xs font-medium">{leadClassification(opportunity.leadScore)} · {opportunity.leadScore}</span>
                           <span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span>
                         </div>
                         <dl className="grid gap-2 text-xs text-muted-foreground">
-                          <div className="flex items-center justify-between gap-3">
-                            <dt>Estimasi</dt>
-                            <dd className="font-mono text-foreground">{formatCurrency(opportunity.estimatedValue)}</dd>
-                          </div>
                           {opportunity.nextActionAt ? (
                             <div className="flex items-start gap-2">
                               <CalendarClock aria-hidden="true" className="size-3.5" />
@@ -236,10 +233,10 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
           </DialogHeader>
           {pendingMove ? (
             pendingMove.stage === "DEAL" ? (
-              actorRole !== "ADMIN" ? (
+              !canCompleteDeal ? (
                 <Alert>
-                  <AlertTitle>Deal memerlukan Admin</AlertTitle>
-                  <AlertDescription>Sales dapat menyiapkan PO dan invoice. Admin mencatat pembayaran dan memindahkan peluang ke Deal.</AlertDescription>
+                  <AlertTitle>Deal memerlukan Owner atau Admin</AlertTitle>
+                  <AlertDescription>Sales dapat menyiapkan PO dan invoice. Owner atau Admin mencatat pembayaran dan memindahkan peluang ke Deal.</AlertDescription>
                 </Alert>
               ) : pendingMove.opportunity.stage !== "NEGOSIASI" || pendingMove.opportunity.purchaseOrder?.status !== "AGREED" || pendingMove.opportunity.invoice?.status !== "ISSUED" || pendingMove.opportunity.invoice.purchaseOrderId !== pendingMove.opportunity.purchaseOrder.id ? (
                 <div className="flex flex-col gap-4">

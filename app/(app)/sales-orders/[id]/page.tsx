@@ -14,6 +14,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { DEAL_ROLES, REVERSE_DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getSalesOrderDetail } from "@/lib/crm/data";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
@@ -27,8 +28,8 @@ export default async function SalesOrderPage({
   const { id } = await params;
   const [order, actor] = await Promise.all([getSalesOrderDetail(id), getCurrentActor()]);
   if (!order || !actor) notFound();
-  const canReverse = order.status === "ACTIVE" && actor.role === "ADMIN";
-  const canRecordPayment = order.status === "ACTIVE" && actor.role === "ADMIN";
+  const canReverse = order.status === "ACTIVE" && hasRole(actor.role, REVERSE_DEAL_ROLES);
+  const canRecordPayment = order.status === "ACTIVE" && hasRole(actor.role, DEAL_ROLES);
   const hasActiveInitialPayment = order.payment?.transactions.some((transaction) => transaction.status === "ACTIVE" && !transaction.paymentTermId) ?? false;
   const totalDiscount = order.items.reduce((sum, item) => sum + Number(item.discountAmount), 0);
   const totalTax = order.items.reduce((sum, item) => sum + Number(item.taxAmount), 0);
@@ -81,7 +82,7 @@ export default async function SalesOrderPage({
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Pembayaran</CardTitle><CardDescription>Admin dapat mengoreksi transaksi aktif. Setiap perubahan tetap tercatat dalam audit.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Pembayaran</CardTitle><CardDescription>Owner dan Admin dapat mengoreksi transaksi aktif. Setiap perubahan tetap tercatat dalam audit.</CardDescription></CardHeader>
             <CardContent className="flex flex-col gap-5">
               {order.payment && !hasActiveInitialPayment ? (
                 <div className="rounded-lg border border-warning/30 bg-warning-surface p-3 text-warning-surface-foreground">

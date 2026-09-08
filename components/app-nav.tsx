@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Building2, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -21,6 +21,7 @@ const financeItems = [
 
 const crmItems = [
   { href: "/crm", label: "Pipeline", icon: KanbanSquare },
+  { href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock },
   { href: "/crm/purchase-orders", label: "Purchase Order", icon: FileText },
   { href: "/crm/invoices", label: "Invoice", icon: Receipt },
 ] as const;
@@ -42,7 +43,7 @@ function isPathWithin(pathname: string, href: string) {
 }
 
 function isNavItemActive(pathname: string, href: string) {
-  if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang") || isPathWithin(pathname, "/sales-orders") || isPathWithin(pathname, "/crm/pelanggan") || isPathWithin(pathname, "/crm/follow-up");
+  if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang") || isPathWithin(pathname, "/sales-orders") || isPathWithin(pathname, "/crm/pelanggan");
   return isPathWithin(pathname, href);
 }
 
@@ -76,12 +77,14 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
+  const [followUpCount, setFollowUpCount] = useState(0);
   const [reminderCount, setReminderCount] = useState(0);
 
   useEffect(() => {
     fetch("/api/crm/badge-counts", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
+        setFollowUpCount(data.followUpCount ?? 0);
         setReminderCount(data.reminderCount ?? 0);
       })
       .catch(() => {});
@@ -108,7 +111,15 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
             <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
           </CollapsibleTrigger>
           <CollapsibleContent className="flex flex-col gap-1">
-            {crmItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+            {crmItems.map((item) => (
+              <NavLink
+                key={item.href}
+                pathname={pathname}
+                item={item.href === "/crm/follow-up" ? { ...item, count: followUpCount } : item}
+                nested
+                onNavigate={onNavigate}
+              />
+            ))}
           </CollapsibleContent>
         </Collapsible>
       ) : null}

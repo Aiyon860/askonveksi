@@ -47,10 +47,10 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
       </form>
     </div>
     {items.length ? <div className="flex min-h-112 flex-1 flex-col">
-      <Table className="min-w-4xl" containerClassName="min-h-0 flex-1 overflow-auto">
-        <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-16 text-center">No</TableHead><TableHead>No. PO</TableHead><TableHead>Jenis pakaian</TableHead><TableHead>Customer</TableHead><TableHead>Status</TableHead><TableHead>Tanggal dibuat</TableHead><TableHead>Deadline</TableHead></TableRow></TableHeader>
+      <Table className="table-fixed" containerClassName="min-h-0 flex-1 overflow-hidden">
+        <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-12 text-center sm:w-16">No</TableHead><TableHead className="w-36">No. PO</TableHead><TableHead>Jenis pakaian</TableHead><TableHead>Customer</TableHead><TableHead className="w-28">Status</TableHead><TableHead className="hidden w-36 md:table-cell">Tanggal dibuat</TableHead><TableHead className="hidden w-32 lg:table-cell">Deadline</TableHead></TableRow></TableHeader>
         <TableBody>{items.map((item, index) => <PurchaseOrderDetail key={item.id} id={item.id}>
-          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono">{item.purchaseOrderNo}</TableCell><TableCell>{item.productName}</TableCell><TableCell>{item.opportunity.customer.name}</TableCell><TableCell><PurchaseOrderStatusBadge status={item.status} /></TableCell><TableCell>{formatDate(item.createdAt)}</TableCell><TableCell>{formatDate(item.deadline)}</TableCell>
+          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono"><span className="block truncate" title={item.purchaseOrderNo}>{item.purchaseOrderNo}</span></TableCell><TableCell><span className="block truncate" title={item.productName}>{item.productName}</span></TableCell><TableCell><span className="block truncate" title={item.opportunity.customer.name}>{item.opportunity.customer.name}</span></TableCell><TableCell><PurchaseOrderStatusBadge status={item.status} /></TableCell><TableCell className="hidden md:table-cell">{formatDate(item.createdAt)}</TableCell><TableCell className="hidden lg:table-cell">{formatDate(item.deadline)}</TableCell>
         </PurchaseOrderDetail>)}</TableBody>
       </Table>
       <DataPagination pathname="/crm/purchase-orders" page={page} pageCount={pageCount} total={total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
@@ -77,7 +77,7 @@ function PurchaseOrdersTableFallback() {
         <TableSkeleton
           columns={7}
           rows={8}
-          className="min-w-4xl"
+          className="table-fixed"
           columnWidths={["w-12", "w-32", "w-32", "w-36", "w-20", "w-24", "w-24"]}
         />
       </div>

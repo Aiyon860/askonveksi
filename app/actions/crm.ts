@@ -33,13 +33,13 @@ import {
   purchaseOrderIdSchema,
   PURCHASE_ORDER_ATTACHMENT_MAX_BYTES,
   PURCHASE_ORDER_ATTACHMENT_MAX_FILES,
-  PURCHASE_ORDER_ATTACHMENT_TYPES,
   payPaymentTermSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
   reverseSalesOrderSchema,
   updateCustomerSchema,
   updateOpportunitySchema,
+  validateOpenOpportunitySchedule,
   voidPaymentTransactionSchema,
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
@@ -94,28 +94,13 @@ async function validatedPurchaseOrderAttachments(formData: FormData, purchaseOrd
 
   return Promise.all(files.map(async ({ file, kind }) => {
     if (file.size > PURCHASE_ORDER_ATTACHMENT_MAX_BYTES) throw new UserFacingError("Setiap lampiran desain maksimal 5 MB.");
-    if (!PURCHASE_ORDER_ATTACHMENT_TYPES.includes(file.type as (typeof PURCHASE_ORDER_ATTACHMENT_TYPES)[number])) {
-      throw new UserFacingError("Lampiran desain harus berformat JPG, PNG, WebP, atau PDF.");
-    }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    const isPng = bytes.length >= 8 && bytes.slice(0, 8).every((byte, index) => byte === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index]);
-    const isWebp = bytes.length >= 12 && new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" && new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
-    const isPdf = bytes.length >= 5 && new TextDecoder().decode(bytes.slice(0, 5)) === "%PDF-";
-    const matchesDeclaredType = file.type === "image/jpeg"
-      ? isJpeg
-      : file.type === "image/png"
-        ? isPng
-        : file.type === "image/webp"
-          ? isWebp
-          : isPdf;
-    if (!matchesDeclaredType) throw new UserFacingError("Isi lampiran tidak sesuai dengan format file yang dipilih.");
-
-    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : file.type === "application/pdf" ? "pdf" : "jpg";
+    const extension = storageExtension(file.name);
+    const contentType = safeContentType(file.type);
     return {
       bytes,
-      contentType: file.type,
+      contentType,
       originalName: file.name.slice(0, 255),
       sizeBytes: file.size,
       path: `${purchaseOrderId}/${randomUUID()}.${extension}`,
@@ -124,6 +109,17 @@ async function validatedPurchaseOrderAttachments(formData: FormData, purchaseOrd
         : "OTHER" as const,
     };
   }));
+}
+
+function storageExtension(fileName: string) {
+  const match = /\.([a-z0-9]{1,10})$/i.exec(fileName);
+  return match ? match[1].toLowerCase() : "bin";
+}
+
+function safeContentType(contentType: string) {
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(contentType) && contentType.length <= 64
+    ? contentType
+    : "application/octet-stream";
 }
 
 async function audit(
@@ -306,13 +302,7 @@ function opportunityInput(formData: FormData) {
     productName: formValue(formData, "productName"),
     garmentType: formValue(formData, "garmentType"),
     needPurpose: formValue(formData, "needPurpose"),
-    designStatus: formValue(formData, "designStatus"),
     specification: formValue(formData, "specification"),
-    customerBudget: formValue(formData, "customerBudget"),
-    leadScore: formValue(formData, "leadScore") || "0",
-    estimatedQuantity: formValue(formData, "estimatedQuantity"),
-    estimatedValue: formValue(formData, "estimatedValue"),
-    deadline: formValue(formData, "deadline"),
     nextAction: formValue(formData, "nextAction"),
     nextActionAt: formValue(formData, "nextActionAt"),
   };
@@ -608,6 +598,8 @@ export async function createOpportunityAction(formData: FormData) {
       ...opportunityInput(formData),
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const scheduleError = validateOpenOpportunitySchedule(parsed.data);
+    if (scheduleError) throw new UserFacingError(scheduleError);
 
     const prisma = getPrismaClient();
     const opportunity = await prisma.$transaction(
@@ -637,22 +629,15 @@ export async function createOpportunityAction(formData: FormData) {
             productName: parsed.data.productName,
             garmentType: parsed.data.garmentType,
             needPurpose: parsed.data.needPurpose,
-            designStatus: parsed.data.designStatus,
             specification: parsed.data.specification,
-            customerBudget: parsed.data.customerBudget ? new Prisma.Decimal(parsed.data.customerBudget) : null,
-            leadScore: parsed.data.leadScore,
-            estimatedQuantity: parsed.data.estimatedQuantity,
-            estimatedValue: parsed.data.estimatedValue ? new Prisma.Decimal(parsed.data.estimatedValue) : null,
-            deadline: optionalDate(parsed.data.deadline),
             nextAction: parsed.data.nextAction,
             nextActionAt: jakartaDateTime(parsed.data.nextActionAt),
           },
           select: { id: true },
         });
         await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-          "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose", "designStatus",
-          "specification", "customerBudget", "leadScore", "estimatedQuantity", "estimatedValue", "deadline",
-          "nextAction", "nextActionAt", "stage",
+          "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose",
+          "specification", "nextAction", "nextActionAt", "stage",
         ], { stage: "LEAD_BARU" });
         return created;
       },
@@ -673,6 +658,8 @@ export async function createLeadAction(formData: FormData) {
     if (customerMode !== "existing" && customerMode !== "new") throw new UserFacingError("Pilih jenis customer untuk lead.");
     const opportunityParsed = opportunityFieldsSchema.safeParse(opportunityInput(formData));
     if (!opportunityParsed.success) throw new UserFacingError(firstValidationMessage(opportunityParsed.error));
+    const scheduleError = validateOpenOpportunitySchedule(opportunityParsed.data);
+    if (scheduleError) throw new UserFacingError(scheduleError);
     const customerIdParsed = entityIdSchema.safeParse(formValue(formData, "customerId"));
     const customerParsed = customerMode === "new" ? createCustomerSchema.safeParse(customerFields(formData)) : null;
     if (customerMode === "existing" && !customerIdParsed.success) throw new UserFacingError("Pilih customer tersimpan.");
@@ -722,21 +709,15 @@ export async function createLeadAction(formData: FormData) {
           productName: opportunityParsed.data.productName,
           garmentType: opportunityParsed.data.garmentType,
           needPurpose: opportunityParsed.data.needPurpose,
-          designStatus: opportunityParsed.data.designStatus,
           specification: opportunityParsed.data.specification,
-          customerBudget: opportunityParsed.data.customerBudget ? new Prisma.Decimal(opportunityParsed.data.customerBudget) : null,
-          leadScore: opportunityParsed.data.leadScore,
-          estimatedQuantity: opportunityParsed.data.estimatedQuantity,
-          estimatedValue: opportunityParsed.data.estimatedValue ? new Prisma.Decimal(opportunityParsed.data.estimatedValue) : null,
-          deadline: optionalDate(opportunityParsed.data.deadline),
           nextAction: opportunityParsed.data.nextAction,
           nextActionAt: jakartaDateTime(opportunityParsed.data.nextActionAt),
         },
         select: { id: true },
       });
       await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-        "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose", "designStatus",
-        "specification", "customerBudget", "leadScore", "estimatedQuantity", "estimatedValue", "deadline", "nextAction", "nextActionAt", "stage",
+        "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose",
+        "specification", "nextAction", "nextActionAt", "stage",
       ], { stage: "LEAD_BARU" });
       return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -760,6 +741,16 @@ export async function updateOpportunityAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
     const result = await getPrismaClient().$transaction(async (tx) => {
+      const current = await tx.opportunity.findUnique({
+        where: { id: parsed.data.opportunityId },
+        select: { stage: true },
+      });
+      if (!current) throw new UserFacingError("Peluang tidak ditemukan.");
+      if (OPEN_STAGES.includes(current.stage)) {
+        const scheduleError = validateOpenOpportunitySchedule(parsed.data);
+        if (scheduleError) throw new UserFacingError(scheduleError);
+      }
+
       const [leadSource, salesPic] = await Promise.all([
         parsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: parsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
         parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
@@ -775,13 +766,7 @@ export async function updateOpportunityAction(formData: FormData) {
           productName: parsed.data.productName ?? null,
           garmentType: parsed.data.garmentType ?? null,
           needPurpose: parsed.data.needPurpose ?? null,
-          designStatus: parsed.data.designStatus ?? null,
           specification: parsed.data.specification ?? null,
-          customerBudget: parsed.data.customerBudget ? new Prisma.Decimal(parsed.data.customerBudget) : null,
-          leadScore: parsed.data.leadScore,
-          estimatedQuantity: parsed.data.estimatedQuantity,
-          estimatedValue: parsed.data.estimatedValue ? new Prisma.Decimal(parsed.data.estimatedValue) : null,
-          deadline: optionalDate(parsed.data.deadline),
           nextAction: parsed.data.nextAction ?? null,
           nextActionAt: jakartaDateTime(parsed.data.nextActionAt),
           version: { increment: 1 },
@@ -789,8 +774,8 @@ export async function updateOpportunityAction(formData: FormData) {
       });
       if (updated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
       await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_UPDATED", [
-        "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose", "designStatus", "specification",
-        "customerBudget", "leadScore", "estimatedQuantity", "estimatedValue", "deadline", "nextAction", "nextActionAt",
+        "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose", "specification",
+        "nextAction", "nextActionAt",
       ]);
       return updated;
     });

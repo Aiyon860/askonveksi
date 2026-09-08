@@ -12,7 +12,7 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 const definitions = [
   {
     id: "crm-po-designs",
-    options: { public: false, fileSizeLimit: 5 * 1024 * 1024, allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "application/pdf"] },
+    options: { public: false, fileSizeLimit: 5 * 1024 * 1024, allowedMimeTypes: null },
   },
   {
     id: "business-assets",

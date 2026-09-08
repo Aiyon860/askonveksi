@@ -25,10 +25,6 @@ export type PipelineOpportunity = {
   title: string;
   stage: OpportunityStage;
   version: number;
-  estimatedQuantity: number | null;
-  estimatedValue: string | null;
-  deadline: string | null;
-  leadScore: number;
   productName: string | null;
   nextAction: string | null;
   nextActionAt: string | null;
@@ -71,10 +67,6 @@ const opportunitySummarySelect = {
   title: true,
   stage: true,
   version: true,
-  estimatedQuantity: true,
-  estimatedValue: true,
-  deadline: true,
-  leadScore: true,
   productName: true,
   nextAction: true,
   nextActionAt: true,
@@ -134,10 +126,6 @@ const getCachedPipelineData = unstable_cache(
     title: row.title,
     stage: row.stage,
     version: row.version,
-    estimatedQuantity: row.estimatedQuantity,
-    estimatedValue: row.estimatedValue?.toString() ?? null,
-    deadline: row.deadline?.toISOString() ?? null,
-    leadScore: row.leadScore,
     productName: row.productName,
     nextAction: row.nextAction,
     nextActionAt: row.nextActionAt?.toISOString() ?? null,
@@ -358,8 +346,6 @@ export async function getCustomerDetail(customerId: string) {
           opportunityNo: true,
           title: true,
           stage: true,
-          estimatedValue: true,
-          deadline: true,
           updatedAt: true,
           salesOrders: {
             select: {
@@ -409,13 +395,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
       productName: true,
       garmentType: true,
       needPurpose: true,
-      designStatus: true,
       specification: true,
-      customerBudget: true,
-      leadScore: true,
-      estimatedQuantity: true,
-      estimatedValue: true,
-      deadline: true,
       lastContactedAt: true,
       nextAction: true,
       nextActionAt: true,
@@ -606,7 +586,6 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
         title: true,
         stage: true,
         version: true,
-        leadScore: true,
         nextAction: true,
         nextActionAt: true,
         lastContactedAt: true,
@@ -659,11 +638,9 @@ export async function getSalesDashboardData() {
   const openStages: OpportunityStage[] = ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"];
   const [
     stageGroups,
-    potential,
     dealRevenue,
     overdue,
     dueToday,
-    hotLeads,
     urgentActions,
     latestPurchaseOrders,
     latestInvoices,
@@ -671,16 +648,9 @@ export async function getSalesDashboardData() {
     activeOutstanding,
   ] = await Promise.all([
     prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
-    prisma.opportunity.aggregate({ where: { stage: { in: openStages }, customer: { archivedAt: null } }, _sum: { estimatedValue: true } }),
     prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }),
     prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { lt: start }, customer: { archivedAt: null } } }),
     prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { gte: start, lt: tomorrow }, customer: { archivedAt: null } } }),
-    prisma.opportunity.findMany({
-      where: { stage: { in: openStages }, leadScore: { gte: 80 }, customer: { archivedAt: null } },
-      select: { id: true, opportunityNo: true, title: true, leadScore: true, estimatedValue: true, customer: { select: { name: true } } },
-      orderBy: [{ leadScore: "desc" }, { updatedAt: "desc" }],
-      take: 5,
-    }),
     prisma.opportunity.findMany({
       where: { stage: { in: openStages }, nextActionAt: { not: null }, customer: { archivedAt: null } },
       select: { id: true, title: true, nextAction: true, nextActionAt: true, customer: { select: { name: true } } },
@@ -754,11 +724,9 @@ export async function getSalesDashboardData() {
     totalLeadCount,
     dealCount,
     conversionRate: calculateConversionRate(dealCount, totalLeadCount),
-    potentialValue: potential._sum.estimatedValue?.toString() ?? "0",
     dealRevenue: dealRevenue._sum.total?.toString() ?? "0",
     overdue,
     dueToday,
-    hotLeads: hotLeads.map((item) => ({ ...item, estimatedValue: item.estimatedValue?.toString() ?? null })),
     urgentActions,
     latestPurchaseOrders: latestPurchaseOrders.map((item) => ({
       id: item.id,

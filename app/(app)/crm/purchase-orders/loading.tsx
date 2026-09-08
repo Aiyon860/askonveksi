@@ -11,7 +11,7 @@ export default function PurchaseOrdersLoading() {
           <TableSkeleton
             columns={7}
             rows={8}
-            className="min-w-4xl"
+            className="table-fixed"
             columnWidths={["w-12", "w-32", "w-32", "w-36", "w-20", "w-24", "w-24"]}
           />
         </div>

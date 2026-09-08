@@ -125,7 +125,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-7xl gap-8 px-5 sm:px-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
           <div className="max-w-md">
             <h2 id="consultation-title" className="text-2xl font-bold leading-8">Ceritakan kebutuhan Anda</h2>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">Isi data singkat berikut. Tim Askonveksi akan menindaklanjuti kebutuhan produk, jumlah, dan deadline Anda.</p>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">Isi data singkat berikut. Tim Askonveksi akan menindaklanjuti kebutuhan produk Anda.</p>
           </div>
           <PublicLeadForm />
         </div>

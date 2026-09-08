@@ -30,7 +30,6 @@ export function MobileAppNav({ actor }: { actor: Actor }) {
         <Image src="/brand/askonveksi-mark.png" alt="" width={48} height={48} className="size-8 shrink-0 object-contain" priority />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">ASKonveksi</p>
-          <p className="truncate text-xs text-muted-foreground">{ROLE_LABEL[actor.role]}</p>
         </div>
       </div>
 

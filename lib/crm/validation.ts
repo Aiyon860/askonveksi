@@ -6,11 +6,6 @@ const optionalText = (max: number) =>
     z.string().trim().max(max).optional(),
   );
 
-const optionalPositiveInteger = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : Number(value)),
-  z.number().int().positive().max(10_000_000).optional(),
-);
-
 const optionalMoney = (label: string) => optionalText(20).refine(
   (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
   `${label} tidak valid.`,
@@ -86,16 +81,7 @@ export const opportunityFieldsSchema = z.object({
     z.enum(["JERSEY", "NON_JERSEY"]).optional(),
   ),
   needPurpose: optionalText(500),
-  designStatus: z.preprocess(
-    (value) => (value === null || value === "" ? undefined : value),
-    z.enum(["SUDAH_ADA", "BELUM_ADA", "PERLU_DIBANTU"]).optional(),
-  ),
   specification: optionalText(2000),
-  customerBudget: optionalMoney("Budget customer"),
-  leadScore: z.coerce.number().int().min(0, "Skor minimal 0.").max(100, "Skor maksimal 100."),
-  estimatedQuantity: optionalPositiveInteger,
-  estimatedValue: optionalMoney("Estimasi nilai"),
-  deadline: optionalText(10),
   nextAction: optionalText(500),
   nextActionAt: optionalText(32),
 }).superRefine((value, context) => {
@@ -107,6 +93,12 @@ export const opportunityFieldsSchema = z.object({
     });
   }
 });
+
+export function validateOpenOpportunitySchedule(value: { nextAction?: string; nextActionAt?: string }) {
+  if (!value.nextAction) return "Tindakan berikutnya wajib diisi.";
+  if (!value.nextActionAt) return "Jadwal follow-up wajib diisi.";
+  return null;
+}
 
 export const createOpportunitySchema = opportunityFieldsSchema.and(z.object({
   customerId: entityIdSchema,
@@ -156,8 +148,6 @@ export const publicLeadSchema = z.object({
   name: z.string().trim().min(2).max(160),
   whatsapp: z.string().trim().min(8).max(32),
   productName: z.string().trim().min(2).max(120),
-  estimatedQuantity: optionalPositiveInteger,
-  deadline: optionalText(10),
   city: optionalText(120),
   website: optionalText(200),
 });
@@ -305,7 +295,6 @@ export const completeDealSchema = z.object({
   }
 });
 
-export const PURCHASE_ORDER_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;
 export const PURCHASE_ORDER_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 export const PURCHASE_ORDER_ATTACHMENT_MAX_FILES = 5;
 export const PURCHASE_ORDER_ROSTER_MAX_BYTES = 2 * 1024 * 1024;

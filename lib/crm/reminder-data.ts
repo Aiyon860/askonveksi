@@ -173,9 +173,8 @@ export async function getRepeatOrderDraft(customerId: string, reminderId: string
         select: {
           id: true,
           salesOrderNo: true,
-          total: true,
           items: {
-            select: { description: true, quantity: true, position: true },
+            select: { description: true, position: true },
             orderBy: { position: "asc" },
           },
           opportunity: { select: { title: true, productName: true } },
@@ -185,7 +184,6 @@ export async function getRepeatOrderDraft(customerId: string, reminderId: string
   });
   if (!reminder) return null;
 
-  const quantity = reminder.sourceSalesOrder.items.reduce((total, item) => total + item.quantity, 0);
   const productName = reminder.sourceSalesOrder.opportunity.productName
     ?? reminder.sourceSalesOrder.items[0]?.description
     ?? null;
@@ -196,7 +194,5 @@ export async function getRepeatOrderDraft(customerId: string, reminderId: string
     salesOrderNo: reminder.sourceSalesOrder.salesOrderNo,
     title: productName ? `Repeat order ${productName}` : `Repeat ${reminder.sourceSalesOrder.opportunity.title}`,
     productName,
-    estimatedQuantity: quantity || null,
-    estimatedValue: reminder.sourceSalesOrder.total.toString(),
   };
 }

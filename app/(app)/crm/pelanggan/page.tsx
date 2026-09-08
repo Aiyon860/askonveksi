@@ -38,7 +38,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ARCHIVE_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import {
   getCustomers,
@@ -193,7 +193,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
     getCustomerFormOptions(),
   ]);
   const canChangeArchiveStatus = Boolean(actor && hasRole(actor.role, ARCHIVE_ROLES));
-  const canOperate = actor?.role === "ADMIN" || actor?.role === "SALES";
+  const canOperate = Boolean(actor && hasRole(actor.role, CRM_OPERATOR_ROLES));
   const archived = segment === "archived";
   const showActions = Boolean(canOperate && (!archived || canChangeArchiveStatus));
 
