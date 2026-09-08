@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { DEAL_ROLES, REVERSE_DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
@@ -19,6 +20,7 @@ import { getCurrentActor } from "@/lib/auth/session";
 import { getSalesOrderDetail } from "@/lib/crm/data";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
 import { PRODUCTION_STAGE_LABEL } from "@/lib/production/workflow";
+import { getActivePaymentMethods } from "@/lib/master-data";
 
 export default async function SalesOrderPage({
   params,
@@ -26,7 +28,7 @@ export default async function SalesOrderPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [order, actor] = await Promise.all([getSalesOrderDetail(id), getCurrentActor()]);
+  const [order, actor, paymentMethods] = await Promise.all([getSalesOrderDetail(id), getCurrentActor(), getActivePaymentMethods()]);
   if (!order || !actor) notFound();
   const canReverse = order.status === "ACTIVE" && hasRole(actor.role, REVERSE_DEAL_ROLES);
   const canRecordPayment = order.status === "ACTIVE" && hasRole(actor.role, DEAL_ROLES);
@@ -88,14 +90,14 @@ export default async function SalesOrderPage({
                 <div className="rounded-lg border border-warning/30 bg-warning-surface p-3 text-warning-surface-foreground">
                   <p className="text-sm font-medium">Pembayaran awal dibatalkan</p>
                   <p className="mt-1 text-xs text-muted-foreground">Catat ulang tepat sebesar {formatCurrency(order.payment.initialAmount)} agar saldo tagihan kembali sesuai jadwal.</p>
-                  {canRecordPayment ? <form action={recordInitialPaymentAction} className="mt-3 grid gap-2 sm:grid-cols-2"><input type="hidden" name="salesOrderId" value={order.id} /><Input name="paidAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(new Date())} aria-label="Waktu pembayaran awal" /><Input name="reference" maxLength={120} placeholder="Referensi pembayaran (opsional)" aria-label="Referensi pembayaran awal" /><Textarea name="note" maxLength={1000} rows={2} placeholder="Catatan (opsional)" aria-label="Catatan pembayaran awal" className="sm:col-span-2" /><ConfirmSubmitButton className="sm:col-span-2 sm:w-fit" pendingLabel="Mencatat..." confirmTitle="Catat ulang pembayaran awal?" confirmDescription={`Nominal ${formatCurrency(order.payment.initialAmount)} akan dicatat penuh.`} confirmLabel="Ya, catat pembayaran">Catat ulang pembayaran awal</ConfirmSubmitButton></form> : null}
+                  {canRecordPayment ? <form action={recordInitialPaymentAction} className="mt-3 grid gap-2 sm:grid-cols-2"><input type="hidden" name="salesOrderId" value={order.id} /><Input name="paidAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(new Date())} aria-label="Waktu pembayaran awal" /><NativeSelect name="paymentMethodId" required defaultValue="" aria-label="Metode pembayaran awal"><NativeSelectOption value="" disabled>Pilih metode pembayaran</NativeSelectOption>{paymentMethods.map((method) => <NativeSelectOption key={method.id} value={method.id}>{method.name}</NativeSelectOption>)}</NativeSelect><Input name="reference" maxLength={120} placeholder="Referensi pembayaran (opsional)" aria-label="Referensi pembayaran awal" /><Textarea name="note" maxLength={1000} rows={2} placeholder="Catatan (opsional)" aria-label="Catatan pembayaran awal" className="sm:col-span-2" /><ConfirmSubmitButton className="sm:col-span-2 sm:w-fit" pendingLabel="Mencatat..." confirmTitle="Catat ulang pembayaran awal?" confirmDescription={`Nominal ${formatCurrency(order.payment.initialAmount)} akan dicatat penuh.`} confirmLabel="Ya, catat pembayaran">Catat ulang pembayaran awal</ConfirmSubmitButton></form> : null}
                 </div>
               ) : null}
               {order.payment?.terms.length ? <div><p className="mb-2 text-sm font-medium">Termin pembayaran</p><Table containerClassName="rounded-lg border"><TableHeader><TableRow><TableHead>Termin</TableHead><TableHead>Jatuh tempo</TableHead><TableHead className="text-right">Nominal</TableHead><TableHead>Status / tindakan</TableHead></TableRow></TableHeader><TableBody>{order.payment.terms.map((term) => {
                 const paid = term.transactions.length > 0;
-                return <TableRow key={term.id}><TableCell>{term.position + 1}</TableCell><TableCell>{formatDate(term.dueAt)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(term.amount)}</TableCell><TableCell>{paid ? <span className="text-sm font-medium text-success">Terbayar</span> : canRecordPayment ? <form action={payPaymentTermAction} className="grid min-w-72 gap-2"><input type="hidden" name="salesOrderId" value={order.id} /><input type="hidden" name="paymentTermId" value={term.id} /><Input name="paidAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(new Date())} aria-label={`Waktu pembayaran termin ${term.position + 1}`} /><Input name="reference" maxLength={120} placeholder="Referensi pembayaran (opsional)" aria-label={`Referensi pembayaran termin ${term.position + 1}`} /><ConfirmSubmitButton size="sm" pendingLabel="Mencatat..." confirmTitle={`Catat pembayaran termin ${term.position + 1}?`} confirmDescription={`Nominal ${formatCurrency(term.amount)} akan dicatat penuh. Pembayaran parsial tidak diperbolehkan.`} confirmLabel="Ya, catat pembayaran">Catat pembayaran</ConfirmSubmitButton></form> : <span className="text-sm text-muted-foreground">Belum dibayar</span>}</TableCell></TableRow>;
+                return <TableRow key={term.id}><TableCell>{term.position + 1}</TableCell><TableCell>{formatDate(term.dueAt)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(term.amount)}</TableCell><TableCell>{paid ? <span className="text-sm font-medium text-success">Terbayar</span> : canRecordPayment ? <form action={payPaymentTermAction} className="grid min-w-72 gap-2"><input type="hidden" name="salesOrderId" value={order.id} /><input type="hidden" name="paymentTermId" value={term.id} /><Input name="paidAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(new Date())} aria-label={`Waktu pembayaran termin ${term.position + 1}`} /><NativeSelect name="paymentMethodId" required defaultValue="" aria-label={`Metode pembayaran termin ${term.position + 1}`}><NativeSelectOption value="" disabled>Pilih metode pembayaran</NativeSelectOption>{paymentMethods.map((method) => <NativeSelectOption key={method.id} value={method.id}>{method.name}</NativeSelectOption>)}</NativeSelect><Input name="reference" maxLength={120} placeholder="Referensi pembayaran (opsional)" aria-label={`Referensi pembayaran termin ${term.position + 1}`} /><ConfirmSubmitButton size="sm" pendingLabel="Mencatat..." confirmTitle={`Catat pembayaran termin ${term.position + 1}?`} confirmDescription={`Nominal ${formatCurrency(term.amount)} akan dicatat penuh. Pembayaran parsial tidak diperbolehkan.`} confirmLabel="Ya, catat pembayaran">Catat pembayaran</ConfirmSubmitButton></form> : <span className="text-sm text-muted-foreground">Belum dibayar</span>}</TableCell></TableRow>;
               })}</TableBody></Table></div> : null}
-              <div><p className="mb-2 text-sm font-medium">Histori transaksi</p>{order.payment?.transactions.length ? <div className="flex flex-col gap-3">{order.payment.transactions.map((transaction) => <PaymentTransactionEntry key={transaction.id} transaction={transaction} salesOrderId={order.id} invoiceTotal={order.total.toString()} editable={canRecordPayment} />)}</div> : <p className="text-sm text-muted-foreground">Belum ada transaksi pembayaran.</p>}</div>
+              <div><p className="mb-2 text-sm font-medium">Histori transaksi</p>{order.payment?.transactions.length ? <div className="flex flex-col gap-3">{order.payment.transactions.map((transaction) => <PaymentTransactionEntry key={transaction.id} transaction={transaction} salesOrderId={order.id} invoiceTotal={order.total.toString()} editable={canRecordPayment} paymentMethods={paymentMethods} />)}</div> : <p className="text-sm text-muted-foreground">Belum ada transaksi pembayaran.</p>}</div>
             </CardContent>
           </Card>
 
@@ -195,18 +197,19 @@ export default async function SalesOrderPage({
 type SalesOrderDetail = NonNullable<Awaited<ReturnType<typeof getSalesOrderDetail>>>;
 type PaymentTransaction = NonNullable<SalesOrderDetail["payment"]>["transactions"][number];
 
-function PaymentTransactionEntry({ transaction, salesOrderId, invoiceTotal, editable }: {
+function PaymentTransactionEntry({ transaction, salesOrderId, invoiceTotal, editable, paymentMethods }: {
   transaction: PaymentTransaction;
   salesOrderId: string;
   invoiceTotal: string;
   editable: boolean;
+  paymentMethods: Array<{ id: string; name: string }>;
 }) {
   return (
     <article className="rounded-lg border p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-mono font-medium">{formatCurrency(transaction.amount)}</p>
-          <p className="mt-1 break-words text-xs text-muted-foreground">{formatDate(transaction.paidAt, true)} oleh {transaction.createdBy.name}{transaction.reference ? ` · ${transaction.reference}` : ""}</p>
+          <p className="mt-1 break-words text-xs text-muted-foreground">{transaction.paymentMethod?.name ?? "Metode belum tercatat"} · {formatDate(transaction.paidAt, true)} oleh {transaction.createdBy.name}{transaction.reference ? ` · ${transaction.reference}` : ""}</p>
         </div>
         <Badge variant={transaction.status === "ACTIVE" ? "success" : "destructive"}>{transaction.status === "ACTIVE" ? "Aktif" : "Dibatalkan"}</Badge>
       </div>
@@ -225,6 +228,7 @@ function PaymentTransactionEntry({ transaction, salesOrderId, invoiceTotal, edit
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field><FieldLabel htmlFor={`payment-amount-${transaction.id}`} required>Nominal</FieldLabel><Input id={`payment-amount-${transaction.id}`} name="amount" type="number" min="0.01" max={invoiceTotal} step="0.01" required defaultValue={transaction.amount.toString()} /></Field>
                   <Field><FieldLabel htmlFor={`payment-date-${transaction.id}`} required>Waktu pembayaran</FieldLabel><Input id={`payment-date-${transaction.id}`} name="paidAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(transaction.paidAt)} /></Field>
+                  <Field><FieldLabel htmlFor={`payment-method-${transaction.id}`} required>Metode</FieldLabel><NativeSelect id={`payment-method-${transaction.id}`} name="paymentMethodId" required defaultValue={transaction.paymentMethodId ?? ""}><NativeSelectOption value="" disabled>Pilih metode</NativeSelectOption>{paymentMethods.map((method) => <NativeSelectOption key={method.id} value={method.id}>{method.name}</NativeSelectOption>)}</NativeSelect></Field>
                   <Field><FieldLabel htmlFor={`payment-reference-${transaction.id}`}>Referensi</FieldLabel><Input id={`payment-reference-${transaction.id}`} name="reference" maxLength={120} defaultValue={transaction.reference ?? ""} /></Field>
                   <Field><FieldLabel htmlFor={`payment-note-${transaction.id}`}>Catatan</FieldLabel><Textarea id={`payment-note-${transaction.id}`} name="note" maxLength={1000} rows={2} defaultValue={transaction.note ?? ""} /></Field>
                 </div>

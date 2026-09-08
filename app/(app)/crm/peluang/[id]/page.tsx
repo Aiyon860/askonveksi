@@ -28,7 +28,7 @@ import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail } from "@/lib/crm/data";
 import { decorationMethodLabel, parseOpportunityDetailTab, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
-import { getActiveGarmentSizes, getCustomerFormOptions } from "@/lib/master-data";
+import { getActiveGarmentSizes, getActivePaymentMethods, getCustomerFormOptions } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
 type OpportunityDetail = NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>;
@@ -83,12 +83,13 @@ async function OpportunityHeader({ id }: { id: string }) {
 }
 
 async function OpportunityContent({ id, initialTab, historyPage }: { id: string; initialTab: OpportunityDetailTab; historyPage: number }) {
-  const [opportunity, actor, formOptions, communicationHistory, sizeOptions] = await Promise.all([
+  const [opportunity, actor, formOptions, communicationHistory, sizeOptions, paymentMethods] = await Promise.all([
     getOpportunityDetail(id),
     getCurrentActor(),
     getCustomerFormOptions(),
     getCommunicationTimeline({ opportunityId: id, page: historyPage }),
     getActiveGarmentSizes(),
+    getActivePaymentMethods(),
   ]);
   if (!opportunity || !actor) notFound();
   if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?tab=aktivitas&historyPage=${communicationHistory.pageCount}#communication-history`);
@@ -308,7 +309,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
             {inNegotiation && canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
-              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} initialPaidAt={toDateTimeLocalValue(new Date())} />
+              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} initialPaidAt={toDateTimeLocalValue(new Date())} paymentMethods={paymentMethods} />
             ) : opportunity.stage === "DEAL" ? (
               <Alert>
                 <AlertTitle>Peluang sudah Deal</AlertTitle>

@@ -263,6 +263,7 @@ function completeDealInput(formData: FormData) {
     purchaseOrderId: formValue(formData, "purchaseOrderId"),
     invoiceId: formValue(formData, "invoiceId"),
     invoiceVersion: formValue(formData, "invoiceVersion"),
+    paymentMethodId: formValue(formData, "paymentMethodId"),
     kind: formValue(formData, "kind"),
     paidAt: formValue(formData, "paidAt"),
     initialValueType: formValue(formData, "initialValueType"),
@@ -288,6 +289,14 @@ async function runDealTransaction<T>(work: (tx: Tx) => Promise<T>) {
   }
 
   throw new UserFacingError("Transaksi Deal belum dapat diselesaikan. Silakan coba lagi.");
+}
+
+async function assertActivePaymentMethod(tx: Tx, paymentMethodId: string) {
+  const paymentMethod = await tx.paymentMethod.findFirst({
+    where: { id: paymentMethodId, isActive: true },
+    select: { id: true },
+  });
+  if (!paymentMethod) throw new UserFacingError("Metode pembayaran tidak tersedia. Pilih metode lain.");
 }
 
 function opportunityInput(formData: FormData) {
@@ -1624,6 +1633,7 @@ export async function completeDealAction(formData: FormData) {
     if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh berada di masa depan.");
     const salesOrder = await runDealTransaction(
         async (tx) => {
+        await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
         const invoice = await tx.invoice.findUnique({
           where: { id: parsed.data.invoiceId },
           select: {
@@ -1749,6 +1759,7 @@ export async function completeDealAction(formData: FormData) {
                   create: {
                     amount: initialAmount,
                     paidAt,
+                    paymentMethodId: parsed.data.paymentMethodId,
                     createdById: actor.id,
                   },
                 },
@@ -1815,6 +1826,7 @@ export async function payPaymentTermAction(formData: FormData) {
     const parsed = payPaymentTermSchema.safeParse({
       salesOrderId: formValue(formData, "salesOrderId"),
       paymentTermId: formValue(formData, "paymentTermId"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
       paidAt: formValue(formData, "paidAt"),
       reference: formValue(formData, "reference"),
       note: formValue(formData, "note"),
@@ -1824,6 +1836,7 @@ export async function payPaymentTermAction(formData: FormData) {
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
 
     await runDealTransaction(async (tx) => {
+      await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
       const term = await tx.paymentTerm.findFirst({
         where: { id: parsed.data.paymentTermId, payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
         select: {
@@ -1841,6 +1854,7 @@ export async function payPaymentTermAction(formData: FormData) {
           paymentTermId: term.id,
           amount: term.amount,
           paidAt,
+          paymentMethodId: parsed.data.paymentMethodId,
           reference: parsed.data.reference,
           note: parsed.data.note,
           createdById: actor.id,
@@ -1857,7 +1871,7 @@ export async function payPaymentTermAction(formData: FormData) {
         data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
       });
       await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "reference", "note"], {
+      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
         salesOrderId: parsed.data.salesOrderId,
         paymentTermId: term.id,
       });
@@ -1877,6 +1891,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     const actor = await requireActor(DEAL_ROLES);
     const parsed = recordInitialPaymentSchema.safeParse({
       salesOrderId: formValue(formData, "salesOrderId"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
       paidAt: formValue(formData, "paidAt"),
       reference: formValue(formData, "reference"),
       note: formValue(formData, "note"),
@@ -1886,6 +1901,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
 
     await runDealTransaction(async (tx) => {
+      await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
       const payment = await tx.dealPayment.findFirst({
         where: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } },
         select: {
@@ -1902,6 +1918,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
           paymentId: payment.id,
           amount: payment.initialAmount,
           paidAt,
+          paymentMethodId: parsed.data.paymentMethodId,
           reference: parsed.data.reference,
           note: parsed.data.note,
           createdById: actor.id,
@@ -1917,7 +1934,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
         data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
       });
       await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "reference", "note"], {
+      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
         salesOrderId: parsed.data.salesOrderId,
         paymentKind: "INITIAL",
       });
@@ -1939,6 +1956,7 @@ export async function editPaymentTransactionAction(formData: FormData) {
       salesOrderId: formValue(formData, "salesOrderId"),
       transactionId: formValue(formData, "transactionId"),
       version: formValue(formData, "version"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
       amount: formValue(formData, "amount"),
       paidAt: formValue(formData, "paidAt"),
       reference: formValue(formData, "reference"),
@@ -1950,6 +1968,7 @@ export async function editPaymentTransactionAction(formData: FormData) {
     const amount = new Prisma.Decimal(parsed.data.amount);
 
     await runDealTransaction(async (tx) => {
+      await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
       const transaction = await tx.paymentTransaction.findFirst({
         where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
         select: { id: true, paymentId: true, version: true, amount: true, paidAt: true },
@@ -1965,11 +1984,11 @@ export async function editPaymentTransactionAction(formData: FormData) {
       if (amount.lte(0) || newTotal.gt(payment.salesOrder.total)) throw new UserFacingError("Nominal harus positif dan total pembayaran tidak boleh melebihi invoice.");
       const updated = await tx.paymentTransaction.updateMany({
         where: { id: transaction.id, status: "ACTIVE", version: transaction.version },
-        data: { amount, paidAt, reference: parsed.data.reference, note: parsed.data.note, version: { increment: 1 } },
+        data: { amount, paidAt, paymentMethodId: parsed.data.paymentMethodId, reference: parsed.data.reference, note: parsed.data.note, version: { increment: 1 } },
       });
       if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
       await tx.dealPayment.update({ where: { id: transaction.paymentId }, data: { outstandingAmount: payment.salesOrder.total.sub(newTotal) } });
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_UPDATED", ["amount", "paidAt", "reference", "note", "version"], {
+      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_UPDATED", ["amount", "paidAt", "paymentMethodId", "reference", "note", "version"], {
         salesOrderId: parsed.data.salesOrderId,
         previousAmount: transaction.amount.toString(),
         amount: amount.toString(),

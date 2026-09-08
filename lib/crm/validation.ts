@@ -281,6 +281,7 @@ export const completeDealSchema = z.object({
   purchaseOrderId: entityIdSchema,
   invoiceId: entityIdSchema,
   invoiceVersion: requiredVersion,
+  paymentMethodId: entityIdSchema,
   kind: z.enum(["LUNAS", "DP"]),
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
@@ -308,6 +309,7 @@ export const reverseSalesOrderSchema = z.object({
 export const payPaymentTermSchema = z.object({
   salesOrderId: entityIdSchema,
   paymentTermId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),
   note: optionalText(1000),
@@ -315,6 +317,7 @@ export const payPaymentTermSchema = z.object({
 
 export const recordInitialPaymentSchema = z.object({
   salesOrderId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),
   note: optionalText(1000),
@@ -330,6 +333,7 @@ export const editPaymentTransactionSchema = z.object({
   salesOrderId: entityIdSchema,
   transactionId: entityIdSchema,
   version: requiredVersion,
+  paymentMethodId: entityIdSchema,
   amount: moneyValueSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),

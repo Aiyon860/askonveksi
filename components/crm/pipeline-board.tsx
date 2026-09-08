@@ -36,7 +36,7 @@ const DEFAULT_DESTINATION: Record<OpportunityStage, OpportunityStage> = {
   LOST: "FOLLOW_UP",
 };
 
-export function PipelineBoard({ opportunities, actorRole }: { opportunities: PipelineOpportunity[]; actorRole: AppRole }) {
+export function PipelineBoard({ opportunities, actorRole, paymentMethods }: { opportunities: PipelineOpportunity[]; actorRole: AppRole; paymentMethods: Array<{ id: string; name: string }> }) {
   const router = useRouter();
   const [boardOpportunities, moveOptimistically] = useOptimistic(
     opportunities,
@@ -255,6 +255,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                   invoiceVersion={pendingMove.opportunity.invoice.version}
                   total={pendingMove.opportunity.invoice.total}
                   initialPaidAt={toDateTimeLocalValue(new Date())}
+                  paymentMethods={paymentMethods}
                 />
               )
             ) : (

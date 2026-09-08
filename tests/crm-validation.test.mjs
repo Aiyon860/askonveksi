@@ -284,20 +284,23 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
     purchaseOrderId: "cm123456789013",
     invoiceId: "cm123456789014",
     invoiceVersion: "1",
+    paymentMethodId: "payment-method-tunai",
     paidAt: "2026-09-03T10:00",
     initialValueType: "NOMINAL",
     initialValue: "500000",
   };
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
+  assert.equal(completeDealSchema.safeParse({ ...base, paymentMethodId: "" }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);
 });
 
 test("pencatatan pembayaran memvalidasi waktu, referensi, dan identitas transaksi", () => {
-  const initial = { salesOrderId: "cm123456789012", paidAt: "2026-09-05T10:00", reference: "TRX-001", note: "Transfer bank" };
+  const initial = { salesOrderId: "cm123456789012", paymentMethodId: "payment-method-tunai", paidAt: "2026-09-05T10:00", reference: "TRX-001", note: "Transfer bank" };
   assert.equal(recordInitialPaymentSchema.safeParse(initial).success, true);
   assert.equal(recordInitialPaymentSchema.safeParse({ ...initial, salesOrderId: "pendek" }).success, false);
+  assert.equal(recordInitialPaymentSchema.safeParse({ ...initial, paymentMethodId: "" }).success, false);
   assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "cm123456789013" }).success, true);
   assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "" }).success, false);
   const edit = { ...initial, transactionId: "cm123456789013", version: "1", amount: "450000" };

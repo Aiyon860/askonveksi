@@ -13,7 +13,7 @@ import { formatCurrency } from "@/lib/crm/format";
 
 type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE" };
 
-export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, initialPaidAt }: {
+export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, initialPaidAt, paymentMethods }: {
   opportunityId: string;
   opportunityVersion: number;
   purchaseOrderId: string;
@@ -21,6 +21,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   invoiceVersion: number;
   total: string;
   initialPaidAt: string;
+  paymentMethods: Array<{ id: string; name: string }>;
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
   const [initialValueType, setInitialValueType] = useState<"NOMINAL" | "PERCENTAGE">("NOMINAL");
@@ -39,7 +40,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
           <p className="text-xs text-muted-foreground">Total invoice</p>
           <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(total)}</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field>
             <FieldLabel htmlFor={`payment-kind-${invoiceId}`} required>Jenis pembayaran</FieldLabel>
             <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} className="w-full">
@@ -50,6 +51,13 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
           <Field>
             <FieldLabel htmlFor={`payment-date-${invoiceId}`} required>Waktu pembayaran</FieldLabel>
             <Input id={`payment-date-${invoiceId}`} name="paidAt" type="datetime-local" required defaultValue={initialPaidAt} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`payment-method-${invoiceId}`} required>Metode pembayaran</FieldLabel>
+            <NativeSelect id={`payment-method-${invoiceId}`} name="paymentMethodId" required defaultValue="" className="w-full">
+              <NativeSelectOption value="" disabled>Pilih metode</NativeSelectOption>
+              {paymentMethods.map((method) => <NativeSelectOption key={method.id} value={method.id}>{method.name}</NativeSelectOption>)}
+            </NativeSelect>
           </Field>
         </div>
 

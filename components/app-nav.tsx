@@ -30,6 +30,7 @@ const masterItems = [
   { href: "/master-data/customer-types", label: "Jenis customer", icon: Tags },
   { href: "/master-data/lead-sources", label: "Sumber lead", icon: Waypoints },
   { href: "/master-data/garment-sizes", label: "Ukuran pakaian", icon: Ruler },
+  { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CircleDollarSign },
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
 ] as const;
 
