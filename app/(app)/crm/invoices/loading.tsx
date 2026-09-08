@@ -1,4 +1,4 @@
-import { LoadingPage, PageHeaderSkeleton } from "@/components/loading-skeletons";
+import { LoadingPage, FilterBarSkeleton, PageHeaderSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function InvoicesLoading() {
@@ -6,26 +6,18 @@ export default function InvoicesLoading() {
     <LoadingPage label="Memuat invoice">
       <PageHeaderSkeleton action />
       <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-hidden="true">
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
-          <Skeleton className="h-9 w-64" />
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-32" />
-            <Skeleton className="h-9 w-28" />
-            <Skeleton className="h-9 w-20" />
-          </div>
+        <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={3} />
+        <div className="flex min-h-112 flex-1 flex-col">
+          <TableSkeleton
+            columns={7}
+            rows={8}
+            className="min-w-4xl"
+            columnWidths={["w-12", "w-32", "w-36", "w-32", "w-20", "w-24", "w-24"]}
+          />
         </div>
-        <div className="min-h-112">
-          {Array.from({ length: 8 }, (_, i) => (
-            <div key={i} className="flex items-center gap-4 border-b px-4 py-3">
-              <Skeleton className="h-4 w-8" />
-              <Skeleton className="h-4 w-28" />
-              <Skeleton className="h-4 w-36" />
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-5 w-20" />
-              <Skeleton className="h-4 w-24 ml-auto" />
-              <Skeleton className="h-4 w-24" />
-            </div>
-          ))}
+        <div className="flex items-center justify-between gap-4 border-t px-4 py-3">
+          <Skeleton className="h-4 w-44" />
+          <Skeleton className="h-8 w-52" />
         </div>
       </section>
     </LoadingPage>

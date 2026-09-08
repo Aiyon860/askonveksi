@@ -14,7 +14,7 @@ import {
   finalizeSalesPerformanceRows,
   type SalesPerformanceRow,
 } from "@/lib/analytics/sales-performance";
-import { ANALYTICS_ROLES, USER_ADMIN_ROLES } from "@/lib/auth/permissions";
+import { ANALYTICS_ROLES, FINANCE_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import { getPrismaClient } from "@/lib/prisma";
@@ -649,14 +649,27 @@ export async function getFollowUpBadgeCount() {
 }
 
 export async function getSalesDashboardData() {
-  await requireActor();
+  const actor = await requireActor();
   const prisma = getPrismaClient();
+  const documentPreviewLimit = 5;
   const { start, tomorrow } = jakartaDayBounds();
   const shifted = new Date(start.getTime() + 7 * 60 * 60 * 1000);
   const monthStart = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - 7 * 60 * 60 * 1000);
   const nextMonth = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) - 7 * 60 * 60 * 1000);
   const openStages: OpportunityStage[] = ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"];
-  const [stageGroups, potential, dealRevenue, overdue, dueToday, hotLeads, urgentActions] = await Promise.all([
+  const [
+    stageGroups,
+    potential,
+    dealRevenue,
+    overdue,
+    dueToday,
+    hotLeads,
+    urgentActions,
+    latestPurchaseOrders,
+    latestInvoices,
+    monthMoneyIn,
+    activeOutstanding,
+  ] = await Promise.all([
     prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
     prisma.opportunity.aggregate({ where: { stage: { in: openStages }, customer: { archivedAt: null } }, _sum: { estimatedValue: true } }),
     prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }),
@@ -674,6 +687,58 @@ export async function getSalesDashboardData() {
       orderBy: { nextActionAt: "asc" },
       take: 5,
     }),
+    prisma.purchaseOrder.findMany({
+      select: {
+        id: true,
+        opportunityId: true,
+        purchaseOrderNo: true,
+        productName: true,
+        status: true,
+        deadline: true,
+        createdAt: true,
+        opportunity: {
+          select: {
+            customer: { select: { name: true, companyName: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take: documentPreviewLimit,
+    }),
+    prisma.invoice.findMany({
+      select: {
+        id: true,
+        opportunityId: true,
+        invoiceNo: true,
+        snapshotCustomerName: true,
+        snapshotCompanyName: true,
+        status: true,
+        total: true,
+        dueAt: true,
+        createdAt: true,
+        purchaseOrder: { select: { purchaseOrderNo: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take: documentPreviewLimit,
+    }),
+    hasRole(actor.role, FINANCE_ROLES)
+      ? prisma.paymentTransaction.aggregate({
+          where: {
+            status: "ACTIVE",
+            paidAt: { gte: monthStart, lt: nextMonth },
+            payment: { salesOrder: { status: "ACTIVE" } },
+          },
+          _sum: { amount: true },
+          _count: true,
+        })
+      : null,
+    hasRole(actor.role, FINANCE_ROLES)
+      ? prisma.dealPayment.aggregate({
+          where: { salesOrder: { status: "ACTIVE" }, outstandingAmount: { gt: 0 } },
+          _sum: { outstandingAmount: true },
+          _count: true,
+        })
+      : null,
   ]);
   const stageCounts = Object.fromEntries(
     stageGroups.map((group) => [group.stage, group._count]),
@@ -695,6 +760,35 @@ export async function getSalesDashboardData() {
     dueToday,
     hotLeads: hotLeads.map((item) => ({ ...item, estimatedValue: item.estimatedValue?.toString() ?? null })),
     urgentActions,
+    latestPurchaseOrders: latestPurchaseOrders.map((item) => ({
+      id: item.id,
+      opportunityId: item.opportunityId,
+      purchaseOrderNo: item.purchaseOrderNo,
+      customerName: item.opportunity.customer.companyName ?? item.opportunity.customer.name,
+      productName: item.productName,
+      status: item.status,
+      createdAt: item.createdAt.toISOString(),
+      deadline: item.deadline?.toISOString() ?? null,
+    })),
+    latestInvoices: latestInvoices.map((item) => ({
+      id: item.id,
+      opportunityId: item.opportunityId,
+      invoiceNo: item.invoiceNo,
+      purchaseOrderNo: item.purchaseOrder.purchaseOrderNo,
+      customerName: item.snapshotCompanyName ?? item.snapshotCustomerName,
+      status: item.status,
+      total: item.total.toString(),
+      createdAt: item.createdAt.toISOString(),
+      dueAt: item.dueAt?.toISOString() ?? null,
+    })),
+    financeSummary: monthMoneyIn && activeOutstanding
+      ? {
+          moneyInThisMonth: monthMoneyIn._sum.amount?.toString() ?? "0",
+          transactionCountThisMonth: monthMoneyIn._count,
+          outstandingAmount: activeOutstanding._sum.outstandingAmount?.toString() ?? "0",
+          outstandingOrderCount: activeOutstanding._count,
+        }
+      : null,
   };
 }
 

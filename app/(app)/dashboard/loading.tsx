@@ -1,13 +1,140 @@
-import { LoadingPage, PageHeaderSkeleton } from "@/components/loading-skeletons";
+import { LoadingPage, MetricStripSkeleton, PageHeaderSkeleton, SectionHeaderSkeleton } from "@/components/loading-skeletons";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function CardHeadingSkeleton() {
+function ListPreviewSkeleton({ rows }: { rows: number }) {
   return (
-    <CardHeader>
-      <Skeleton className="h-5 w-44 max-w-full" />
-      <Skeleton className="h-4 w-72 max-w-full" />
-    </CardHeader>
+    <div className="flex flex-col gap-0">
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={`preview-row-${index}`}
+          className="flex items-center justify-between gap-4 border-b px-0 py-3 last:border-b-0"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <Skeleton className="h-4 w-40 max-w-full" />
+            <Skeleton className="h-3 w-56 max-w-full" />
+          </div>
+          <div className="flex shrink-0 items-end gap-2">
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-4 w-16" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.45fr)]" aria-hidden="true">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-44" />
+            <Skeleton className="h-4 w-96 max-w-full" />
+          </CardHeader>
+          <CardContent>
+            <MetricStripSkeleton
+              items={3}
+              layoutClassName="md:grid-cols-3"
+              wideLast
+              labelWidths={["w-24", "w-36", "w-28"]}
+              valueWidths={["w-36", "w-40", "w-32"]}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-4 w-72 max-w-full" />
+          </CardHeader>
+          <CardContent>
+            <MetricStripSkeleton
+              items={2}
+              layoutClassName="grid-cols-2"
+              itemClassName="p-4"
+              labelWidths={["w-28", "w-24"]}
+              valueWidths={["w-16", "w-16"]}
+            />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section aria-hidden="true">
+        <Card>
+          <CardHeader>
+            <SectionHeaderSkeleton
+              titleWidth="w-40"
+              descriptionWidth="w-80 max-w-full"
+            />
+          </CardHeader>
+          <CardContent>
+            <MetricStripSkeleton
+              items={5}
+              layoutClassName="grid-cols-2 lg:grid-cols-5"
+              itemClassName="p-4"
+              labelWidths={["w-20", "w-20", "w-20", "w-20", "w-20"]}
+              valueWidths={["w-20", "w-20", "w-20", "w-20", "w-20"]}
+            />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2" aria-hidden="true">
+        {Array.from({ length: 2 }, (_, cardIndex) => (
+          <Card key={`document-preview-${cardIndex}`}>
+            <CardHeader>
+              <Skeleton className="h-5 w-44" />
+              <Skeleton className="h-4 w-64 max-w-full" />
+            </CardHeader>
+            <CardContent>
+              <ListPreviewSkeleton rows={5} />
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
+      <section aria-hidden="true">
+        <Card>
+          <CardHeader>
+            <SectionHeaderSkeleton titleWidth="w-28" descriptionWidth="w-64 max-w-full" />
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-5">
+              {Array.from({ length: 5 }, (_, index) => (
+                <div key={`pipeline-stage-${index}`} className="flex min-h-24 flex-col gap-3 bg-card p-4">
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-7 w-10" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section aria-hidden="true" className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-72 max-w-full" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-80 w-full" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-72 max-w-full" />
+          </CardHeader>
+          <CardContent>
+            <ListPreviewSkeleton rows={5} />
+          </CardContent>
+        </Card>
+      </section>
+    </>
   );
 }
 
@@ -15,71 +142,7 @@ export default function DashboardLoading() {
   return (
     <LoadingPage label="Memuat dashboard">
       <PageHeaderSkeleton action />
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.45fr)]" aria-hidden="true">
-        <Card>
-          <CardHeadingSkeleton />
-          <CardContent>
-            <div className="grid gap-px overflow-hidden rounded-lg border bg-border md:grid-cols-3">
-              {Array.from({ length: 3 }, (_, index) => (
-                <div key={`sales-metric-${index}`} className="flex min-h-32 flex-col gap-3 bg-card p-5">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-7 w-36 max-w-full" />
-                  {index === 2 ? <Skeleton className="h-3 w-32 max-w-full" /> : null}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeadingSkeleton />
-          <CardContent>
-            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border">
-              {Array.from({ length: 2 }, (_, index) => (
-                <div key={`follow-up-metric-${index}`} className="flex min-h-32 flex-col gap-3 bg-card p-4">
-                  <Skeleton className="h-4 w-20 max-w-full" />
-                  <Skeleton className="h-8 w-12" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="flex flex-col gap-4" aria-hidden="true">
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-5 w-28" />
-          <Skeleton className="h-4 w-72 max-w-full" />
-        </div>
-        <div className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-hidden pb-1 xl:grid-cols-8 xl:grid-flow-row">
-          {Array.from({ length: 8 }, (_, index) => (
-            <div key={`pipeline-stage-${index}`} className="flex min-h-24 flex-col gap-3 rounded-lg border bg-card p-4">
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-7 w-10" />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-2" aria-hidden="true">
-        {Array.from({ length: 2 }, (_, cardIndex) => (
-          <Card key={`dashboard-list-${cardIndex}`}>
-            <CardHeadingSkeleton />
-            <CardContent>
-              {Array.from({ length: 5 }, (_, rowIndex) => (
-                <div key={`dashboard-list-${cardIndex}-${rowIndex}`} className="flex items-center justify-between gap-4 border-b py-3 last:border-b-0">
-                  <div className="flex min-w-0 flex-1 flex-col gap-2">
-                    <Skeleton className="h-4 w-40 max-w-full" />
-                    <Skeleton className="h-3 w-56 max-w-full" />
-                  </div>
-                  <Skeleton className="h-6 w-20 shrink-0" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ))}
-      </section>
+      <DashboardSkeleton />
     </LoadingPage>
   );
 }

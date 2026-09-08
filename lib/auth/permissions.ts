@@ -9,6 +9,7 @@ export const REVERSE_DEAL_ROLES = DEAL_ROLES;
 export const USER_ADMIN_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
 export const MASTER_DATA_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
 export const ANALYTICS_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
+export const FINANCE_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
 export const PRODUCTION_ROLES = ["OWNER", "ADMIN", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
 export const PRODUCTION_MANAGEMENT_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
 

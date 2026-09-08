@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Building2, ChartNoAxesCombined, ChevronDown, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, Building2, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -13,6 +13,10 @@ import { cn } from "@/lib/utils";
 
 const mainItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+] as const;
+
+const financeItems = [
+  { href: "/keuangan", label: "Keuangan", icon: CircleDollarSign },
 ] as const;
 
 const crmItems = [
@@ -86,6 +90,7 @@ export const AppNav = memo(function AppNav({ role }: { role: AppRole }) {
   const canViewAnalytics = role === "OWNER" || role === "ADMIN";
   const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "SALES";
   const canViewProduction = role === "OWNER" || role === "ADMIN" || role === "PRODUCTION" || role === "QC";
+  const canViewFinance = role === "OWNER" || role === "ADMIN";
   const masterDataActive = isPathWithin(pathname, "/master-data");
   const analyticsActive = isPathWithin(pathname, "/analytics");
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
@@ -93,6 +98,7 @@ export const AppNav = memo(function AppNav({ role }: { role: AppRole }) {
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
       {canViewCrm ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />) : null}
+      {canViewFinance ? financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} />) : null}
       {canViewCrm ? (
         <Collapsible open={crmActive || crmOpen} onOpenChange={setCrmOpen} className="group/collapsible contents lg:flex lg:flex-col lg:gap-1">
           <CollapsibleTrigger className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">

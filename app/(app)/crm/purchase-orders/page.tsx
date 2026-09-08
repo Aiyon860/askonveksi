@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { PurchaseOrderDetail } from "@/components/crm/purchase-order-detail";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
+import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { PageHeader } from "@/components/page-header";
 import { PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -58,5 +59,32 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
 }
 
 export default function PurchaseOrdersPage({ searchParams }: { searchParams: SearchParams }) {
-  return <><PageHeader title="Purchase order" description="Pantau draft dan purchase order yang sudah disepakati." /><Suspense fallback={<Skeleton className="min-h-112 w-full" />}><PurchaseOrdersTableSection searchParams={searchParams} /></Suspense></>;
+  return (
+    <>
+      <PageHeader title="Purchase order" description="Pantau draft dan purchase order yang sudah disepakati." />
+      <Suspense fallback={<PurchaseOrdersTableFallback />}>
+        <PurchaseOrdersTableSection searchParams={searchParams} />
+      </Suspense>
+    </>
+  );
+}
+
+function PurchaseOrdersTableFallback() {
+  return (
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-hidden="true">
+      <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={3} />
+      <div className="flex min-h-112 flex-1 flex-col">
+        <TableSkeleton
+          columns={7}
+          rows={8}
+          className="min-w-4xl"
+          columnWidths={["w-12", "w-32", "w-32", "w-36", "w-20", "w-24", "w-24"]}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4 border-t px-4 py-3">
+        <Skeleton className="h-4 w-44" />
+        <Skeleton className="h-8 w-52" />
+      </div>
+    </section>
+  );
 }

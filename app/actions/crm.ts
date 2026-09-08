@@ -1819,6 +1819,8 @@ export async function completeDealAction(formData: FormData) {
       );
 
     revalidatePath("/crm");
+    revalidatePath("/dashboard");
+    revalidatePath("/keuangan");
     revalidatePath(`/crm/peluang/${salesOrder.opportunityId}`);
     revalidatePath(`/crm/pelanggan/${salesOrder.customerId}`);
     revalidateCustomerReminders();
@@ -1881,6 +1883,8 @@ export async function payPaymentTermAction(formData: FormData) {
     }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
+    revalidatePath("/dashboard");
+    revalidatePath("/keuangan");
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran termin berhasil dicatat.");
   });
 }
@@ -1937,6 +1941,8 @@ export async function recordInitialPaymentAction(formData: FormData) {
     }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
+    revalidatePath("/dashboard");
+    revalidatePath("/keuangan");
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran awal berhasil dicatat ulang.");
   });
 }
@@ -1978,6 +1984,8 @@ export async function voidPaymentTransactionAction(formData: FormData) {
     }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
+    revalidatePath("/dashboard");
+    revalidatePath("/keuangan");
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran dibatalkan dan saldo diperbarui.");
   });
 }

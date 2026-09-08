@@ -1,9 +1,4 @@
-import {
-  FormCardSkeleton,
-  LoadingPage,
-  PageHeaderSkeleton,
-  TableSkeleton,
-} from "@/components/loading-skeletons";
+import { FormCardSkeleton, LoadingPage, PageHeaderSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function UsersLoading() {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { purchaseOrderDetailAction } from "@/app/actions/crm-details";
+import { DocumentDetailTrigger } from "@/components/crm/document-detail-trigger";
 import { PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,7 +14,17 @@ import { formatDate } from "@/lib/crm/format";
 
 type Detail = Awaited<ReturnType<typeof purchaseOrderDetailAction>>;
 
-export function PurchaseOrderDetail({ id, children }: { id: string; children: React.ReactNode }) {
+export function PurchaseOrderDetail({
+  id,
+  children,
+  triggerClassName,
+  triggerVariant,
+}: {
+  id: string;
+  children: React.ReactNode;
+  triggerClassName?: string;
+  triggerVariant?: "preview" | "table-row";
+}) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Detail>();
   const [error, setError] = useState(false);
@@ -30,21 +41,13 @@ export function PurchaseOrderDetail({ id, children }: { id: string; children: Re
 
   return (
     <>
-      <TableRow
-        tabIndex={0}
-        role="button"
-        aria-haspopup="dialog"
-        onClick={showDetail}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            void showDetail();
-          }
-        }}
-        className="cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      <DocumentDetailTrigger
+        className={triggerClassName}
+        onActivate={() => void showDetail()}
+        variant={triggerVariant}
       >
         {children}
-      </TableRow>
+      </DocumentDetailTrigger>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
