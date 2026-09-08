@@ -1021,33 +1021,58 @@ export async function getSalesOrderDetail(salesOrderId: string) {
   });
 }
 
-export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED";
-export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED";
+export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED";
+export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED";
+export type PurchaseOrderListSort = "purchaseOrderNo" | "productName" | "customer" | "status" | "createdAt" | "deadline";
+export type InvoiceListSort = "invoiceNo" | "customer" | "purchaseOrderNo" | "status" | "total" | "createdAt";
 
-function yearBounds(year: number | null) {
-  return year
-    ? { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) }
-    : undefined;
+function purchaseOrderOrderBy(sort: PurchaseOrderListSort, direction: SortDirection) {
+  const primary: Prisma.PurchaseOrderOrderByWithRelationInput = sort === "customer"
+    ? { opportunity: { customer: { name: direction } } }
+    : sort === "deadline"
+      ? { deadline: { sort: direction, nulls: "last" } }
+      : { [sort]: direction };
+  return [primary, { id: "asc" as const }];
+}
+
+function invoiceOrderBy(sort: InvoiceListSort, direction: SortDirection) {
+  if (sort === "customer") {
+    return [
+      { snapshotCompanyName: { sort: direction, nulls: direction === "asc" ? "first" as const : "last" as const } },
+      { snapshotCustomerName: direction },
+      { id: "asc" as const },
+    ] satisfies Prisma.InvoiceOrderByWithRelationInput[];
+  }
+  const primary: Prisma.InvoiceOrderByWithRelationInput = sort === "purchaseOrderNo"
+    ? { purchaseOrder: { purchaseOrderNo: direction } }
+    : { [sort]: direction };
+  return [primary, { id: "asc" as const }];
 }
 
 const getCachedPurchaseOrders = unstable_cache(
   async ({
     query,
     status,
-    year,
+    start,
+    end,
     page,
     pageSize,
+    sort,
+    direction,
   }: {
     query: string;
     status: PurchaseOrderListStatus;
-    year: number | null;
+    start: Date | null;
+    end: Date | null;
     page: number;
     pageSize: number;
+    sort: PurchaseOrderListSort;
+    direction: SortDirection;
   }) => {
     const normalizedQuery = query.trim().slice(0, 80);
     const where = {
-      status: status === "all" ? { in: ["DRAFT", "AGREED"] as const } : status,
-      ...(year ? { createdAt: yearBounds(year) } : {}),
+      ...(status === "all" ? {} : { status }),
+      ...(start && end ? { createdAt: { gte: start, lt: end } } : {}),
       ...(normalizedQuery ? {
         OR: [
           { productName: { contains: normalizedQuery, mode: "insensitive" as const } },
@@ -1058,7 +1083,7 @@ const getCachedPurchaseOrders = unstable_cache(
       } : {}),
     } satisfies Prisma.PurchaseOrderWhereInput;
     const prisma = getPrismaClient();
-    const [items, total, yearRows] = await Promise.all([
+    const [items, total] = await Promise.all([
       prisma.purchaseOrder.findMany({
         where,
         select: {
@@ -1070,17 +1095,15 @@ const getCachedPurchaseOrders = unstable_cache(
           createdAt: true,
           opportunity: { select: { id: true, customer: { select: { name: true } } } },
         },
-        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        orderBy: purchaseOrderOrderBy(sort, direction),
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
       prisma.purchaseOrder.count({ where }),
-      prisma.$queryRaw<{ year: number }[]>`SELECT DISTINCT EXTRACT(YEAR FROM "createdAt")::int AS year FROM "PurchaseOrder" WHERE status IN ('DRAFT','AGREED') ORDER BY year DESC`,
     ]);
     return {
       items,
       total,
-      years: yearRows.map((r) => r.year),
       pageCount: Math.max(1, Math.ceil(total / pageSize)),
     };
   },
@@ -1091,38 +1114,50 @@ const getCachedPurchaseOrders = unstable_cache(
 export async function getPurchaseOrders({
   query,
   status,
-  year,
+  start,
+  end,
   page,
   pageSize,
+  sort,
+  direction,
 }: {
   query: string;
   status: PurchaseOrderListStatus;
-  year: number | null;
+  start: Date | null;
+  end: Date | null;
   page: number;
   pageSize: number;
+  sort: PurchaseOrderListSort;
+  direction: SortDirection;
 }) {
   await requireActor();
-  return getCachedPurchaseOrders({ query, status, year, page, pageSize });
+  return getCachedPurchaseOrders({ query, status, start, end, page, pageSize, sort, direction });
 }
 
 const getCachedInvoices = unstable_cache(
   async ({
     query,
     status,
-    year,
+    start,
+    end,
     page,
     pageSize,
+    sort,
+    direction,
   }: {
     query: string;
     status: InvoiceListStatus;
-    year: number | null;
+    start: Date | null;
+    end: Date | null;
     page: number;
     pageSize: number;
+    sort: InvoiceListSort;
+    direction: SortDirection;
   }) => {
     const normalizedQuery = query.trim().slice(0, 80);
     const where = {
-      status: status === "all" ? { in: ["DRAFT", "ISSUED"] as const } : status,
-      ...(year ? { createdAt: yearBounds(year) } : {}),
+      ...(status === "all" ? {} : { status }),
+      ...(start && end ? { createdAt: { gte: start, lt: end } } : {}),
       ...(normalizedQuery ? {
         OR: [
           { invoiceNo: { contains: normalizedQuery, mode: "insensitive" as const } },
@@ -1133,7 +1168,7 @@ const getCachedInvoices = unstable_cache(
       } : {}),
     } satisfies Prisma.InvoiceWhereInput;
     const prisma = getPrismaClient();
-    const [items, total, yearRows] = await Promise.all([
+    const [items, total] = await Promise.all([
       prisma.invoice.findMany({
         where,
         select: {
@@ -1147,17 +1182,15 @@ const getCachedInvoices = unstable_cache(
           opportunityId: true,
           purchaseOrder: { select: { purchaseOrderNo: true } },
         },
-        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        orderBy: invoiceOrderBy(sort, direction),
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
       prisma.invoice.count({ where }),
-      prisma.$queryRaw<{ year: number }[]>`SELECT DISTINCT EXTRACT(YEAR FROM "createdAt")::int AS year FROM "Invoice" WHERE status IN ('DRAFT','ISSUED') ORDER BY year DESC`,
     ]);
     return {
       items: items.map((item) => ({ ...item, total: item.total.toString() })),
       total,
-      years: yearRows.map((r) => r.year),
       pageCount: Math.max(1, Math.ceil(total / pageSize)),
     };
   },
@@ -1168,18 +1201,24 @@ const getCachedInvoices = unstable_cache(
 export async function getInvoices({
   query,
   status,
-  year,
+  start,
+  end,
   page,
   pageSize,
+  sort,
+  direction,
 }: {
   query: string;
   status: InvoiceListStatus;
-  year: number | null;
+  start: Date | null;
+  end: Date | null;
   page: number;
   pageSize: number;
+  sort: InvoiceListSort;
+  direction: SortDirection;
 }) {
   await requireActor();
-  return getCachedInvoices({ query, status, year, page, pageSize });
+  return getCachedInvoices({ query, status, start, end, page, pageSize, sort, direction });
 }
 
 export async function getPurchaseOrderDetail(purchaseOrderId: string) {
