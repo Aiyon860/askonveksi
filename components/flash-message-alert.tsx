@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { FlashMessageClearer } from "@/components/flash-message-clearer";
 import { toast } from "@/components/ui/toast";
 import type { FlashMessage } from "@/lib/actions/response";
 
 export function FlashMessageAlert({ flash }: { flash: FlashMessage }) {
+  const shownId = useRef<string>();
+
   useEffect(() => {
+    if (shownId.current === flash.id) return;
+    shownId.current = flash.id;
     toast.add({
       title: flash.kind === "error" ? "Tindakan belum berhasil" : flash.kind === "warning" ? "Periksa kembali" : "Berhasil",
       description: flash.message,

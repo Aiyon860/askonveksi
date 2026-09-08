@@ -354,12 +354,8 @@ export const loginSchema = z.object({
 
 export const strongPasswordSchema = z
   .string()
-  .min(12, "Password minimal 12 karakter.")
-  .max(128)
-  .regex(/[a-z]/, "Password harus memiliki huruf kecil.")
-  .regex(/[A-Z]/, "Password harus memiliki huruf besar.")
-  .regex(/[0-9]/, "Password harus memiliki angka.")
-  .regex(/[^A-Za-z0-9]/, "Password harus memiliki simbol.");
+  .min(1, "Password wajib diisi.")
+  .max(128);
 
 export const updatePasswordSchema = z
   .object({
@@ -384,6 +380,14 @@ export const updateUserSchema = z.object({
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
   role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
+  password: z.preprocess(
+    (value) => (typeof value === "string" && value === "" ? undefined : value),
+    strongPasswordSchema.optional(),
+  ),
+  confirmPassword: z.preprocess((value) => value ?? "", z.string().max(128)),
+}).refine((value) => !value.password || value.password === value.confirmPassword, {
+  path: ["confirmPassword"],
+  message: "Konfirmasi password tidak sama.",
 });
 
 export const toggleUserSchema = z.object({

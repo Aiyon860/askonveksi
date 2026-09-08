@@ -286,7 +286,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     <SortableHead label="Email" value="email" state={state} className="min-w-56" />
                     <SortableHead label="Role" value="role" state={state} />
                     <SortableHead label="Status" value="isActive" state={state} />
-                    <TableHead className="min-w-52">Aksi</TableHead>
+                    <TableHead className="min-w-72">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <UsersTableBody
@@ -368,13 +368,10 @@ function NewUserCard() {
                     id="temporaryPassword"
                     name="temporaryPassword"
                     required
-                    minLength={12}
                     maxLength={128}
-                    pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).*"
-                    title="Gunakan minimal 12 karakter dengan huruf besar, huruf kecil, angka, dan simbol."
                     autoComplete="new-password"
                   />
-                  <FieldDescription>Minimal 12 karakter dengan huruf besar, kecil, angka, dan simbol.</FieldDescription>
+                  <FieldDescription>Password dapat memakai karakter apa pun.</FieldDescription>
                 </Field>
                 <ConfirmSubmitButton
                   pendingLabel="Membuat akun..."

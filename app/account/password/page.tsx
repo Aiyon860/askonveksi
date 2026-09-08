@@ -29,12 +29,12 @@ export default async function PasswordPage() {
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="password" required>Password baru</FieldLabel>
-                <PasswordInput id="password" name="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-                <FieldDescription>Minimal 12 karakter, dengan huruf besar, huruf kecil, angka, dan simbol.</FieldDescription>
+                <PasswordInput id="password" name="password" autoComplete="new-password" required maxLength={128} />
+                <FieldDescription>Password dapat memakai karakter apa pun.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="confirmPassword" required>Ulangi password baru</FieldLabel>
-                <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" required minLength={12} maxLength={128} />
+                <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" required maxLength={128} />
               </Field>
               <SubmitButton pendingLabel="Memperbarui...">Simpan password</SubmitButton>
             </FieldGroup>

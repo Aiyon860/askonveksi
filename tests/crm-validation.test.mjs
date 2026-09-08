@@ -179,9 +179,9 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
   assert.match(actionSource, /function customerFields[\s\S]+leadSourceId: formValue\(formData, "leadSourceId"\),[\s\S]+salesPicId: formValue\(formData, "salesPicId"\),/);
 });
 
-test("password kuat dan item invoice divalidasi pada boundary", () => {
-  assert.equal(strongPasswordSchema.safeParse("password123").success, false);
-  assert.equal(strongPasswordSchema.safeParse("Valid-Password-123!").success, true);
+test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", () => {
+  assert.equal(strongPasswordSchema.safeParse("").success, false);
+  assert.equal(strongPasswordSchema.safeParse("a").success, true);
 
   const invalidInvoice = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -312,12 +312,22 @@ test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", ()
     name: "Budi Santoso",
     email: "budi@example.com",
     role: "ADMIN",
+    password: "",
+    confirmPassword: "",
   };
 
   assert.equal(updateUserSchema.safeParse(valid).success, true);
   assert.equal(updateUserSchema.safeParse({ ...valid, updatedAt: "bukan-tanggal" }).success, false);
   assert.equal(updateUserSchema.safeParse({ ...valid, email: "bukan-email" }).success, false);
   assert.equal(updateUserSchema.safeParse({ ...valid, role: "FINANCE" }).success, false);
+  assert.equal(updateUserSchema.safeParse({ ...valid, password: "a", confirmPassword: "berbeda" }).success, false);
+  assert.equal(updateUserSchema.safeParse({ ...valid, password: "a", confirmPassword: "a" }).success, true);
+});
+
+test("aksi edit pengguna meneruskan password ke validasi", async () => {
+  const source = await readFile(new URL("../app/actions/users.ts", import.meta.url), "utf8");
+  assert.match(source, /export async function updateUserAction[\s\S]+password: formData\.get\("password"\),[\s\S]+confirmPassword: formData\.get\("confirmPassword"\)/);
+  assert.match(source, /const mustChangePassword = false/);
 });
 
 test("migration memegang invariant concurrency dan menutup Data API", async () => {

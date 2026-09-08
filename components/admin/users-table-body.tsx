@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { PasswordInput } from "@/components/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ROLE_LABEL } from "@/lib/crm/constants";
@@ -91,21 +92,18 @@ export function UsersTableBody({
             </TableCell>
             <TableCell className="text-muted-foreground">
               {isEditing ? (
-                <Field data-disabled={isSelf || undefined}>
+                <Field>
                   <FieldLabel htmlFor={`${editFormId}-email`} className="sr-only">Email pengguna</FieldLabel>
                   <Input
                     id={`${editFormId}-email`}
                     form={editFormId}
-                    name={isSelf ? undefined : "email"}
+                    name="email"
                     type="email"
                     defaultValue={user.email}
                     required
                     maxLength={320}
-                    disabled={isSelf}
-                    title={isSelf ? "Email akun sendiri tidak dapat diubah dari halaman ini." : undefined}
                     autoComplete="off"
                   />
-                  {isSelf ? <input form={editFormId} type="hidden" name="email" value={user.email} /> : null}
                 </Field>
               ) : (
                 <span className="block max-w-64 truncate" title={user.email}>{user.email}</span>
@@ -113,22 +111,19 @@ export function UsersTableBody({
             </TableCell>
             <TableCell>
               {isEditing ? (
-                <Field data-disabled={isSelf || undefined}>
+                <Field>
                   <FieldLabel htmlFor={`${editFormId}-role`} className="sr-only">Role pengguna</FieldLabel>
                   <NativeSelect
                     id={`${editFormId}-role`}
                     form={editFormId}
-                    name={isSelf ? undefined : "role"}
+                    name="role"
                     defaultValue={user.role}
-                    disabled={isSelf}
-                    title={isSelf ? "Role akun sendiri tidak dapat diubah." : undefined}
                     className="w-full min-w-28"
                   >
                     {USER_ROLES.map((role) => (
                       <NativeSelectOption key={role} value={role}>{ROLE_LABEL[role]}</NativeSelectOption>
                     ))}
                   </NativeSelect>
-                  {isSelf ? <input form={editFormId} type="hidden" name="role" value={user.role} /> : null}
                 </Field>
               ) : (
                 <Badge variant="outline">{ROLE_LABEL[user.role]}</Badge>
@@ -146,7 +141,17 @@ export function UsersTableBody({
                   <input type="hidden" name="userId" value={user.id} />
                   <input type="hidden" name="updatedAt" value={user.updatedAt} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <UserEditActions name={user.name} onCancel={() => setEditingId(null)} />
+                  <div className="flex min-w-64 flex-col gap-2">
+                    <Field>
+                      <FieldLabel htmlFor={`${editFormId}-password`}>Password baru</FieldLabel>
+                      <PasswordInput id={`${editFormId}-password`} name="password" autoComplete="new-password" maxLength={128} placeholder="Kosongkan jika tidak diubah" />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`${editFormId}-confirm-password`}>Konfirmasi password</FieldLabel>
+                      <PasswordInput id={`${editFormId}-confirm-password`} name="confirmPassword" autoComplete="new-password" maxLength={128} />
+                    </Field>
+                    <UserEditActions name={user.name} onCancel={() => setEditingId(null)} />
+                  </div>
                 </form>
               ) : (
                 <div className="flex items-center gap-2">

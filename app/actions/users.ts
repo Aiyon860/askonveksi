@@ -91,6 +91,8 @@ export async function updateUserAction(formData: FormData) {
       name: formData.get("name"),
       email: formData.get("email"),
       role: formData.get("role"),
+      password: formData.get("password"),
+      confirmPassword: formData.get("confirmPassword"),
     });
 
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
@@ -105,6 +107,7 @@ export async function updateUserAction(formData: FormData) {
         name: true,
         role: true,
         isActive: true,
+        mustChangePassword: true,
         updatedAt: true,
       },
     });
@@ -118,12 +121,9 @@ export async function updateUserAction(formData: FormData) {
       ...(target.name !== parsed.data.name ? ["name"] : []),
       ...(target.email !== email ? ["email"] : []),
       ...(target.role !== parsed.data.role ? ["role"] : []),
+      ...(parsed.data.password ? ["password"] : []),
     ];
     if (!changedFields.length) return flashMessagePath(returnTo, "notice", "Tidak ada perubahan pengguna.");
-
-    if (target.id === actor.id && (target.email !== email || target.role !== parsed.data.role)) {
-      throw new UserFacingError("Email dan role akun sendiri tidak dapat diubah dari halaman ini.");
-    }
 
     if (target.email !== email) {
       const duplicate = await prisma.appUser.findUnique({ where: { email }, select: { id: true } });
@@ -132,11 +132,17 @@ export async function updateUserAction(formData: FormData) {
 
     const roleWillChange = target.role !== parsed.data.role;
     const emailWillChange = target.email !== email;
-    const admin = emailWillChange ? createAdminClient() : null;
+    const passwordWillChange = Boolean(parsed.data.password);
+    const mustChangePassword = false;
+    if (passwordWillChange && target.mustChangePassword) changedFields.push("mustChangePassword");
+    const admin = emailWillChange || passwordWillChange ? createAdminClient() : null;
 
     if (admin) {
-      const { error } = await admin.auth.admin.updateUserById(target.authUserId, { email });
-      if (error) throw new UserFacingError("Email Auth tidak dapat diperbarui. Pastikan email belum digunakan.");
+      const { error } = await admin.auth.admin.updateUserById(target.authUserId, {
+        ...(emailWillChange ? { email } : {}),
+        ...(passwordWillChange ? { password: parsed.data.password } : {}),
+      });
+      if (error) throw new UserFacingError("Akun Auth tidak dapat diperbarui. Pastikan email belum digunakan dan coba lagi.");
     }
 
     try {
@@ -149,7 +155,7 @@ export async function updateUserAction(formData: FormData) {
 
           const updated = await tx.appUser.updateMany({
             where: { id: target.id, updatedAt: target.updatedAt },
-            data: { name: parsed.data.name, email, role: parsed.data.role },
+            data: { name: parsed.data.name, email, role: parsed.data.role, ...(passwordWillChange ? { mustChangePassword } : {}) },
           });
           if (updated.count !== 1) throw new UserFacingError("Data pengguna sudah berubah. Muat ulang lalu coba lagi.");
 
