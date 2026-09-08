@@ -27,48 +27,78 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getFinanceOverviewData } from "@/lib/finance/data";
+import { parseFinanceReportMode } from "@/lib/finance/date-range";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 
-type SearchParams = Promise<{ from?: string | string[]; to?: string | string[] }>;
+type SearchParams = Promise<{ mode?: string | string[]; from?: string | string[]; to?: string | string[] }>;
 
 export const revalidate = 30;
 
 async function FinanceOverview({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
+  const mode = parseFinanceReportMode(params.mode);
   const data = await getFinanceOverviewData(params);
   const hasTransactions = data.transactions.length > 0;
   const hasOutstandingOrders = data.outstandingOrders.length > 0;
+  const rawFrom = Array.isArray(params.from) ? params.from[0] : params.from;
+  const rawTo = Array.isArray(params.to) ? params.to[0] : params.to;
+  const rangeParams = new URLSearchParams();
+  if (rawFrom) rangeParams.set("from", rawFrom);
+  if (rawTo) rangeParams.set("to", rawTo);
+  const rangeHref = `/keuangan${rangeParams.toString() ? `?${rangeParams.toString()}` : ""}`;
+  const allParams = new URLSearchParams(rangeParams);
+  allParams.set("mode", "all");
+  const allHref = `/keuangan?${allParams.toString()}`;
 
   return (
     <>
       <Card size="sm">
         <CardHeader>
-          <CardTitle>Rentang laporan</CardTitle>
-          <CardDescription>Uang masuk mengikuti tanggal transaksi pembayaran aktif.</CardDescription>
+          <CardTitle>{mode === "all" ? "Rekapan semua order" : "Rentang laporan"}</CardTitle>
+          <CardDescription>
+            {mode === "all"
+              ? "Seluruh transaksi aktif dan order Deal aktif ditampilkan tanpa batas tanggal."
+              : "Uang masuk mengikuti tanggal transaksi pembayaran aktif."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form method="get">
-            <FieldGroup className="gap-3 sm:flex sm:flex-row sm:items-end">
-              <Field className="sm:max-w-48">
-                <FieldLabel htmlFor="from">Dari tanggal</FieldLabel>
-                <Input id="from" name="from" type="date" defaultValue={data.range.from} />
-              </Field>
-              <Field className="sm:max-w-48">
-                <FieldLabel htmlFor="to">Sampai tanggal</FieldLabel>
-                <Input id="to" name="to" type="date" defaultValue={data.range.to} />
-              </Field>
-              <Button type="submit" variant="outline">Terapkan rentang</Button>
-            </FieldGroup>
-          </form>
+          {mode === "all" ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" render={<Link href={rangeHref} />} nativeButton={false}>Gunakan rentang tanggal</Button>
+              <p className="text-sm text-muted-foreground">Klik tombol ini untuk kembali ke filter tanggal jika ingin memeriksa periode tertentu.</p>
+            </div>
+          ) : (
+            <form method="get">
+              <input type="hidden" name="mode" value="range" />
+              <FieldGroup className="gap-3 sm:flex sm:flex-row sm:items-end">
+                <Field className="sm:max-w-48">
+                  <FieldLabel htmlFor="from">Dari tanggal</FieldLabel>
+                  <Input id="from" name="from" type="date" defaultValue={data.range.from} />
+                </Field>
+                <Field className="sm:max-w-48">
+                  <FieldLabel htmlFor="to">Sampai tanggal</FieldLabel>
+                  <Input id="to" name="to" type="date" defaultValue={data.range.to} />
+                </Field>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="submit" variant="outline">Terapkan rentang</Button>
+                  <Button variant="secondary" render={<Link href={allHref} />} nativeButton={false}>Rekapan semua order</Button>
+                </div>
+              </FieldGroup>
+            </form>
+          )}
         </CardContent>
       </Card>
 
       <section aria-labelledby="finance-summary">
         <div className="mb-4">
-          <h2 id="finance-summary" className="text-base font-semibold">Ringkasan {data.range.label}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Hanya Sales Order aktif dan transaksi pembayaran aktif yang dihitung.</p>
+          <h2 id="finance-summary" className="text-base font-semibold">Ringkasan {mode === "all" ? "seluruh waktu" : data.range.label}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {mode === "all"
+              ? "Semua Sales Order aktif dan semua transaksi pembayaran aktif dihitung."
+              : "Hanya Sales Order aktif dan transaksi pembayaran aktif yang dihitung."}
+          </p>
         </div>
-        <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 xl:grid-cols-3">
           <div className="bg-foreground p-5 text-background">
             <dt className="flex items-center gap-2 text-sm text-background/75"><HandCoins aria-hidden="true" className="size-4" />Uang masuk</dt>
             <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.moneyIn)}</dd>
@@ -84,23 +114,22 @@ async function FinanceOverview({ searchParams }: { searchParams: SearchParams })
             <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.dealOrderValue)}</dd>
             <p className="mt-2 text-xs text-success-surface-foreground/75">{data.totals.dealOrderCount} Sales Order aktif</p>
           </div>
-          <div className="bg-card p-5 text-card-foreground">
-            <dt className="text-sm text-muted-foreground">Status laporan</dt>
-            <dd className="mt-2 text-base font-medium">Read-only</dd>
-            <p className="mt-2 text-xs text-muted-foreground">Pencatatan tetap dilakukan dari detail Sales Order.</p>
-          </div>
         </dl>
       </section>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Transaksi uang masuk</CardTitle>
-          <CardDescription>
-            {data.totals.transactionCount > data.transactions.length
-              ? `Menampilkan ${data.limits.transactions} transaksi terbaru dari rentang ini.`
-              : "Semua transaksi aktif pada rentang ini."}
-          </CardDescription>
-        </CardHeader>
+          <CardHeader>
+            <CardTitle>Transaksi uang masuk</CardTitle>
+            <CardDescription>
+              {mode === "all"
+                ? (data.totals.transactionCount > data.transactions.length
+                    ? `Menampilkan ${data.limits.transactions} transaksi terbaru dari seluruh order.`
+                    : "Semua transaksi aktif dari seluruh order.")
+                : (data.totals.transactionCount > data.transactions.length
+                    ? `Menampilkan ${data.limits.transactions} transaksi terbaru dari rentang ini.`
+                    : "Semua transaksi aktif pada rentang ini.")}
+            </CardDescription>
+          </CardHeader>
         <CardContent>
           {hasTransactions ? (
             <Table className="min-w-5xl">

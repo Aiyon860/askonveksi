@@ -10,6 +10,8 @@ export type FinanceDateRange = {
   isDefault: boolean;
 };
 
+export type FinanceReportMode = "range" | "all";
+
 function jakartaDateKey(date: Date) {
   return new Date(date.getTime() + JAKARTA_OFFSET_MS).toISOString().slice(0, 10);
 }
@@ -65,4 +67,8 @@ export function parseFinanceDateRange(
     label: rawFrom === rawTo ? rawFrom : `${rawFrom} sampai ${rawTo}`,
     isDefault: rawFrom === defaultRange.from && rawTo === defaultRange.to,
   };
+}
+
+export function parseFinanceReportMode(value: unknown): FinanceReportMode {
+  return value === "all" ? "all" : "range";
 }

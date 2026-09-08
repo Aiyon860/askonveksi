@@ -6,23 +6,23 @@ import { Prisma } from "@prisma/client";
 import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { parseFinanceDateRange } from "@/lib/finance/date-range";
+import { parseFinanceDateRange, parseFinanceReportMode, type FinanceReportMode } from "@/lib/finance/date-range";
 
 const FINANCE_TABLE_LIMIT = 50;
 
 export type FinanceOverviewData = Awaited<ReturnType<typeof getCachedFinanceOverviewData>>;
 
 const getCachedFinanceOverviewData = unstable_cache(
-  async ({ from, to, start, end, label }: { from: string; to: string; start: Date; end: Date; label: string }) => {
+  async ({ mode, from, to, start, end, label }: { mode: FinanceReportMode; from: string; to: string; start: Date | null; end: Date | null; label: string }) => {
     const prisma = getPrismaClient();
     const paymentWhere = {
       status: "ACTIVE",
-      paidAt: { gte: start, lt: end },
       payment: { salesOrder: { status: "ACTIVE" } },
+      ...(mode === "range" && start && end ? { paidAt: { gte: start, lt: end } } : {}),
     } satisfies Prisma.PaymentTransactionWhereInput;
     const orderWhere = {
       status: "ACTIVE",
-      acceptedAt: { gte: start, lt: end },
+      ...(mode === "range" && start && end ? { acceptedAt: { gte: start, lt: end } } : {}),
     } satisfies Prisma.SalesOrderWhereInput;
     const outstandingWhere = {
       salesOrder: { status: "ACTIVE" },
@@ -91,6 +91,7 @@ const getCachedFinanceOverviewData = unstable_cache(
     ]);
 
     return {
+      mode,
       range: { from, to, label },
       totals: {
         moneyIn: moneyIn._sum.amount?.toString() ?? "0",
@@ -140,17 +141,20 @@ const getCachedFinanceOverviewData = unstable_cache(
 );
 
 export async function getFinanceOverviewData(params: {
+  mode?: string | string[];
   from?: string | string[];
   to?: string | string[];
 }) {
   await requireActor(FINANCE_ROLES);
+  const mode = parseFinanceReportMode(params.mode);
   const range = parseFinanceDateRange(params.from, params.to);
 
   return getCachedFinanceOverviewData({
+    mode,
     from: range.from,
     to: range.to,
-    start: range.start,
-    end: range.end,
+    start: mode === "range" ? range.start : null,
+    end: mode === "range" ? range.end : null,
     label: range.label,
   });
 }

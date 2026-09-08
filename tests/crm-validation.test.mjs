@@ -24,7 +24,7 @@ import {
   getAnalyticsPeriodBounds,
   parseAnalyticsPeriod,
 } from "../lib/analytics/report-period.ts";
-import { parseFinanceDateRange } from "../lib/finance/date-range.ts";
+import { parseFinanceDateRange, parseFinanceReportMode } from "../lib/finance/date-range.ts";
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
 import { finalizeSalesPerformanceRows } from "../lib/analytics/sales-performance.ts";
 import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
@@ -413,6 +413,12 @@ test("rentang tanggal finance default ke bulan berjalan Jakarta", () => {
   assert.equal(invalid.to, "2026-09-30");
 });
 
+test("mode finance mendukung rekapan semua order", () => {
+  assert.equal(parseFinanceReportMode("all"), "all");
+  assert.equal(parseFinanceReportMode("range"), "range");
+  assert.equal(parseFinanceReportMode(undefined), "range");
+});
+
 test("conversion rate menghitung Deal dari seluruh lead dan memakai format Indonesia", () => {
   const conversionRate = calculateConversionRate(14, 125);
 
@@ -437,10 +443,10 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   const pageSource = await readFile(new URL("../app/(app)/keuangan/page.tsx", import.meta.url), "utf8");
 
   assert.match(dataSource, /requireActor\(FINANCE_ROLES\)/);
-  assert.match(dataSource, /status: "ACTIVE"/);
-  assert.match(dataSource, /payment: \{ salesOrder: \{ status: "ACTIVE" \} \}/);
+  assert.match(dataSource, /mode === "range"/);
   assert.match(dataSource, /outstandingAmount/);
-  assert.match(pageSource, /Sisa pembayaran/);
+  assert.match(pageSource, /Rekapan semua order/);
+  assert.doesNotMatch(pageSource, /Status laporan/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
 });
 
