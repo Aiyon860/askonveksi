@@ -21,7 +21,7 @@ import { EditCustomerForm } from "@/components/crm/edit-customer-form";
 import { NewCustomerForm } from "@/components/crm/new-customer-form";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { DataPagination } from "@/components/data-pagination";
-import { TableSkeleton } from "@/components/loading-skeletons";
+import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { CustomerActivityBadge } from "@/components/status-badge";
@@ -155,18 +155,14 @@ function CustomersTableFallback() {
       aria-label="Memuat tabel customer"
     >
       <span className="sr-only">Memuat tabel customer...</span>
-      <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between" aria-hidden="true">
-        <div className="flex min-w-0 flex-1 gap-2">
-          <Skeleton className="h-9 w-full sm:max-w-md" />
-          <Skeleton className="h-9 w-24 shrink-0" />
-        </div>
-        <div className="flex items-center justify-between gap-3 sm:justify-end">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-9 w-36" />
-        </div>
-      </div>
+      <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={2} />
       <div className="min-h-112" aria-hidden="true">
-        <TableSkeleton columns={12} rows={8} className="min-w-6xl" />
+        <TableSkeleton
+          columns={12}
+          rows={8}
+          className="min-w-6xl"
+          columnWidths={["w-12", "w-36", "w-40", "w-28", "w-24", "w-28", "w-24", "w-24", "w-24", "w-24", "w-24", "w-24"]}
+        />
       </div>
       <div className="flex items-center justify-between gap-4 border-t px-4 py-3" aria-hidden="true">
         <Skeleton className="h-4 w-44" />

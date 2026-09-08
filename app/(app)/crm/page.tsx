@@ -1,10 +1,31 @@
 import { Suspense } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { PageHeader } from "@/components/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingPage, KanbanSkeleton, MetricStripSkeleton } from "@/components/loading-skeletons";
 import { PipelineBoardSection } from "@/components/crm/pipeline-board-section";
+
+function PipelineSkeleton() {
+  return (
+    <LoadingPage label="Memuat pipeline CRM">
+      <section className="grid gap-3" aria-hidden="true">
+        <div className="flex items-center justify-between rounded-xl border p-4">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-7 w-12" />
+        </div>
+        <MetricStripSkeleton
+          items={5}
+          layoutClassName="grid-cols-2 xl:grid-cols-5"
+          itemClassName="p-4"
+          labelWidths={["w-20", "w-20", "w-20", "w-20", "w-20"]}
+          valueWidths={["w-10", "w-10", "w-10", "w-10", "w-10"]}
+        />
+      </section>
+      <KanbanSkeleton columns={5} cardsPerColumn={[2, 1, 1, 1, 1]} />
+    </LoadingPage>
+  );
+}
 
 export default function CRMPage() {
   return (
@@ -17,38 +38,6 @@ export default function CRMPage() {
       <Suspense fallback={<PipelineSkeleton />}>
         <PipelineBoardSection />
       </Suspense>
-    </>
-  );
-}
-
-function PipelineSkeleton() {
-  return (
-    <>
-      <section className="grid gap-3" aria-hidden="true">
-        <div className="flex items-center justify-between rounded-xl border p-4">
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-7 w-12" />
-        </div>
-        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-hidden pb-1 xl:grid-cols-5 xl:auto-cols-auto xl:grid-flow-row">
-          {Array.from({ length: 5 }, (_, index) => (
-            <div key={`summary-${index}`} className="flex flex-col gap-2 rounded-xl border p-4">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-6 w-10" />
-            </div>
-          ))}
-        </div>
-      </section>
-      <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-hidden pb-3 xl:grid-cols-5 xl:auto-cols-auto xl:grid-flow-row" aria-hidden="true">
-        {Array.from({ length: 5 }, (_, column) => (
-          <section key={`column-${column}`} className="min-h-[24rem] rounded-xl border bg-muted/20 p-2">
-            <div className="flex items-center justify-between gap-3 px-2 py-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-4 w-5" />
-            </div>
-            <Skeleton className="h-32 w-full" />
-          </section>
-        ))}
-      </div>
     </>
   );
 }
