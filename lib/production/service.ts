@@ -7,12 +7,6 @@ import { productionStages } from "@/lib/production/workflow";
 
 type Tx = Prisma.TransactionClient;
 
-export function productionDeadline(value: string) {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error("Deadline produksi tidak valid.");
-  return date;
-}
-
 export async function createProductionWorkOrder(
   tx: Tx,
   actor: { id: string },
@@ -63,6 +57,41 @@ export async function createProductionWorkOrder(
     },
   });
   return created;
+}
+
+export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, salesOrderId: string) {
+  const order = await tx.salesOrder.findUnique({
+    where: { id: salesOrderId },
+    select: {
+      id: true,
+      status: true,
+      productionWorkOrder: { select: { id: true, workOrderNo: true } },
+      purchaseOrder: {
+        select: {
+          status: true,
+          garmentType: true,
+          productName: true,
+          deadline: true,
+          sizes: { select: { quantity: true } },
+        },
+      },
+      invoice: { select: { status: true } },
+      payment: { select: { transactions: { where: { status: "ACTIVE", amount: { gt: 0 } }, select: { id: true }, take: 1 } } },
+    },
+  });
+  if (!order || order.status !== "ACTIVE" || !order.payment?.transactions.length) return null;
+  if (order.productionWorkOrder) return order.productionWorkOrder;
+  if (order.purchaseOrder.status !== "AGREED" || order.invoice.status !== "ISSUED" || !order.purchaseOrder.garmentType || !order.purchaseOrder.deadline) {
+    throw new Error("PO atau invoice belum memenuhi syarat Work Order otomatis.");
+  }
+
+  return createProductionWorkOrder(tx, actor, {
+    salesOrderId: order.id,
+    route: order.purchaseOrder.garmentType,
+    productName: order.purchaseOrder.productName,
+    quantity: order.purchaseOrder.sizes.reduce((sum, item) => sum + item.quantity, 0),
+    deadline: order.purchaseOrder.deadline,
+  });
 }
 
 export function canClaimProductionStep(role: AppRole, stage: ProductionStage) {

@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, FileDown, LockKeyhole } from "lucide-react";
 
-import { payPaymentTermAction, recordInitialPaymentAction, reverseSalesOrderAction, voidPaymentTransactionAction } from "@/app/actions/crm";
+import { editPaymentTransactionAction, payPaymentTermAction, recordInitialPaymentAction, reverseSalesOrderAction, voidPaymentTransactionAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { SalesOrderStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -80,7 +81,7 @@ export default async function SalesOrderPage({
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Pembayaran</CardTitle><CardDescription>Setiap pembayaran disimpan sebagai transaksi immutable. Kesalahan dibatalkan dengan alasan.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Pembayaran</CardTitle><CardDescription>Admin dapat mengoreksi transaksi aktif. Setiap perubahan tetap tercatat dalam audit.</CardDescription></CardHeader>
             <CardContent className="flex flex-col gap-5">
               {order.payment && !hasActiveInitialPayment ? (
                 <div className="rounded-lg border border-warning/30 bg-warning-surface p-3 text-warning-surface-foreground">
@@ -93,7 +94,7 @@ export default async function SalesOrderPage({
                 const paid = term.transactions.length > 0;
                 return <TableRow key={term.id}><TableCell>{term.position + 1}</TableCell><TableCell>{formatDate(term.dueAt)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(term.amount)}</TableCell><TableCell>{paid ? <span className="text-sm font-medium text-success">Terbayar</span> : canRecordPayment ? <form action={payPaymentTermAction} className="grid min-w-72 gap-2"><input type="hidden" name="salesOrderId" value={order.id} /><input type="hidden" name="paymentTermId" value={term.id} /><Input name="paidAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(new Date())} aria-label={`Waktu pembayaran termin ${term.position + 1}`} /><Input name="reference" maxLength={120} placeholder="Referensi pembayaran (opsional)" aria-label={`Referensi pembayaran termin ${term.position + 1}`} /><ConfirmSubmitButton size="sm" pendingLabel="Mencatat..." confirmTitle={`Catat pembayaran termin ${term.position + 1}?`} confirmDescription={`Nominal ${formatCurrency(term.amount)} akan dicatat penuh. Pembayaran parsial tidak diperbolehkan.`} confirmLabel="Ya, catat pembayaran">Catat pembayaran</ConfirmSubmitButton></form> : <span className="text-sm text-muted-foreground">Belum dibayar</span>}</TableCell></TableRow>;
               })}</TableBody></Table></div> : null}
-              <div><p className="mb-2 text-sm font-medium">Histori transaksi</p>{order.payment?.transactions.length ? <div className="flex flex-col gap-3">{order.payment.transactions.map((transaction) => <div key={transaction.id} className="rounded-lg border p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono font-medium">{formatCurrency(transaction.amount)}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(transaction.paidAt, true)} oleh {transaction.createdBy.name}{transaction.reference ? ` · ${transaction.reference}` : ""}</p></div><span className={transaction.status === "ACTIVE" ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{transaction.status === "ACTIVE" ? "Aktif" : "Dibatalkan"}</span></div>{transaction.note ? <p className="mt-2 text-sm">{transaction.note}</p> : null}{transaction.status === "VOIDED" ? <p className="mt-2 text-xs text-destructive">Dibatalkan {formatDate(transaction.voidedAt, true)} oleh {transaction.voidedBy?.name ?? "-"}: {transaction.voidReason}</p> : canRecordPayment ? <form action={voidPaymentTransactionAction} className="mt-3 flex flex-col gap-2 border-t pt-3"><input type="hidden" name="salesOrderId" value={order.id} /><input type="hidden" name="transactionId" value={transaction.id} /><Textarea name="reason" required minLength={5} maxLength={1000} rows={2} placeholder="Alasan pembatalan transaksi" aria-label={`Alasan pembatalan pembayaran ${formatCurrency(transaction.amount)}`} /><ConfirmSubmitButton variant="outline" size="sm" className="self-start" pendingLabel="Membatalkan..." confirmTitle="Batalkan transaksi pembayaran?" confirmDescription="Transaksi tetap tersimpan sebagai histori dan saldo tagihan dihitung ulang." confirmLabel="Ya, batalkan transaksi">Batalkan transaksi</ConfirmSubmitButton></form> : null}</div>)}</div> : <p className="text-sm text-muted-foreground">Belum ada transaksi pembayaran.</p>}</div>
+              <div><p className="mb-2 text-sm font-medium">Histori transaksi</p>{order.payment?.transactions.length ? <div className="flex flex-col gap-3">{order.payment.transactions.map((transaction) => <PaymentTransactionEntry key={transaction.id} transaction={transaction} salesOrderId={order.id} invoiceTotal={order.total.toString()} editable={canRecordPayment} />)}</div> : <p className="text-sm text-muted-foreground">Belum ada transaksi pembayaran.</p>}</div>
             </CardContent>
           </Card>
 
@@ -187,5 +188,57 @@ export default async function SalesOrderPage({
         </aside>
       </div>
     </>
+  );
+}
+
+type SalesOrderDetail = NonNullable<Awaited<ReturnType<typeof getSalesOrderDetail>>>;
+type PaymentTransaction = NonNullable<SalesOrderDetail["payment"]>["transactions"][number];
+
+function PaymentTransactionEntry({ transaction, salesOrderId, invoiceTotal, editable }: {
+  transaction: PaymentTransaction;
+  salesOrderId: string;
+  invoiceTotal: string;
+  editable: boolean;
+}) {
+  return (
+    <article className="rounded-lg border p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono font-medium">{formatCurrency(transaction.amount)}</p>
+          <p className="mt-1 break-words text-xs text-muted-foreground">{formatDate(transaction.paidAt, true)} oleh {transaction.createdBy.name}{transaction.reference ? ` · ${transaction.reference}` : ""}</p>
+        </div>
+        <Badge variant={transaction.status === "ACTIVE" ? "success" : "destructive"}>{transaction.status === "ACTIVE" ? "Aktif" : "Dibatalkan"}</Badge>
+      </div>
+      {transaction.note ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{transaction.note}</p> : null}
+      {transaction.status === "VOIDED" ? (
+        <p className="mt-2 text-xs text-destructive">Dibatalkan {formatDate(transaction.voidedAt, true)} oleh {transaction.voidedBy?.name ?? "-"}: {transaction.voidReason}</p>
+      ) : editable ? (
+        <div className="mt-3 flex flex-col gap-3 border-t pt-3">
+          <details>
+            <summary className="w-fit cursor-pointer text-sm font-medium underline-offset-4 hover:underline">Edit transaksi</summary>
+            <form action={editPaymentTransactionAction} className="mt-3">
+              <input type="hidden" name="salesOrderId" value={salesOrderId} />
+              <input type="hidden" name="transactionId" value={transaction.id} />
+              <input type="hidden" name="version" value={transaction.version} />
+              <FieldGroup>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field><FieldLabel htmlFor={`payment-amount-${transaction.id}`} required>Nominal</FieldLabel><Input id={`payment-amount-${transaction.id}`} name="amount" type="number" min="0.01" max={invoiceTotal} step="0.01" required defaultValue={transaction.amount.toString()} /></Field>
+                  <Field><FieldLabel htmlFor={`payment-date-${transaction.id}`} required>Waktu pembayaran</FieldLabel><Input id={`payment-date-${transaction.id}`} name="paidAt" type="datetime-local" required defaultValue={toDateTimeLocalValue(transaction.paidAt)} /></Field>
+                  <Field><FieldLabel htmlFor={`payment-reference-${transaction.id}`}>Referensi</FieldLabel><Input id={`payment-reference-${transaction.id}`} name="reference" maxLength={120} defaultValue={transaction.reference ?? ""} /></Field>
+                  <Field><FieldLabel htmlFor={`payment-note-${transaction.id}`}>Catatan</FieldLabel><Textarea id={`payment-note-${transaction.id}`} name="note" maxLength={1000} rows={2} defaultValue={transaction.note ?? ""} /></Field>
+                </div>
+                <ConfirmSubmitButton size="sm" className="self-start" pendingLabel="Menyimpan..." confirmTitle="Simpan koreksi pembayaran?" confirmDescription="Saldo invoice akan dihitung ulang. Work Order tidak berubah." confirmLabel="Ya, simpan koreksi">Simpan perubahan</ConfirmSubmitButton>
+              </FieldGroup>
+            </form>
+          </details>
+          <form action={voidPaymentTransactionAction} className="flex flex-col gap-2">
+            <input type="hidden" name="salesOrderId" value={salesOrderId} />
+            <input type="hidden" name="transactionId" value={transaction.id} />
+            <Textarea name="reason" required minLength={5} maxLength={1000} rows={2} placeholder="Alasan pembatalan transaksi" aria-label={`Alasan pembatalan pembayaran ${formatCurrency(transaction.amount)}`} />
+            <ConfirmSubmitButton variant="outline" size="sm" className="self-start" pendingLabel="Membatalkan..." confirmTitle="Batalkan transaksi pembayaran?" confirmDescription="Transaksi tetap tersimpan sebagai histori dan saldo tagihan dihitung ulang. Work Order tetap berjalan." confirmLabel="Ya, batalkan transaksi">Batalkan transaksi</ConfirmSubmitButton>
+          </form>
+        </div>
+      ) : null}
+    </article>
   );
 }

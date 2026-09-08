@@ -8,11 +8,9 @@ import { PRODUCTION_MANAGEMENT_ROLES, PRODUCTION_ROLES } from "@/lib/auth/permis
 import { requireActor } from "@/lib/auth/session";
 import { firstValidationMessage } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
-import { createProductionWorkOrder } from "@/lib/production/service";
 import {
   addProductionNoteSchema,
   assignProductionStepSchema,
-  configureLegacyProductionSchema,
   moveProductionSchema,
   reopenProductionSchema,
 } from "@/lib/production/validation";
@@ -24,12 +22,6 @@ function value(formData: FormData, key: string) {
 
 function detailPath(id: string) {
   return `/produksi/${id}`;
-}
-
-function parseDeadline(value: string) {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new UserFacingError("Deadline produksi tidak valid.");
-  return date;
 }
 
 async function productionAudit(
@@ -238,25 +230,5 @@ export async function reopenProductionAction(formData: FormData) {
     revalidatePath("/produksi");
     revalidatePath(fallback);
     return flashMessagePath(fallback, "notice", "Work Order dibuka kembali.");
-  });
-}
-
-export async function configureLegacyProductionAction(formData: FormData) {
-  return runRedirectingAction("/produksi", async () => {
-    const actor = await requireActor(PRODUCTION_MANAGEMENT_ROLES);
-    const parsed = configureLegacyProductionSchema.safeParse({
-      salesOrderId: value(formData, "salesOrderId"),
-      productionRoute: value(formData, "productionRoute"),
-      productionProductName: value(formData, "productionProductName"),
-      productionDeadline: value(formData, "productionDeadline"),
-    });
-    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-    const created = await getPrismaClient().$transaction(async (tx) => {
-      const order = await tx.salesOrder.findUnique({ where: { id: parsed.data.salesOrderId }, select: { id: true, status: true, productionWorkOrder: { select: { id: true } }, items: { select: { quantity: true } } } });
-      if (!order || order.status !== "ACTIVE" || order.productionWorkOrder) throw new UserFacingError("Sales Order tidak aktif atau sudah memiliki Work Order.");
-      return createProductionWorkOrder(tx, actor, { salesOrderId: order.id, route: parsed.data.productionRoute, productName: parsed.data.productionProductName, quantity: order.items.reduce((sum, item) => sum + item.quantity, 0), deadline: parseDeadline(parsed.data.productionDeadline) });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    revalidatePath("/produksi");
-    return flashMessagePath(detailPath(created.id), "notice", "Work Order berhasil disiapkan.");
   });
 }

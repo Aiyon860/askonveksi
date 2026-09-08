@@ -18,6 +18,7 @@ import {
 } from "@/lib/crm/reminders";
 import {
   completeDealSchema,
+  editPaymentTransactionSchema,
   addCommunicationActivitySchema,
   archiveCustomerSchema,
   createCustomerSchema,
@@ -42,7 +43,7 @@ import {
   voidPaymentTransactionSchema,
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
-import { createProductionWorkOrder } from "@/lib/production/service";
+import { ensureProductionWorkOrder } from "@/lib/production/service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Tx = Prisma.TransactionClient;
@@ -275,8 +276,6 @@ function completeDealInput(formData: FormData) {
       value: values[index],
       dueAt: dueDates[index],
     })),
-    productionProductName: formValue(formData, "productionProductName"),
-    productionDeadline: formValue(formData, "productionDeadline"),
   };
 }
 
@@ -1184,6 +1183,8 @@ export async function agreePurchaseOrderAction(formData: FormData) {
           purchaseOrderNo: true,
           opportunityId: true,
           status: true,
+          garmentType: true,
+          deadline: true,
           sizes: { select: { id: true }, take: 1 },
           opportunity: {
             select: {
@@ -1198,6 +1199,7 @@ export async function agreePurchaseOrderAction(formData: FormData) {
       if (purchaseOrder.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("PO hanya dapat disepakati saat Negosiasi.");
       if (purchaseOrder.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum menyepakati revisi PO.");
       if (!purchaseOrder.sizes.length) throw new UserFacingError("PO belum memiliki ukuran dan jumlah.");
+      if (!purchaseOrder.garmentType || !purchaseOrder.deadline) throw new UserFacingError("Jenis pakaian dan deadline wajib dilengkapi sebelum PO disepakati.");
       const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
       await tx.purchaseOrder.updateMany({
@@ -1635,9 +1637,6 @@ export async function completeDealAction(formData: FormData) {
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt) throw new UserFacingError("Tanggal pembayaran wajib diisi.");
     if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh berada di masa depan.");
-    const productionDeadline = optionalDate(parsed.data.productionDeadline);
-    if (!productionDeadline || productionDeadline.toISOString().slice(0, 10) !== parsed.data.productionDeadline) throw new UserFacingError("Deadline produksi tidak valid.");
-
     const salesOrder = await runDealTransaction(
         async (tx) => {
         const invoice = await tx.invoice.findUnique({
@@ -1659,7 +1658,7 @@ export async function completeDealAction(formData: FormData) {
             subtotal: true,
             total: true,
             salesOrder: { select: { id: true } },
-            purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true } },
+            purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true } },
             items: {
               select: {
                 position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
@@ -1684,6 +1683,7 @@ export async function completeDealAction(formData: FormData) {
           throw new UserFacingError("Invoice tidak terhubung ke PO Disepakati yang dipilih.");
         }
         if (!invoice.purchaseOrder.garmentType) throw new UserFacingError("Jenis pakaian pada PO belum ditentukan. Buat revisi PO terlebih dahulu.");
+        if (!invoice.purchaseOrder.deadline) throw new UserFacingError("Deadline pada PO belum ditentukan. Buat revisi PO terlebih dahulu.");
         if (invoice.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Peluang tidak lagi berada di Negosiasi.");
         if (invoice.opportunity.purchaseOrders.length || invoice.opportunity.invoices.length) throw new UserFacingError("Selesaikan seluruh draft PO dan invoice sebelum Deal.");
         if (invoice.opportunity.version !== parsed.data.opportunityVersion) throw new UserFacingError("Peluang sudah berubah. Muat ulang board.");
@@ -1773,13 +1773,7 @@ export async function completeDealAction(formData: FormData) {
           select: { id: true, salesOrderNo: true },
         });
 
-        await createProductionWorkOrder(tx, actor, {
-          salesOrderId: created.id,
-          route: invoice.purchaseOrder.garmentType,
-          productName: parsed.data.productionProductName,
-          quantity: invoice.items.reduce((sum, item) => sum + item.quantity, 0),
-          deadline: productionDeadline,
-        });
+        await ensureProductionWorkOrder(tx, actor, created.id);
 
         const salesOrderAudit = await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["status", "snapshot", "items", "total", "payment", "terms"], {
           opportunityId: invoice.opportunityId,
@@ -1821,6 +1815,7 @@ export async function completeDealAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath("/dashboard");
     revalidatePath("/keuangan");
+    revalidatePath("/produksi");
     revalidatePath(`/crm/peluang/${salesOrder.opportunityId}`);
     revalidatePath(`/crm/pelanggan/${salesOrder.customerId}`);
     revalidateCustomerReminders();
@@ -1843,7 +1838,7 @@ export async function payPaymentTermAction(formData: FormData) {
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
 
-    await getPrismaClient().$transaction(async (tx) => {
+    await runDealTransaction(async (tx) => {
       const term = await tx.paymentTerm.findFirst({
         where: { id: parsed.data.paymentTermId, payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
         select: {
@@ -1876,15 +1871,17 @@ export async function payPaymentTermAction(formData: FormData) {
         where: { id: term.paymentId },
         data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
       });
+      await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
       await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "reference", "note"], {
         salesOrderId: parsed.data.salesOrderId,
         paymentTermId: term.id,
       });
-    }, DEAL_TRANSACTION_OPTIONS);
+    });
 
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
     revalidatePath("/dashboard");
     revalidatePath("/keuangan");
+    revalidatePath("/produksi");
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran termin berhasil dicatat.");
   });
 }
@@ -1903,7 +1900,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
 
-    await getPrismaClient().$transaction(async (tx) => {
+    await runDealTransaction(async (tx) => {
       const payment = await tx.dealPayment.findFirst({
         where: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } },
         select: {
@@ -1934,16 +1931,70 @@ export async function recordInitialPaymentAction(formData: FormData) {
         where: { id: payment.id },
         data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
       });
+      await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
       await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "reference", "note"], {
         salesOrderId: parsed.data.salesOrderId,
         paymentKind: "INITIAL",
       });
-    }, DEAL_TRANSACTION_OPTIONS);
+    });
 
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
     revalidatePath("/dashboard");
     revalidatePath("/keuangan");
+    revalidatePath("/produksi");
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran awal berhasil dicatat ulang.");
+  });
+}
+
+export async function editPaymentTransactionAction(formData: FormData) {
+  const fallbackId = typeof formData.get("salesOrderId") === "string" ? String(formData.get("salesOrderId")) : "";
+  return runRedirectingAction(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", async () => {
+    const actor = await requireActor(DEAL_ROLES);
+    const parsed = editPaymentTransactionSchema.safeParse({
+      salesOrderId: formValue(formData, "salesOrderId"),
+      transactionId: formValue(formData, "transactionId"),
+      version: formValue(formData, "version"),
+      amount: formValue(formData, "amount"),
+      paidAt: formValue(formData, "paidAt"),
+      reference: formValue(formData, "reference"),
+      note: formValue(formData, "note"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const paidAt = jakartaDateTime(parsed.data.paidAt);
+    if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
+    const amount = new Prisma.Decimal(parsed.data.amount);
+
+    await runDealTransaction(async (tx) => {
+      const transaction = await tx.paymentTransaction.findFirst({
+        where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
+        select: { id: true, paymentId: true, version: true, amount: true, paidAt: true },
+      });
+      if (!transaction) throw new UserFacingError("Pembayaran aktif tidak ditemukan.");
+      if (transaction.version !== parsed.data.version) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+      const otherPayments = await tx.paymentTransaction.aggregate({
+        where: { paymentId: transaction.paymentId, status: "ACTIVE", id: { not: transaction.id } },
+        _sum: { amount: true },
+      });
+      const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: transaction.paymentId }, select: { salesOrder: { select: { total: true } } } });
+      const newTotal = (otherPayments._sum.amount ?? new Prisma.Decimal(0)).add(amount);
+      if (amount.lte(0) || newTotal.gt(payment.salesOrder.total)) throw new UserFacingError("Nominal harus positif dan total pembayaran tidak boleh melebihi invoice.");
+      const updated = await tx.paymentTransaction.updateMany({
+        where: { id: transaction.id, status: "ACTIVE", version: transaction.version },
+        data: { amount, paidAt, reference: parsed.data.reference, note: parsed.data.note, version: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+      await tx.dealPayment.update({ where: { id: transaction.paymentId }, data: { outstandingAmount: payment.salesOrder.total.sub(newTotal) } });
+      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_UPDATED", ["amount", "paidAt", "reference", "note", "version"], {
+        salesOrderId: parsed.data.salesOrderId,
+        previousAmount: transaction.amount.toString(),
+        amount: amount.toString(),
+        previousPaidAt: transaction.paidAt.toISOString(),
+        paidAt: paidAt.toISOString(),
+      });
+    });
+
+    revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
+    return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran berhasil diperbarui.");
   });
 }
 

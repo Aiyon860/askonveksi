@@ -111,7 +111,7 @@ export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { oppor
               {legacyDecoration ? <FieldDescription>Nilai lama “{legacyDecoration}” perlu dipilih ulang menggunakan opsi yang tersedia.</FieldDescription> : null}
             </Field>
             <Field><FieldLabel htmlFor={`po-order-date-${draft?.id ?? "new"}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${draft?.id ?? "new"}`} name="orderDate" type="date" defaultValue={draft?.orderDate ?? ""} /></Field>
-            <Field><FieldLabel htmlFor={`po-deadline-${draft?.id ?? "new"}`}>Deadline customer</FieldLabel><Input id={`po-deadline-${draft?.id ?? "new"}`} name="deadline" type="date" defaultValue={draft?.deadline ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-deadline-${draft?.id ?? "new"}`} required>Deadline customer</FieldLabel><Input id={`po-deadline-${draft?.id ?? "new"}`} name="deadline" type="date" required defaultValue={draft?.deadline ?? ""} /></Field>
             <Field><FieldLabel htmlFor={`po-sample-size-${draft?.id ?? "new"}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${draft?.id ?? "new"}`} name="sampleSize" defaultValue={draft?.sampleSize ?? ""}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
           </div>
         </FieldSet>

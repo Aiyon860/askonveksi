@@ -4,12 +4,15 @@ import test from "node:test";
 
 import { moveProductionSchema } from "../lib/production/validation.ts";
 
-const [schema, migration, skipMigration, workflow, actions, seed, packageJson] = await Promise.all([
+const [schema, migration, skipMigration, automationMigration, workflow, actions, crmActions, service, seed, packageJson] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260902000000_production_workflow/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260903000000_non_jersey_stage_skip/migration.sql", import.meta.url), "utf8"),
+  readFile(new URL("../prisma/migrations/20260907000000_automatic_production_work_orders/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../lib/production/workflow.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/actions/production.ts", import.meta.url), "utf8"),
+  readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+  readFile(new URL("../lib/production/service.ts", import.meta.url), "utf8"),
   readFile(new URL("../scripts/seed-production-demo.mjs", import.meta.url), "utf8"),
   readFile(new URL("../package.json", import.meta.url), "utf8"),
 ]);
@@ -19,6 +22,19 @@ test("workflow Produksi memiliki dua jalur yang disepakati", () => {
   assert.match(jerseySequence, /TEST_PRINT.*PERSETUJUAN_SAMPEL.*LAYOUT_PRODUKSI.*PRINT.*CUTTING.*QC.*SELESAI/s);
   assert.doesNotMatch(jerseySequence, /JAHIT|PACKING|PENGIRIMAN/);
   assert.match(workflow, /POTONG.*BORDIR.*SABLON.*PRINTING.*JAHIT.*QC.*PACKING.*PENGIRIMAN.*SELESAI/s);
+});
+
+test("Work Order dibuat otomatis dan idempoten dari pembayaran serta data PO", () => {
+  assert.match(service, /export async function ensureProductionWorkOrder/);
+  assert.match(service, /productionWorkOrder: \{ select:/);
+  assert.match(service, /purchaseOrder\.garmentType/);
+  assert.match(service, /purchaseOrder\.sizes\.reduce/);
+  assert.match(crmActions, /await ensureProductionWorkOrder\(tx, actor, created\.id\)/);
+  assert.match(crmActions, /export async function editPaymentTransactionAction/);
+  assert.match(crmActions, /newTotal\.gt\(payment\.salesOrder\.total\)/);
+  assert.doesNotMatch(actions, /configureLegacyProductionAction/);
+  assert.match(automationMigration, /PurchaseOrder_agreed_production_data_required/);
+  assert.match(schema, /model PaymentTransaction[\s\S]*version\s+Int\s+@default\(1\)/);
 });
 
 test("Work Order satu-ke-satu dengan Sales Order dan menyimpan urutan tahap", () => {

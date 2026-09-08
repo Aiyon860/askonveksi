@@ -34,10 +34,3 @@ export const reopenProductionSchema = z.object({
   targetStage: stage,
   note: z.string().trim().min(3, "Alasan minimal 3 karakter.").max(2000),
 });
-
-export const configureLegacyProductionSchema = z.object({
-  salesOrderId: id,
-  productionRoute: z.enum(["JERSEY", "NON_JERSEY"]),
-  productionProductName: z.string().trim().min(2).max(160),
-  productionDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
-});

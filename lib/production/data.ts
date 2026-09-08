@@ -2,14 +2,14 @@ import "server-only";
 
 import type { ProductionRoute } from "@prisma/client";
 
-import { PRODUCTION_MANAGEMENT_ROLES, PRODUCTION_ROLES } from "@/lib/auth/permissions";
+import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 
 export async function getProductionBoard(route: ProductionRoute) {
   const actor = await requireActor(PRODUCTION_ROLES);
   const prisma = getPrismaClient();
-  const [rows, total, legacyOrders] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.productionWorkOrder.findMany({
       relationLoadStrategy: "join",
       where: { route, status: { not: "CANCELLED" } },
@@ -39,21 +39,6 @@ export async function getProductionBoard(route: ProductionRoute) {
       take: 500,
     }),
     prisma.productionWorkOrder.count({ where: { route, status: { not: "CANCELLED" } } }),
-    PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN")
-      ? prisma.salesOrder.findMany({
-          relationLoadStrategy: "join",
-          where: { status: "ACTIVE", productionWorkOrder: null },
-          select: {
-            id: true,
-            salesOrderNo: true,
-            snapshotCustomerName: true,
-            opportunity: { select: { title: true, productName: true, deadline: true } },
-            items: { select: { quantity: true } },
-          },
-          orderBy: [{ acceptedAt: "asc" }, { id: "asc" }],
-          take: 50,
-        })
-      : Promise.resolve([]),
   ]);
 
   return {
@@ -66,11 +51,6 @@ export async function getProductionBoard(route: ProductionRoute) {
     })),
     total,
     truncated: total > rows.length,
-    legacyOrders: legacyOrders.map((order) => ({
-      ...order,
-      quantity: order.items.reduce((sum, item) => sum + item.quantity, 0),
-      deadline: order.opportunity.deadline?.toISOString() ?? null,
-    })),
     actor: { id: actor.id, role: actor.role },
   };
 }

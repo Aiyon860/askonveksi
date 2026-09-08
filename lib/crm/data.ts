@@ -1032,7 +1032,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
           },
           transactions: {
             select: {
-              id: true, paymentTermId: true, amount: true, paidAt: true, reference: true, note: true, status: true,
+              id: true, paymentTermId: true, amount: true, paidAt: true, reference: true, note: true, status: true, version: true,
               voidedAt: true, voidReason: true, createdBy: { select: { name: true } }, voidedBy: { select: { name: true } },
             },
             orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
