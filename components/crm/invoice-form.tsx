@@ -24,7 +24,7 @@ type DraftItem = {
   taxRate: string;
 };
 
-type Draft = { id: string; version: number; dueAt: string; notes: string; items: DraftItem[] };
+type Draft = { id: string; version: number; notes: string; items: DraftItem[] };
 
 export function InvoiceForm({ opportunityId, purchaseOrder, draft }: { opportunityId: string; purchaseOrder: PurchaseOrder; draft?: Draft }) {
   const action = draft ? updateInvoiceDraftAction : createInvoiceDraftAction;
@@ -55,8 +55,7 @@ export function InvoiceForm({ opportunityId, purchaseOrder, draft }: { opportuni
             </TableRow>;
           })}</TableBody>
         </Table>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel htmlFor={`invoice-due-${draft?.id ?? "new"}`}>Jatuh tempo</FieldLabel><Input id={`invoice-due-${draft?.id ?? "new"}`} name="dueAt" type="date" defaultValue={draft?.dueAt ?? ""} /></Field>
+        <div className="grid gap-4">
           <Field><FieldLabel htmlFor={`invoice-notes-${draft?.id ?? "new"}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${draft?.id ?? "new"}`} name="notes" maxLength={2000} rows={3} defaultValue={draft?.notes ?? ""} /></Field>
         </div>
         <FieldDescription>Diskon dihitung dari harga kotor per baris dan dibatasi nominal bila diisi. Pajak dihitung setelah diskon.</FieldDescription>

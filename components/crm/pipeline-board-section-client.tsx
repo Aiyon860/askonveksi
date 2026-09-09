@@ -31,12 +31,10 @@ export function PipelineBoardSectionClient({
   initialData,
   initialCustomers,
   initialFormOptions,
-  paymentMethods,
 }: {
   initialData: PipelineData;
   initialCustomers: CustomerOption[];
   initialFormOptions: FormOptions;
-  paymentMethods: Array<{ id: string; name: string }>;
 }) {
   const { data } = useSWR<PipelineData>("/api/crm/pipeline", fetcher, {
     fallbackData: initialData,
@@ -65,7 +63,7 @@ export function PipelineBoardSectionClient({
         </Alert>
       ) : null}
 
-      <PipelineBoard opportunities={pipeline.opportunities} actorRole={pipeline.actorRole} paymentMethods={paymentMethods} />
+      <PipelineBoard opportunities={pipeline.opportunities} actorRole={pipeline.actorRole} />
     </>
   );
 }

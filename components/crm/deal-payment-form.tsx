@@ -14,15 +14,13 @@ import { formatCurrency } from "@/lib/crm/format";
 
 type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE"; value: string };
 
-export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, initialPaidAt, paymentMethods }: {
+export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total }: {
   opportunityId: string;
   opportunityVersion: number;
   purchaseOrderId: string;
   invoiceId: string;
   invoiceVersion: number;
   total: string;
-  initialPaidAt: string;
-  paymentMethods: Array<{ id: string; name: string }>;
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
   const [initialValueType, setInitialValueType] = useState<"NOMINAL" | "PERCENTAGE">("NOMINAL");
@@ -48,12 +46,12 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
       <input type="hidden" name="invoiceId" value={invoiceId} />
       <input type="hidden" name="invoiceVersion" value={invoiceVersion} />
       <FieldGroup>
-        <FieldDescription>Work Order dibuat otomatis dari jenis pakaian, produk, jumlah, dan deadline pada PO setelah pembayaran ini dicatat.</FieldDescription>
+        <FieldDescription>Sales Order dan Work Order dibuat otomatis setelah pembayaran awal dicatat di Detail Invoice.</FieldDescription>
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Total invoice</p>
           <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(total)}</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor={`payment-kind-${invoiceId}`} required>Jenis pembayaran</FieldLabel>
             <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} className="w-full">
@@ -61,17 +59,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
               <NativeSelectOption value="DP">DP</NativeSelectOption>
             </NativeSelect>
           </Field>
-          <Field>
-            <FieldLabel htmlFor={`payment-date-${invoiceId}`} required>Waktu pembayaran</FieldLabel>
-            <Input id={`payment-date-${invoiceId}`} name="paidAt" type="datetime-local" required defaultValue={initialPaidAt} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`payment-method-${invoiceId}`} required>Metode pembayaran</FieldLabel>
-            <NativeSelect id={`payment-method-${invoiceId}`} name="paymentMethodId" required defaultValue="" className="w-full">
-              <NativeSelectOption value="" disabled>Pilih metode</NativeSelectOption>
-              {paymentMethods.map((method) => <NativeSelectOption key={method.id} value={method.id}>{method.name}</NativeSelectOption>)}
-            </NativeSelect>
-          </Field>
+          <Field><FieldLabel htmlFor={`payment-deadline-${invoiceId}`} required>{kind === "DP" ? "Deadline DP" : "Deadline Lunas"}</FieldLabel><Input id={`payment-deadline-${invoiceId}`} name="initialDueAt" type="date" required /></Field>
         </div>
 
         {kind === "LUNAS" ? (
@@ -123,7 +111,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
                     <Input id={`term-value-${term.key}`} name="termValue" type="number" required min="0.01" max={term.valueType === "PERCENTAGE" ? 100 : undefined} step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor={`term-date-${term.key}`} required>Jatuh tempo</FieldLabel>
+                    <FieldLabel htmlFor={`term-date-${term.key}`} required>Deadline Termin {index + 1}</FieldLabel>
                     <Input id={`term-date-${term.key}`} name="termDueAt" type="date" required />
                   </Field>
                   <Button type="button" variant="ghost" size="icon" aria-label={`Hapus termin ${index + 1}`} disabled={terms.length === 1} onClick={() => setTerms((current) => current.filter((item) => item.key !== term.key))}>
@@ -136,8 +124,8 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
           </>
         )}
 
-        <ConfirmSubmitButton disabled={!scheduleReady} pendingLabel="Membentuk order..." confirmTitle="Konfirmasi pembayaran dan Deal?" confirmDescription="Peluang menjadi Deal. Sales Order dan Work Order Produksi dibuat otomatis dari PO serta invoice ini." confirmLabel="Ya, catat Deal">
-          Catat pembayaran dan pindahkan ke Deal
+        <ConfirmSubmitButton disabled={!scheduleReady} pendingLabel="Menyimpan jadwal..." confirmTitle="Simpan jadwal pembayaran?" confirmDescription="Peluang tetap di Negosiasi sampai pembayaran awal dicatat dari Detail Invoice." confirmLabel="Ya, simpan jadwal">
+          Simpan jadwal pembayaran
         </ConfirmSubmitButton>
       </FieldGroup>
     </form>

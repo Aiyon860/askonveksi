@@ -53,6 +53,7 @@ export type PipelineOpportunity = {
     status: "DRAFT" | "ISSUED" | "SUPERSEDED";
     version: number;
     total: string;
+    pendingPayment: { kind: "LUNAS" | "DP"; initialDueAt: string } | null;
   } | null;
   salesOrder: {
     id: string;
@@ -94,7 +95,7 @@ const opportunitySummarySelect = {
     take: 1,
   },
   invoices: {
-    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true },
+    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true, pendingPayment: { select: { kind: true, initialDueAt: true } } },
     orderBy: { revision: "desc" },
     take: 1,
   },
@@ -142,7 +143,7 @@ const getCachedPipelineData = unstable_cache(
       garmentType: row.purchaseOrders[0].garmentType,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
     } : null,
-    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString() } : null,
+    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt.toISOString() } : null } : null,
     salesOrder: row.salesOrders[0] ? {
       id: row.salesOrders[0].id,
       salesOrderNo: row.salesOrders[0].salesOrderNo,
@@ -1317,7 +1318,8 @@ export async function getInvoiceDetail(invoiceId: string) {
       notes: true,
       createdAt: true,
       opportunity: { select: { id: true, opportunityNo: true } },
-      purchaseOrder: { select: { purchaseOrderNo: true } },
+      purchaseOrder: { select: { purchaseOrderNo: true, deadline: true } },
+      pendingPayment: { select: { kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true }, orderBy: { position: "asc" } } } },
       items: { select: { id: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
       salesOrder: {
         select: {
@@ -1373,6 +1375,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       initialTransaction: invoice.salesOrder.payment.transactions[0] ? { ...invoice.salesOrder.payment.transactions[0], amount: invoice.salesOrder.payment.transactions[0].amount.toString() } : null,
       terms: invoice.salesOrder.payment.terms.map((term) => ({ ...term, amount: term.amount.toString(), transaction: term.transactions[0] ? { ...term.transactions[0], amount: term.transactions[0].amount.toString() } : null })),
     } : null,
+    pendingPayment: invoice.pendingPayment ? { ...invoice.pendingPayment, initialAmount: invoice.pendingPayment.initialAmount.toString(), terms: invoice.pendingPayment.terms.map((term) => ({ ...term, amount: term.amount.toString() })) } : null,
   } : null;
 }
 

@@ -35,6 +35,7 @@ import {
   PURCHASE_ORDER_ATTACHMENT_MAX_FILES,
   payPaymentTermSchema,
   payInvoicePaymentTermSchema,
+  payPendingInitialPaymentSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
   reverseSalesOrderSchema,
@@ -264,9 +265,8 @@ function completeDealInput(formData: FormData) {
     purchaseOrderId: formValue(formData, "purchaseOrderId"),
     invoiceId: formValue(formData, "invoiceId"),
     invoiceVersion: formValue(formData, "invoiceVersion"),
-    paymentMethodId: formValue(formData, "paymentMethodId"),
     kind: formValue(formData, "kind"),
-    paidAt: formValue(formData, "paidAt"),
+    initialDueAt: formValue(formData, "initialDueAt"),
     initialValueType: formValue(formData, "initialValueType"),
     initialValue: formValue(formData, "initialValue"),
     terms: Array.from({ length: Math.max(valueTypes.length, values.length, dueDates.length) }, (_, index) => ({
@@ -1665,12 +1665,9 @@ export async function completeDealAction(formData: FormData) {
     const actor = await requireActor(DEAL_ROLES);
     const parsed = completeDealSchema.safeParse(completeDealInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-    const paidAt = jakartaDateTime(parsed.data.paidAt);
-    if (!paidAt) throw new UserFacingError("Tanggal pembayaran wajib diisi.");
-    if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh berada di masa depan.");
-    const salesOrder = await runDealTransaction(
-        async (tx) => {
-        await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
+    const initialDueAt = optionalDate(parsed.data.initialDueAt);
+    if (!initialDueAt) throw new UserFacingError("Deadline pembayaran awal wajib diisi.");
+    const invoice = await runDealTransaction(async (tx) => {
         const invoice = await tx.invoice.findUnique({
           where: { id: parsed.data.invoiceId },
           select: {
@@ -1690,6 +1687,7 @@ export async function completeDealAction(formData: FormData) {
             subtotal: true,
             total: true,
             salesOrder: { select: { id: true } },
+            pendingPayment: { select: { id: true } },
             purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true } },
             items: {
               select: {
@@ -1720,6 +1718,7 @@ export async function completeDealAction(formData: FormData) {
         if (invoice.opportunity.purchaseOrders.length || invoice.opportunity.invoices.length) throw new UserFacingError("Selesaikan seluruh draft PO dan invoice sebelum Deal.");
         if (invoice.opportunity.version !== parsed.data.opportunityVersion) throw new UserFacingError("Peluang sudah berubah. Muat ulang board.");
         if (invoice.salesOrder) throw new UserFacingError("Invoice ini sudah memiliki Sales Order.");
+        if (invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran invoice ini sudah tersedia.");
         const activeOrder = await tx.salesOrder.findFirst({ where: { opportunityId: invoice.opportunityId, status: "ACTIVE" }, select: { id: true } });
         if (activeOrder) throw new UserFacingError("Peluang ini sudah memiliki Sales Order aktif.");
 
@@ -1737,10 +1736,10 @@ export async function completeDealAction(formData: FormData) {
         if (initialAmount.lte(0) || initialAmount.gt(invoice.total)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
         if (parsed.data.kind === "DP" && initialAmount.eq(invoice.total)) throw new UserFacingError("Gunakan jenis Lunas jika pembayaran awal sebesar total invoice.");
 
-        let previousDueAt: Date | null = null;
+        let previousDueAt: Date | null = initialDueAt;
         const terms = parsed.data.terms.map((term, position) => {
           const dueAt = optionalDate(term.dueAt);
-          if (!dueAt) throw new UserFacingError("Tanggal termin wajib diisi.");
+          if (!dueAt) throw new UserFacingError("Deadline termin wajib diisi.");
           if (previousDueAt && dueAt < previousDueAt) throw new UserFacingError("Tanggal termin harus berurutan.");
           previousDueAt = dueAt;
           return {
@@ -1756,104 +1755,26 @@ export async function completeDealAction(formData: FormData) {
         if (scheduledTermTotal.gt(outstandingAmount)) throw new UserFacingError(`Total termin melebihi sisa tagihan ${outstandingAmount.toString()}.`);
         if (scheduledTermTotal.lt(outstandingAmount)) throw new UserFacingError(`Total termin masih kurang ${outstandingAmount.sub(scheduledTermTotal).toString()}.`);
 
-        const opportunityUpdated = await tx.opportunity.updateMany({
-          where: { id: invoice.opportunityId, stage: "NEGOSIASI", version: parsed.data.opportunityVersion },
-          data: { stage: "DEAL", nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } },
-        });
-        if (opportunityUpdated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
-
-        const created = await tx.salesOrder.create({
+        await tx.pendingDealPayment.create({
           data: {
-            salesOrderNo: await nextSalesOrderNo(tx),
-            opportunityId: invoice.opportunityId,
-            purchaseOrderId: invoice.purchaseOrderId,
             invoiceId: invoice.id,
-            purchaseOrderNo: invoice.purchaseOrder.purchaseOrderNo,
-            invoiceNo: invoice.invoiceNo,
-            snapshotCustomerName: invoice.snapshotCustomerName,
-            snapshotCompanyName: invoice.snapshotCompanyName,
-            snapshotWhatsapp: invoice.snapshotWhatsapp,
-            snapshotEmail: invoice.snapshotEmail,
-            snapshotInstagram: invoice.snapshotInstagram,
-            snapshotAddress: invoice.snapshotAddress,
-            discountType: invoice.discountType,
-            discountValue: invoice.discountValue,
-            subtotal: invoice.subtotal,
-            total: invoice.total,
-            acceptedAt: paidAt,
+            kind: parsed.data.kind,
+            initialValueType,
+            initialValue,
+            initialAmount,
+            initialDueAt,
             createdById: actor.id,
-            items: { create: invoice.items },
-            payment: {
-              create: {
-                kind: parsed.data.kind,
-                paidAt,
-                initialValueType,
-                initialValue,
-                initialAmount,
-                outstandingAmount,
-                createdById: actor.id,
-                terms: { create: terms },
-                transactions: {
-                  create: {
-                    amount: initialAmount,
-                    paidAt,
-                    paymentMethodId: parsed.data.paymentMethodId,
-                    createdById: actor.id,
-                  },
-                },
-              },
-            },
+            terms: { create: terms },
           },
-          select: { id: true, salesOrderNo: true },
         });
-
-        await ensureProductionWorkOrder(tx, actor, created.id);
-
-        const salesOrderAudit = await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["status", "snapshot", "items", "total", "payment", "terms"], {
-          opportunityId: invoice.opportunityId,
-          purchaseOrderId: invoice.purchaseOrderId,
-          invoiceId: invoice.id,
-          paymentKind: parsed.data.kind,
-        });
-        await audit(tx, actor, "Opportunity", invoice.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage"], { from: invoice.opportunity.stage, to: "DEAL" });
-        await addSystemActivity(tx, actor, {
-          customerId: invoice.opportunity.customerId,
-          opportunityId: invoice.opportunityId,
-          systemEvent: "DEAL_ORDER_CREATED",
-          content: `Customer deal dan Sales Order ${created.salesOrderNo} terbentuk.`,
-          occurredAt: paidAt,
-          metadata: {
-            invoiceId: invoice.id,
-            invoiceNo: invoice.invoiceNo,
-            purchaseOrderId: invoice.purchaseOrderId,
-            purchaseOrderNo: invoice.purchaseOrder.purchaseOrderNo,
-            salesOrderId: created.id,
-            salesOrderNo: created.salesOrderNo,
-            paymentKind: parsed.data.kind,
-          },
-          sourceAuditEventId: salesOrderAudit.id,
-        });
-        await scheduleCustomerReminders(tx, {
-          customerId: invoice.opportunity.customerId,
-          sourceSalesOrderId: created.id,
-          acceptedAt: paidAt,
-        });
-        return {
-          ...created,
-          customerId: invoice.opportunity.customerId,
-          opportunityId: invoice.opportunityId,
-        };
-        },
-      );
+        await tx.invoice.update({ where: { id: invoice.id }, data: { dueAt: initialDueAt, version: { increment: 1 } } });
+        await audit(tx, actor, "Invoice", invoice.id, "PAYMENT_SCHEDULED", ["dueAt", "paymentSchedule"], { kind: parsed.data.kind, initialDueAt, terms: terms.length });
+        return invoice;
+      });
 
     revalidatePath("/crm");
-    revalidatePath("/dashboard");
-    revalidatePath("/keuangan");
-    revalidatePath("/produksi");
-    revalidatePath(`/crm/peluang/${salesOrder.opportunityId}`);
-    revalidatePath(`/crm/pelanggan/${salesOrder.customerId}`);
-    revalidateCustomerReminders();
-    return flashMessagePath(`/sales-orders/${salesOrder.id}`, "notice", `${salesOrder.salesOrderNo} berhasil dibuat.`);
+    revalidatePath("/crm/invoices");
+    return flashMessagePath(`/crm/peluang/${invoice.opportunityId}?tab=invoice`, "notice", "Jadwal pembayaran tersimpan. Catat pembayaran awal di Detail Invoice untuk memulai produksi.");
   });
 }
 
@@ -1894,6 +1815,48 @@ export async function payInvoicePaymentTermAction(_previousState: { error: strin
   } catch (error) {
     return { error: messageForError(error), success: false };
   }
+}
+
+export async function payPendingInitialPaymentAction(_previousState: { error: string | null; success: boolean }, formData: FormData) {
+  try {
+    const actor = await requireActor(DEAL_ROLES);
+    const parsed = payPendingInitialPaymentSchema.safeParse({ invoiceId: formValue(formData, "invoiceId"), paymentMethodId: formValue(formData, "paymentMethodId"), reference: formValue(formData, "reference"), note: formValue(formData, "note") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const result = await runDealTransaction(async (tx) => {
+      await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
+      const invoice = await tx.invoice.findUnique({ where: { id: parsed.data.invoiceId }, select: {
+        id: true, invoiceNo: true, purchaseOrderId: true, status: true, opportunityId: true, snapshotCustomerName: true, snapshotCompanyName: true, snapshotWhatsapp: true, snapshotEmail: true, snapshotInstagram: true, snapshotAddress: true, discountType: true, discountValue: true, subtotal: true, total: true,
+        salesOrder: { select: { id: true } }, purchaseOrder: { select: { purchaseOrderNo: true, status: true } },
+        items: { select: { position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true, unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true, discountAmount: true, taxRate: true, taxAmount: true, total: true, subtotal: true }, orderBy: { position: "asc" } },
+        pendingPayment: { select: { id: true, kind: true, initialValueType: true, initialValue: true, initialAmount: true, terms: { select: { position: true, valueType: true, value: true, amount: true, dueAt: true } } } },
+        opportunity: { select: { stage: true, version: true, customerId: true } },
+      } });
+      if (!invoice || invoice.status !== "ISSUED" || invoice.purchaseOrder.status !== "AGREED") throw new UserFacingError("Invoice atau PO tidak lagi aktif.");
+      if (!invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran awal tidak ditemukan.");
+      if (invoice.salesOrder) throw new UserFacingError("Invoice ini sudah memiliki Sales Order.");
+      if (invoice.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Peluang tidak lagi berada di Negosiasi.");
+      const activeOrder = await tx.salesOrder.findFirst({ where: { opportunityId: invoice.opportunityId, status: "ACTIVE" }, select: { id: true } });
+      if (activeOrder) throw new UserFacingError("Peluang ini sudah memiliki Sales Order aktif.");
+      const paidAt = new Date();
+      const created = await tx.salesOrder.create({ data: {
+        salesOrderNo: await nextSalesOrderNo(tx), opportunityId: invoice.opportunityId, purchaseOrderId: invoice.purchaseOrderId, invoiceId: invoice.id, purchaseOrderNo: invoice.purchaseOrder.purchaseOrderNo, invoiceNo: invoice.invoiceNo,
+        snapshotCustomerName: invoice.snapshotCustomerName, snapshotCompanyName: invoice.snapshotCompanyName, snapshotWhatsapp: invoice.snapshotWhatsapp, snapshotEmail: invoice.snapshotEmail, snapshotInstagram: invoice.snapshotInstagram, snapshotAddress: invoice.snapshotAddress, discountType: invoice.discountType, discountValue: invoice.discountValue, subtotal: invoice.subtotal, total: invoice.total, acceptedAt: paidAt, createdById: actor.id, items: { create: invoice.items },
+        payment: { create: { kind: invoice.pendingPayment.kind, paidAt, initialValueType: invoice.pendingPayment.initialValueType, initialValue: invoice.pendingPayment.initialValue, initialAmount: invoice.pendingPayment.initialAmount, outstandingAmount: invoice.total.sub(invoice.pendingPayment.initialAmount), createdById: actor.id, terms: { create: invoice.pendingPayment.terms }, transactions: { create: { amount: invoice.pendingPayment.initialAmount, paidAt, paymentMethodId: parsed.data.paymentMethodId, reference: parsed.data.reference, note: parsed.data.note, createdById: actor.id } } } },
+      }, select: { id: true, salesOrderNo: true } });
+      await tx.pendingDealPayment.delete({ where: { id: invoice.pendingPayment.id } });
+      const updated = await tx.opportunity.updateMany({ where: { id: invoice.opportunityId, stage: "NEGOSIASI", version: invoice.opportunity.version }, data: { stage: "DEAL", nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } } });
+      if (updated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
+      await ensureProductionWorkOrder(tx, actor, created.id);
+      const event = await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["payment"], { invoiceId: invoice.id, paymentKind: invoice.pendingPayment.kind });
+      await audit(tx, actor, "Opportunity", invoice.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage"], { from: "NEGOSIASI", to: "DEAL" });
+      await addSystemActivity(tx, actor, { customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, systemEvent: "DEAL_ORDER_CREATED", content: `Customer deal dan Sales Order ${created.salesOrderNo} terbentuk.`, occurredAt: paidAt, metadata: { invoiceId: invoice.id, salesOrderId: created.id }, sourceAuditEventId: event.id });
+      await scheduleCustomerReminders(tx, { customerId: invoice.opportunity.customerId, sourceSalesOrderId: created.id, acceptedAt: paidAt });
+      return { ...created, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId };
+    });
+    revalidatePaymentViews(result.id);
+    revalidatePath("/crm"); revalidatePath("/crm/invoices"); revalidatePath(`/crm/peluang/${result.opportunityId}`); revalidatePath(`/crm/pelanggan/${result.customerId}`); revalidateCustomerReminders();
+    return { error: null, success: true };
+  } catch (error) { return { error: messageForError(error), success: false }; }
 }
 
 export async function editInvoicePaymentTransactionAction(_previousState: { error: string | null; success: boolean }, formData: FormData) {

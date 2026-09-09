@@ -44,7 +44,13 @@ const ATTACHMENT_KINDS = [
   ["LOGO_RIGHT", "Logo kanan"], ["LOGO_BACK", "Logo belakang"], ["LOGO_FRONT", "Logo depan"], ["OTHER", "Lainnya"],
 ] as const;
 
+function jakartaToday() {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
+  return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}-${parts.find((part) => part.type === "day")?.value}`;
+}
+
 export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { opportunityId: string; sizeOptions: SizeOption[]; draft?: Draft }) {
+  const defaultOrderDate = draft?.orderDate || jakartaToday();
   const matrixByKey = useMemo(() => new Map(draft?.sizes.map((item) => [`${item.sleeveLength}:${item.sizeId ?? item.size.toLocaleLowerCase("id-ID")}`, item.quantity])), [draft]);
   const [matrix, setMatrix] = useState<Record<string, number>>(() => Object.fromEntries(
     (["PENDEK", "PANJANG"] as const).flatMap((sleeveLength) => sizeOptions.map((size) => {
@@ -110,7 +116,7 @@ export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { oppor
               </NativeSelect>
               {legacyDecoration ? <FieldDescription>Nilai lama “{legacyDecoration}” perlu dipilih ulang menggunakan opsi yang tersedia.</FieldDescription> : null}
             </Field>
-            <Field><FieldLabel htmlFor={`po-order-date-${draft?.id ?? "new"}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${draft?.id ?? "new"}`} name="orderDate" type="date" defaultValue={draft?.orderDate ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-order-date-${draft?.id ?? "new"}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${draft?.id ?? "new"}`} name="orderDate" type="date" defaultValue={defaultOrderDate} /></Field>
             <Field><FieldLabel htmlFor={`po-deadline-${draft?.id ?? "new"}`} required>Deadline customer</FieldLabel><Input id={`po-deadline-${draft?.id ?? "new"}`} name="deadline" type="date" required defaultValue={draft?.deadline ?? ""} /></Field>
             <Field><FieldLabel htmlFor={`po-sample-size-${draft?.id ?? "new"}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${draft?.id ?? "new"}`} name="sampleSize" defaultValue={draft?.sampleSize ?? ""}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
           </div>

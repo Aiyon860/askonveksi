@@ -285,13 +285,12 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
     purchaseOrderId: "cm123456789013",
     invoiceId: "cm123456789014",
     invoiceVersion: "1",
-    paymentMethodId: "payment-method-tunai",
-    paidAt: "2026-09-03T10:00",
+    initialDueAt: "2026-09-03",
     initialValueType: "NOMINAL",
     initialValue: "500000",
   };
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
-  assert.equal(completeDealSchema.safeParse({ ...base, paymentMethodId: "" }).success, false);
+  assert.equal(completeDealSchema.safeParse({ ...base, initialDueAt: "" }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);

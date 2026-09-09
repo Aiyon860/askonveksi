@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
-import { formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { formatDate } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
 
 type PendingMove = { opportunity: PipelineOpportunity; stage: OpportunityStage };
@@ -37,7 +37,7 @@ const DEFAULT_DESTINATION: Record<OpportunityStage, OpportunityStage> = {
   LOST: "FOLLOW_UP",
 };
 
-export function PipelineBoard({ opportunities, actorRole, paymentMethods }: { opportunities: PipelineOpportunity[]; actorRole: AppRole; paymentMethods: Array<{ id: string; name: string }> }) {
+export function PipelineBoard({ opportunities, actorRole }: { opportunities: PipelineOpportunity[]; actorRole: AppRole }) {
   const router = useRouter();
   const [boardOpportunities, moveOptimistically] = useOptimistic(
     opportunities,
@@ -192,6 +192,7 @@ export function PipelineBoard({ opportunities, actorRole, paymentMethods }: { op
                             <div className="grid gap-1 border-t pt-2">
                               <div className="flex justify-between gap-3"><dt>PO</dt><dd className="text-right text-foreground">{opportunity.purchaseOrder ? `${opportunity.purchaseOrder.purchaseOrderNo} · ${opportunity.purchaseOrder.status === "AGREED" ? "Disepakati" : opportunity.purchaseOrder.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
                               <div className="flex justify-between gap-3"><dt>Invoice</dt><dd className="text-right text-foreground">{opportunity.invoice ? `${opportunity.invoice.invoiceNo} · ${opportunity.invoice.status === "ISSUED" ? "Terbit" : opportunity.invoice.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
+                              {opportunity.invoice?.pendingPayment ? <div className="flex justify-between gap-3"><dt>{new Date(opportunity.invoice.pendingPayment.initialDueAt).getTime() < new Date(new Date().toDateString()).getTime() ? `Deadline ${opportunity.invoice.pendingPayment.kind} terlewat` : `Menunggu ${opportunity.invoice.pendingPayment.kind}`}</dt><dd className="text-right text-foreground">{formatDate(opportunity.invoice.pendingPayment.initialDueAt)}</dd></div> : null}
                               {opportunity.salesOrder ? <div className="flex justify-between gap-3"><dt>Pembayaran</dt><dd className="text-foreground">{opportunity.salesOrder.paymentKind ?? "-"}</dd></div> : null}
                             </div>
                           ) : null}
@@ -255,8 +256,6 @@ export function PipelineBoard({ opportunities, actorRole, paymentMethods }: { op
                   invoiceId={pendingMove.opportunity.invoice.id}
                   invoiceVersion={pendingMove.opportunity.invoice.version}
                   total={pendingMove.opportunity.invoice.total}
-                  initialPaidAt={toDateTimeLocalValue(new Date())}
-                  paymentMethods={paymentMethods}
                 />
               )
             ) : (
