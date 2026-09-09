@@ -1,4 +1,4 @@
-import { bulkUpdateLeadSourcesAction, createLeadSourceAction } from "@/app/actions/master-data";
+import { bulkUpdateLeadSourcesAction, createLeadSourceAction, importLeadSourcesAction } from "@/app/actions/master-data";
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
@@ -18,6 +18,8 @@ export default async function LeadSourcesPage() {
         createDescription="Tambahkan kanal perolehan lead yang benar-benar digunakan tim."
         createAction={createLeadSourceAction}
         bulkUpdateAction={bulkUpdateLeadSourcesAction}
+        importAction={importLeadSourcesAction}
+        exportHref="/api/master-data/lead-sources/export"
       />
     </>
   );

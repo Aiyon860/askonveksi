@@ -7,7 +7,6 @@ import {
   MessageCircle,
   Package,
   Shirt,
-  Sparkles,
   Tags,
 } from "lucide-react";
 
@@ -15,12 +14,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { PublicLeadForm } from "@/components/public-lead-form";
 import { cn } from "@/lib/utils";
 
-const clients = ["AKPOL", "BANK BRI", "BPN", "PMI", "PNM"];
-
 const products = [
   { name: "Kemeja PDH", description: "Untuk kebutuhan kantor, komunitas, dan organisasi.", icon: Shirt },
   { name: "Kaos & Polo", description: "Untuk acara, tim, promosi, dan pakaian harian.", icon: Tags },
-  { name: "Jersey", description: "Seragam olahraga dengan desain yang dapat disesuaikan.", icon: Sparkles },
+  { name: "Jersey", description: "Seragam olahraga dengan desain yang dapat disesuaikan.", icon: Shirt },
   { name: "Jaket & Rompi", description: "Outerwear untuk tim, operasional, dan kebutuhan lapangan.", icon: Package },
   { name: "Merchandise", description: "Lanyard dan totebag untuk melengkapi identitas organisasi.", icon: BadgeCheck },
 ] as const;
@@ -29,8 +26,8 @@ const whatsappUrl = "https://wa.me/";
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-background text-foreground selection:bg-foreground selection:text-background">
-      <nav className="border-b bg-background" aria-label="Navigasi utama">
+    <main className="min-h-screen bg-background text-foreground">
+      <nav className="border-b bg-card" aria-label="Navigasi utama">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
           <Link href="/" className="flex items-center gap-2 rounded-md font-bold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <Image
@@ -51,7 +48,7 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      <section className="border-b bg-background" aria-labelledby="hero-title">
+      <section className="border-b bg-card" aria-labelledby="hero-title">
         <div className="mx-auto grid min-h-[560px] max-w-7xl items-center gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-20">
           <div className="max-w-2xl">
             <h1 id="hero-title" className="text-balance text-4xl font-bold leading-tight tracking-[-0.03em] sm:text-5xl lg:text-6xl">
@@ -70,7 +67,7 @@ export default function LandingPage() {
           </div>
 
           <div className="mx-auto w-full max-w-md" aria-label="Identitas dan layanan ASKONVEKSI">
-            <div className="rounded-xl border bg-muted/50 px-6 py-8 sm:px-8">
+            <div className="rounded-lg border bg-card px-6 py-8 sm:px-8">
               <Image
                 src="/brand/askonveksi-logo.png"
                 alt="Logo AS Konveksi"
@@ -89,19 +86,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-b bg-muted/50" aria-labelledby="clients-title">
-        <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
-          <p id="clients-title" className="text-center text-sm font-medium text-muted-foreground">
-            Logo klien: placeholder
-          </p>
-          <div className="mt-6 grid grid-cols-2 items-center gap-x-6 gap-y-5 sm:grid-cols-5">
-            {clients.map((client) => (
-              <div key={client} className="text-center text-sm font-semibold tracking-wide text-muted-foreground">{client}</div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section id="katalog" className="py-16 sm:py-20" aria-labelledby="catalog-title">
         <div className="mx-auto max-w-7xl px-5 sm:px-8">
           <div className="max-w-2xl">
@@ -115,8 +99,8 @@ export default function LandingPage() {
             {products.map((product) => {
               const Icon = product.icon;
               return (
-                <article key={product.name} className="group flex min-h-52 flex-col bg-card p-5 transition-colors duration-150 hover:bg-muted/50">
-                  <div className="flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors duration-150 group-hover:bg-primary group-hover:text-primary-foreground">
+                <article key={product.name} className="group flex min-h-48 flex-col bg-card p-5 transition-colors duration-150 hover:bg-muted/50">
+                  <div className="flex size-9 items-center justify-center rounded-md border bg-card text-primary transition-colors duration-150 group-hover:border-primary/20 group-hover:bg-primary/5">
                     <Icon className="size-4" strokeWidth={1.8} aria-hidden="true" />
                   </div>
                   <div className="mt-auto pt-10">
@@ -126,7 +110,7 @@ export default function LandingPage() {
                 </article>
               );
             })}
-            <div className="flex min-h-52 flex-col justify-between bg-secondary p-5">
+            <div className="flex min-h-48 flex-col justify-between bg-secondary p-5">
               <p className="text-sm font-medium">Kebutuhan lainnya?</p>
               <a href={whatsappUrl} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline" })}>
                 Tanyakan produk
@@ -141,7 +125,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-7xl gap-8 px-5 sm:px-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
           <div className="max-w-md">
             <h2 id="consultation-title" className="text-2xl font-bold leading-8">Ceritakan kebutuhan Anda</h2>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">Isi data singkat berikut. Tim Askonveksi akan menindaklanjuti kebutuhan produk, jumlah, dan deadline Anda.</p>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">Isi data singkat berikut. Tim Askonveksi akan menindaklanjuti kebutuhan produk Anda.</p>
           </div>
           <PublicLeadForm />
         </div>

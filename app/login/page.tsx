@@ -12,11 +12,11 @@ import { getCurrentActor } from "@/lib/auth/session";
 
 export default async function LoginPage() {
   const actor = await getCurrentActor();
-  if (actor) redirect(actor.mustChangePassword ? "/account/password" : actor.role === "PRODUCTION" || actor.role === "QC" ? "/produksi" : "/dashboard");
+  if (actor) redirect(actor.role === "PRODUCTION" || actor.role === "QC" ? "/produksi" : "/dashboard");
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-10">
-      <Card className="w-full max-w-md" size="default">
+      <Card className="w-full max-w-md" size="lg">
         <CardHeader className="items-center text-center">
           <Image src="/brand/askonveksi-logo.png" alt="AS Konveksi" width={591} height={591} priority className="mx-auto mb-2 h-auto w-24 object-contain" />
           <CardTitle className="text-xl">Masuk ke ruang kerja</CardTitle>

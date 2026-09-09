@@ -5,13 +5,13 @@ export default function PurchaseOrdersLoading() {
   return (
     <LoadingPage label="Memuat purchase order">
       <PageHeaderSkeleton action />
-      <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-hidden="true">
+      <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
         <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={3} />
         <div className="flex min-h-112 flex-1 flex-col">
           <TableSkeleton
             columns={7}
             rows={8}
-            className="min-w-4xl"
+            className="table-fixed"
             columnWidths={["w-12", "w-32", "w-32", "w-36", "w-20", "w-24", "w-24"]}
           />
         </div>

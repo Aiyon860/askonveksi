@@ -33,7 +33,7 @@ export async function GET(
   return new Response(await data.arrayBuffer(), {
     headers: {
       "Content-Type": attachment.contentType,
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(attachment.originalName)}`,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(attachment.originalName)}`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

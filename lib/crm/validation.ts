@@ -6,11 +6,6 @@ const optionalText = (max: number) =>
     z.string().trim().max(max).optional(),
   );
 
-const optionalPositiveInteger = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : Number(value)),
-  z.number().int().positive().max(10_000_000).optional(),
-);
-
 const optionalMoney = (label: string) => optionalText(20).refine(
   (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
   `${label} tidak valid.`,
@@ -86,16 +81,7 @@ export const opportunityFieldsSchema = z.object({
     z.enum(["JERSEY", "NON_JERSEY"]).optional(),
   ),
   needPurpose: optionalText(500),
-  designStatus: z.preprocess(
-    (value) => (value === null || value === "" ? undefined : value),
-    z.enum(["SUDAH_ADA", "BELUM_ADA", "PERLU_DIBANTU"]).optional(),
-  ),
   specification: optionalText(2000),
-  customerBudget: optionalMoney("Budget customer"),
-  leadScore: z.coerce.number().int().min(0, "Skor minimal 0.").max(100, "Skor maksimal 100."),
-  estimatedQuantity: optionalPositiveInteger,
-  estimatedValue: optionalMoney("Estimasi nilai"),
-  deadline: optionalText(10),
   nextAction: optionalText(500),
   nextActionAt: optionalText(32),
 }).superRefine((value, context) => {
@@ -107,6 +93,12 @@ export const opportunityFieldsSchema = z.object({
     });
   }
 });
+
+export function validateOpenOpportunitySchedule(value: { nextAction?: string; nextActionAt?: string }) {
+  if (!value.nextAction) return "Tindakan berikutnya wajib diisi.";
+  if (!value.nextActionAt) return "Jadwal follow-up wajib diisi.";
+  return null;
+}
 
 export const createOpportunitySchema = opportunityFieldsSchema.and(z.object({
   customerId: entityIdSchema,
@@ -156,8 +148,6 @@ export const publicLeadSchema = z.object({
   name: z.string().trim().min(2).max(160),
   whatsapp: z.string().trim().min(8).max(32),
   productName: z.string().trim().min(2).max(120),
-  estimatedQuantity: optionalPositiveInteger,
-  deadline: optionalText(10),
   city: optionalText(120),
   website: optionalText(200),
 });
@@ -196,8 +186,6 @@ export const invoiceItemSchema = z.object({
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
   discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
-  discountCapAmount: optionalMoney("Batas nominal diskon"),
-  taxRate: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase pajak tidak valid."),
 });
 
 export const invoiceDraftSchema = z.object({
@@ -206,6 +194,7 @@ export const invoiceDraftSchema = z.object({
   invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
   dueAt: optionalText(10),
+  taxRate: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase pajak tidak valid."),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
 });
@@ -254,7 +243,7 @@ export const purchaseOrderDraftSchema = z.object({
   sampleSize: optionalText(40),
   designNotes: optionalText(4000),
   notes: optionalText(4000),
-  deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline customer wajib diisi."),
+  deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
   sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
   roster: z.array(purchaseOrderRosterSchema).max(5_000),
 }).superRefine((value, context) => {
@@ -282,7 +271,7 @@ const moneyValueSchema = z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "No
 export const dealPaymentTermSchema = z.object({
   valueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   value: moneyValueSchema,
-  dueAt: z.string().trim().min(1, "Tanggal termin wajib diisi."),
+  dueAt: z.string().trim().min(1, "Deadline termin wajib diisi."),
 });
 
 export const completeDealSchema = z.object({
@@ -292,7 +281,7 @@ export const completeDealSchema = z.object({
   invoiceId: entityIdSchema,
   invoiceVersion: requiredVersion,
   kind: z.enum(["LUNAS", "DP"]),
-  paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
+  initialDueAt: z.string().trim().min(1, "Deadline pembayaran awal wajib diisi."),
   initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
@@ -305,7 +294,13 @@ export const completeDealSchema = z.object({
   }
 });
 
-export const PURCHASE_ORDER_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"] as const;
+export const payPendingInitialPaymentSchema = z.object({
+  invoiceId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
+  reference: optionalText(120),
+  note: optionalText(1000),
+});
+
 export const PURCHASE_ORDER_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 export const PURCHASE_ORDER_ATTACHMENT_MAX_FILES = 5;
 export const PURCHASE_ORDER_ROSTER_MAX_BYTES = 2 * 1024 * 1024;
@@ -319,13 +314,21 @@ export const reverseSalesOrderSchema = z.object({
 export const payPaymentTermSchema = z.object({
   salesOrderId: entityIdSchema,
   paymentTermId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),
   note: optionalText(1000),
 });
 
+export const payInvoicePaymentTermSchema = z.object({
+  salesOrderId: entityIdSchema,
+  paymentTermId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
+});
+
 export const recordInitialPaymentSchema = z.object({
   salesOrderId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),
   note: optionalText(1000),
@@ -341,6 +344,7 @@ export const editPaymentTransactionSchema = z.object({
   salesOrderId: entityIdSchema,
   transactionId: entityIdSchema,
   version: requiredVersion,
+  paymentMethodId: entityIdSchema,
   amount: moneyValueSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),
@@ -365,12 +369,8 @@ export const loginSchema = z.object({
 
 export const strongPasswordSchema = z
   .string()
-  .min(12, "Password minimal 12 karakter.")
-  .max(128)
-  .regex(/[a-z]/, "Password harus memiliki huruf kecil.")
-  .regex(/[A-Z]/, "Password harus memiliki huruf besar.")
-  .regex(/[0-9]/, "Password harus memiliki angka.")
-  .regex(/[^A-Za-z0-9]/, "Password harus memiliki simbol.");
+  .min(1, "Password wajib diisi.")
+  .max(128);
 
 export const updatePasswordSchema = z
   .object({
@@ -386,7 +386,7 @@ export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
   role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
-  temporaryPassword: strongPasswordSchema,
+  password: strongPasswordSchema,
 });
 
 export const updateUserSchema = z.object({
@@ -395,6 +395,14 @@ export const updateUserSchema = z.object({
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
   role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
+  password: z.preprocess(
+    (value) => (typeof value === "string" && value === "" ? undefined : value),
+    strongPasswordSchema.optional(),
+  ),
+  confirmPassword: z.preprocess((value) => value ?? "", z.string().max(128)),
+}).refine((value) => !value.password || value.password === value.confirmPassword, {
+  path: ["confirmPassword"],
+  message: "Konfirmasi password tidak sama.",
 });
 
 export const toggleUserSchema = z.object({

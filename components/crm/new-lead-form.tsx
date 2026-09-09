@@ -37,7 +37,7 @@ export function NewLeadForm({ customers, customerTypes, leadSources, salesUsers 
               <Field>
                 <FieldLabel htmlFor="customerMode" required>Gunakan data customer</FieldLabel>
                 <NativeSelect id="customerMode" name="customerMode" required value={customerMode} onChange={(event) => setCustomerMode(event.target.value as "existing" | "new")}>
-                  {customers.length ? <NativeSelectOption value="existing">Customer tersimpan</NativeSelectOption> : null}
+                  {customers.length ? <NativeSelectOption value="existing">Customer lama</NativeSelectOption> : null}
                   <NativeSelectOption value="new">Customer baru</NativeSelectOption>
                 </NativeSelect>
               </Field>

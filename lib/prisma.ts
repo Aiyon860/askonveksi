@@ -23,7 +23,7 @@ function createPrismaClient() {
 
 function hasCurrentModelDelegates(client: PrismaClient) {
   const delegates = client as unknown as Record<string, { findMany?: unknown } | undefined>;
-  return ["garmentSize", "businessProfile", "paymentTransaction"].every(
+  return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction"].every(
     (model) => typeof delegates[model]?.findMany === "function",
   );
 }

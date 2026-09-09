@@ -145,7 +145,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
   y -= Math.max(businessAddress.length, customerAddress.length) * 10 + 13;
   text(`Referensi: ${safeText(invoice.purchaseOrder.purchaseOrderNo)}`, margin, 8);
   text(`Tanggal: ${date(invoice.issuedAt ?? invoice.createdAt)}`, 245, 8);
-  text(`Jatuh tempo: ${invoice.dueAt ? date(invoice.dueAt) : "-"}`, 405, 8);
+  text(`Deadline pembayaran awal: ${invoice.dueAt ? date(invoice.dueAt) : "-"}`, 405, 8);
   y -= 28;
 
   const tableRight = A4.width - margin;

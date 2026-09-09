@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { AlertTriangle, CalendarClock, GripVertical, UserRound } from "lucide-react";
 import type { ProductionRoute, ProductionStage } from "@prisma/client";
 
@@ -24,6 +25,9 @@ import { cn } from "@/lib/utils";
 
 type BoardItem = Awaited<ReturnType<typeof getProductionBoard>>["items"][number];
 type PendingMove = { item: BoardItem; targetStage: ProductionStage; decision: "ADVANCE" | "SKIP" | "SAMPLE_REJECT" | "QC_REJECT" };
+type RecentMove = { id: string; stage: ProductionStage };
+
+const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
 
 function stageOptions(item: BoardItem) {
   const next = nextProductionStage(item.stageSequence, item.currentStage);
@@ -48,27 +52,42 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
   const router = useRouter();
   const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage }) => current.map((item) => item.id === move.id ? { ...item, currentStage: move.targetStage } : item));
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [previewMove, setPreviewMove] = useState<PendingMove | null>(null);
   const [isMoving, startMoving] = useTransition();
-  const dragImageRef = useRef<HTMLElement | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
+  const reducedMotion = useReducedMotion();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
   const columns = productionStages(route);
+  const activeItem = activeId ? boardItems.find((item) => item.id === activeId) ?? null : null;
 
-  function removeDragImage() {
-    dragImageRef.current?.remove();
-    dragImageRef.current = null;
-  }
+  useEffect(() => {
+    if (!recentMove) return;
+    const timeout = window.setTimeout(() => setRecentMove(null), 240);
+    return () => window.clearTimeout(timeout);
+  }, [recentMove]);
 
-  useEffect(() => removeDragImage, []);
-
-  function requestMove(item: BoardItem, targetStage?: ProductionStage) {
+  function requestMove(item: BoardItem, targetStage?: ProductionStage, preview = false) {
     const options = stageOptions(item);
     const move = targetStage ? options.find((option) => option.targetStage === targetStage && (option.decision === "ADVANCE" || option.decision === "SKIP")) : options[0];
-    if (move) setPendingMove(move);
+    if (move) {
+      if (preview) setPreviewMove(move);
+      setPendingMove(move);
+    }
   }
 
-  function handleDrop(event: React.DragEvent, targetStage: ProductionStage) {
-    event.preventDefault();
-    const item = boardItems.find((candidate) => candidate.id === event.dataTransfer.getData("text/production-work-order-id"));
-    if (item) requestMove(item, targetStage);
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
+    if (!event.over) return;
+    const item = boardItems.find((candidate) => candidate.id === event.active.id);
+    if (item) requestMove(item, event.over.id as ProductionStage, true);
   }
 
   function confirmMove(event: React.FormEvent<HTMLFormElement>) {
@@ -82,9 +101,12 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
     const { item, targetStage: stage } = pendingMove;
     setPendingMove(null);
     startMoving(async () => {
+      setRecentMove({ id: item.id, stage });
       moveOptimistically({ id: item.id, targetStage: stage });
+      setPreviewMove(null);
       const result = await moveProductionOptimisticAction(formData);
       if (!result.ok) {
+        setRecentMove(null);
         toast.add({ title: "Progres tidak berubah", description: result.message, type: "error" });
         return;
       }
@@ -96,78 +118,47 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
   return (
     <>
       <div className="relative">
-        {isMoving ? <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs shadow-sm" role="status"><Spinner /> Menyimpan progres...</div> : null}
-        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3" aria-label={`Kanban produksi ${route === "JERSEY" ? "Jersey" : "Non-Jersey"}`}>
+        {isMoving ? <div className="fixed right-4 top-4 z-50 flex w-[calc(100%-2rem)] max-w-sm animate-in fade-in-0 slide-in-from-top-2 items-center gap-3 rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg" role="status"><Spinner /> Menyimpan progres...</div> : null}
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragCancel={() => setActiveId(null)}
+          onDragEnd={handleDragEnd}
+          accessibility={{ screenReaderInstructions: { draggable: "Tekan spasi untuk mengambil kartu. Gunakan tombol panah untuk memilih tahap tujuan, lalu tekan spasi lagi untuk meletakkan." } }}
+        >
+        <div className="grid auto-cols-[20rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3" aria-label={`Kanban produksi ${route === "JERSEY" ? "Jersey" : "Non-Jersey"}`}>
           {columns.map((stage) => {
-            const stageItems = boardItems.filter((item) => item.currentStage === stage);
+            const stageItems = boardItems.filter((item) => (previewMove?.item.id === item.id ? previewMove.targetStage : item.currentStage) === stage);
             return (
-              <section
+              <ProductionStageColumn
                 key={stage}
-                aria-labelledby={`production-stage-${stage}`}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => handleDrop(event, stage)}
-                className={cn("min-h-[24rem] rounded-xl border p-2", STAGE_SURFACE_CLASS[stage])}
+                stage={stage}
+                canDrop={Boolean(activeItem && stageOptions(activeItem).some((option) => option.targetStage === stage && (option.decision === "ADVANCE" || option.decision === "SKIP")))}
               >
-                <div className="flex items-center justify-between gap-3 px-2 py-2">
+                <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
                   <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{PRODUCTION_STAGE_LABEL[stage]}</h2>
-                  <span className="font-mono text-xs tabular-nums text-muted-foreground">{stageItems.length}</span>
+                  <span key={stageItems.length} className="animate-in fade-in-0 duration-150 font-mono text-xs tabular-nums text-muted-foreground">{stageItems.length}</span>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+                  <div className="flex flex-col gap-2">
                   {stageItems.length ? stageItems.map((item) => {
                     const options = stageOptions(item);
                     const canAdvance = Boolean(options.find((option) => option.decision === "ADVANCE"));
-                    const draggable = !isMoving && canAdvance;
+                    const draggable = !isMoving && !previewMove && canAdvance;
                     const overdue = item.status === "ACTIVE" && new Date(item.deadline).getTime() < new Date().setHours(0, 0, 0, 0);
                     return (
-                      <Card
+                      <DraggableProductionCard
                         key={item.id}
-                        size="sm"
+                        item={item}
                         draggable={draggable}
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/production-work-order-id", item.id);
-
-                          removeDragImage();
-
-                          const card = event.currentTarget;
-                          const bounds = card.getBoundingClientRect();
-                          const computedStyle = window.getComputedStyle(card);
-                          const dragImage = card.cloneNode(true) as HTMLElement;
-
-                          Object.assign(dragImage.style, {
-                            position: "fixed",
-                            top: "0",
-                            left: "-10000px",
-                            width: `${bounds.width}px`,
-                            height: `${bounds.height}px`,
-                            boxSizing: "border-box",
-                            margin: "0",
-                            backgroundColor: computedStyle.backgroundColor,
-                            borderRadius: computedStyle.borderRadius,
-                            overflow: "hidden",
-                            boxShadow: "none",
-                            outline: "none",
-                            filter: "none",
-                            pointerEvents: "none",
-                          });
-                          dragImage.setAttribute("aria-hidden", "true");
-                          dragImage.inert = true;
-                          document.body.appendChild(dragImage);
-                          dragImageRef.current = dragImage;
-
-                          event.dataTransfer.setDragImage(
-                            dragImage,
-                            event.clientX - bounds.left,
-                            event.clientY - bounds.top,
-                          );
-                        }}
-                        onDragEnd={removeDragImage}
-                        className={cn("cursor-default", draggable && "cursor-grab active:cursor-grabbing", item.needsRepair && "border-destructive/50 bg-destructive/5")}
+                        entering={recentMove?.id === item.id && recentMove.stage === stage}
+                        previewing={previewMove?.item.id === item.id}
                       >
+                        {(drag) => <Card size="sm" className={cn("cursor-default", item.needsRepair && "border-destructive/50 bg-destructive/5")}>
                         <CardHeader>
                           <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
                           <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
-                          <CardAction><GripVertical aria-label="Geser kartu" className="size-4 text-muted-foreground" /></CardAction>
+                          <CardAction><Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${item.workOrderNo}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}><GripVertical aria-hidden="true" /></Button></CardAction>
                         </CardHeader>
                         <CardContent>
                           <div className="flex flex-wrap gap-2">
@@ -181,7 +172,7 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                           <dl className="grid gap-2 text-xs text-muted-foreground">
                             <div className="flex items-center justify-between gap-3"><dt>Sales Order</dt><dd className="font-mono text-foreground">{item.salesOrder.salesOrderNo}</dd></div>
                             <div className="flex items-center justify-between gap-3">
-                              <dt>Deadline</dt>
+                              <dt>Deadline produksi</dt>
                               <dd className={cn("flex items-center gap-2", overdue && "font-medium text-destructive")}><CalendarClock aria-hidden="true" className="size-3.5" />{new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(item.deadline))}</dd>
                             </div>
                             <div className="flex items-center justify-between gap-3">
@@ -191,17 +182,20 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                           </dl>
                           {item.status === "ACTIVE" && options.length ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => requestMove(item)}>Perbarui tahap</Button> : null}
                         </CardContent>
-                      </Card>
+                      </Card>}</DraggableProductionCard>
                     );
                   }) : <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">Belum ada pekerjaan</EmptyTitle><EmptyDescription>Work Order pada tahap ini akan muncul di sini.</EmptyDescription></EmptyHeader></Empty>}
+                  </div>
                 </div>
-              </section>
+              </ProductionStageColumn>
             );
           })}
         </div>
+        <DragOverlay dropAnimation={reducedMotion ? null : DROP_ANIMATION}>{activeItem ? <ProductionDragPreview item={activeItem} /> : null}</DragOverlay>
+        </DndContext>
       </div>
 
-      <Dialog open={Boolean(pendingMove)} onOpenChange={(open) => !open && setPendingMove(null)}>
+      <Dialog open={Boolean(pendingMove)} onOpenChange={(open) => { if (!open) { setPendingMove(null); setPreviewMove(null); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Perbarui tahap produksi</DialogTitle>
@@ -216,7 +210,10 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                   <FieldLabel htmlFor="moveOption" required>Perubahan</FieldLabel>
                   <NativeSelect id="moveOption" name="moveOption" defaultValue={optionValue(pendingMove)} className="w-full" onChange={(event) => {
                     const selected = stageOptions(pendingMove.item).find((option) => optionValue(option) === event.target.value);
-                    if (selected) setPendingMove(selected);
+                    if (selected) {
+                      setPendingMove(selected);
+                      if (previewMove) setPreviewMove(selected);
+                    }
                   }}>
                     {stageOptions(pendingMove.item).map((option) => <NativeSelectOption key={optionValue(option)} value={optionValue(option)}>{option.decision === "SAMPLE_REJECT" ? "Minta Test Print ulang" : option.decision === "QC_REJECT" ? `Perbaiki di ${PRODUCTION_STAGE_LABEL[option.targetStage]}` : option.decision === "SKIP" ? `Lewati ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}` : `Lanjut ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`}</NativeSelectOption>)}
                   </NativeSelect>
@@ -230,4 +227,30 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
       </Dialog>
     </>
   );
+}
+
+function ProductionStageColumn({ stage, canDrop, children }: { stage: ProductionStage; canDrop: boolean; children: React.ReactNode }) {
+  const { isOver, setNodeRef } = useDroppable({ id: stage, disabled: !canDrop });
+  return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
+}
+
+function DraggableProductionCard({ item, draggable, entering, previewing, children }: { item: BoardItem; draggable: boolean; entering: boolean; previewing: boolean; children: (drag: ReturnType<typeof useDraggable> & { draggable: boolean }) => React.ReactNode }) {
+  const drag = useDraggable({ id: item.id, disabled: !draggable });
+  return <div ref={drag.setNodeRef} className={cn(drag.isDragging && "opacity-35", previewing && "opacity-50", entering && "animate-in fade-in-0 slide-in-from-left-2 duration-200")}>{children({ ...drag, draggable })}</div>;
+}
+
+function ProductionDragPreview({ item }: { item: BoardItem }) {
+  return <Card size="sm" className={cn("w-[20rem] scale-[1.02] shadow-lg", item.needsRepair && "border-destructive/50 bg-destructive/5")}><CardHeader><CardTitle>{item.productName}</CardTitle><CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge><Badge variant="secondary">{item.quantity} pcs</Badge></div></CardContent></Card>;
+}
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return reduced;
 }

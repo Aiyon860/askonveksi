@@ -6,6 +6,7 @@ import { CRM_ROLES } from "@/lib/auth/permissions";
 import { createPurchaseOrderPdf } from "@/lib/crm/purchase-order-pdf";
 import { normalizePdfImage } from "@/lib/crm/pdf-image";
 import { entityIdSchema } from "@/lib/crm/validation";
+import { downloadFilename } from "@/lib/download-filename";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -21,7 +22,7 @@ const ATTACHMENT_LABEL: Record<string, string> = {
   OTHER: "Lampiran lain",
 };
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try { await requireActor(CRM_ROLES); } catch { return new Response("Anda tidak memiliki akses untuk mengunduh PO.", { status: 403 }); }
   const parsed = entityIdSchema.safeParse((await params).id);
   if (!parsed.success) return new Response("PO tidak ditemukan.", { status: 404 });
@@ -67,5 +68,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     snapshotBusinessEmail: purchaseOrder.snapshotBusinessEmail ?? profile?.email ?? null,
     snapshotBusinessAddress: purchaseOrder.snapshotBusinessAddress ?? profile?.address ?? null,
   }, logoBytes, assets);
-  return new Response(Buffer.from(pdf), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${purchaseOrder.purchaseOrderNo}.pdf"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
+  return new Response(Buffer.from(pdf), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${downloadFilename(`purchase-order-${purchaseOrder.purchaseOrderNo}`, "pdf")}"`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }

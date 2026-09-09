@@ -28,7 +28,7 @@ export async function createUserAction(formData: FormData) {
       name: formData.get("name"),
       email: formData.get("email"),
       role: formData.get("role"),
-      temporaryPassword: formData.get("temporaryPassword"),
+      password: formData.get("password"),
     });
 
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
@@ -37,7 +37,7 @@ export async function createUserAction(formData: FormData) {
     const email = parsed.data.email.toLowerCase();
     const { data, error } = await admin.auth.admin.createUser({
       email,
-      password: parsed.data.temporaryPassword,
+      password: parsed.data.password,
       email_confirm: true,
     });
 
@@ -55,7 +55,6 @@ export async function createUserAction(formData: FormData) {
             name: parsed.data.name,
             role: parsed.data.role,
             isActive: true,
-            mustChangePassword: true,
           },
           select: { id: true },
         });
@@ -66,7 +65,7 @@ export async function createUserAction(formData: FormData) {
             entityType: "AppUser",
             entityId: created.id,
             action: "USER_CREATED",
-            changedFields: ["email", "name", "role", "isActive", "mustChangePassword"],
+            changedFields: ["email", "name", "role", "isActive", "password"],
             metadata: { role: parsed.data.role },
           },
         });
@@ -91,6 +90,8 @@ export async function updateUserAction(formData: FormData) {
       name: formData.get("name"),
       email: formData.get("email"),
       role: formData.get("role"),
+      password: formData.get("password"),
+      confirmPassword: formData.get("confirmPassword"),
     });
 
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
@@ -118,12 +119,9 @@ export async function updateUserAction(formData: FormData) {
       ...(target.name !== parsed.data.name ? ["name"] : []),
       ...(target.email !== email ? ["email"] : []),
       ...(target.role !== parsed.data.role ? ["role"] : []),
+      ...(parsed.data.password ? ["password"] : []),
     ];
     if (!changedFields.length) return flashMessagePath(returnTo, "notice", "Tidak ada perubahan pengguna.");
-
-    if (target.id === actor.id && (target.email !== email || target.role !== parsed.data.role)) {
-      throw new UserFacingError("Email dan role akun sendiri tidak dapat diubah dari halaman ini.");
-    }
 
     if (target.email !== email) {
       const duplicate = await prisma.appUser.findUnique({ where: { email }, select: { id: true } });
@@ -132,11 +130,15 @@ export async function updateUserAction(formData: FormData) {
 
     const roleWillChange = target.role !== parsed.data.role;
     const emailWillChange = target.email !== email;
-    const admin = emailWillChange ? createAdminClient() : null;
+    const passwordWillChange = Boolean(parsed.data.password);
+    const admin = emailWillChange || passwordWillChange ? createAdminClient() : null;
 
     if (admin) {
-      const { error } = await admin.auth.admin.updateUserById(target.authUserId, { email });
-      if (error) throw new UserFacingError("Email Auth tidak dapat diperbarui. Pastikan email belum digunakan.");
+      const { error } = await admin.auth.admin.updateUserById(target.authUserId, {
+        ...(emailWillChange ? { email } : {}),
+        ...(passwordWillChange ? { password: parsed.data.password } : {}),
+      });
+      if (error) throw new UserFacingError("Akun Auth tidak dapat diperbarui. Pastikan email belum digunakan dan coba lagi.");
     }
 
     try {

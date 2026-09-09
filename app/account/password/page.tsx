@@ -14,14 +14,10 @@ export default async function PasswordPage() {
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-10">
-      <Card className="w-full max-w-lg">
+      <Card className="w-full max-w-lg" size="lg">
         <CardHeader>
           <CardTitle>Amankan akun Anda</CardTitle>
-          <CardDescription>
-            {actor.mustChangePassword
-              ? "Password sementara harus diganti sebelum Anda dapat membuka CRM."
-              : "Perbarui password akun bila diperlukan."}
-          </CardDescription>
+          <CardDescription>Perbarui password akun bila diperlukan.</CardDescription>
         </CardHeader>
         <CardContent>
           <PageMessage />
@@ -29,12 +25,12 @@ export default async function PasswordPage() {
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="password" required>Password baru</FieldLabel>
-                <PasswordInput id="password" name="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-                <FieldDescription>Minimal 12 karakter, dengan huruf besar, huruf kecil, angka, dan simbol.</FieldDescription>
+                <PasswordInput id="password" name="password" autoComplete="new-password" required maxLength={128} />
+                <FieldDescription>Password dapat memakai karakter apa pun.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="confirmPassword" required>Ulangi password baru</FieldLabel>
-                <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" required minLength={12} maxLength={128} />
+                <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" required maxLength={128} />
               </Field>
               <SubmitButton pendingLabel="Memperbarui...">Simpan password</SubmitButton>
             </FieldGroup>

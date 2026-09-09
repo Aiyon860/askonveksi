@@ -1,19 +1,20 @@
 ---
 name: "ERM Askonveksi"
-description: "Ruang kendali operasional konveksi yang tenang, presisi, dan cepat dipindai."
+description: "Ruang kendali operasional konveksi yang tenang, presisi, cepat dipindai, dan memakai biru sebagai aksen kerja."
 colors:
   tinta-operasional: "oklch(0.145 0 0)"
   kertas-kerja: "oklch(1 0 0)"
-  kontrol-utama: "oklch(0.205 0 0)"
+  kanvas-kerja: "oklch(0.985 0 0)"
+  kontrol-utama: "oklch(0.47 0.19 258)"
   teks-di-kontrol: "oklch(0.985 0 0)"
   permukaan-sekunder: "oklch(0.97 0 0)"
   abu-penanda: "oklch(0.556 0 0)"
   garis-kerja: "oklch(0.922 0 0)"
-  cincin-fokus: "oklch(0.708 0 0)"
+  cincin-fokus: "oklch(0.57 0.17 250)"
   destruktif: "oklch(0.577 0.245 27.325)"
   ruang-gelap: "oklch(0.145 0 0)"
   panel-gelap: "oklch(0.205 0 0)"
-  aksen-sidebar-gelap: "oklch(0.488 0.243 264.376)"
+  aksen-biru: "oklch(0.47 0.19 258)"
 typography:
   title:
     fontFamily: "Inter, Arial, sans-serif"
@@ -48,7 +49,9 @@ rounded:
 spacing:
   control-gap: "0.375rem"
   control-x: "0.625rem"
-  panel-padding: "1rem"
+  panel-padding-compact: "1rem"
+  panel-padding: "1.25rem"
+  panel-padding-comfortable: "1.5rem"
   section-gap: "1.5rem"
   page-gutter: "2rem"
 components:
@@ -108,7 +111,7 @@ components:
 
 **Creative North Star: "Ruang Kendali Konveksi"**
 
-ERM Askonveksi terasa seperti ruang kendali yang tenang: informasi operasional disusun agar status, angka, dan tindakan dapat dikenali tanpa kebisingan visual. Palet monokrom, tipografi sans yang lugas, serta kepadatan komponen yang ringkas menjadikan data sebagai pusat perhatian.
+ERM Askonveksi terasa seperti ruang kendali yang tenang: informasi operasional disusun agar status, angka, dan tindakan dapat dikenali tanpa kebisingan visual. Palet netral dengan satu aksen biru fungsional, tipografi sans yang lugas, serta kepadatan komponen yang ringkas menjadikan data sebagai pusat perhatian.
 
 Sistem ini tidak mengejar kesan dekoratif. Karakternya profesional, presisi, dan terkendali, tetapi tetap membumi untuk pengguna lintas divisi. Identitas muncul melalui disiplin hierarki, konsistensi status, dan ritme kerja—bukan melalui ornamen atau warna yang belum memiliki dasar merek.
 
@@ -122,18 +125,18 @@ Sistem ini tidak mengejar kesan dekoratif. Karakternya profesional, presisi, dan
 
 ## Colors
 
-Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penanda**: perbedaan terang-gelap membangun hierarki, sementara warna kromatik diperlakukan sebagai pengecualian semantik.
+Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penanda**. Perbedaan terang-gelap membangun hierarki, sementara biru menunjukkan tindakan atau pilihan utama dan warna status dipakai dalam bidang kecil.
 
 ### Primary
 
 - **Tinta Operasional:** dipakai untuk teks utama dan informasi yang harus memiliki otoritas tertinggi.
-- **Kontrol Utama:** dipakai pada tindakan primer dan permukaan kontrol berkontras tinggi.
+- **Kontrol Utama:** biru operasional untuk tindakan primer, navigasi aktif, tab aktif, tautan utama, dan pilihan terpilih.
 - **Teks di Kontrol:** memastikan label pada kontrol utama tetap jelas di atas permukaan gelap.
 
 ### Tertiary
 
 - **Destruktif:** khusus untuk kesalahan, validasi gagal, dan tindakan yang berpotensi merusak data.
-- **Aksen Sidebar Gelap:** token tema gelap yang sudah tersedia untuk keadaan aktif pada sidebar; bukan aksen merek umum.
+- **Aksen Biru:** identitas kerja yang dipakai konsisten pada navigasi dan kontrol, bukan sebagai sapuan dekoratif pada bidang besar.
 
 ### Neutral
 
@@ -144,7 +147,7 @@ Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penand
 - **Cincin Fokus:** penanda fokus keyboard yang terlihat tanpa mengambil alih hierarki.
 - **Ruang Gelap dan Panel Gelap:** pasangan kanvas serta permukaan pada tema gelap.
 
-**The Monochrome Authority Rule.** Bangun hierarki utama melalui terang-gelap, tipografi, jarak, dan struktur; jangan menambahkan aksen warna dekoratif sebelum identitas merek menetapkannya.
+**The Blue Discipline Rule.** Bangun hierarki utama melalui terang-gelap, tipografi, jarak, dan struktur. Biru menandai tindakan, pilihan, fokus, atau data utama; jangan memenuhi banyak panel dengan biru sekaligus.
 
 **The Exception Color Rule.** Warna destruktif hanya muncul ketika maknanya benar-benar destruktif atau bermasalah, bukan sebagai cara menarik perhatian umum.
 
@@ -169,7 +172,7 @@ Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penand
 
 ## Layout
 
-Implementasi saat ini membuktikan model satu kolom terpusat dengan lebar baca terbatas, gutter halaman 2rem, serta jarak antarkelompok 1.5rem. Ini adalah ritme yang sah untuk login, formulir fokus, dan state utilitas; belum ada bukti kode untuk grid dashboard, sidebar aplikasi, atau breakpoint produk.
+Workspace menggunakan sidebar 15rem pada desktop, drawer pada layar kecil, gutter responsif 1rem hingga 2rem, serta jarak antarkelompok 1.5rem. Login dan formulir fokus menggunakan satu kolom terpusat. Landing page memakai keluarga token yang sama dengan ritme yang lebih lega.
 
 Layar Operate berikutnya harus mempertahankan scanability: kelompokkan data berdasarkan pekerjaan, tempatkan tindakan dekat dengan objek yang dipengaruhinya, dan turunkan layout secara bertahap menjadi satu kolom di ruang sempit. Nilai breakpoint dan grid dashboard harus dikarbonisasi dari implementasi pertama, bukan dikarang di dokumen ini.
 
@@ -207,11 +210,12 @@ Komponen terasa ringkas, tegas, dan terkendali. State interaksi harus terlihat m
 
 ### Cards / Containers
 
-- **Corner Style:** sudut medium yang mengikuti keluarga radius.
+- **Corner Style:** radius panel 0.625rem; radius yang lebih kecil dipakai untuk kontrol dan badge.
 - **Background:** Kertas Kerja pada tema terang dan Panel Gelap pada tema gelap.
 - **Shadow Strategy:** tanpa bayangan permanen; gunakan garis atau lapisan tonal.
 - **Border:** Garis Kerja pada tema terang dan garis putih transparan pada tema gelap.
-- **Internal Padding:** 1rem pada panel status yang teramati.
+- **Internal Padding:** compact 1rem, default 1.25rem, comfortable 1.5rem.
+- **Equal Height:** hanya card sejajar yang membandingkan jenis informasi sama memakai tinggi seragam; card konten mengikuti isinya.
 
 ### Status Panel
 
@@ -229,7 +233,7 @@ Panel status adalah pola aktual untuk menampilkan hasil proses atau respons kone
 
 ### Don't:
 
-- **Don't** menambahkan warna aksen dekoratif atau gradien sebelum keputusan identitas merek dibuat.
+- **Don't** memakai biru atau warna status sebagai background besar pada banyak kartu sekaligus.
 - **Don't** membuat seluruh kartu melayang dengan bayangan; kedalaman default berasal dari lapisan tonal dan batas.
 - **Don't** menggunakan bentuk pil untuk semua tombol dan bidang.
 - **Don't** mencampur Inter, Geist Sans, dan Geist Mono tanpa fungsi yang jelas.

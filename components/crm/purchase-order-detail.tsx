@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Paperclip } from "lucide-react";
 
 import { purchaseOrderDetailAction } from "@/app/actions/crm-details";
 import { DocumentDetailTrigger } from "@/components/crm/document-detail-trigger";
@@ -65,7 +66,7 @@ export function PurchaseOrderDetail({
                 <Info label="Produk" value={detail.productName} />
                 <Info label="Material" value={detail.material} />
                 <Info label="Warna" value={detail.color ?? "-"} />
-                <Info label="Deadline" value={formatDate(detail.deadline)} />
+                <Info label="Deadline produksi" value={formatDate(detail.deadline)} />
                 <Info label="Tanggal dibuat" value={formatDate(detail.createdAt)} />
               </dl>
               <div>
@@ -76,9 +77,29 @@ export function PurchaseOrderDetail({
                 </Table>
               </div>
               {detail.designNotes || detail.notes ? <dl className="grid gap-4 sm:grid-cols-2"><Info label="Catatan desain" value={detail.designNotes ?? "-"} /><Info label="Catatan" value={detail.notes ?? "-"} /></dl> : null}
+              {detail.attachments.length ? (
+                <div>
+                  <h3 className="mb-2 text-sm font-medium">Lampiran referensi</h3>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {detail.attachments.map((attachment) => (
+                      <Button
+                        key={attachment.id}
+                        size="sm"
+                        variant="outline"
+                        className="h-auto min-h-9 max-w-full shrink justify-start whitespace-normal py-2 text-left leading-5"
+                        render={<Link href={`/api/crm/purchase-order/${detail.id}/attachments/${attachment.id}`} />}
+                        nativeButton={false}
+                      >
+                        <Paperclip data-icon="inline-start" aria-hidden="true" />
+                        <span className="min-w-0">{attachment.originalName}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
-          {detail ? <DialogFooter><Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}`} />}>Lihat di Pipeline</Button></DialogFooter> : null}
+          {detail ? <DialogFooter><Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=po`} />}>Lihat PO</Button></DialogFooter> : null}
         </DialogContent>
       </Dialog>
     </>

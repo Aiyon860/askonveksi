@@ -20,7 +20,7 @@ const purchaseOrderBucket = "crm-po-designs";
 const purchaseOrderBucketOptions = {
   public: false,
   fileSizeLimit: 5 * 1024 * 1024,
-  allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+  allowedMimeTypes: null,
 };
 const { data: buckets, error: listError } = await supabase.storage.listBuckets();
 

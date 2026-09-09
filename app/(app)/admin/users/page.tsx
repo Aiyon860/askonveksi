@@ -55,7 +55,7 @@ import {
 } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
-const USER_ROLES = ["OWNER", "ADMIN", "SALES"] as const satisfies readonly AppRole[];
+const USER_ROLES = ["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
 const USER_STATUSES = ["all", "active", "inactive"] as const satisfies readonly UserStatusFilter[];
 const USER_SORTS = ["createdAt", "email", "isActive", "name", "role"] as const satisfies readonly UserSort[];
 const SORT_DIRECTIONS = ["asc", "desc"] as const satisfies readonly SortDirection[];
@@ -161,7 +161,7 @@ function SortableHead({
 function UsersTableFallback() {
   return (
     <section
-      className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background"
+      className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
       role="status"
       aria-live="polite"
       aria-label="Memuat daftar pengguna"
@@ -213,7 +213,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
   const activeFilterCount = Number(role !== "all") + Number(status !== "all");
 
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background" aria-label="Daftar pengguna">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Daftar pengguna">
           <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
               <DebouncedSearchInput
@@ -286,7 +286,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     <SortableHead label="Email" value="email" state={state} className="min-w-56" />
                     <SortableHead label="Role" value="role" state={state} />
                     <SortableHead label="Status" value="isActive" state={state} />
-                    <TableHead className="min-w-52">Aksi</TableHead>
+                    <TableHead className="min-w-72">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <UsersTableBody
@@ -296,7 +296,6 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     name: user.name,
                     role: user.role,
                     isActive: user.isActive,
-                    mustChangePassword: user.mustChangePassword,
                     updatedAt: user.updatedAt.toISOString(),
                   }))}
                   actorId={actor?.id}
@@ -357,24 +356,21 @@ function NewUserCard() {
                 <Field>
                   <FieldLabel htmlFor="role" required>Role</FieldLabel>
                   <NativeSelect id="role" name="role" required defaultValue="SALES" className="w-full">
-                    <NativeSelectOption value="OWNER">Owner</NativeSelectOption>
-                    <NativeSelectOption value="ADMIN">Admin</NativeSelectOption>
-                    <NativeSelectOption value="SALES">Sales</NativeSelectOption>
+                    {USER_ROLES.map((role) => (
+                      <NativeSelectOption key={role} value={role}>{ROLE_LABEL[role]}</NativeSelectOption>
+                    ))}
                   </NativeSelect>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="temporaryPassword" required>Password sementara</FieldLabel>
+                  <FieldLabel htmlFor="password" required>Password awal</FieldLabel>
                   <PasswordInput
-                    id="temporaryPassword"
-                    name="temporaryPassword"
+                    id="password"
+                    name="password"
                     required
-                    minLength={12}
                     maxLength={128}
-                    pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).*"
-                    title="Gunakan minimal 12 karakter dengan huruf besar, huruf kecil, angka, dan simbol."
                     autoComplete="new-password"
                   />
-                  <FieldDescription>Minimal 12 karakter dengan huruf besar, kecil, angka, dan simbol.</FieldDescription>
+                  <FieldDescription>Password dapat memakai karakter apa pun.</FieldDescription>
                 </Field>
                 <ConfirmSubmitButton
                   pendingLabel="Membuat akun..."
@@ -397,7 +393,7 @@ export default function UsersPage({ searchParams }: { searchParams: UserSearchPa
     <>
       <PageHeader
         title="Pengguna aplikasi"
-        description="Owner membuat akun langsung dengan password sementara. Role tidak disimpan pada metadata Auth."
+        description="Owner membuat akun langsung dengan password awal. Role tidak disimpan pada metadata Auth."
       />
       <PageMessage />
 

@@ -43,14 +43,12 @@ export function PublicLeadForm() {
   }
 
   return (
-    <form ref={formRef} onSubmit={submit} className="rounded-xl border bg-card p-5 sm:p-6">
+    <form ref={formRef} onSubmit={submit} className="rounded-lg border bg-card p-5 sm:p-6">
       <FieldGroup>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field><FieldLabel htmlFor="public-name" required>Nama</FieldLabel><Input id="public-name" name="name" required minLength={2} maxLength={160} autoComplete="name" /></Field>
           <Field><FieldLabel htmlFor="public-whatsapp" required>WhatsApp</FieldLabel><Input id="public-whatsapp" name="whatsapp" required minLength={8} maxLength={32} inputMode="tel" autoComplete="tel" placeholder="08xxxxxxxxxx" /></Field>
           <Field><FieldLabel htmlFor="public-product" required>Produk yang dibutuhkan</FieldLabel><Input id="public-product" name="productName" required minLength={2} maxLength={120} placeholder="Jersey, PDH, kaos, atau lainnya" /></Field>
-          <Field><FieldLabel htmlFor="public-quantity">Perkiraan jumlah</FieldLabel><Input id="public-quantity" name="estimatedQuantity" type="number" min={1} max={10000000} step={1} /></Field>
-          <Field><FieldLabel htmlFor="public-deadline">Deadline</FieldLabel><Input id="public-deadline" name="deadline" type="date" /></Field>
           <Field><FieldLabel htmlFor="public-city">Kota</FieldLabel><Input id="public-city" name="city" maxLength={120} autoComplete="address-level2" /></Field>
         </div>
         <Field className="absolute -left-[10000px] size-px overflow-hidden" aria-hidden="true">

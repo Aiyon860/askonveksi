@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewLeadForm } from "@/components/crm/new-lead-form";
 import { PipelineSummary } from "@/components/crm/pipeline-summary";
+import { CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
 
 const PipelineBoard = dynamic(
   () => import("@/components/crm/pipeline-board").then((m) => ({ default: m.PipelineBoard })),
@@ -48,13 +49,12 @@ export function PipelineBoardSectionClient({
 
   return (
     <>
-      {pipeline.actorRole === "ADMIN" || pipeline.actorRole === "SALES" ? (
-        <div className="flex justify-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <PipelineSummary opportunities={pipeline.opportunities} total={pipeline.total} className="sm:flex-1" />
+        {hasRole(pipeline.actorRole, CRM_OPERATOR_ROLES) ? (
           <NewLeadForm customers={initialCustomers} {...initialFormOptions} />
-        </div>
-      ) : null}
-
-      <PipelineSummary opportunities={pipeline.opportunities} total={pipeline.total} />
+        ) : null}
+      </div>
 
       {pipeline.truncated ? (
         <Alert>

@@ -15,11 +15,13 @@ export function OpportunityStageForm({
   version,
   initialStage,
   cancelReason,
+  redirectTo,
 }: {
   opportunityId: string;
   version: number;
   initialStage: OpportunityStage;
   cancelReason: string | null;
+  redirectTo?: string;
 }) {
   const allowedStages: Record<Exclude<OpportunityStage, "DEAL">, OpportunityStage[]> = {
     LEAD_BARU: ["FOLLOW_UP", "NEGOSIASI", "LOST"],
@@ -38,6 +40,7 @@ export function OpportunityStageForm({
     <form action={moveOpportunityStageAction}>
       <input type="hidden" name="opportunityId" value={opportunityId} />
       <input type="hidden" name="version" value={version} />
+      {redirectTo ? <input type="hidden" name="redirectTo" value={redirectTo} /> : null}
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="detail-stage" required>Status</FieldLabel>

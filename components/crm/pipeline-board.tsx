@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CalendarClock, FilePlus2, GripVertical, NotebookText } from "lucide-react";
 import type { AppRole, OpportunityStage } from "@prisma/client";
 
@@ -11,6 +12,7 @@ import { DealPaymentForm } from "@/components/crm/deal-payment-form";
 import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/crm/stage-theme";
 import { OpportunityStatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,12 +22,16 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
-import { leadClassification, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
+import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
+import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
-import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { formatDate } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
 
 type PendingMove = { opportunity: PipelineOpportunity; stage: OpportunityStage };
+type RecentMove = { id: string; stage: OpportunityStage };
+
+const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
 
 const DEFAULT_DESTINATION: Record<OpportunityStage, OpportunityStage> = {
   LEAD_BARU: "NEGOSIASI",
@@ -43,28 +49,41 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
       current.map((item) => item.id === move.opportunityId ? { ...item, stage: move.stage } : item),
   );
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [previewMove, setPreviewMove] = useState<PendingMove | null>(null);
   const [isMoving, startMoving] = useTransition();
-  const dragImageRef = useRef<HTMLElement | null>(null);
-  const canOperate = actorRole === "ADMIN" || actorRole === "SALES";
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
+  const reducedMotion = useReducedMotion();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+  const canOperate = hasRole(actorRole, CRM_OPERATOR_ROLES);
+  const canCompleteDeal = hasRole(actorRole, DEAL_ROLES);
+  const activeOpportunity = activeId ? boardOpportunities.find((item) => item.id === activeId) ?? null : null;
 
-  function removeDragImage() {
-    dragImageRef.current?.remove();
-    dragImageRef.current = null;
-  }
+  useEffect(() => {
+    if (!recentMove) return;
+    const timeout = window.setTimeout(() => setRecentMove(null), 240);
+    return () => window.clearTimeout(timeout);
+  }, [recentMove]);
 
-  useEffect(() => removeDragImage, []);
-
-  function requestMove(opportunity: PipelineOpportunity, stage: OpportunityStage) {
+  function requestMove(opportunity: PipelineOpportunity, stage: OpportunityStage, preview = false) {
     if (!canOperate) return;
     if (opportunity.stage === stage) return;
+    if (preview) setPreviewMove({ opportunity, stage });
     setPendingMove({ opportunity, stage });
   }
 
-  function handleDrop(event: React.DragEvent, stage: OpportunityStage) {
-    event.preventDefault();
-    const id = event.dataTransfer.getData("text/opportunity-id");
-    const opportunity = boardOpportunities.find((item) => item.id === id);
-    if (opportunity) requestMove(opportunity, stage);
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
+    if (!event.over) return;
+    const opportunity = boardOpportunities.find((item) => item.id === event.active.id);
+    if (opportunity) requestMove(opportunity, event.over.id as OpportunityStage, true);
   }
 
   function confirmMove(event: React.FormEvent<HTMLFormElement>) {
@@ -76,9 +95,12 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
     setPendingMove(null);
 
     startMoving(async () => {
+      setRecentMove({ id: opportunity.id, stage });
       moveOptimistically({ opportunityId: opportunity.id, stage });
+      setPreviewMove(null);
       const result = await moveOpportunityStageOptimisticAction(data);
       if (!result.ok) {
+        setRecentMove(null);
         toast.add({ title: "Status tidak berubah", description: result.message, type: result.kind });
         return;
       }
@@ -91,72 +113,41 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
     <>
       <div className="relative">
         {isMoving ? (
-          <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs shadow-sm" role="status">
+          <div className="fixed right-4 top-4 z-50 flex w-[calc(100%-2rem)] max-w-sm animate-in fade-in-0 slide-in-from-top-2 items-center gap-3 rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg" role="status">
             <Spinner /> Memindahkan status...
           </div>
         ) : null}
-        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3">
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragCancel={() => setActiveId(null)}
+          onDragEnd={handleDragEnd}
+          accessibility={{ screenReaderInstructions: { draggable: "Tekan spasi untuk mengambil kartu. Gunakan tombol panah untuk memilih kolom tujuan, lalu tekan spasi lagi untuk meletakkan." } }}
+        >
+        <div className="grid auto-cols-[20rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3">
           {PIPELINE_STAGES.map((stage) => {
-            const items = boardOpportunities.filter((opportunity) => opportunity.stage === stage);
+            const items = boardOpportunities.filter((opportunity) => (previewMove?.opportunity.id === opportunity.id ? previewMove.stage : opportunity.stage) === stage);
             return (
-              <section
+              <PipelineStageColumn
                 key={stage}
-                aria-labelledby={`stage-${stage}`}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => handleDrop(event, stage)}
-                className={cn("min-h-[24rem] rounded-xl border p-2", STAGE_SURFACE_CLASS[stage])}
+                stage={stage}
+                canDrop={Boolean(activeOpportunity && activeOpportunity.stage !== stage)}
               >
-                <div className="flex items-center justify-between gap-3 px-2 py-2">
-                  <h2 id={`stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{STAGE_LABEL[stage]}</h2>
-                  <span className="font-mono text-xs tabular-nums text-muted-foreground">{items.length}</span>
+                <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
+                  <h2 id={`stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{stage === "DEAL" ? "Deal (SO)" : STAGE_LABEL[stage]}</h2>
+                  <span key={items.length} className="animate-in fade-in-0 duration-150 font-mono text-xs tabular-nums text-muted-foreground">{items.length}</span>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+                  <div className="flex flex-col gap-2">
                   {items.length ? items.map((opportunity) => (
-                    <Card
+                    <DraggablePipelineCard
                       key={opportunity.id}
-                      size="sm"
-                      draggable={canOperate && !isMoving && opportunity.stage !== "DEAL"}
-                      onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("text/opportunity-id", opportunity.id);
-
-                        removeDragImage();
-
-                        const card = event.currentTarget;
-                        const bounds = card.getBoundingClientRect();
-                        const computedStyle = window.getComputedStyle(card);
-                        const dragImage = card.cloneNode(true) as HTMLElement;
-
-                        Object.assign(dragImage.style, {
-                          position: "fixed",
-                          top: "0",
-                          left: "-10000px",
-                          width: `${bounds.width}px`,
-                          height: `${bounds.height}px`,
-                          boxSizing: "border-box",
-                          margin: "0",
-                          backgroundColor: computedStyle.backgroundColor,
-                          borderRadius: computedStyle.borderRadius,
-                          overflow: "hidden",
-                          boxShadow: "none",
-                          outline: "none",
-                          filter: "none",
-                          pointerEvents: "none",
-                        });
-                        dragImage.setAttribute("aria-hidden", "true");
-                        dragImage.inert = true;
-                        document.body.appendChild(dragImage);
-                        dragImageRef.current = dragImage;
-
-                        event.dataTransfer.setDragImage(
-                          dragImage,
-                          event.clientX - bounds.left,
-                          event.clientY - bounds.top,
-                        );
-                      }}
-                      onDragEnd={removeDragImage}
-                      className={cn("cursor-default", canOperate && opportunity.stage !== "DEAL" && "cursor-grab active:cursor-grabbing")}
+                      opportunity={opportunity}
+                      draggable={canOperate && !isMoving && !previewMove && opportunity.stage !== "DEAL"}
+                      entering={recentMove?.id === opportunity.id && recentMove.stage === stage}
+                      previewing={previewMove?.opportunity.id === opportunity.id}
                     >
+                      {(drag) => <Card size="sm" className="cursor-default">
                       <CardHeader>
                         <CardTitle>
                           <Link href={`/crm/peluang/${opportunity.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -165,20 +156,17 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                         </CardTitle>
                         <CardDescription>{opportunity.title}{opportunity.customer.companyName ? ` · ${opportunity.customer.companyName}` : ""}</CardDescription>
                         {canOperate ? <CardAction>
-                          <GripVertical aria-label="Geser kartu" className="size-4 text-muted-foreground" />
+                          <Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${opportunity.customer.name}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}>
+                            <GripVertical aria-hidden="true" />
+                          </Button>
                         </CardAction> : null}
                       </CardHeader>
                       <CardContent>
                         <div className="flex flex-wrap items-center gap-2">
-                          <OpportunityStatusBadge stage={opportunity.stage} />
-                          <span className="text-xs font-medium">{leadClassification(opportunity.leadScore)} · {opportunity.leadScore}</span>
+                          {opportunity.stage === "DEAL" ? <Badge variant="success">Deal (SO)</Badge> : <OpportunityStatusBadge stage={opportunity.stage} />}
                           <span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span>
                         </div>
                         <dl className="grid gap-2 text-xs text-muted-foreground">
-                          <div className="flex items-center justify-between gap-3">
-                            <dt>Estimasi</dt>
-                            <dd className="font-mono text-foreground">{formatCurrency(opportunity.estimatedValue)}</dd>
-                          </div>
                           {opportunity.nextActionAt ? (
                             <div className="flex items-start gap-2">
                               <CalendarClock aria-hidden="true" className="size-3.5" />
@@ -194,6 +182,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                             <div className="grid gap-1 border-t pt-2">
                               <div className="flex justify-between gap-3"><dt>PO</dt><dd className="text-right text-foreground">{opportunity.purchaseOrder ? `${opportunity.purchaseOrder.purchaseOrderNo} · ${opportunity.purchaseOrder.status === "AGREED" ? "Disepakati" : opportunity.purchaseOrder.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
                               <div className="flex justify-between gap-3"><dt>Invoice</dt><dd className="text-right text-foreground">{opportunity.invoice ? `${opportunity.invoice.invoiceNo} · ${opportunity.invoice.status === "ISSUED" ? "Terbit" : opportunity.invoice.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
+                              {opportunity.invoice?.pendingPayment ? <div className="flex justify-between gap-3"><dt>{new Date(opportunity.invoice.pendingPayment.initialDueAt).getTime() < new Date(new Date().toDateString()).getTime() ? `Deadline ${opportunity.invoice.pendingPayment.kind} terlewat` : `Menunggu ${opportunity.invoice.pendingPayment.kind}`}</dt><dd className="text-right text-foreground">{formatDate(opportunity.invoice.pendingPayment.initialDueAt)}</dd></div> : null}
                               {opportunity.salesOrder ? <div className="flex justify-between gap-3"><dt>Pembayaran</dt><dd className="text-foreground">{opportunity.salesOrder.paymentKind ?? "-"}</dd></div> : null}
                             </div>
                           ) : null}
@@ -210,7 +199,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                         ) : null}
                         {canOperate && opportunity.stage !== "DEAL" ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setPendingMove({ opportunity, stage: DEFAULT_DESTINATION[opportunity.stage] })}>Ubah status</Button> : null}
                       </CardContent>
-                    </Card>
+                    </Card>}</DraggablePipelineCard>
                   )) : (
                     <Empty className="min-h-32 p-4">
                       <EmptyHeader>
@@ -219,14 +208,17 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       </EmptyHeader>
                     </Empty>
                   )}
+                  </div>
                 </div>
-              </section>
+              </PipelineStageColumn>
             );
           })}
         </div>
+        <DragOverlay dropAnimation={reducedMotion ? null : DROP_ANIMATION}>{activeOpportunity ? <PipelineDragPreview opportunity={activeOpportunity} /> : null}</DragOverlay>
+        </DndContext>
       </div>
 
-      <Dialog open={Boolean(pendingMove)} onOpenChange={(open) => !open && setPendingMove(null)}>
+      <Dialog open={Boolean(pendingMove)} onOpenChange={(open) => { if (!open) { setPendingMove(null); setPreviewMove(null); } }}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Konfirmasi perubahan status</DialogTitle>
@@ -236,10 +228,10 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
           </DialogHeader>
           {pendingMove ? (
             pendingMove.stage === "DEAL" ? (
-              actorRole !== "ADMIN" ? (
+              !canCompleteDeal ? (
                 <Alert>
-                  <AlertTitle>Deal memerlukan Admin</AlertTitle>
-                  <AlertDescription>Sales dapat menyiapkan PO dan invoice. Admin mencatat pembayaran dan memindahkan peluang ke Deal.</AlertDescription>
+                  <AlertTitle>Deal memerlukan Owner atau Admin</AlertTitle>
+                  <AlertDescription>Sales dapat menyiapkan PO dan invoice. Owner atau Admin mencatat pembayaran dan memindahkan peluang ke Deal.</AlertDescription>
                 </Alert>
               ) : pendingMove.opportunity.stage !== "NEGOSIASI" || pendingMove.opportunity.purchaseOrder?.status !== "AGREED" || pendingMove.opportunity.invoice?.status !== "ISSUED" || pendingMove.opportunity.invoice.purchaseOrderId !== pendingMove.opportunity.purchaseOrder.id ? (
                 <div className="flex flex-col gap-4">
@@ -257,7 +249,6 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                   invoiceId={pendingMove.opportunity.invoice.id}
                   invoiceVersion={pendingMove.opportunity.invoice.version}
                   total={pendingMove.opportunity.invoice.total}
-                  initialPaidAt={toDateTimeLocalValue(new Date())}
                 />
               )
             ) : (
@@ -272,7 +263,11 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       name="stage"
                       required
                       value={pendingMove.stage}
-                      onChange={(event) => setPendingMove({ ...pendingMove, stage: event.target.value as OpportunityStage })}
+                      onChange={(event) => {
+                        const stage = event.target.value as OpportunityStage;
+                        setPendingMove({ ...pendingMove, stage });
+                        if (previewMove) setPreviewMove({ ...previewMove, stage });
+                      }}
                       className="w-full"
                     >
                       {PIPELINE_STAGES.map((stage) => (
@@ -295,4 +290,30 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
       </Dialog>
     </>
   );
+}
+
+function PipelineStageColumn({ stage, canDrop, children }: { stage: OpportunityStage; canDrop: boolean; children: React.ReactNode }) {
+  const { isOver, setNodeRef } = useDroppable({ id: stage, disabled: !canDrop });
+  return <section ref={setNodeRef} aria-labelledby={`stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
+}
+
+function DraggablePipelineCard({ opportunity, draggable, entering, previewing, children }: { opportunity: PipelineOpportunity; draggable: boolean; entering: boolean; previewing: boolean; children: (drag: ReturnType<typeof useDraggable> & { draggable: boolean }) => React.ReactNode }) {
+  const drag = useDraggable({ id: opportunity.id, disabled: !draggable });
+  return <div ref={drag.setNodeRef} className={cn(drag.isDragging && "opacity-35", previewing && "opacity-50", entering && "animate-in fade-in-0 slide-in-from-left-2 duration-200")}>{children({ ...drag, draggable })}</div>;
+}
+
+function PipelineDragPreview({ opportunity }: { opportunity: PipelineOpportunity }) {
+  return <Card size="sm" className="w-[20rem] scale-[1.02] shadow-lg"><CardHeader><CardTitle>{opportunity.customer.name}</CardTitle><CardDescription>{opportunity.title}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><OpportunityStatusBadge stage={opportunity.stage} /><span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span></div></CardContent></Card>;
+}
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return reduced;
 }

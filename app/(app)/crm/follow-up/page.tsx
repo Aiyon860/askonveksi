@@ -46,7 +46,7 @@ function FollowUpSkeleton() {
         labelWidths={["w-20", "w-20", "w-20", "w-20"]}
         valueWidths={["w-10", "w-10", "w-10", "w-10"]}
       />
-      <div className="rounded-xl border bg-background" aria-hidden="true">
+      <div className="rounded-lg border bg-card" aria-hidden="true">
         <div className="flex items-center justify-between border-b p-4">
           <Skeleton className="h-5 w-32" />
           <Skeleton className="h-4 w-32" />

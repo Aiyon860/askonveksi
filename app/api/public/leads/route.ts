@@ -112,8 +112,6 @@ export async function POST(request: Request) {
           publicSubmissionKey: parsed.data.submissionKey,
           title: parsed.data.productName,
           productName: parsed.data.productName,
-          estimatedQuantity: parsed.data.estimatedQuantity,
-          deadline: parsed.data.deadline ? new Date(`${parsed.data.deadline}T00:00:00.000Z`) : null,
         },
       });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

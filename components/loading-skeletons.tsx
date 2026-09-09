@@ -131,14 +131,14 @@ export function MetricStripSkeleton({
 }) {
   return (
     <div
-      className={cn("grid gap-px overflow-hidden rounded-xl border bg-border", layoutClassName, className)}
+      className={cn("grid gap-px overflow-hidden rounded-lg border bg-border", layoutClassName, className)}
       aria-hidden="true"
     >
       {Array.from({ length: items }, (_, index) => (
         <div
           key={`metric-${index}`}
           className={cn(
-            "flex flex-col gap-3 bg-card p-5",
+            "flex min-h-26 flex-col gap-3 bg-card p-4",
             wideLast && index === items - 1 && "col-span-2 lg:col-span-1",
             itemClassName,
           )}
@@ -154,7 +154,7 @@ export function MetricStripSkeleton({
 export function KanbanSkeleton({
   columns,
   cardsPerColumn = 2,
-  columnMinWidth = "17rem",
+  columnMinWidth = "20rem",
 }: {
   columns: number;
   cardsPerColumn?: number | number[];
@@ -166,33 +166,35 @@ export function KanbanSkeleton({
 
   return (
     <div
-      className="grid auto-cols-[minmax(var(--kanban-col-min,17rem),1fr)] grid-flow-col gap-3 overflow-x-hidden pb-3 xl:grid-cols-5 xl:auto-cols-auto xl:grid-flow-row"
+      className="grid auto-cols-[var(--kanban-col-min,17.5rem)] grid-flow-col gap-3 overflow-x-hidden pb-3"
       style={{ "--kanban-col-min": columnMinWidth } as CSSProperties}
       aria-hidden="true"
     >
       {Array.from({ length: columns }, (_, column) => (
-        <section key={`kanban-column-${column}`} className="min-h-[24rem] rounded-xl border bg-muted/20 p-2">
-          <div className="flex items-center justify-between gap-3 px-2 py-2">
+        <section key={`kanban-column-${column}`} className="flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border bg-muted/30 p-2">
+          <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-4 w-5" />
           </div>
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: counts[column] ?? 1 }, (_, card) => (
-              <Card key={`kanban-card-${column}-${card}`} size="sm">
-                <CardHeader>
-                  <Skeleton className="h-4 w-4/5" />
-                  <Skeleton className="h-3 w-1/2" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2">
-                    <Skeleton className="h-5 w-20" />
-                    <Skeleton className="h-4 w-16" />
-                  </div>
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-8 w-full" />
-                </CardContent>
-              </Card>
-            ))}
+          <div className="min-h-0 flex-1 overflow-y-hidden">
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: counts[column] ?? 1 }, (_, card) => (
+                <Card key={`kanban-card-${column}-${card}`} size="sm">
+                  <CardHeader>
+                    <Skeleton className="h-4 w-4/5" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-20" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         </section>
       ))}

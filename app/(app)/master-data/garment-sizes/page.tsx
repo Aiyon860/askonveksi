@@ -1,4 +1,4 @@
-import { bulkUpdateGarmentSizesAction, createGarmentSizeAction } from "@/app/actions/master-data";
+import { bulkUpdateGarmentSizesAction, createGarmentSizeAction, importGarmentSizesAction } from "@/app/actions/master-data";
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
@@ -17,6 +17,9 @@ export default async function GarmentSizesPage() {
         createDescription="Ukuran baru langsung tersedia pada PO berikutnya. Data dokumen lama tetap memakai snapshot ukuran saat dibuat."
         createAction={createGarmentSizeAction}
         bulkUpdateAction={bulkUpdateGarmentSizesAction}
+        importAction={importGarmentSizesAction}
+        exportHref="/api/master-data/garment-sizes/export"
+        maxNameLength={40}
       />
     </>
   );

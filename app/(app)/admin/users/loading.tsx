@@ -7,7 +7,7 @@ export default function UsersLoading() {
       <PageHeaderSkeleton />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]" aria-hidden="true">
-        <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-background">
+        <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 flex-1 gap-2">
               <Skeleton className="h-9 w-full sm:max-w-md" />

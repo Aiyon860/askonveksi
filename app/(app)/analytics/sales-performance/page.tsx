@@ -6,6 +6,7 @@ FIRST VIEWPORT: Filter ringkas diikuti strip metrik dengan omzet sebagai nilai t
 FORM: Laporan operasional code-led, ENERGY 1 / RHYTHM 2 / MOTION 1.
 */
 import { ChartNoAxesCombined, UserRoundX } from "lucide-react";
+import Link from "next/link";
 
 import { LazySalesPerformanceRevenueChart } from "@/components/analytics/lazy-sales-performance-revenue-chart";
 import { PageHeader } from "@/components/page-header";
@@ -14,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Input } from "@/components/ui/input";
+import { MetricGroup, MetricItem } from "@/components/ui/metric";
 import {
   Table,
   TableBody,
@@ -25,20 +27,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  ANALYTICS_PERIODS,
-  parseAnalyticsPeriod,
-} from "@/lib/analytics/report-period";
 import { getSalesPerformanceData } from "@/lib/crm/data";
 import { formatCurrency } from "@/lib/crm/format";
 
 export const revalidate = 60;
-
-const PERIOD_LABEL = {
-  month: "Bulan berjalan",
-  year: "Tahun berjalan",
-  all: "Seluruh waktu",
-} as const;
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -47,11 +39,19 @@ function first(value: string | string[] | undefined) {
 export default async function SalesPerformancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string | string[] }>;
+  searchParams: Promise<{ mode?: string | string[]; from?: string | string[]; to?: string | string[] }>;
 }) {
   const params = await searchParams;
-  const period = parseAnalyticsPeriod(first(params.period));
-  const data = await getSalesPerformanceData(period);
+  const data = await getSalesPerformanceData(params);
+  const rawFrom = first(params.from);
+  const rawTo = first(params.to);
+  const rangeParams = new URLSearchParams();
+  if (rawFrom) rangeParams.set("from", rawFrom);
+  if (rawTo) rangeParams.set("to", rawTo);
+  const rangeHref = `/analytics/sales-performance${rangeParams.toString() ? `?${rangeParams.toString()}` : ""}`;
+  const allParams = new URLSearchParams(rangeParams);
+  allParams.set("mode", "all");
+  const allHref = `/analytics/sales-performance?${allParams.toString()}`;
   const hasActivity =
     data.totals.leadCount > 0 ||
     data.totals.followUpCount > 0 ||
@@ -69,27 +69,38 @@ export default async function SalesPerformancePage({
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle>Periode laporan</CardTitle>
+          <CardTitle>{data.mode === "all" ? "Rekapan semua order" : "Rentang laporan"}</CardTitle>
           <CardDescription>
-            Lead mengikuti tanggal masuk, follow-up mengikuti waktu pencatatan, invoice mengikuti tanggal terbit, serta deal dan omzet mengikuti tanggal Sales Order diterima.
+            {data.mode === "all"
+              ? "Seluruh aktivitas dan Sales Order aktif ditampilkan tanpa batas tanggal."
+              : "Lead mengikuti tanggal masuk, follow-up mengikuti waktu pencatatan, invoice mengikuti tanggal terbit, serta deal dan omzet mengikuti tanggal Sales Order diterima."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form method="get">
-            <FieldGroup className="gap-3 sm:flex sm:flex-row sm:items-end">
-              <Field className="sm:max-w-xs">
-                <FieldLabel htmlFor="period">Rentang waktu</FieldLabel>
-                <NativeSelect id="period" name="period" defaultValue={period} className="w-full">
-                  {ANALYTICS_PERIODS.map((value) => (
-                    <NativeSelectOption key={value} value={value}>
-                      {PERIOD_LABEL[value]}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Button type="submit" variant="outline">Terapkan periode</Button>
-            </FieldGroup>
-          </form>
+          {data.mode === "all" ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" render={<Link href={rangeHref} />} nativeButton={false}>Gunakan rentang tanggal</Button>
+              <p className="text-sm text-muted-foreground">Klik tombol ini untuk kembali ke filter tanggal jika ingin memeriksa periode tertentu.</p>
+            </div>
+          ) : (
+            <form method="get">
+              <input type="hidden" name="mode" value="range" />
+              <FieldGroup className="gap-3 sm:flex sm:flex-row sm:items-end">
+                <Field className="sm:max-w-48">
+                  <FieldLabel htmlFor="from">Dari tanggal</FieldLabel>
+                  <Input id="from" name="from" type="date" defaultValue={data.range.from} />
+                </Field>
+                <Field className="sm:max-w-48">
+                  <FieldLabel htmlFor="to">Sampai tanggal</FieldLabel>
+                  <Input id="to" name="to" type="date" defaultValue={data.range.to} />
+                </Field>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="submit" variant="outline">Terapkan rentang</Button>
+                  <Button variant="secondary" render={<Link href={allHref} />} nativeButton={false}>Rekapan semua order</Button>
+                </div>
+              </FieldGroup>
+            </form>
+          )}
         </CardContent>
       </Card>
 
@@ -102,28 +113,13 @@ export default async function SalesPerformancePage({
             Semua hasil mengikuti PIC opportunity saat ini. Hanya Sales Order aktif yang dihitung sebagai deal dan omzet.
           </p>
         </div>
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(14rem,1.35fr)]">
-          <div className="bg-info-surface p-5 text-info-surface-foreground">
-            <dt className="text-sm opacity-75">Lead</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.leadCount}</dd>
-          </div>
-          <div className="bg-warning-surface p-5 text-warning-surface-foreground">
-            <dt className="text-sm opacity-75">Follow-up</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.followUpCount}</dd>
-          </div>
-          <div className="bg-highlight-surface p-5 text-highlight-surface-foreground">
-            <dt className="text-sm opacity-75">Invoice</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.invoiceCount}</dd>
-          </div>
-          <div className="bg-success-surface p-5 text-success-surface-foreground">
-            <dt className="text-sm opacity-75">Deal</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{data.totals.dealCount}</dd>
-          </div>
-          <div className="col-span-2 bg-foreground p-5 text-background lg:col-span-1">
-            <dt className="text-sm text-background/75">Omzet</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.revenue)}</dd>
-          </div>
-        </dl>
+        <MetricGroup className="grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(14rem,1.35fr)]">
+          <MetricItem label="Lead" value={data.totals.leadCount} />
+          <MetricItem label="Follow-up" value={data.totals.followUpCount} />
+          <MetricItem label="Invoice" value={data.totals.invoiceCount} />
+          <MetricItem label="Deal" value={data.totals.dealCount} tone="success" />
+          <MetricItem className="col-span-2 lg:col-span-1" label="Omzet" value={formatCurrency(data.totals.revenue)} tone="primary" emphasis />
+        </MetricGroup>
       </section>
 
       <Card>

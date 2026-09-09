@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { MetricGroup, MetricItem } from "@/components/ui/metric";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -104,23 +105,11 @@ async function FinanceOverview({ searchParams }: { searchParams: SearchParams })
               : "Hanya Sales Order aktif dan transaksi pembayaran aktif yang dihitung."}
           </p>
         </div>
-        <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 xl:grid-cols-3">
-          <div className="bg-foreground p-5 text-background">
-            <dt className="flex items-center gap-2 text-sm text-background/75"><HandCoins aria-hidden="true" className="size-4" />Uang masuk</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.moneyIn)}</dd>
-            <p className="mt-2 text-xs text-background/75">{data.totals.transactionCount} transaksi aktif</p>
-          </div>
-          <div className="bg-warning-surface p-5 text-warning-surface-foreground">
-            <dt className="flex items-center gap-2 text-sm text-warning-surface-foreground/75"><CircleDollarSign aria-hidden="true" className="size-4" />Sisa pembayaran</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.outstandingAmount)}</dd>
-            <p className="mt-2 text-xs text-warning-surface-foreground/75">{data.totals.outstandingOrderCount} order belum lunas</p>
-          </div>
-          <div className="bg-success-surface p-5 text-success-surface-foreground">
-            <dt className="text-sm text-success-surface-foreground/75">Nilai order Deal</dt>
-            <dd className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatCurrency(data.totals.dealOrderValue)}</dd>
-            <p className="mt-2 text-xs text-success-surface-foreground/75">{data.totals.dealOrderCount} Sales Order aktif</p>
-          </div>
-        </dl>
+        <MetricGroup className="sm:grid-cols-2 xl:grid-cols-3">
+          <MetricItem label="Uang masuk" value={formatCurrency(data.totals.moneyIn)} meta={`${data.totals.transactionCount} transaksi aktif`} icon={HandCoins} tone="primary" emphasis />
+          <MetricItem label="Sisa pembayaran" value={formatCurrency(data.totals.outstandingAmount)} meta={`${data.totals.outstandingOrderCount} order belum lunas`} icon={CircleDollarSign} tone="warning" emphasis />
+          <MetricItem label="Nilai order Deal" value={formatCurrency(data.totals.dealOrderValue)} meta={`${data.totals.dealOrderCount} Sales Order aktif`} tone="success" emphasis />
+        </MetricGroup>
       </section>
 
       <Card>
@@ -248,7 +237,7 @@ function FinanceSkeleton() {
         <CardHeader><Skeleton className="h-5 w-40" /><Skeleton className="h-4 w-72 max-w-full" /></CardHeader>
         <CardContent><Skeleton className="h-9 w-full max-w-lg" /></CardContent>
       </Card>
-      <section className="grid gap-px overflow-hidden rounded-xl border bg-border" aria-hidden="true">
+      <section className="grid gap-px overflow-hidden rounded-lg border bg-border" aria-hidden="true">
         <div className="grid gap-px sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-32 rounded-none" />)}
         </div>

@@ -73,7 +73,7 @@ Integrasi WhatsApp belum direncanakan untuk tahap development saat ini.
 - Nama produk: ERM Askonveksi.
 - Bahasa produk: Bahasa Indonesia.
 - Logo resmi AS Konveksi tersedia pada `public/brand/askonveksi-logo.png` dengan turunan simbol pada `public/brand/askonveksi-mark.png`.
-- Warna asli logo dipertahankan sebagai identitas merek; warna tersebut tidak otomatis menjadi aksen dekoratif pada antarmuka produk yang tetap mengikuti sistem monokrom.
+- Warna asli logo dipertahankan sebagai identitas merek. Biru operasional dipakai sebagai aksen fungsional pada navigasi, kontrol, fokus, dan pilihan aktif; warna logo lainnya tidak menjadi dekorasi umum.
 
 ## Evidence on Hand
 

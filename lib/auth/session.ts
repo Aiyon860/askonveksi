@@ -14,7 +14,6 @@ export type Actor = {
   email: string;
   name: string;
   role: AppRole;
-  mustChangePassword: boolean;
 };
 
 export const getCurrentActor = cache(async (): Promise<Actor | null> => {
@@ -35,7 +34,6 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
       name: true,
       role: true,
       isActive: true,
-      mustChangePassword: true,
     },
   });
 
@@ -49,21 +47,16 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
     email: actor.email,
     name: actor.name,
     role: actor.role,
-    mustChangePassword: actor.mustChangePassword,
   };
 });
 
 export async function requireActor(
   allowedRoles: readonly AppRole[] = CRM_ROLES,
-  options: { allowPasswordChange?: boolean } = {},
 ) {
   const actor = await getCurrentActor();
 
   if (!actor || !hasRole(actor.role, allowedRoles)) {
     throw new Error("UNAUTHORIZED");
-  }
-  if (actor.mustChangePassword && !options.allowPasswordChange) {
-    throw new Error("PASSWORD_CHANGE_REQUIRED");
   }
 
   return actor;

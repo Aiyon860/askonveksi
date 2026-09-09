@@ -30,7 +30,7 @@ export async function loginAction(formData: FormData) {
 
     const profile = await getPrismaClient().appUser.findUnique({
       where: { authUserId: data.user.id },
-      select: { isActive: true, mustChangePassword: true, role: true },
+      select: { isActive: true, role: true },
     });
 
     if (!profile?.isActive) {
@@ -38,7 +38,7 @@ export async function loginAction(formData: FormData) {
       throw new UserFacingError("Akun tidak aktif atau belum terdaftar di aplikasi.");
     }
 
-    return profile.mustChangePassword ? "/account/password" : profile.role === "PRODUCTION" || profile.role === "QC" ? "/produksi" : "/dashboard";
+    return profile.role === "PRODUCTION" || profile.role === "QC" ? "/produksi" : "/dashboard";
   });
 }
 
@@ -50,7 +50,7 @@ export async function logoutAction() {
 
 export async function updatePasswordAction(formData: FormData) {
   return runRedirectingAction("/account/password", async () => {
-    const actor = await requireActor(APP_ROLES, { allowPasswordChange: true });
+    const actor = await requireActor(APP_ROLES);
     const parsed = updatePasswordSchema.safeParse({
       password: formData.get("password"),
       confirmPassword: formData.get("confirmPassword"),
@@ -62,23 +62,15 @@ export async function updatePasswordAction(formData: FormData) {
     const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
     if (error) throw new UserFacingError("Password belum dapat diperbarui. Silakan coba lagi.");
 
-    await getPrismaClient().$transaction(async (tx) => {
-      await tx.appUser.update({
-        where: { id: actor.id },
-        data: { mustChangePassword: false },
-      });
-      await tx.auditEvent.create({
-        data: {
-          actorId: actor.id,
-          entityType: "AppUser",
-          entityId: actor.id,
-          action: "PASSWORD_CHANGED",
-          changedFields: ["mustChangePassword"],
-        },
-      });
+    await getPrismaClient().auditEvent.create({
+      data: {
+        actorId: actor.id,
+        entityType: "AppUser",
+        entityId: actor.id,
+        action: "PASSWORD_CHANGED",
+        changedFields: ["password"],
+      },
     });
-
-    if (actor.mustChangePassword) return actor.role === "PRODUCTION" || actor.role === "QC" ? "/produksi" : "/dashboard";
 
     return flashMessagePath("/dashboard", "notice", "Password berhasil diperbarui.");
   });

@@ -1,4 +1,4 @@
-import { STAGE_SUMMARY_CLASS, STAGE_TEXT_CLASS } from "@/components/crm/stage-theme";
+import { OpportunityStatusBadge } from "@/components/status-badge";
 import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
 import { cn } from "@/lib/utils";
@@ -6,29 +6,34 @@ import { cn } from "@/lib/utils";
 export function PipelineSummary({
   opportunities,
   total,
+  className,
 }: {
   opportunities: PipelineOpportunity[];
   total: number;
+  className?: string;
 }) {
-  return (
-    <section aria-label="Ringkasan pipeline" className="grid gap-3">
-      <dl className="rounded-xl border border-primary/15 bg-primary/5 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <dt className="text-sm font-medium text-muted-foreground">Total peluang</dt>
-          <dd className="font-mono text-2xl font-semibold tabular-nums text-primary">{total}</dd>
-        </div>
-      </dl>
+  const counts = PIPELINE_STAGES.map((stage) => ({
+    stage,
+    count: opportunities.filter((opportunity) => opportunity.stage === stage).length,
+  }));
 
-      <dl className="grid auto-cols-[minmax(10rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-1 xl:grid-cols-5 xl:auto-cols-auto xl:grid-flow-row xl:overflow-visible">
-        {PIPELINE_STAGES.map((stage) => (
-          <div key={stage} className={cn("rounded-xl border p-4", STAGE_SUMMARY_CLASS[stage])}>
-            <dt className="text-xs text-muted-foreground">{STAGE_LABEL[stage]}</dt>
-            <dd className={cn("mt-2 font-mono text-xl font-semibold tabular-nums", STAGE_TEXT_CLASS[stage])}>
-              {opportunities.filter((opportunity) => opportunity.stage === stage).length}
-            </dd>
+  return (
+    <section
+      aria-label="Ringkasan pipeline"
+      className={cn("flex min-h-9 min-w-0 items-center gap-4 overflow-x-auto py-1 text-sm", className)}
+    >
+      <div className="flex shrink-0 items-baseline gap-2">
+        <span className="text-muted-foreground">Total peluang</span>
+        <span className="font-mono text-lg font-semibold tabular-nums text-primary">{total}</span>
+      </div>
+      <div className="flex min-w-max items-center gap-3">
+        {counts.map(({ stage, count }) => (
+          <div key={stage} className="flex items-center gap-2" aria-label={`${count} peluang ${STAGE_LABEL[stage]}`}>
+            <OpportunityStatusBadge stage={stage} />
+            <span className="font-mono text-sm font-semibold tabular-nums text-foreground">{count}</span>
           </div>
         ))}
-      </dl>
+      </div>
     </section>
   );
 }

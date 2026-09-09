@@ -8,7 +8,7 @@ export default function CRMLoading() {
       <PageHeaderSkeleton action />
 
       <section className="grid gap-3" aria-hidden="true">
-        <div className="flex items-center justify-between rounded-xl border p-4">
+        <div className="flex items-center justify-between rounded-lg border p-4">
           <Skeleton className="h-4 w-28" />
           <Skeleton className="h-7 w-12" />
         </div>

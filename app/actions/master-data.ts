@@ -13,6 +13,7 @@ import {
   firstValidationMessage,
   sortableMasterDataFieldsSchema,
 } from "@/lib/crm/validation";
+import { parseMasterDataWorkbook, type MasterDataExcelRow } from "@/lib/master-data-excel";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -20,13 +21,153 @@ function fields(formData: FormData) {
   return { name: formData.get("name"), description: formData.get("description"), position: formData.get("position") };
 }
 
-async function assertUniqueName(kind: "customerType" | "leadSource", name: string, excludedId?: string) {
+async function assertUniqueName(kind: "customerType" | "leadSource" | "paymentMethod", name: string, excludedId?: string) {
   const prisma = getPrismaClient();
   const where = { name: { equals: name, mode: "insensitive" as const }, ...(excludedId ? { id: { not: excludedId } } : {}) };
   const existing = kind === "customerType"
     ? await prisma.customerType.findFirst({ where, select: { id: true } })
-    : await prisma.leadSource.findFirst({ where, select: { id: true } });
+    : kind === "leadSource"
+      ? await prisma.leadSource.findFirst({ where, select: { id: true } })
+      : await prisma.paymentMethod.findFirst({ where, select: { id: true } });
   if (existing) throw new UserFacingError("Nama sudah digunakan. Gunakan nama lain.");
+}
+
+function excelFile(formData: FormData) {
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new UserFacingError("Pilih file Excel terlebih dahulu.");
+  return file;
+}
+
+async function importCustomerTypeRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.customerType.findMany({
+      select: { id: true, name: true, description: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data jenis customer memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.customerType.create({ data: { ...row, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "CustomerType", entityId: created.id, action: "CUSTOMER_TYPE_CREATED", changedFields: ["name", "description", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.description !== row.description ? "description" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.customerType.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "CustomerType", entityId: current.id, action: "CUSTOMER_TYPE_UPDATED", changedFields } });
+    }
+
+    let position = rows.length;
+    for (const item of currentItems) {
+      if (importedIds.has(item.id)) continue;
+      if (item.position === position) {
+        position += 1;
+        continue;
+      }
+      await tx.customerType.update({ where: { id: item.id }, data: { position } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "CustomerType", entityId: item.id, action: "CUSTOMER_TYPE_UPDATED", changedFields: ["position"] } });
+      position += 1;
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+async function importLeadSourceRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.leadSource.findMany({
+      select: { id: true, name: true, description: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data sumber lead memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.leadSource.create({ data: { ...row, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "LeadSource", entityId: created.id, action: "LEAD_SOURCE_CREATED", changedFields: ["name", "description", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.description !== row.description ? "description" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.leadSource.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "LeadSource", entityId: current.id, action: "LEAD_SOURCE_UPDATED", changedFields } });
+    }
+
+    let position = rows.length;
+    for (const item of currentItems) {
+      if (importedIds.has(item.id)) continue;
+      if (item.position === position) {
+        position += 1;
+        continue;
+      }
+      await tx.leadSource.update({ where: { id: item.id }, data: { position } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "LeadSource", entityId: item.id, action: "LEAD_SOURCE_UPDATED", changedFields: ["position"] } });
+      position += 1;
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+async function importGarmentSizeRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.garmentSize.findMany({
+      select: { id: true, name: true, description: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data ukuran memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.garmentSize.create({ data: { ...row, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: created.id, action: "GARMENT_SIZE_CREATED", changedFields: ["name", "description", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.description !== row.description ? "description" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.garmentSize.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: current.id, action: "GARMENT_SIZE_UPDATED", changedFields } });
+    }
+
+    let position = rows.length;
+    for (const item of currentItems) {
+      if (importedIds.has(item.id)) continue;
+      if (item.position === position) {
+        position += 1;
+        continue;
+      }
+      await tx.garmentSize.update({ where: { id: item.id }, data: { position } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: item.id, action: "GARMENT_SIZE_UPDATED", changedFields: ["position"] } });
+      position += 1;
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function createCustomerTypeAction(formData: FormData) {
@@ -45,6 +186,17 @@ export async function createCustomerTypeAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     revalidatePath("/master-data/customer-types");
     return flashMessagePath("/master-data/customer-types", "notice", "Jenis customer berhasil dibuat.");
+  });
+}
+
+export async function importCustomerTypesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/customer-types", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
+    await importCustomerTypeRows(actor.id, rows);
+    revalidatePath("/master-data/customer-types");
+    revalidatePath("/customers");
+    return flashMessagePath("/master-data/customer-types", "notice", "Import jenis customer berhasil.");
   });
 }
 
@@ -126,7 +278,7 @@ export async function bulkUpdateCustomerTypesAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/master-data/customer-types");
-    revalidatePath("/crm/pelanggan");
+    revalidatePath("/customers");
     return flashMessagePath("/master-data/customer-types", "notice", "Jenis customer berhasil diperbarui.");
   });
 }
@@ -147,6 +299,17 @@ export async function createLeadSourceAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     revalidatePath("/master-data/lead-sources");
     return flashMessagePath("/master-data/lead-sources", "notice", "Sumber lead berhasil dibuat.");
+  });
+}
+
+export async function importLeadSourcesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/lead-sources", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
+    await importLeadSourceRows(actor.id, rows);
+    revalidatePath("/master-data/lead-sources");
+    revalidatePath("/customers");
+    return flashMessagePath("/master-data/lead-sources", "notice", "Import sumber lead berhasil.");
   });
 }
 
@@ -228,8 +391,105 @@ export async function bulkUpdateLeadSourcesAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/master-data/lead-sources");
-    revalidatePath("/crm/pelanggan");
+    revalidatePath("/customers");
     return flashMessagePath("/master-data/lead-sources", "notice", "Sumber lead berhasil diperbarui.");
+  });
+}
+
+async function importPaymentMethodRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.paymentMethod.findMany({
+      select: { id: true, name: true, description: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data metode pembayaran memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.paymentMethod.create({ data: { ...row, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "PaymentMethod", entityId: created.id, action: "PAYMENT_METHOD_CREATED", changedFields: ["name", "description", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.description !== row.description ? "description" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.paymentMethod.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "PaymentMethod", entityId: current.id, action: "PAYMENT_METHOD_UPDATED", changedFields } });
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function createPaymentMethodAction(formData: FormData) {
+  return runRedirectingAction("/master-data/payment-methods", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const parsed = sortableMasterDataFieldsSchema.safeParse(fields(formData));
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    await assertUniqueName("paymentMethod", parsed.data.name);
+    await getPrismaClient().$transaction(async (tx) => {
+      const lastItem = await tx.paymentMethod.aggregate({ _max: { position: true } });
+      const created = await tx.paymentMethod.create({ data: { ...parsed.data, position: (lastItem._max.position ?? -1) + 1 }, select: { id: true } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "PaymentMethod", entityId: created.id, action: "PAYMENT_METHOD_CREATED", changedFields: ["name", "description", "position"] } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/payment-methods");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/payment-methods", "notice", "Metode pembayaran berhasil dibuat.");
+  });
+}
+
+export async function importPaymentMethodsAction(formData: FormData) {
+  return runRedirectingAction("/master-data/payment-methods", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
+    await importPaymentMethodRows(actor.id, rows);
+    revalidatePath("/master-data/payment-methods");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/payment-methods", "notice", "Import metode pembayaran berhasil.");
+  });
+}
+
+export async function bulkUpdatePaymentMethodsAction(formData: FormData) {
+  return runRedirectingAction("/master-data/payment-methods", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rawItems = formData.get("items");
+    if (typeof rawItems !== "string" || rawItems.length > 200_000) throw new UserFacingError("Data metode pembayaran tidak valid. Muat ulang lalu coba lagi.");
+    let payload: unknown;
+    try { payload = JSON.parse(rawItems); } catch { throw new UserFacingError("Data metode pembayaran tidak valid. Muat ulang lalu coba lagi."); }
+    const parsed = bulkUpdateMasterDataSchema.safeParse(payload);
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const submittedIds = new Set(parsed.data.map((item) => item.id));
+    const normalizedNames = parsed.data.map((item) => item.name.toLocaleLowerCase("id-ID"));
+    if (submittedIds.size !== parsed.data.length || new Set(normalizedNames).size !== normalizedNames.length) throw new UserFacingError("ID dan nama metode pembayaran tidak boleh duplikat.");
+
+    await getPrismaClient().$transaction(async (tx) => {
+      const currentItems = await tx.paymentMethod.findMany({ select: { id: true, name: true, description: true, position: true, isActive: true } });
+      if (currentItems.length !== parsed.data.length || currentItems.some((item) => !submittedIds.has(item.id))) throw new UserFacingError("Daftar metode pembayaran sudah berubah. Muat ulang lalu coba lagi.");
+      const currentById = new Map(currentItems.map((item) => [item.id, item]));
+      for (const item of parsed.data) {
+        const current = currentById.get(item.id);
+        if (current && current.name !== item.name) await tx.paymentMethod.update({ where: { id: item.id }, data: { name: `temporary-${randomUUID()}` } });
+      }
+      for (const [position, item] of parsed.data.entries()) {
+        const current = currentById.get(item.id);
+        if (!current) throw new UserFacingError("Metode pembayaran tidak ditemukan. Muat ulang lalu coba lagi.");
+        const description = item.description ?? null;
+        const changedFields = [current.name !== item.name ? "name" : null, current.description !== description ? "description" : null, current.position !== position ? "position" : null, !current.isActive ? "isActive" : null].filter((field): field is string => field !== null);
+        if (!changedFields.length) continue;
+        await tx.paymentMethod.update({ where: { id: item.id }, data: { name: item.name, description, position, isActive: true } });
+        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "PaymentMethod", entityId: item.id, action: "PAYMENT_METHOD_UPDATED", changedFields } });
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/payment-methods");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/payment-methods", "notice", "Metode pembayaran berhasil diperbarui.");
   });
 }
 
@@ -256,6 +516,17 @@ export async function createGarmentSizeAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     revalidatePath("/master-data/garment-sizes");
     return flashMessagePath("/master-data/garment-sizes", "notice", "Ukuran pakaian berhasil dibuat.");
+  });
+}
+
+export async function importGarmentSizesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/garment-sizes", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 40);
+    await importGarmentSizeRows(actor.id, rows);
+    revalidatePath("/master-data/garment-sizes");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/garment-sizes", "notice", "Import ukuran pakaian berhasil.");
   });
 }
 

@@ -3,24 +3,25 @@ import { Suspense } from "react";
 import { PageMessage } from "@/components/page-message";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LoadingPage, KanbanSkeleton, MetricStripSkeleton } from "@/components/loading-skeletons";
+import { LoadingPage, KanbanSkeleton } from "@/components/loading-skeletons";
 import { PipelineBoardSection } from "@/components/crm/pipeline-board-section";
 
 function PipelineSkeleton() {
   return (
     <LoadingPage label="Memuat pipeline CRM">
-      <section className="grid gap-3" aria-hidden="true">
-        <div className="flex items-center justify-between rounded-xl border p-4">
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-7 w-12" />
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-hidden="true">
+        <div className="flex min-h-9 min-w-0 items-center gap-4 overflow-hidden py-1">
+          <Skeleton className="h-5 w-28 shrink-0" />
+          <div className="flex items-center gap-3">
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Skeleton className="h-5 w-20" />
+                <Skeleton className="h-5 w-6" />
+              </div>
+            ))}
+          </div>
         </div>
-        <MetricStripSkeleton
-          items={5}
-          layoutClassName="grid-cols-2 xl:grid-cols-5"
-          itemClassName="p-4"
-          labelWidths={["w-20", "w-20", "w-20", "w-20", "w-20"]}
-          valueWidths={["w-10", "w-10", "w-10", "w-10", "w-10"]}
-        />
+        <Skeleton className="h-9 w-32 shrink-0" />
       </section>
       <KanbanSkeleton columns={5} cardsPerColumn={[2, 1, 1, 1, 1]} />
     </LoadingPage>

@@ -95,12 +95,6 @@ enum OpportunityStage {
   LOST
 }
 
-enum DesignStatus {
-  SUDAH_ADA
-  BELUM_ADA
-  PERLU_DIBANTU
-}
-
 enum DiscountType {
   NONE
   NOMINAL
@@ -174,7 +168,6 @@ model AppUser {
   name                      String                    @db.VarChar(120)
   role                      AppRole
   isActive                  Boolean                   @default(true)
-  mustChangePassword        Boolean                   @default(true)
   communicationActivities   CommunicationActivity[]
   customerReminderReceipts  CustomerReminderReceipt[]
   purchaseOrders            PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
@@ -237,6 +230,19 @@ model GarmentSize {
   @@index([isActive, position, name])
 }
 
+model PaymentMethod {
+  id                  String               @id @default(cuid())
+  name                String               @unique @db.VarChar(80)
+  description         String?              @db.VarChar(500)
+  position            Int                  @default(0)
+  isActive            Boolean              @default(true)
+  paymentTransactions PaymentTransaction[]
+  createdAt           DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
+
+  @@index([isActive, position, name])
+}
+
 model BusinessProfile {
   id        String   @id @default("default") @db.VarChar(32)
   name      String   @db.VarChar(160)
@@ -294,13 +300,7 @@ model Opportunity {
   productName             String?                 @db.VarChar(120)
   garmentType             GarmentType?
   needPurpose             String?                 @db.VarChar(500)
-  designStatus            DesignStatus?
   specification           String?                 @db.Text
-  customerBudget          Decimal?                @db.Decimal(18, 2)
-  leadScore               Int                     @default(0)
-  estimatedQuantity       Int?
-  estimatedValue          Decimal?                @db.Decimal(18, 2)
-  deadline                DateTime?               @db.Date
   lastContactedAt         DateTime?               @db.Timestamptz(3)
   nextAction              String?                 @db.VarChar(500)
   nextActionAt            DateTime?               @db.Timestamptz(3)
@@ -322,9 +322,7 @@ model Opportunity {
   @@index([salesPicId, stage])
   @@index([salesPicId, nextActionAt])
   @@index([leadSourceId, createdAt])
-  @@index([leadScore, stage])
   @@index([nextActionAt])
-  @@index([stage, customerId, leadScore, nextActionAt, estimatedValue])
 }
 
 model PublicRateLimitBucket {
@@ -485,6 +483,7 @@ model Invoice {
   createdBy                AppUser       @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   items                    InvoiceItem[]
   salesOrder               SalesOrder?
+  pendingPayment           PendingDealPayment?
   createdAt                DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime      @updatedAt @db.Timestamptz(3)
 
@@ -647,6 +646,37 @@ model DealPayment {
   @@index([createdById, createdAt])
 }
 
+model PendingDealPayment {
+  id               String             @id @default(cuid())
+  invoiceId        String             @unique
+  kind             PaymentKind
+  initialValueType PaymentValueType
+  initialValue     Decimal            @db.Decimal(18, 2)
+  initialAmount    Decimal            @db.Decimal(18, 2)
+  initialDueAt     DateTime           @db.Date
+  createdById      String
+  invoice          Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  terms            PendingPaymentTerm[]
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@index([initialDueAt])
+}
+
+model PendingPaymentTerm {
+  id               String             @id @default(cuid())
+  pendingPaymentId String
+  position         Int
+  valueType        PaymentValueType
+  value            Decimal            @db.Decimal(18, 2)
+  amount           Decimal            @db.Decimal(18, 2)
+  dueAt            DateTime           @db.Date
+  pendingPayment   PendingDealPayment @relation(fields: [pendingPaymentId], references: [id], onDelete: Restrict)
+
+  @@unique([pendingPaymentId, position])
+  @@index([pendingPaymentId, dueAt])
+}
+
 model PaymentTerm {
   id           String               @id @default(cuid())
   paymentId    String
@@ -667,6 +697,7 @@ model PaymentTransaction {
   id            String                   @id @default(cuid())
   paymentId     String
   paymentTermId String?
+  paymentMethodId String?
   amount        Decimal                  @db.Decimal(18, 2)
   paidAt        DateTime                 @db.Timestamptz(3)
   reference     String?                  @db.VarChar(120)
@@ -679,12 +710,14 @@ model PaymentTransaction {
   version       Int                      @default(1)
   payment       DealPayment              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   paymentTerm   PaymentTerm?             @relation("PaymentTermTransactions", fields: [paymentTermId, paymentId], references: [id, paymentId], onDelete: Restrict)
+  paymentMethod PaymentMethod?           @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
   createdBy     AppUser                  @relation("PaymentTransactionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   voidedBy      AppUser?                 @relation("PaymentTransactionVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   createdAt     DateTime                 @default(now()) @db.Timestamptz(3)
 
   @@index([paymentId, status, paidAt])
   @@index([paymentTermId, status])
+  @@index([paymentMethodId])
   @@index([createdById, createdAt])
 }
 
