@@ -98,7 +98,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
             <Spinner /> Memindahkan status...
           </div>
         ) : null}
-        <div className="grid auto-cols-[17.5rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3">
+        <div className="grid auto-cols-[20rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3">
           {PIPELINE_STAGES.map((stage) => {
             const items = boardOpportunities.filter((opportunity) => opportunity.stage === stage);
             return (
@@ -107,13 +107,14 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                 aria-labelledby={`stage-${stage}`}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => handleDrop(event, stage)}
-                className={cn("min-h-[24rem] snap-start rounded-lg border p-2", STAGE_SURFACE_CLASS[stage])}
+                className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2", STAGE_SURFACE_CLASS[stage])}
               >
-                <div className="flex items-center justify-between gap-3 px-2 py-2">
+                <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
                   <h2 id={`stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{stage === "DEAL" ? "Deal (SO)" : STAGE_LABEL[stage]}</h2>
                   <span className="font-mono text-xs tabular-nums text-muted-foreground">{items.length}</span>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+                  <div className="flex flex-col gap-2">
                   {items.length ? items.map((opportunity) => (
                     <Card
                       key={opportunity.id}
@@ -218,6 +219,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       </EmptyHeader>
                     </Empty>
                   )}
+                  </div>
                 </div>
               </section>
             );
