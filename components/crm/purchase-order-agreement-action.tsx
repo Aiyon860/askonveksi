@@ -45,9 +45,7 @@ export function PurchaseOrderAgreementAction({
       <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
       <input type="hidden" name="version" value={version} />
       <ConfirmSubmitButton
-        variant="outline"
-        className="w-full border-success/30 bg-success/10 text-success hover:bg-success/15 hover:text-success disabled:border-border disabled:bg-background disabled:text-muted-foreground sm:w-auto"
-        confirmButtonClassName="border-success/30 bg-success/10 text-success hover:bg-success/15 hover:text-success focus-visible:border-success/40 focus-visible:ring-success/20"
+        className="w-full sm:w-auto"
         disabled={disabled || undefined}
         pendingLabel="Mengunci PO..."
         confirmTitle="Sepakati draft PO terbaru?"

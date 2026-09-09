@@ -18,7 +18,6 @@ type PurchaseOrder = {
 };
 
 type InvoiceDraftValues = {
-  dueAt: string;
   notes: string;
   taxRate: string;
   items: Array<{

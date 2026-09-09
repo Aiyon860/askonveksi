@@ -44,6 +44,11 @@ const ATTACHMENT_KINDS = [
   ["LOGO_RIGHT", "Logo kanan"], ["LOGO_BACK", "Logo belakang"], ["LOGO_FRONT", "Logo depan"], ["OTHER", "Lainnya"],
 ] as const;
 
+function jakartaToday() {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
+  return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}-${parts.find((part) => part.type === "day")?.value}`;
+}
+
 export function PurchaseOrderForm({
   opportunityId,
   sizeOptions,
@@ -60,6 +65,7 @@ export function PurchaseOrderForm({
   submitLabel?: string;
 }) {
   const values = draft ?? initialValues;
+  const orderDate = values?.orderDate || jakartaToday();
   const fieldKey = draft?.id ?? sourcePurchaseOrderId ?? "new";
   const matrixByKey = useMemo(() => new Map(values?.sizes.map((item) => [`${item.sleeveLength}:${item.sizeId ?? item.size.toLocaleLowerCase("id-ID")}`, item.quantity])), [values]);
   const [matrix, setMatrix] = useState<Record<string, number>>(() => Object.fromEntries(
@@ -129,7 +135,7 @@ export function PurchaseOrderForm({
               </NativeSelect>
               {legacyDecoration ? <FieldDescription>Nilai lama “{legacyDecoration}” perlu dipilih ulang menggunakan opsi yang tersedia.</FieldDescription> : null}
             </Field>
-            <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" defaultValue={values?.orderDate ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" defaultValue={orderDate} /></Field>
             <Field>
               <FieldLabel htmlFor={`po-deadline-${fieldKey}`} required>Deadline produksi</FieldLabel>
               <NativeSelect id={`po-deadline-${fieldKey}`} name="deadline" required defaultValue={values?.deadline ?? ""} className="w-full">

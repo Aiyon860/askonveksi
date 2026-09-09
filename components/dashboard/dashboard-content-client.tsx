@@ -194,7 +194,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
                     <div className="text-right text-xs">
                       <p className="font-medium tabular-nums text-foreground">{formatCurrency(item.total)}</p>
                       <p className="mt-1 text-muted-foreground">Dibuat {formatDate(item.createdAt)}</p>
-                      {item.dueAt ? <p className="mt-1 text-muted-foreground">Jatuh tempo {formatDate(item.dueAt)}</p> : null}
+                      {item.dueAt ? <p className="mt-1 text-muted-foreground">Deadline pembayaran awal {formatDate(item.dueAt)}</p> : null}
                     </div>
                   </div>
                 </InvoiceDetail>

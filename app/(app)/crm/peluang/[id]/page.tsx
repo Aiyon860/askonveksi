@@ -275,7 +275,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                 const invoicePo = opportunity.purchaseOrders.find((item) => item.id === invoice.purchaseOrderId);
                 const editableInvoicePo = invoice.purchaseOrderId === agreedPo?.id ? agreedPo : null;
                 const invoiceDraftValues = {
-                  dueAt: dateInputValue(invoice.dueAt),
                   notes: invoice.notes ?? "",
                   taxRate: invoice.items[0]?.taxRate.toString() ?? "0",
                   items: invoice.items.map((item) => ({
@@ -492,7 +491,6 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1">{INVOICE_STATUS_LABEL[invoice.status]}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Diterbitkan</dt><dd className="mt-1">{formatDate(invoice.issuedAt, true)}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Jatuh tempo</dt><dd className="mt-1">{formatDate(invoice.dueAt)}</dd></div>
         {invoice.notes ? <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Catatan</dt><dd className="mt-1 whitespace-pre-wrap">{invoice.notes}</dd></div> : null}
       </dl>
     </div>

@@ -22,9 +22,7 @@ export function IssueInvoiceAction({
       <input type="hidden" name="invoiceId" value={invoiceId} />
       <input type="hidden" name="version" value={version} />
       <ConfirmSubmitButton
-        variant="outline"
-        className="w-full border-success/30 bg-success/10 text-success hover:bg-success/15 hover:text-success sm:w-auto"
-        confirmButtonClassName="border-success/30 bg-success/10 text-success hover:bg-success/15 hover:text-success focus-visible:border-success/40 focus-visible:ring-success/20"
+        className="w-full sm:w-auto"
         pendingLabel="Menerbitkan..."
         confirmTitle="Terbitkan dan kunci invoice?"
         confirmDescription="Draft tidak dapat diedit setelah diterbitkan. Perubahan harga berikutnya dibuat sebagai revisi."

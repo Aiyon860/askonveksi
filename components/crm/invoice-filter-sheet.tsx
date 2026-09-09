@@ -128,7 +128,7 @@ export function InvoiceFilterSheet({
                   <NativeSelectOption value="all">Semua pembayaran</NativeSelectOption>
                   <NativeSelectOption value="PAID">Lunas</NativeSelectOption>
                   <NativeSelectOption value="UNPAID">Belum lunas</NativeSelectOption>
-                  <NativeSelectOption value="NO_SALES_ORDER">Belum jadi SO</NativeSelectOption>
+                  <NativeSelectOption value="NO_SALES_ORDER">Menunggu pembayaran awal</NativeSelectOption>
                 </NativeSelect>
               </Field>
               <div className="grid gap-3 sm:grid-cols-2">

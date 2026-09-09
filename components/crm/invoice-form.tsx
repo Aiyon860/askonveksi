@@ -22,7 +22,7 @@ type DraftItem = {
   discountPercent: string;
 };
 
-type InvoiceFormValues = { dueAt: string; notes: string; taxRate: string; items: DraftItem[] };
+type InvoiceFormValues = { notes: string; taxRate: string; items: DraftItem[] };
 type Draft = InvoiceFormValues & { id: string; version: number };
 
 export function InvoiceForm({
@@ -68,8 +68,7 @@ export function InvoiceForm({
             </TableRow>;
           })}</TableBody>
         </Table>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field><FieldLabel htmlFor={`invoice-due-${fieldKey}`}>Jatuh tempo</FieldLabel><Input id={`invoice-due-${fieldKey}`} name="dueAt" type="date" required defaultValue={values?.dueAt ?? ""} /></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field><FieldLabel htmlFor={`invoice-tax-${fieldKey}`}>Pajak %</FieldLabel><Input id={`invoice-tax-${fieldKey}`} name="taxRate" type="number" required min={0} max={100} step="0.0001" defaultValue={values?.taxRate ?? "0"} aria-label="Pajak persen" /></Field>
           <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
         </div>

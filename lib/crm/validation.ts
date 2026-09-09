@@ -193,7 +193,7 @@ export const invoiceDraftSchema = z.object({
   purchaseOrderId: entityIdSchema,
   invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
-  dueAt: z.string().trim().min(1, "Jatuh tempo wajib diisi.").max(10),
+  dueAt: optionalText(10),
   taxRate: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase pajak tidak valid."),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),

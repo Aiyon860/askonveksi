@@ -1177,7 +1177,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
 
 export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED";
 export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED";
-export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER";
+export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "UNSCHEDULED";
 export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
 export type PurchaseOrderListSort = "purchaseOrderNo" | "productName" | "customer" | "status" | "createdAt" | "deadline";
 export type InvoiceListSort = "invoiceNo" | "customer" | "purchaseOrderNo" | "status" | "total" | "createdAt";
@@ -1384,6 +1384,7 @@ const getCachedInvoices = unstable_cache(
           opportunityId: true,
           purchaseOrder: { select: { purchaseOrderNo: true } },
           salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true } } } },
+          pendingPayment: { select: { kind: true } },
         },
         orderBy: invoiceOrderBy(sort, direction),
         skip: (page - 1) * pageSize,
@@ -1399,7 +1400,11 @@ const getCachedInvoices = unstable_cache(
           ? item.salesOrder.payment && item.salesOrder.payment.outstandingAmount.equals(0)
             ? "PAID" as const
             : "UNPAID" as const
-          : "NO_SALES_ORDER" as const,
+          : item.pendingPayment?.kind === "DP"
+            ? "PENDING_DP" as const
+            : item.pendingPayment?.kind === "LUNAS"
+              ? "PENDING_LUNAS" as const
+              : "UNSCHEDULED" as const,
       })),
       total,
       pageCount: Math.max(1, Math.ceil(total / pageSize)),
