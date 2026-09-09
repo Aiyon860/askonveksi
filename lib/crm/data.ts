@@ -5,9 +5,9 @@ import { Prisma, type AppRole, type OpportunityStage } from "@prisma/client";
 import { cache } from "react";
 
 import {
-  analyticsPeriodLabel,
-  getAnalyticsPeriodBounds,
-  type AnalyticsPeriod,
+  parseAnalyticsDateRange,
+  parseAnalyticsReportMode,
+  type AnalyticsReportMode,
 } from "@/lib/analytics/report-period";
 import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
 import {
@@ -889,14 +889,36 @@ type LeadSourceRevenueQueryRow = {
   revenue: string;
 };
 
-export async function getLeadSourceRevenueData(period: AnalyticsPeriod) {
+type AnalyticsReportParams = {
+  mode?: string | string[];
+  from?: string | string[];
+  to?: string | string[];
+};
+
+function parseAnalyticsReportParams(params: AnalyticsReportParams) {
+  const mode = parseAnalyticsReportMode(params.mode);
+  const range = parseAnalyticsDateRange(params.from, params.to);
+
+  return {
+    mode,
+    range,
+    start: mode === "range" ? range.start : null,
+    end: mode === "range" ? range.end : null,
+  };
+}
+
+function analyticsReportLabel(mode: AnalyticsReportMode, label: string) {
+  return mode === "all" ? "Seluruh waktu" : label;
+}
+
+export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
   await requireActor(ANALYTICS_ROLES);
-  const bounds = getAnalyticsPeriodBounds(period);
-  const leadDateCondition = bounds
-    ? Prisma.sql`WHERE o."createdAt" >= ${bounds.start} AND o."createdAt" < ${bounds.end}`
+  const report = parseAnalyticsReportParams(params);
+  const leadDateCondition = report.start && report.end
+    ? Prisma.sql`WHERE o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end}`
     : Prisma.empty;
-  const orderDateCondition = bounds
-    ? Prisma.sql`AND so."acceptedAt" >= ${bounds.start} AND so."acceptedAt" < ${bounds.end}`
+  const orderDateCondition = report.start && report.end
+    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end}`
     : Prisma.empty;
 
   const rows = await getPrismaClient().$queryRaw<LeadSourceRevenueQueryRow[]>(Prisma.sql`
@@ -949,8 +971,13 @@ export async function getLeadSourceRevenueData(period: AnalyticsPeriod) {
   );
 
   return {
-    period,
-    periodLabel: analyticsPeriodLabel(period),
+    mode: report.mode,
+    range: {
+      from: report.range.from,
+      to: report.range.to,
+      label: report.range.label,
+    },
+    periodLabel: analyticsReportLabel(report.mode, report.range.label),
     rows,
     totals: {
       leadCount: totals.leadCount,
@@ -960,20 +987,20 @@ export async function getLeadSourceRevenueData(period: AnalyticsPeriod) {
   };
 }
 
-export async function getSalesPerformanceData(period: AnalyticsPeriod) {
+export async function getSalesPerformanceData(params: AnalyticsReportParams) {
   await requireActor(ANALYTICS_ROLES);
-  const bounds = getAnalyticsPeriodBounds(period);
-  const leadDateCondition = bounds
-    ? Prisma.sql`WHERE o."createdAt" >= ${bounds.start} AND o."createdAt" < ${bounds.end}`
+  const report = parseAnalyticsReportParams(params);
+  const leadDateCondition = report.start && report.end
+    ? Prisma.sql`WHERE o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end}`
     : Prisma.empty;
-  const followUpDateCondition = bounds
-    ? Prisma.sql`AND ae."createdAt" >= ${bounds.start} AND ae."createdAt" < ${bounds.end}`
+  const followUpDateCondition = report.start && report.end
+    ? Prisma.sql`AND ae."createdAt" >= ${report.start} AND ae."createdAt" < ${report.end}`
     : Prisma.empty;
-  const invoiceDateCondition = bounds
-    ? Prisma.sql`AND q."issuedAt" >= ${bounds.start} AND q."issuedAt" < ${bounds.end}`
+  const invoiceDateCondition = report.start && report.end
+    ? Prisma.sql`AND q."issuedAt" >= ${report.start} AND q."issuedAt" < ${report.end}`
     : Prisma.empty;
-  const orderDateCondition = bounds
-    ? Prisma.sql`AND so."acceptedAt" >= ${bounds.start} AND so."acceptedAt" < ${bounds.end}`
+  const orderDateCondition = report.start && report.end
+    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end}`
     : Prisma.empty;
 
   const rawRows = await getPrismaClient().$queryRaw<SalesPerformanceRow[]>(Prisma.sql`
@@ -1058,8 +1085,13 @@ export async function getSalesPerformanceData(period: AnalyticsPeriod) {
   `);
 
   return {
-    period,
-    periodLabel: analyticsPeriodLabel(period),
+    mode: report.mode,
+    range: {
+      from: report.range.from,
+      to: report.range.to,
+      label: report.range.label,
+    },
+    periodLabel: analyticsReportLabel(report.mode, report.range.label),
     ...finalizeSalesPerformanceRows(rawRows),
   };
 }

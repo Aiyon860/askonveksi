@@ -24,8 +24,8 @@ import {
   validateOpenOpportunitySchedule,
 } from "../lib/crm/validation.ts";
 import {
-  getAnalyticsPeriodBounds,
-  parseAnalyticsPeriod,
+  parseAnalyticsDateRange,
+  parseAnalyticsReportMode,
 } from "../lib/analytics/report-period.ts";
 import { parseFinanceDateRange, parseFinanceReportMode } from "../lib/finance/date-range.ts";
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
@@ -444,25 +444,30 @@ test("lifecycle Sales Order mengatur ulang reminder tanpa cron per customer", as
   assert.doesNotMatch(reminderSource, /cron/i);
 });
 
-test("periode analytics dibatasi dan mengikuti awal hari Jakarta", () => {
+test("rentang tanggal analytics default ke bulan berjalan Jakarta", () => {
   const reference = new Date("2026-08-31T18:00:00.000Z");
-  assert.equal(parseAnalyticsPeriod("month"), "month");
-  assert.equal(parseAnalyticsPeriod("year"), "year");
-  assert.equal(parseAnalyticsPeriod("invalid"), "month");
-  assert.equal(parseAnalyticsPeriod(["all"]), "month");
 
-  const month = getAnalyticsPeriodBounds("month", reference);
-  assert.equal(month?.start.toISOString(), "2026-08-31T17:00:00.000Z");
-  assert.equal(month?.end.toISOString(), "2026-09-30T17:00:00.000Z");
+  const defaultRange = parseAnalyticsDateRange(undefined, undefined, reference);
+  assert.equal(defaultRange.from, "2026-09-01");
+  assert.equal(defaultRange.to, "2026-09-30");
+  assert.equal(defaultRange.start.toISOString(), "2026-08-31T17:00:00.000Z");
+  assert.equal(defaultRange.end.toISOString(), "2026-09-30T17:00:00.000Z");
+  assert.equal(defaultRange.label, "Bulan berjalan");
 
-  const year = getAnalyticsPeriodBounds("year", reference);
-  assert.equal(year?.start.toISOString(), "2025-12-31T17:00:00.000Z");
-  assert.equal(year?.end.toISOString(), "2026-12-31T17:00:00.000Z");
-  assert.equal(getAnalyticsPeriodBounds("all", reference), null);
+  const customRange = parseAnalyticsDateRange("2026-09-05", "2026-09-10", reference);
+  assert.equal(customRange.from, "2026-09-05");
+  assert.equal(customRange.to, "2026-09-10");
+  assert.equal(customRange.start.toISOString(), "2026-09-04T17:00:00.000Z");
+  assert.equal(customRange.end.toISOString(), "2026-09-10T17:00:00.000Z");
+  assert.equal(customRange.label, "2026-09-05 sampai 2026-09-10");
 
-  const december = getAnalyticsPeriodBounds("month", new Date("2026-12-15T05:00:00.000Z"));
-  assert.equal(december?.start.toISOString(), "2026-11-30T17:00:00.000Z");
-  assert.equal(december?.end.toISOString(), "2026-12-31T17:00:00.000Z");
+  const invalidRange = parseAnalyticsDateRange("2026-09-30", "2026-09-01", reference);
+  assert.equal(invalidRange.from, "2026-09-01");
+  assert.equal(invalidRange.to, "2026-09-30");
+
+  assert.equal(parseAnalyticsReportMode("all"), "all");
+  assert.equal(parseAnalyticsReportMode("range"), "range");
+  assert.equal(parseAnalyticsReportMode("invalid"), "range");
 });
 
 test("rentang tanggal finance default ke bulan berjalan Jakarta", () => {
@@ -506,10 +511,18 @@ test("conversion rate menghitung Deal dari seluruh lead dan memakai format Indon
 
 test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async () => {
   const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/analytics/lead-sources/page.tsx", import.meta.url), "utf8");
   assert.match(dataSource, /requireActor\(ANALYTICS_ROLES\)/);
+  assert.match(dataSource, /mode === "range"/);
   assert.match(dataSource, /o\."leadSourceId"/);
   assert.match(dataSource, /COUNT\(DISTINCT so\."opportunityId"\)/);
   assert.match(dataSource, /so\."status" = 'ACTIVE'/);
+  assert.match(pageSource, /Dari tanggal/);
+  assert.match(pageSource, /Sampai tanggal/);
+  assert.match(pageSource, /Terapkan rentang/);
+  assert.match(pageSource, /Rekapan semua order/);
+  assert.doesNotMatch(pageSource, /Terapkan periode/);
+  assert.doesNotMatch(pageSource, /NativeSelect/);
 });
 
 test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", async () => {
@@ -545,13 +558,21 @@ test("normalisasi performa sales mempertahankan sales aktif dan data historis", 
 
 test("laporan performa sales memakai PIC opportunity dan tanggal aktivitas masing-masing", async () => {
   const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/analytics/sales-performance/page.tsx", import.meta.url), "utf8");
   assert.match(dataSource, /getSalesPerformanceData/);
+  assert.match(dataSource, /mode === "range"/);
   assert.match(dataSource, /o\."salesPicId"/);
   assert.match(dataSource, /ae\.action = 'FOLLOW_UP_RECORDED'/);
   assert.match(dataSource, /COUNT\(DISTINCT q\."opportunityId"\)/);
   assert.match(dataSource, /q\."issuedAt" IS NOT NULL/);
   assert.match(dataSource, /COUNT\(DISTINCT so\."opportunityId"\)/);
   assert.match(dataSource, /so\.status = 'ACTIVE'/);
+  assert.match(pageSource, /Dari tanggal/);
+  assert.match(pageSource, /Sampai tanggal/);
+  assert.match(pageSource, /Terapkan rentang/);
+  assert.match(pageSource, /Rekapan semua order/);
+  assert.doesNotMatch(pageSource, /Terapkan periode/);
+  assert.doesNotMatch(pageSource, /NativeSelect/);
 });
 
 test("flash message tidak membocorkan isi notifikasi ke URL", async () => {

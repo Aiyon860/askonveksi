@@ -1,4 +1,5 @@
 import { ChartNoAxesCombined } from "lucide-react";
+import Link from "next/link";
 
 import { LazyLeadSourceRevenueChart } from "@/components/analytics/lazy-lead-source-revenue-chart";
 import { PageHeader } from "@/components/page-header";
@@ -7,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { MetricGroup, MetricItem } from "@/components/ui/metric";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Table,
   TableBody,
@@ -19,20 +20,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  ANALYTICS_PERIODS,
-  parseAnalyticsPeriod,
-} from "@/lib/analytics/report-period";
 import { getLeadSourceRevenueData } from "@/lib/crm/data";
 import { formatCurrency } from "@/lib/crm/format";
 
 export const revalidate = 60;
-
-const PERIOD_LABEL = {
-  month: "Bulan berjalan",
-  year: "Tahun berjalan",
-  all: "Seluruh waktu",
-} as const;
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -41,11 +32,19 @@ function first(value: string | string[] | undefined) {
 export default async function LeadSourceRevenuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string | string[] }>;
+  searchParams: Promise<{ mode?: string | string[]; from?: string | string[]; to?: string | string[] }>;
 }) {
   const params = await searchParams;
-  const period = parseAnalyticsPeriod(first(params.period));
-  const data = await getLeadSourceRevenueData(period);
+  const data = await getLeadSourceRevenueData(params);
+  const rawFrom = first(params.from);
+  const rawTo = first(params.to);
+  const rangeParams = new URLSearchParams();
+  if (rawFrom) rangeParams.set("from", rawFrom);
+  if (rawTo) rangeParams.set("to", rawTo);
+  const rangeHref = `/analytics/lead-sources${rangeParams.toString() ? `?${rangeParams.toString()}` : ""}`;
+  const allParams = new URLSearchParams(rangeParams);
+  allParams.set("mode", "all");
+  const allHref = `/analytics/lead-sources?${allParams.toString()}`;
   const hasActivity = data.totals.leadCount > 0 || data.totals.dealCount > 0;
   const hasRevenue = Number(data.totals.revenue) > 0;
 
@@ -58,23 +57,38 @@ export default async function LeadSourceRevenuePage({
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle>Periode laporan</CardTitle>
-          <CardDescription>Lead mengikuti tanggal masuk. Deal dan omzet mengikuti tanggal Sales Order diterima.</CardDescription>
+          <CardTitle>{data.mode === "all" ? "Rekapan semua order" : "Rentang laporan"}</CardTitle>
+          <CardDescription>
+            {data.mode === "all"
+              ? "Seluruh lead dan Sales Order aktif ditampilkan tanpa batas tanggal."
+              : "Lead mengikuti tanggal masuk. Deal dan omzet mengikuti tanggal Sales Order diterima."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form method="get">
-            <FieldGroup className="gap-3 sm:flex sm:flex-row sm:items-end">
-              <Field className="sm:max-w-xs">
-                <FieldLabel htmlFor="period">Rentang waktu</FieldLabel>
-                <NativeSelect id="period" name="period" defaultValue={period} className="w-full">
-                  {ANALYTICS_PERIODS.map((value) => (
-                    <NativeSelectOption key={value} value={value}>{PERIOD_LABEL[value]}</NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Button type="submit" variant="outline">Terapkan periode</Button>
-            </FieldGroup>
-          </form>
+          {data.mode === "all" ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" render={<Link href={rangeHref} />} nativeButton={false}>Gunakan rentang tanggal</Button>
+              <p className="text-sm text-muted-foreground">Klik tombol ini untuk kembali ke filter tanggal jika ingin memeriksa periode tertentu.</p>
+            </div>
+          ) : (
+            <form method="get">
+              <input type="hidden" name="mode" value="range" />
+              <FieldGroup className="gap-3 sm:flex sm:flex-row sm:items-end">
+                <Field className="sm:max-w-48">
+                  <FieldLabel htmlFor="from">Dari tanggal</FieldLabel>
+                  <Input id="from" name="from" type="date" defaultValue={data.range.from} />
+                </Field>
+                <Field className="sm:max-w-48">
+                  <FieldLabel htmlFor="to">Sampai tanggal</FieldLabel>
+                  <Input id="to" name="to" type="date" defaultValue={data.range.to} />
+                </Field>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="submit" variant="outline">Terapkan rentang</Button>
+                  <Button variant="secondary" render={<Link href={allHref} />} nativeButton={false}>Rekapan semua order</Button>
+                </div>
+              </FieldGroup>
+            </form>
+          )}
         </CardContent>
       </Card>
 
