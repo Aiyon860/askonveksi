@@ -66,7 +66,7 @@ export function PurchaseOrderDetail({
                 <Info label="Produk" value={detail.productName} />
                 <Info label="Material" value={detail.material} />
                 <Info label="Warna" value={detail.color ?? "-"} />
-                <Info label="Deadline" value={formatDate(detail.deadline)} />
+                <Info label="Deadline produksi" value={formatDate(detail.deadline)} />
                 <Info label="Tanggal dibuat" value={formatDate(detail.createdAt)} />
               </dl>
               <div>

@@ -7,9 +7,9 @@ import {
   type CustomerActivityStatus,
 } from "@/lib/crm/reminder-types";
 
-export function OpportunityStatusBadge({ stage }: { stage: OpportunityStage }) {
+export function OpportunityStatusBadge({ stage, className }: { stage: OpportunityStage; className?: string }) {
   const variant = stage === "LOST" ? "destructive" : stage === "DEAL" ? "success" : stage === "LEAD_BARU" ? "info" : "warning";
-  return <Badge variant={variant}>{STAGE_LABEL[stage]}</Badge>;
+  return <Badge variant={variant} className={className}>{STAGE_LABEL[stage]}</Badge>;
 }
 
 export function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {

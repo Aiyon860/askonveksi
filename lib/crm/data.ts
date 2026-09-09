@@ -14,9 +14,10 @@ import {
   finalizeSalesPerformanceRows,
   type SalesPerformanceRow,
 } from "@/lib/analytics/sales-performance";
-import { ANALYTICS_ROLES, FINANCE_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ANALYTICS_ROLES, CRM_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
+import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type PipelineOpportunity = {
@@ -183,22 +184,14 @@ export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt"
 export type SortDirection = "asc" | "desc";
 export type CustomerSegment = "all" | "repeat" | "inactive" | "archived";
 
-export async function getCustomers({
-  query,
-  segment,
-  page,
-  pageSize,
-  sort,
-  direction,
-}: {
+type CustomerListQuery = {
   query: string;
   segment: CustomerSegment;
-  page: number;
-  pageSize: number;
   sort: CustomerSort;
   direction: SortDirection;
-}) {
-  const actor = await requireActor();
+};
+
+function customerWhere(actor: { id: string; role: AppRole }, query: string, segment: CustomerSegment) {
   const normalizedQuery = query.trim().slice(0, 80);
   const reference = new Date();
   const segmentWhere = segment === "archived"
@@ -227,7 +220,8 @@ export async function getCustomers({
             ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
           }
         : { archivedAt: null };
-  const where = {
+
+  return {
     ...segmentWhere,
     ...(normalizedQuery
       ? {
@@ -246,12 +240,35 @@ export async function getCustomers({
         }
       : {}),
   } satisfies Prisma.CustomerWhereInput;
-  const prisma = getPrismaClient();
-  const orderBy = (
+}
+
+function customerOrderBy(sort: CustomerSort, direction: SortDirection) {
+  return (
     sort === "opportunities"
       ? [{ opportunities: { _count: direction } }, { id: "asc" as const }]
       : [{ [sort]: direction }, { id: "asc" as const }]
   ) satisfies Prisma.CustomerOrderByWithRelationInput[];
+}
+
+export async function getCustomers({
+  query,
+  segment,
+  page,
+  pageSize,
+  sort,
+  direction,
+}: {
+  query: string;
+  segment: CustomerSegment;
+  page: number;
+  pageSize: number;
+  sort: CustomerSort;
+  direction: SortDirection;
+}) {
+  const actor = await requireActor();
+  const where = customerWhere(actor, query, segment);
+  const prisma = getPrismaClient();
+  const orderBy = customerOrderBy(sort, direction);
 
   const [items, total] = await Promise.all([
     prisma.customer.findMany({
@@ -314,6 +331,109 @@ export async function getCustomers({
     total,
     pageCount: Math.max(1, Math.ceil(total / pageSize)),
   };
+}
+
+export async function getCustomersForExport({
+  query,
+  segment,
+  sort,
+  direction,
+}: CustomerListQuery): Promise<CustomerExcelExportRow[]> {
+  const actor = await requireActor(MASTER_DATA_ROLES);
+  const items = await getPrismaClient().customer.findMany({
+    where: customerWhere(actor, query, segment),
+    select: {
+      customerNo: true,
+      name: true,
+      companyName: true,
+      whatsapp: true,
+      email: true,
+      instagram: true,
+      address: true,
+      city: true,
+      notes: true,
+      customerType: { select: { name: true } },
+      leadSource: { select: { name: true } },
+      salesPic: { select: { name: true } },
+      archivedAt: true,
+    },
+    orderBy: customerOrderBy(sort, direction),
+  });
+
+  return items.map((item) => ({
+    customerNo: item.customerNo,
+    name: item.name,
+    companyName: item.companyName ?? "",
+    customerTypeName: item.customerType.name,
+    leadSourceName: item.leadSource?.name ?? "",
+    salesPicName: item.salesPic?.name ?? "",
+    whatsapp: item.whatsapp ?? "",
+    email: item.email ?? "",
+    instagram: item.instagram ?? "",
+    city: item.city ?? "",
+    address: item.address ?? "",
+    notes: item.notes ?? "",
+    archivedAt: item.archivedAt,
+  }));
+}
+
+export async function getCustomerPopupDetail(customerId: string) {
+  await requireActor(CRM_ROLES);
+  return getPrismaClient().customer.findUnique({
+    where: { id: customerId },
+    select: {
+      id: true,
+      customerNo: true,
+      name: true,
+      companyName: true,
+      whatsapp: true,
+      email: true,
+      instagram: true,
+      address: true,
+      city: true,
+      notes: true,
+      customerType: { select: { name: true } },
+      leadSource: { select: { name: true } },
+      salesPic: { select: { name: true } },
+      archivedAt: true,
+      updatedAt: true,
+      _count: { select: { opportunities: true } },
+      opportunities: {
+        select: {
+          id: true,
+          opportunityNo: true,
+          title: true,
+          stage: true,
+          updatedAt: true,
+          salesOrders: {
+            select: {
+              id: true,
+              salesOrderNo: true,
+              total: true,
+              status: true,
+              acceptedAt: true,
+            },
+            orderBy: { acceptedAt: "desc" },
+            take: 3,
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 6,
+      },
+      reminders: {
+        where: { resolvedAt: null },
+        select: {
+          id: true,
+          type: true,
+          dueAt: true,
+          sourceSalesOrder: {
+            select: { id: true, salesOrderNo: true, acceptedAt: true, total: true },
+          },
+        },
+        orderBy: { dueAt: "asc" },
+      },
+    },
+  });
 }
 
 export async function getCustomerDetail(customerId: string) {

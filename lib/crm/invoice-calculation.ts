@@ -11,27 +11,20 @@ export type InvoicePricingInput = {
   quantity: number;
   unitPrice: string;
   discountPercent: string;
-  discountCapAmount?: string;
-  taxRate: string;
 };
 
-export function calculateInvoiceLines(items: InvoicePricingInput[]) {
+export function calculateInvoiceLines(items: InvoicePricingInput[], taxRate: string) {
+  const orderTaxRate = new Prisma.Decimal(taxRate);
+  if (orderTaxRate.gt(100)) throw new UserFacingError("Pajak maksimal 100%.");
+
   const calculatedItems = items.map((item, position) => {
     const unitPrice = new Prisma.Decimal(item.unitPrice);
     const discountPercent = new Prisma.Decimal(item.discountPercent);
-    const discountCapAmount = item.discountCapAmount ? new Prisma.Decimal(item.discountCapAmount) : null;
-    const taxRate = new Prisma.Decimal(item.taxRate);
     if (discountPercent.gt(100)) throw new UserFacingError("Diskon per item maksimal 100%.");
-    if (taxRate.gt(100)) throw new UserFacingError("Pajak per item maksimal 100%.");
 
     const grossAmount = unitPrice.mul(item.quantity).toDecimalPlaces(2);
-    const percentageDiscount = grossAmount.mul(discountPercent).div(100).toDecimalPlaces(2);
-    const discountAmount = discountCapAmount && percentageDiscount.gt(discountCapAmount)
-      ? discountCapAmount
-      : percentageDiscount;
+    const discountAmount = grossAmount.mul(discountPercent).div(100).toDecimalPlaces(2);
     const taxableAmount = grossAmount.sub(discountAmount);
-    const taxAmount = taxableAmount.mul(taxRate).div(100).toDecimalPlaces(2);
-    const total = taxableAmount.add(taxAmount).toDecimalPlaces(2);
 
     return {
       position,
@@ -43,30 +36,41 @@ export function calculateInvoiceLines(items: InvoicePricingInput[]) {
       unitPrice,
       grossAmount,
       discountPercent,
-      discountCapAmount,
+      discountCapAmount: null,
       discountAmount,
-      taxRate,
-      taxAmount,
-      total,
-      subtotal: total,
+      taxRate: orderTaxRate,
+      taxAmount: new Prisma.Decimal(0),
+      total: taxableAmount,
+      subtotal: taxableAmount,
       purchaseOrderSizeId: item.purchaseOrderSizeId,
     };
   });
 
-  return calculatedItems.reduce(
-    (summary, item) => ({
-      items: [...summary.items, item],
-      subtotal: summary.subtotal.add(item.grossAmount),
-      totalDiscount: summary.totalDiscount.add(item.discountAmount),
-      totalTax: summary.totalTax.add(item.taxAmount),
-      total: summary.total.add(item.total),
+  const summary = calculatedItems.reduce(
+    (acc, item) => ({
+      subtotal: acc.subtotal.add(item.grossAmount),
+      totalDiscount: acc.totalDiscount.add(item.discountAmount),
+      taxableAmount: acc.taxableAmount.add(item.total),
     }),
     {
-      items: [] as typeof calculatedItems,
       subtotal: new Prisma.Decimal(0),
       totalDiscount: new Prisma.Decimal(0),
-      totalTax: new Prisma.Decimal(0),
-      total: new Prisma.Decimal(0),
+      taxableAmount: new Prisma.Decimal(0),
     },
   );
+
+  const totalTax = summary.taxableAmount.mul(orderTaxRate).div(100).toDecimalPlaces(2);
+  const total = summary.taxableAmount.add(totalTax).toDecimalPlaces(2);
+
+  return {
+    items: calculatedItems.map((item) => ({
+      ...item,
+      taxAmount: item.total.mul(orderTaxRate).div(100).toDecimalPlaces(2),
+      total: item.total.add(item.total.mul(orderTaxRate).div(100)).toDecimalPlaces(2),
+    })),
+    subtotal: summary.subtotal,
+    totalDiscount: summary.totalDiscount,
+    totalTax,
+    total,
+  };
 }

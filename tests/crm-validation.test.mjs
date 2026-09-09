@@ -32,6 +32,9 @@ import { finalizeSalesPerformanceRows } from "../lib/analytics/sales-performance
 import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
 import { formatPercentage } from "../lib/crm/format.ts";
 import {
+  productionDeadlineOptions,
+} from "../lib/crm/production-deadline.ts";
+import {
   activityStatusFromSchedule,
   addCalendarMonthsJakarta,
 } from "../lib/crm/reminder-types.ts";
@@ -210,9 +213,29 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     ],
   };
   assert.equal(purchaseOrderDraftSchema.safeParse(valid).success, true);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, deadline: "" }).success, false);
+  const missingDeadline = purchaseOrderDraftSchema.safeParse({ ...valid, deadline: "" });
+  assert.equal(missingDeadline.success, false);
+  assert.equal(missingDeadline.error.issues[0]?.message, "Deadline produksi wajib dipilih.");
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
+});
+
+test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan tanggal tersimpan", () => {
+  const options = productionDeadlineOptions(new Date("2026-09-09T06:00:00.000Z"));
+
+  assert.deepEqual(options, [
+    { label: "1 minggu (16 September 2026)", value: "2026-09-16" },
+    { label: "2 minggu (23 September 2026)", value: "2026-09-23" },
+    { label: "3 minggu (30 September 2026)", value: "2026-09-30" },
+    { label: "1 bulan (9 Oktober 2026)", value: "2026-10-09" },
+  ]);
+
+  assert.deepEqual(productionDeadlineOptions(new Date("2026-09-09T06:00:00.000Z"), "2026-09-30"), options);
+  assert.deepEqual(productionDeadlineOptions(new Date("2026-09-09T06:00:00.000Z"), "2026-10-01")[0], {
+    label: "Tanggal tersimpan (1 Oktober 2026)",
+    value: "2026-10-01",
+    isStoredValue: true,
+  });
 });
 
 test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesanan", () => {
@@ -593,4 +616,29 @@ test("parameter pagination dibatasi pada nilai aman", () => {
   assert.equal(parsePageSizeParam("10"), 10);
   assert.equal(parsePageSizeParam(["50", "10"]), 50);
   assert.equal(parsePageSizeParam("5000"), DATA_PAGE_SIZE);
+});
+
+test("customer mendukung menu mandiri, popup detail, dan import export XLSX yang dibatasi", async () => {
+  const navSource = await readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/customers/page.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const detailActionSource = await readFile(new URL("../app/actions/crm-details.ts", import.meta.url), "utf8");
+  const excelSource = await readFile(new URL("../lib/crm/customer-excel.ts", import.meta.url), "utf8");
+  const exportRouteSource = await readFile(new URL("../app/api/customers/export/route.ts", import.meta.url), "utf8");
+  const legacyPageSource = await readFile(new URL("../app/(app)/crm/pelanggan/page.tsx", import.meta.url), "utf8");
+
+  assert.match(navSource, /href: "\/customers", label: "Customer"/);
+  assert.doesNotMatch(navSource, /isPathWithin\(pathname, "\/crm\/pelanggan"\)/);
+  assert.match(pageSource, /<CustomerDetail key=\{customer\.id\} id=\{customer\.id\}>/);
+  assert.match(pageSource, /href=\{exportHref\(state\)\}/);
+  assert.match(pageSource, /form action=\{importCustomersAction\}/);
+  assert.match(actionSource, /requireActor\(MASTER_DATA_ROLES\)/);
+  assert.match(actionSource, /parseCustomerWorkbook\(customerExcelFile\(formData\)\)/);
+  assert.match(actionSource, /findImportCustomer\(row, customerIndexes\)/);
+  assert.match(actionSource, /CUSTOMER_UPDATED/);
+  assert.match(detailActionSource, /customerDetailAction/);
+  assert.match(excelSource, /CUSTOMER_EXCEL_MAX_BYTES = 1 \* 1024 \* 1024/);
+  assert.match(excelSource, /Excel Customer tidak boleh berisi formula/);
+  assert.match(exportRouteSource, /getCustomersForExport/);
+  assert.match(legacyPageSource, /redirect\(suffix \? `\/customers\?\$\{suffix\}` : "\/customers"\)/);
 });

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
-import { createPurchaseOrderDraftAction, updatePurchaseOrderDraftAction } from "@/app/actions/crm";
+import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction, updatePurchaseOrderDraftAction } from "@/app/actions/crm";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { FilePicker } from "@/components/ui/file-picker";
@@ -13,15 +13,14 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { DECORATION_METHOD_LABEL, DECORATION_METHODS, type DecorationMethod } from "@/lib/crm/constants";
+import { productionDeadlineOptions } from "@/lib/crm/production-deadline";
 
 type SizeOption = { id: string; name: string };
 type MatrixRow = { sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number };
 type RosterRow = { key: string; memberId: string; name: string; sizeId: string };
 type SleeveLength = MatrixRow["sleeveLength"];
 
-type Draft = {
-  id: string;
-  version: number;
+type PurchaseOrderFormValues = {
   customerReference: string;
   garmentType: "JERSEY" | "NON_JERSEY" | null;
   productName: string;
@@ -38,14 +37,31 @@ type Draft = {
   sizes: MatrixRow[];
   roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string }>;
 };
+type Draft = PurchaseOrderFormValues & { id: string; version: number };
 
 const ATTACHMENT_KINDS = [
   ["MAIN_DESIGN", "Desain utama"], ["FRONT", "Tampak depan"], ["BACK", "Tampak belakang"],
   ["LOGO_RIGHT", "Logo kanan"], ["LOGO_BACK", "Logo belakang"], ["LOGO_FRONT", "Logo depan"], ["OTHER", "Lainnya"],
 ] as const;
 
-export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { opportunityId: string; sizeOptions: SizeOption[]; draft?: Draft }) {
-  const matrixByKey = useMemo(() => new Map(draft?.sizes.map((item) => [`${item.sleeveLength}:${item.sizeId ?? item.size.toLocaleLowerCase("id-ID")}`, item.quantity])), [draft]);
+export function PurchaseOrderForm({
+  opportunityId,
+  sizeOptions,
+  draft,
+  initialValues,
+  sourcePurchaseOrderId,
+  submitLabel,
+}: {
+  opportunityId: string;
+  sizeOptions: SizeOption[];
+  draft?: Draft;
+  initialValues?: PurchaseOrderFormValues;
+  sourcePurchaseOrderId?: string;
+  submitLabel?: string;
+}) {
+  const values = draft ?? initialValues;
+  const fieldKey = draft?.id ?? sourcePurchaseOrderId ?? "new";
+  const matrixByKey = useMemo(() => new Map(values?.sizes.map((item) => [`${item.sleeveLength}:${item.sizeId ?? item.size.toLocaleLowerCase("id-ID")}`, item.quantity])), [values]);
   const [matrix, setMatrix] = useState<Record<string, number>>(() => Object.fromEntries(
     (["PENDEK", "PANJANG"] as const).flatMap((sleeveLength) => sizeOptions.map((size) => {
       const value = matrixByKey.get(`${sleeveLength}:${size.id}`)
@@ -54,17 +70,19 @@ export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { oppor
       return [`${sleeveLength}:${size.id}`, Math.max(0, Math.trunc(value))];
     })),
   ));
-  const [roster, setRoster] = useState<RosterRow[]>(() => draft?.roster.map((item, index) => ({
+  const [roster, setRoster] = useState<RosterRow[]>(() => values?.roster.map((item, index) => ({
     key: `saved-${index}-${item.memberId}`,
     memberId: item.memberId,
     name: item.name,
     sizeId: item.sizeId ?? sizeOptions.find((size) => size.name.toLocaleLowerCase("id-ID") === item.size.toLocaleLowerCase("id-ID"))?.id ?? "",
   })) ?? []);
   const [attachmentRows, setAttachmentRows] = useState(() => [{ key: "attachment-0", kind: "MAIN_DESIGN" }]);
-  const action = draft ? updatePurchaseOrderDraftAction : createPurchaseOrderDraftAction;
-  const legacyDecoration = draft?.decorationMethod
-    && !DECORATION_METHODS.includes(draft.decorationMethod as DecorationMethod)
-    ? draft.decorationMethod
+  const [garmentType, setGarmentType] = useState(values?.garmentType ?? "");
+  const deadlineOptions = useMemo(() => productionDeadlineOptions(new Date(), values?.deadline), [values?.deadline]);
+  const action = draft ? updatePurchaseOrderDraftAction : sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
+  const legacyDecoration = values?.decorationMethod
+    && !DECORATION_METHODS.includes(values.decorationMethod as DecorationMethod)
+    ? values.decorationMethod
     : null;
 
   function updateMatrixValue(key: string, rawValue: string) {
@@ -80,27 +98,28 @@ export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { oppor
   }
 
   return (
-    <form action={action} encType="multipart/form-data">
+    <form action={action} data-po-draft-id={draft?.id}>
       <input type="hidden" name="opportunityId" value={opportunityId} />
+      {sourcePurchaseOrderId ? <input type="hidden" name="sourcePurchaseOrderId" value={sourcePurchaseOrderId} /> : null}
       {draft ? <input type="hidden" name="purchaseOrderId" value={draft.id} /> : null}
       {draft ? <input type="hidden" name="version" value={draft.version} /> : null}
       <FieldGroup>
         <FieldSet>
           <FieldLegend>Informasi pesanan</FieldLegend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field><FieldLabel htmlFor={`po-reference-${draft?.id ?? "new"}`}>Nomor PO customer</FieldLabel><Input id={`po-reference-${draft?.id ?? "new"}`} name="customerReference" maxLength={120} defaultValue={draft?.customerReference ?? ""} /></Field>
-            <Field><FieldLabel htmlFor={`po-garment-${draft?.id ?? "new"}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${draft?.id ?? "new"}`} name="garmentType" required defaultValue={draft?.garmentType ?? ""}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
-            <Field><FieldLabel htmlFor={`po-product-${draft?.id ?? "new"}`} required>Nama produk atau pola</FieldLabel><Input id={`po-product-${draft?.id ?? "new"}`} name="productName" required minLength={2} maxLength={120} defaultValue={draft?.productName ?? ""} placeholder="Contoh: Jaket komunitas" /></Field>
-            <Field><FieldLabel htmlFor={`po-material-${draft?.id ?? "new"}`} required>Bahan</FieldLabel><Input id={`po-material-${draft?.id ?? "new"}`} name="material" required minLength={2} maxLength={120} defaultValue={draft?.material ?? ""} /></Field>
-            <Field><FieldLabel htmlFor={`po-base-color-${draft?.id ?? "new"}`}>Warna dasar</FieldLabel><Input id={`po-base-color-${draft?.id ?? "new"}`} name="baseColor" maxLength={120} defaultValue={draft?.baseColor ?? ""} /></Field>
-            <Field><FieldLabel htmlFor={`po-variation-color-${draft?.id ?? "new"}`}>Warna variasi</FieldLabel><Input id={`po-variation-color-${draft?.id ?? "new"}`} name="variationColor" maxLength={240} defaultValue={draft?.variationColor ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO customer</FieldLabel><Input id={`po-reference-${fieldKey}`} name="customerReference" maxLength={120} defaultValue={values?.customerReference ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
+            <Field><FieldLabel htmlFor={`po-product-${fieldKey}`} required>Nama produk atau pola</FieldLabel><Input id={`po-product-${fieldKey}`} name="productName" required minLength={2} maxLength={120} defaultValue={values?.productName ?? ""} placeholder="Contoh: Jaket komunitas" /></Field>
+            <Field><FieldLabel htmlFor={`po-material-${fieldKey}`} required>Bahan</FieldLabel><Input id={`po-material-${fieldKey}`} name="material" required minLength={2} maxLength={120} defaultValue={values?.material ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-base-color-${fieldKey}`}>Warna dasar</FieldLabel><Input id={`po-base-color-${fieldKey}`} name="baseColor" maxLength={120} defaultValue={values?.baseColor ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-variation-color-${fieldKey}`}>Warna variasi</FieldLabel><Input id={`po-variation-color-${fieldKey}`} name="variationColor" maxLength={240} defaultValue={values?.variationColor ?? ""} /></Field>
             <Field>
-              <FieldLabel htmlFor={`po-decoration-${draft?.id ?? "new"}`} required>Metode dekorasi</FieldLabel>
+              <FieldLabel htmlFor={`po-decoration-${fieldKey}`} required>Metode dekorasi</FieldLabel>
               <NativeSelect
-                id={`po-decoration-${draft?.id ?? "new"}`}
+                id={`po-decoration-${fieldKey}`}
                 name="decorationMethod"
                 required
-                defaultValue={legacyDecoration ? "" : draft?.decorationMethod ?? ""}
+                defaultValue={legacyDecoration ? "" : values?.decorationMethod ?? ""}
                 className="w-full"
               >
                 <NativeSelectOption value="" disabled>Pilih metode dekorasi</NativeSelectOption>
@@ -110,9 +129,19 @@ export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { oppor
               </NativeSelect>
               {legacyDecoration ? <FieldDescription>Nilai lama “{legacyDecoration}” perlu dipilih ulang menggunakan opsi yang tersedia.</FieldDescription> : null}
             </Field>
-            <Field><FieldLabel htmlFor={`po-order-date-${draft?.id ?? "new"}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${draft?.id ?? "new"}`} name="orderDate" type="date" defaultValue={draft?.orderDate ?? ""} /></Field>
-            <Field><FieldLabel htmlFor={`po-deadline-${draft?.id ?? "new"}`} required>Deadline customer</FieldLabel><Input id={`po-deadline-${draft?.id ?? "new"}`} name="deadline" type="date" required defaultValue={draft?.deadline ?? ""} /></Field>
-            <Field><FieldLabel htmlFor={`po-sample-size-${draft?.id ?? "new"}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${draft?.id ?? "new"}`} name="sampleSize" defaultValue={draft?.sampleSize ?? ""}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
+            <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" defaultValue={values?.orderDate ?? ""} /></Field>
+            <Field>
+              <FieldLabel htmlFor={`po-deadline-${fieldKey}`} required>Deadline produksi</FieldLabel>
+              <NativeSelect id={`po-deadline-${fieldKey}`} name="deadline" required defaultValue={values?.deadline ?? ""} className="w-full">
+                <NativeSelectOption value="" disabled>Pilih deadline produksi</NativeSelectOption>
+                {deadlineOptions.map((option) => (
+                  <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            {garmentType === "JERSEY" ? (
+              <Field><FieldLabel htmlFor={`po-sample-size-${fieldKey}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${fieldKey}`} name="sampleSize" defaultValue={values?.sampleSize ?? ""}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
+            ) : null}
           </div>
         </FieldSet>
 
@@ -147,20 +176,20 @@ export function PurchaseOrderForm({ opportunityId, sizeOptions, draft }: { oppor
               <Button type="button" variant="ghost" size="icon" aria-label={`Hapus anggota ${index + 1}`} onClick={() => setRoster((current) => current.filter((item) => item.key !== row.key))}><Trash2 aria-hidden="true" /></Button>
             </div>
           ))}</div> : null}
-          <Field><FieldLabel htmlFor={`po-roster-file-${draft?.id ?? "new"}`}>Impor roster</FieldLabel><FilePicker id={`po-roster-file-${draft?.id ?? "new"}`} name="rosterFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Sheet pertama saja; formula ditolak. File yang dipilih menggantikan roster manual saat disimpan.</FieldDescription></Field>
+          <Field><FieldLabel htmlFor={`po-roster-file-${fieldKey}`}>Impor roster</FieldLabel><FilePicker id={`po-roster-file-${fieldKey}`} name="rosterFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Sheet pertama saja; formula ditolak. File yang dipilih menggantikan roster manual saat disimpan.</FieldDescription></Field>
         </FieldSet>
 
         <FieldSet>
           <div className="flex items-start justify-between gap-4"><div><FieldLegend>Referensi desain</FieldLegend><FieldDescription>Unggah file referensi dari customer. Maksimal lima file per revisi, masing-masing 5 MB.</FieldDescription></div><Button type="button" variant="outline" size="sm" disabled={attachmentRows.length >= 5} onClick={() => setAttachmentRows((current) => [...current, { key: `attachment-${Date.now()}-${current.length}`, kind: "OTHER" }])}><Plus data-icon="inline-start" aria-hidden="true" />Tambah file</Button></div>
           {attachmentRows.map((row, index) => <div key={row.key} className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end"><Field><FieldLabel htmlFor={`attachment-kind-${row.key}`}>Kategori</FieldLabel><NativeSelect id={`attachment-kind-${row.key}`} name="designAttachmentKind" value={row.kind} onChange={(event) => setAttachmentRows((current) => current.map((item) => item.key === row.key ? { ...item, kind: event.target.value } : item))}>{ATTACHMENT_KINDS.map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor={`attachment-file-${row.key}`}>File {index + 1}</FieldLabel><FilePicker id={`attachment-file-${row.key}`} name="designAttachments" /></Field><Button type="button" variant="ghost" size="icon" disabled={attachmentRows.length === 1} aria-label={`Hapus slot file ${index + 1}`} onClick={() => setAttachmentRows((current) => current.filter((item) => item.key !== row.key))}><Trash2 aria-hidden="true" /></Button></div>)}
-          {draft?.attachmentCount ? <p className="text-xs text-muted-foreground">Dokumen ini sudah memiliki {draft.attachmentCount} lampiran.</p> : null}
+          {values?.attachmentCount ? <p className="text-xs text-muted-foreground">Dokumen ini sudah memiliki {values.attachmentCount} lampiran.</p> : null}
         </FieldSet>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel htmlFor={`po-design-${draft?.id ?? "new"}`}>Catatan desain</FieldLabel><Textarea id={`po-design-${draft?.id ?? "new"}`} name="designNotes" maxLength={4000} rows={4} defaultValue={draft?.designNotes ?? ""} /></Field>
-          <Field><FieldLabel htmlFor={`po-notes-${draft?.id ?? "new"}`}>Catatan lain</FieldLabel><Textarea id={`po-notes-${draft?.id ?? "new"}`} name="notes" maxLength={4000} rows={4} defaultValue={draft?.notes ?? ""} /></Field>
+          <Field><FieldLabel htmlFor={`po-design-${fieldKey}`}>Catatan desain</FieldLabel><Textarea id={`po-design-${fieldKey}`} name="designNotes" maxLength={4000} rows={4} defaultValue={values?.designNotes ?? ""} /></Field>
+          <Field><FieldLabel htmlFor={`po-notes-${fieldKey}`}>Catatan lain</FieldLabel><Textarea id={`po-notes-${fieldKey}`} name="notes" maxLength={4000} rows={4} defaultValue={values?.notes ?? ""} /></Field>
         </div>
-        <SubmitButton pendingLabel="Menyimpan PO...">{draft ? "Perbarui draft PO" : "Buat draft PO"}</SubmitButton>
+        <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? (draft ? "Perbarui draft PO" : "Buat draft PO")}</SubmitButton>
       </FieldGroup>
     </form>
   );

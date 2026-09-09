@@ -12,6 +12,7 @@ type ConfirmSubmitButtonProps = Omit<React.ComponentProps<typeof Button>, "type"
   confirmDescription: string;
   confirmLabel?: string;
   pendingLabel?: string;
+  confirmButtonClassName?: string;
 };
 
 export function ConfirmSubmitButton({
@@ -20,12 +21,14 @@ export function ConfirmSubmitButton({
   confirmDescription,
   confirmLabel = "Ya, lanjutkan",
   pendingLabel = "Memproses...",
+  confirmButtonClassName,
   variant,
   ...props
 }: ConfirmSubmitButtonProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { pending } = useFormStatus();
+  const disabled = pending || props.disabled;
 
   function openConfirmation() {
     const form = triggerRef.current?.form;
@@ -42,7 +45,7 @@ export function ConfirmSubmitButton({
 
   return (
     <>
-      <Button ref={triggerRef} type="button" variant={variant} disabled={pending} onClick={openConfirmation} {...props}>
+      <Button ref={triggerRef} type="button" variant={variant} {...props} disabled={disabled} onClick={openConfirmation}>
         {pending ? <Spinner data-icon="inline-start" /> : null}
         {pending ? pendingLabel : children}
       </Button>
@@ -54,7 +57,7 @@ export function ConfirmSubmitButton({
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Kembali</Button>
-            <Button type="button" variant={variant === "destructive" ? "destructive" : "default"} onClick={submitConfirmed}>
+            <Button type="button" variant={variant === "destructive" ? "destructive" : "default"} className={confirmButtonClassName} onClick={submitConfirmed}>
               {confirmLabel}
             </Button>
           </DialogFooter>

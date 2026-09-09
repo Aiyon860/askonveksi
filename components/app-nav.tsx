@@ -26,6 +26,10 @@ const crmItems = [
   { href: "/crm/invoices", label: "Invoice", icon: Receipt },
 ] as const;
 
+const customerItems = [
+  { href: "/customers", label: "Customer", icon: UsersRound },
+] as const;
+
 const masterItems = [
   { href: "/master-data/customer-types", label: "Jenis customer", icon: Tags },
   { href: "/master-data/lead-sources", label: "Sumber lead", icon: Waypoints },
@@ -43,7 +47,7 @@ function isPathWithin(pathname: string, href: string) {
 }
 
 function isNavItemActive(pathname: string, href: string) {
-  if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang") || isPathWithin(pathname, "/sales-orders") || isPathWithin(pathname, "/crm/pelanggan");
+  if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang") || isPathWithin(pathname, "/sales-orders");
   return isPathWithin(pathname, href);
 }
 
@@ -123,6 +127,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           </CollapsibleContent>
         </Collapsible>
       ) : null}
+      {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (

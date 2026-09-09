@@ -140,7 +140,7 @@ export function NotificationCenter({
                 <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
                   <Button
                     nativeButton={false}
-                    render={<Link href={`/crm/pelanggan/${item.customer.id}?repeatFrom=${item.id}#repeat-order`} />}
+                    render={<Link href={`/customers/${item.customer.id}?repeatFrom=${item.id}#repeat-order`} />}
                   >
                     <BellRing data-icon="inline-start" aria-hidden="true" />
                     Buat peluang

@@ -181,7 +181,7 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                           <dl className="grid gap-2 text-xs text-muted-foreground">
                             <div className="flex items-center justify-between gap-3"><dt>Sales Order</dt><dd className="font-mono text-foreground">{item.salesOrder.salesOrderNo}</dd></div>
                             <div className="flex items-center justify-between gap-3">
-                              <dt>Deadline</dt>
+                              <dt>Deadline produksi</dt>
                               <dd className={cn("flex items-center gap-2", overdue && "font-medium text-destructive")}><CalendarClock aria-hidden="true" className="size-3.5" />{new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(item.deadline))}</dd>
                             </div>
                             <div className="flex items-center justify-between gap-3">

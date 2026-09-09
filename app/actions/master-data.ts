@@ -193,7 +193,7 @@ export async function importCustomerTypesAction(formData: FormData) {
     const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
     await importCustomerTypeRows(actor.id, rows);
     revalidatePath("/master-data/customer-types");
-    revalidatePath("/crm/pelanggan");
+    revalidatePath("/customers");
     return flashMessagePath("/master-data/customer-types", "notice", "Import jenis customer berhasil.");
   });
 }
@@ -276,7 +276,7 @@ export async function bulkUpdateCustomerTypesAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/master-data/customer-types");
-    revalidatePath("/crm/pelanggan");
+    revalidatePath("/customers");
     return flashMessagePath("/master-data/customer-types", "notice", "Jenis customer berhasil diperbarui.");
   });
 }
@@ -306,7 +306,7 @@ export async function importLeadSourcesAction(formData: FormData) {
     const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
     await importLeadSourceRows(actor.id, rows);
     revalidatePath("/master-data/lead-sources");
-    revalidatePath("/crm/pelanggan");
+    revalidatePath("/customers");
     return flashMessagePath("/master-data/lead-sources", "notice", "Import sumber lead berhasil.");
   });
 }
@@ -389,7 +389,7 @@ export async function bulkUpdateLeadSourcesAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/master-data/lead-sources");
-    revalidatePath("/crm/pelanggan");
+    revalidatePath("/customers");
     return flashMessagePath("/master-data/lead-sources", "notice", "Sumber lead berhasil diperbarui.");
   });
 }

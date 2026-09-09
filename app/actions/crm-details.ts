@@ -1,6 +1,10 @@
 "use server";
 
-import { getInvoiceDetail, getPurchaseOrderDetail } from "@/lib/crm/data";
+import { getCustomerPopupDetail, getInvoiceDetail, getPurchaseOrderDetail } from "@/lib/crm/data";
+
+export async function customerDetailAction(id: string) {
+  return getCustomerPopupDetail(id);
+}
 
 export async function purchaseOrderDetailAction(id: string) {
   return getPurchaseOrderDetail(id);

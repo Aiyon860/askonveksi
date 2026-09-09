@@ -77,7 +77,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   const rows = [
     ["Customer", data.opportunity.customer.name], ["Perusahaan", data.opportunity.customer.companyName ?? "-"],
     ["Referensi customer", data.customerReference ?? "-"], ["Tanggal order", formatDate(data.orderDate)],
-    ["Deadline", formatDate(data.deadline)], ["Jenis pakaian", data.garmentType === "JERSEY" ? "Jersey" : data.garmentType === "NON_JERSEY" ? "Non-jersey" : "-"],
+    ["Deadline produksi", formatDate(data.deadline)], ["Jenis pakaian", data.garmentType === "JERSEY" ? "Jersey" : data.garmentType === "NON_JERSEY" ? "Non-jersey" : "-"],
     ["Bahan", data.material], ["Warna dasar", data.baseColor ?? data.color ?? "-"],
     ["Warna variasi", data.variationColor ?? "-"], ["Metode dekorasi", decorationMethodLabel(data.decorationMethod)],
   ];

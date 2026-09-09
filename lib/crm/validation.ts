@@ -186,8 +186,6 @@ export const invoiceItemSchema = z.object({
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
   discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
-  discountCapAmount: optionalMoney("Batas nominal diskon"),
-  taxRate: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase pajak tidak valid."),
 });
 
 export const invoiceDraftSchema = z.object({
@@ -195,7 +193,8 @@ export const invoiceDraftSchema = z.object({
   purchaseOrderId: entityIdSchema,
   invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
-  dueAt: optionalText(10),
+  dueAt: z.string().trim().min(1, "Jatuh tempo wajib diisi.").max(10),
+  taxRate: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase pajak tidak valid."),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
 });
@@ -244,7 +243,7 @@ export const purchaseOrderDraftSchema = z.object({
   sampleSize: optionalText(40),
   designNotes: optionalText(4000),
   notes: optionalText(4000),
-  deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline customer wajib diisi."),
+  deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
   sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
   roster: z.array(purchaseOrderRosterSchema).max(5_000),
 }).superRefine((value, context) => {

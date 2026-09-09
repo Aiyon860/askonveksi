@@ -155,7 +155,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
                     <PurchaseOrderStatusBadge status={item.status} />
                     <div className="text-right text-xs text-muted-foreground">
                       <p>Dibuat {formatDate(item.createdAt)}</p>
-                      {item.deadline ? <p className="mt-1">Deadline {formatDate(item.deadline)}</p> : null}
+                      {item.deadline ? <p className="mt-1">Deadline produksi {formatDate(item.deadline)}</p> : null}
                     </div>
                   </div>
                 </PurchaseOrderDetail>

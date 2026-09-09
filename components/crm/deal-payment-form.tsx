@@ -34,7 +34,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
       <input type="hidden" name="invoiceId" value={invoiceId} />
       <input type="hidden" name="invoiceVersion" value={invoiceVersion} />
       <FieldGroup>
-        <FieldDescription>Work Order dibuat otomatis dari jenis pakaian, produk, jumlah, dan deadline pada PO setelah pembayaran ini dicatat.</FieldDescription>
+        <FieldDescription>Work Order dibuat otomatis dari jenis pakaian, produk, jumlah, dan deadline produksi pada PO setelah pembayaran ini dicatat.</FieldDescription>
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Total invoice</p>
           <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(total)}</p>
