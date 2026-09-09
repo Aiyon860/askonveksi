@@ -271,7 +271,7 @@ const moneyValueSchema = z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "No
 export const dealPaymentTermSchema = z.object({
   valueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   value: moneyValueSchema,
-  dueAt: z.string().trim().min(1, "Tanggal termin wajib diisi."),
+  dueAt: z.string().trim().min(1, "Deadline termin wajib diisi."),
 });
 
 export const completeDealSchema = z.object({
@@ -281,7 +281,7 @@ export const completeDealSchema = z.object({
   invoiceId: entityIdSchema,
   invoiceVersion: requiredVersion,
   kind: z.enum(["LUNAS", "DP"]),
-  paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
+  initialDueAt: z.string().trim().min(1, "Deadline pembayaran awal wajib diisi."),
   initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
@@ -292,6 +292,13 @@ export const completeDealSchema = z.object({
   if (value.kind === "LUNAS" && value.terms.length > 0) {
     context.addIssue({ code: "custom", path: ["terms"], message: "Pembayaran lunas tidak memakai termin." });
   }
+});
+
+export const payPendingInitialPaymentSchema = z.object({
+  invoiceId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
+  reference: optionalText(120),
+  note: optionalText(1000),
 });
 
 export const PURCHASE_ORDER_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
@@ -307,13 +314,21 @@ export const reverseSalesOrderSchema = z.object({
 export const payPaymentTermSchema = z.object({
   salesOrderId: entityIdSchema,
   paymentTermId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),
   note: optionalText(1000),
 });
 
+export const payInvoicePaymentTermSchema = z.object({
+  salesOrderId: entityIdSchema,
+  paymentTermId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
+});
+
 export const recordInitialPaymentSchema = z.object({
   salesOrderId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),
   note: optionalText(1000),
@@ -329,6 +344,7 @@ export const editPaymentTransactionSchema = z.object({
   salesOrderId: entityIdSchema,
   transactionId: entityIdSchema,
   version: requiredVersion,
+  paymentMethodId: entityIdSchema,
   amount: moneyValueSchema,
   paidAt: z.string().trim().min(1, "Tanggal pembayaran wajib diisi."),
   reference: optionalText(120),

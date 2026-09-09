@@ -14,7 +14,7 @@ import {
   finalizeSalesPerformanceRows,
   type SalesPerformanceRow,
 } from "@/lib/analytics/sales-performance";
-import { ANALYTICS_ROLES, CRM_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ANALYTICS_ROLES, CRM_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
@@ -54,6 +54,7 @@ export type PipelineOpportunity = {
     status: "DRAFT" | "ISSUED" | "SUPERSEDED";
     version: number;
     total: string;
+    pendingPayment: { kind: "LUNAS" | "DP"; initialDueAt: string } | null;
   } | null;
   salesOrder: {
     id: string;
@@ -95,7 +96,7 @@ const opportunitySummarySelect = {
     take: 1,
   },
   invoices: {
-    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true },
+    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true, pendingPayment: { select: { kind: true, initialDueAt: true } } },
     orderBy: { revision: "desc" },
     take: 1,
   },
@@ -143,7 +144,7 @@ const getCachedPipelineData = unstable_cache(
       garmentType: row.purchaseOrders[0].garmentType,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
     } : null,
-    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString() } : null,
+    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt.toISOString() } : null } : null,
     salesOrder: row.salesOrders[0] ? {
       id: row.salesOrders[0].id,
       salesOrderNo: row.salesOrders[0].salesOrderNo,
@@ -1120,7 +1121,8 @@ export async function getSalesOrderDetail(salesOrderId: string) {
           },
           transactions: {
             select: {
-              id: true, paymentTermId: true, amount: true, paidAt: true, reference: true, note: true, status: true, version: true,
+              id: true, paymentTermId: true, paymentMethodId: true, amount: true, paidAt: true, reference: true, note: true, status: true, version: true,
+              paymentMethod: { select: { name: true } },
               voidedAt: true, voidReason: true, createdBy: { select: { name: true } }, voidedBy: { select: { name: true } },
             },
             orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
@@ -1143,8 +1145,10 @@ export async function getSalesOrderDetail(salesOrderId: string) {
 
 export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED";
 export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED";
+export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
 export type PurchaseOrderListSort = "purchaseOrderNo" | "productName" | "customer" | "status" | "createdAt" | "deadline";
 export type InvoiceListSort = "invoiceNo" | "customer" | "purchaseOrderNo" | "status" | "total" | "createdAt";
+export type SalesOrderListSort = "salesOrderNo" | "customer" | "purchaseOrderNo" | "invoiceNo" | "status" | "total" | "acceptedAt";
 
 function purchaseOrderOrderBy(sort: PurchaseOrderListSort, direction: SortDirection) {
   const primary: Prisma.PurchaseOrderOrderByWithRelationInput = sort === "customer"
@@ -1165,6 +1169,13 @@ function invoiceOrderBy(sort: InvoiceListSort, direction: SortDirection) {
   }
   const primary: Prisma.InvoiceOrderByWithRelationInput = sort === "purchaseOrderNo"
     ? { purchaseOrder: { purchaseOrderNo: direction } }
+    : { [sort]: direction };
+  return [primary, { id: "asc" as const }];
+}
+
+function salesOrderOrderBy(sort: SalesOrderListSort, direction: SortDirection) {
+  const primary: Prisma.SalesOrderOrderByWithRelationInput = sort === "customer"
+    ? { snapshotCustomerName: direction }
     : { [sort]: direction };
   return [primary, { id: "asc" as const }];
 }
@@ -1341,6 +1352,49 @@ export async function getInvoices({
   return getCachedInvoices({ query, status, start, end, page, pageSize, sort, direction });
 }
 
+const getCachedSalesOrders = unstable_cache(
+  async ({ query, status, start, end, page, pageSize, sort, direction }: {
+    query: string; status: SalesOrderListStatus; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
+  }) => {
+    const normalizedQuery = query.trim().slice(0, 80);
+    const where = {
+      ...(status === "all" ? {} : { status }),
+      ...(start && end ? { acceptedAt: { gte: start, lt: end } } : {}),
+      ...(normalizedQuery ? { OR: [
+        { salesOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { invoiceNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { snapshotCustomerName: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { snapshotCompanyName: { contains: normalizedQuery, mode: "insensitive" as const } },
+      ] } : {}),
+    } satisfies Prisma.SalesOrderWhereInput;
+    const prisma = getPrismaClient();
+    const [items, total] = await Promise.all([
+      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.salesOrder.count({ where }),
+    ]);
+    return { items: items.map((item) => ({ ...item, total: item.total.toString() })), total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  },
+  ["sales-orders"],
+  { tags: ["sales-orders"], revalidate: 30 },
+);
+
+export async function getSalesOrders({ query, status, start, end, page, pageSize, sort, direction }: {
+  query: string; status: SalesOrderListStatus; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
+}) {
+  await requireActor();
+  return getCachedSalesOrders({ query, status, start, end, page, pageSize, sort, direction });
+}
+
+export async function getSalesOrderDocumentDetail(salesOrderId: string) {
+  await requireActor();
+  const order = await getPrismaClient().salesOrder.findUnique({
+    where: { id: salesOrderId },
+    select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, status: true, snapshotCustomerName: true, snapshotCompanyName: true, total: true, acceptedAt: true, createdAt: true, cancelledAt: true, cancelReason: true, opportunity: { select: { id: true } }, items: { select: { id: true, productName: true, description: true, size: true, quantity: true, unitPrice: true, total: true }, orderBy: { position: "asc" } } },
+  });
+  return order ? { ...order, total: order.total.toString(), items: order.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), total: item.total.toString() })) } : null;
+}
+
 export async function getPurchaseOrderDetail(purchaseOrderId: string) {
   await requireActor();
   return getPrismaClient().purchaseOrder.findUnique({
@@ -1365,8 +1419,9 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
 }
 
 export async function getInvoiceDetail(invoiceId: string) {
-  await requireActor();
-  const invoice = await getPrismaClient().invoice.findUnique({
+  const actor = await requireActor();
+  const prisma = getPrismaClient();
+  const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
     select: {
       id: true,
@@ -1383,16 +1438,64 @@ export async function getInvoiceDetail(invoiceId: string) {
       notes: true,
       createdAt: true,
       opportunity: { select: { id: true, opportunityNo: true } },
-      purchaseOrder: { select: { purchaseOrderNo: true } },
+      purchaseOrder: { select: { purchaseOrderNo: true, deadline: true } },
+      pendingPayment: { select: { kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true }, orderBy: { position: "asc" } } } },
       items: { select: { id: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
+      salesOrder: {
+        select: {
+          id: true,
+          status: true,
+          payment: {
+            select: {
+              kind: true,
+              initialAmount: true,
+              outstandingAmount: true,
+              transactions: {
+                where: { paymentTermId: null, status: "ACTIVE" },
+                select: { id: true, version: true, amount: true, paidAt: true, reference: true, note: true, paymentMethodId: true, paymentMethod: { select: { name: true } } },
+                take: 1,
+              },
+              terms: {
+                select: {
+                  id: true,
+                  position: true,
+                  amount: true,
+                  dueAt: true,
+                  transactions: {
+                    where: { status: "ACTIVE" },
+                    select: { id: true, version: true, amount: true, paidAt: true, reference: true, note: true, paymentMethodId: true, paymentMethod: { select: { name: true } } },
+                    take: 1,
+                  },
+                },
+                orderBy: { position: "asc" },
+              },
+            },
+          },
+        },
+      },
     },
   });
+  const paymentMethods = hasRole(actor.role, DEAL_ROLES)
+    ? await prisma.paymentMethod.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: [{ position: "asc" }, { name: "asc" }] })
+    : [];
   return invoice ? {
     ...invoice,
     discountValue: invoice.discountValue.toString(),
     subtotal: invoice.subtotal.toString(),
     total: invoice.total.toString(),
     items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), subtotal: item.subtotal.toString() })),
+    canRecordPayment: hasRole(actor.role, DEAL_ROLES),
+    paymentMethods,
+    salesOrder: invoice.salesOrder?.payment ? {
+      id: invoice.salesOrder.id,
+      status: invoice.salesOrder.status,
+      kind: invoice.salesOrder.payment.kind,
+      initialAmount: invoice.salesOrder.payment.initialAmount.toString(),
+      outstandingAmount: invoice.salesOrder.payment.outstandingAmount.toString(),
+      initialTransaction: invoice.salesOrder.payment.transactions[0] ? { ...invoice.salesOrder.payment.transactions[0], amount: invoice.salesOrder.payment.transactions[0].amount.toString() } : null,
+      terms: invoice.salesOrder.payment.terms.map((term) => ({ ...term, amount: term.amount.toString(), transaction: term.transactions[0] ? { ...term.transactions[0], amount: term.transactions[0].amount.toString() } : null })),
+    } : null,
+    pendingPayment: invoice.pendingPayment ? { ...invoice.pendingPayment, initialAmount: invoice.pendingPayment.initialAmount.toString(), terms: invoice.pendingPayment.terms.map((term) => ({ ...term, amount: term.amount.toString() })) } : null,
   } : null;
 }
 

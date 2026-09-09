@@ -99,7 +99,7 @@ export function PurchaseOrderDetail({
               ) : null}
             </div>
           ) : null}
-          {detail ? <DialogFooter><Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}`} />}>Lihat di Pipeline</Button></DialogFooter> : null}
+          {detail ? <DialogFooter><Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=po`} />}>Lihat PO</Button></DialogFooter> : null}
         </DialogContent>
       </Dialog>
     </>

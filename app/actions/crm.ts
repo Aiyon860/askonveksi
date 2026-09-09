@@ -2150,7 +2150,7 @@ export async function completeDealAction(formData: FormData) {
     const actor = await requireActor(DEAL_ROLES);
     const parsed = completeDealSchema.safeParse(completeDealInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-    const paidAt = jakartaDateTime(parsed.data.paidAt);
+    const paidAt = jakartaDateTime(parsed.data.initialDueAt);
     if (!paidAt) throw new UserFacingError("Tanggal pembayaran wajib diisi.");
     if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh berada di masa depan.");
     const salesOrder = await runDealTransaction(

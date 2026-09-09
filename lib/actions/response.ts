@@ -22,7 +22,7 @@ export function messageForError(error: unknown) {
     if (error.code === "P2034") return "Data berubah bersamaan saat Deal disimpan. Muat ulang lalu coba lagi.";
   }
   if (error instanceof Prisma.PrismaClientValidationError) {
-    return "Data Sales Order belum dapat diproses. Muat ulang halaman lalu coba lagi.";
+    return "Jadwal pembayaran belum dapat diproses. Pastikan pembaruan database sudah diterapkan, lalu muat ulang halaman.";
   }
   return "Terjadi kendala saat menyimpan data. Silakan coba lagi.";
 }

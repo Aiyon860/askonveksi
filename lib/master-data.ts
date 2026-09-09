@@ -69,6 +69,24 @@ export async function getGarmentSizes() {
   }));
 }
 
+export async function getPaymentMethods() {
+  await requireActor(MASTER_DATA_ROLES);
+  const items = await getPrismaClient().paymentMethod.findMany({
+    select: { id: true, name: true, description: true, position: true, _count: { select: { paymentTransactions: true } } },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+  });
+  return items.map((item) => ({ ...item, _count: { customers: item._count.paymentTransactions } }));
+}
+
+export async function getActivePaymentMethods() {
+  await requireActor();
+  return getPrismaClient().paymentMethod.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+  });
+}
+
 export async function getActiveGarmentSizes() {
   await requireActor();
   return getPrismaClient().garmentSize.findMany({

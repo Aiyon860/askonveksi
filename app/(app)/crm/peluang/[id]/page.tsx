@@ -324,7 +324,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
             {inNegotiation && canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
-              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} initialPaidAt={toDateTimeLocalValue(new Date())} />
+              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} />
             ) : opportunity.stage === "DEAL" ? (
               <Alert>
                 <AlertTitle>Peluang sudah Deal</AlertTitle>
