@@ -27,7 +27,7 @@ export default function ProductionLoading() {
             </div>
           ))}
         </div>
-        <div className="grid auto-cols-[minmax(17rem,1fr)] grid-flow-col gap-3 overflow-x-hidden pb-3">
+        <div className="grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-hidden pb-3">
           {stages.map((stage, column) => (
             <section key={`column-${stage}`} className="min-h-[24rem] rounded-lg border bg-muted/20 p-2">
               <div className="flex items-center justify-between gap-3 px-2 py-2">

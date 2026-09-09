@@ -75,14 +75,15 @@ function ProductionSkeleton({ route }: { route: ProductionRoute }) {
           </div>
         ))}
       </div>
-      <div className="grid auto-cols-[17.5rem] grid-flow-col gap-3 overflow-x-hidden pb-3">
+      <div className="grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-hidden pb-3">
         {stages.map((stage, column) => (
-          <section key={`column-${stage}`} className="min-h-[24rem] rounded-lg border bg-muted/30 p-2">
-            <div className="flex items-center justify-between gap-3 px-2 py-2">
+          <section key={`column-${stage}`} className="flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border bg-muted/30 p-2">
+            <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-4 w-5" />
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+              <div className="flex flex-col gap-2">
               {Array.from({ length: column === 0 ? 2 : 1 }, (_, item) => (
                 <div key={`column-${stage}-card-${item}`} className="flex flex-col gap-3 rounded-lg border bg-card p-4">
                   <Skeleton className="h-4 w-4/5" />
@@ -92,6 +93,7 @@ function ProductionSkeleton({ route }: { route: ProductionRoute }) {
                   <Skeleton className="h-8 w-full" />
                 </div>
               ))}
+              </div>
             </div>
           </section>
         ))}
