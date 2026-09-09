@@ -6,10 +6,11 @@ import { parseDocumentDateRange } from "../lib/crm/document-list-filters.ts";
 
 const reference = new Date("2026-09-08T06:00:00.000Z");
 
-const [dataSource, purchaseOrderPage, invoicePage] = await Promise.all([
+const [dataSource, purchaseOrderPage, invoicePage, salesOrderPage] = await Promise.all([
   readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/crm/purchase-orders/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/crm/invoices/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/(app)/crm/sales-orders/page.tsx", import.meta.url), "utf8"),
 ]);
 
 test("rentang dokumen memakai batas hari Jakarta yang inklusif", () => {
@@ -38,7 +39,8 @@ test("rentang kosong, palsu, terbalik, atau masa depan tidak aktif", () => {
 });
 
 test("default daftar dokumen tidak membuang status yang digantikan", () => {
-  assert.equal(dataSource.match(/\.\.\.\(status === "all" \? \{\} : \{ status \}\)/g)?.length, 2);
+  assert.equal(dataSource.match(/\.\.\.\(status === "all" \? \{\} : \{ status \}\)/g)?.length, 3);
   assert.match(purchaseOrderPage, /value="SUPERSEDED">Digantikan/);
   assert.match(invoicePage, /value="SUPERSEDED">Digantikan/);
+  assert.match(salesOrderPage, /value="CANCELLED">Dibatalkan/);
 });

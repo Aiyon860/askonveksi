@@ -11,6 +11,7 @@ import { DealPaymentForm } from "@/components/crm/deal-payment-form";
 import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/crm/stage-theme";
 import { OpportunityStatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -109,7 +110,7 @@ export function PipelineBoard({ opportunities, actorRole, paymentMethods }: { op
                 className={cn("min-h-[24rem] snap-start rounded-lg border p-2", STAGE_SURFACE_CLASS[stage])}
               >
                 <div className="flex items-center justify-between gap-3 px-2 py-2">
-                  <h2 id={`stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{STAGE_LABEL[stage]}</h2>
+                  <h2 id={`stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{stage === "DEAL" ? "Deal (SO)" : STAGE_LABEL[stage]}</h2>
                   <span className="font-mono text-xs tabular-nums text-muted-foreground">{items.length}</span>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -172,7 +173,7 @@ export function PipelineBoard({ opportunities, actorRole, paymentMethods }: { op
                       </CardHeader>
                       <CardContent>
                         <div className="flex flex-wrap items-center gap-2">
-                          <OpportunityStatusBadge stage={opportunity.stage} />
+                          {opportunity.stage === "DEAL" ? <Badge variant="success">Deal (SO)</Badge> : <OpportunityStatusBadge stage={opportunity.stage} />}
                           <span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span>
                         </div>
                         <dl className="grid gap-2 text-xs text-muted-foreground">

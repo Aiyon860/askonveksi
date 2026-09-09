@@ -315,6 +315,12 @@ export const payPaymentTermSchema = z.object({
   note: optionalText(1000),
 });
 
+export const payInvoicePaymentTermSchema = z.object({
+  salesOrderId: entityIdSchema,
+  paymentTermId: entityIdSchema,
+  paymentMethodId: entityIdSchema,
+});
+
 export const recordInitialPaymentSchema = z.object({
   salesOrderId: entityIdSchema,
   paymentMethodId: entityIdSchema,

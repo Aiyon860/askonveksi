@@ -34,6 +34,7 @@ import {
   PURCHASE_ORDER_ATTACHMENT_MAX_BYTES,
   PURCHASE_ORDER_ATTACHMENT_MAX_FILES,
   payPaymentTermSchema,
+  payInvoicePaymentTermSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
   reverseSalesOrderSchema,
@@ -299,6 +300,41 @@ async function assertActivePaymentMethod(tx: Tx, paymentMethodId: string) {
   if (!paymentMethod) throw new UserFacingError("Metode pembayaran tidak tersedia. Pilih metode lain.");
 }
 
+async function recordPaymentTerm(tx: Tx, actor: Actor, input: {
+  salesOrderId: string;
+  paymentTermId: string;
+  paymentMethodId: string;
+  paidAt: Date;
+  reference?: string;
+  note?: string;
+}) {
+  await assertActivePaymentMethod(tx, input.paymentMethodId);
+  const term = await tx.paymentTerm.findFirst({
+    where: { id: input.paymentTermId, payment: { salesOrderId: input.salesOrderId, salesOrder: { status: "ACTIVE" } } },
+    select: { id: true, amount: true, paymentId: true, transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 } },
+  });
+  if (!term) throw new UserFacingError("Termin pembayaran tidak ditemukan.");
+  if (term.transactions.length) throw new UserFacingError("Termin ini sudah dibayar.");
+  const transaction = await tx.paymentTransaction.create({
+    data: { paymentId: term.paymentId, paymentTermId: term.id, amount: term.amount, paidAt: input.paidAt, paymentMethodId: input.paymentMethodId, reference: input.reference, note: input.note, createdById: actor.id },
+    select: { id: true },
+  });
+  const totals = await tx.paymentTransaction.aggregate({ where: { paymentId: term.paymentId, status: "ACTIVE" }, _sum: { amount: true } });
+  const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: term.paymentId }, select: { salesOrder: { select: { total: true } } } });
+  await tx.dealPayment.update({ where: { id: term.paymentId }, data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) } });
+  await ensureProductionWorkOrder(tx, actor, input.salesOrderId);
+  await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], { salesOrderId: input.salesOrderId, paymentTermId: term.id });
+}
+
+function revalidatePaymentViews(salesOrderId: string) {
+  revalidatePath(`/sales-orders/${salesOrderId}`);
+  revalidatePath("/crm/invoices");
+  revalidatePath("/crm/sales-orders");
+  revalidatePath("/dashboard");
+  revalidatePath("/keuangan");
+  revalidatePath("/produksi");
+}
+
 function opportunityInput(formData: FormData) {
   return {
     title: formValue(formData, "title"),
@@ -470,6 +506,7 @@ export async function createCustomerAction(formData: FormData) {
     );
 
     revalidatePath("/crm");
+    revalidatePath("/crm/sales-orders");
     revalidatePath("/crm/pelanggan");
     return flashMessagePath("/crm/pelanggan", "notice", "Customer berhasil dibuat.");
   });
@@ -1714,9 +1751,10 @@ export async function completeDealAction(formData: FormData) {
             dueAt,
           };
         });
-        const scheduledTotal = terms.reduce((sum, term) => sum.add(term.amount), initialAmount);
-        if (!scheduledTotal.eq(invoice.total)) throw new UserFacingError("Pembayaran awal dan seluruh termin harus sama dengan total invoice.");
         const outstandingAmount = invoice.total.sub(initialAmount);
+        const scheduledTermTotal = terms.reduce((sum, term) => sum.add(term.amount), new Prisma.Decimal(0));
+        if (scheduledTermTotal.gt(outstandingAmount)) throw new UserFacingError(`Total termin melebihi sisa tagihan ${outstandingAmount.toString()}.`);
+        if (scheduledTermTotal.lt(outstandingAmount)) throw new UserFacingError(`Total termin masih kurang ${outstandingAmount.sub(scheduledTermTotal).toString()}.`);
 
         const opportunityUpdated = await tx.opportunity.updateMany({
           where: { id: invoice.opportunityId, stage: "NEGOSIASI", version: parsed.data.opportunityVersion },
@@ -1835,54 +1873,74 @@ export async function payPaymentTermAction(formData: FormData) {
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
 
-    await runDealTransaction(async (tx) => {
-      await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
-      const term = await tx.paymentTerm.findFirst({
-        where: { id: parsed.data.paymentTermId, payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
-        select: {
-          id: true,
-          amount: true,
-          paymentId: true,
-          transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 },
-        },
-      });
-      if (!term) throw new UserFacingError("Termin pembayaran tidak ditemukan.");
-      if (term.transactions.length) throw new UserFacingError("Termin ini sudah dibayar.");
-      const transaction = await tx.paymentTransaction.create({
-        data: {
-          paymentId: term.paymentId,
-          paymentTermId: term.id,
-          amount: term.amount,
-          paidAt,
-          paymentMethodId: parsed.data.paymentMethodId,
-          reference: parsed.data.reference,
-          note: parsed.data.note,
-          createdById: actor.id,
-        },
-        select: { id: true },
-      });
-      const totals = await tx.paymentTransaction.aggregate({
-        where: { paymentId: term.paymentId, status: "ACTIVE" },
-        _sum: { amount: true },
-      });
-      const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: term.paymentId }, select: { salesOrder: { select: { total: true } } } });
-      await tx.dealPayment.update({
-        where: { id: term.paymentId },
-        data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
-      });
-      await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
-        salesOrderId: parsed.data.salesOrderId,
-        paymentTermId: term.id,
-      });
-    });
-
-    revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
-    revalidatePath("/dashboard");
-    revalidatePath("/keuangan");
-    revalidatePath("/produksi");
+    await runDealTransaction((tx) => recordPaymentTerm(tx, actor, { ...parsed.data, paidAt }));
+    revalidatePaymentViews(parsed.data.salesOrderId);
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran termin berhasil dicatat.");
   });
+}
+
+export async function payInvoicePaymentTermAction(_previousState: { error: string | null; success: boolean }, formData: FormData) {
+  try {
+    const actor = await requireActor(DEAL_ROLES);
+    const parsed = payInvoicePaymentTermSchema.safeParse({
+      salesOrderId: formValue(formData, "salesOrderId"),
+      paymentTermId: formValue(formData, "paymentTermId"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    await runDealTransaction((tx) => recordPaymentTerm(tx, actor, { ...parsed.data, paidAt: new Date() }));
+    revalidatePaymentViews(parsed.data.salesOrderId);
+    return { error: null, success: true };
+  } catch (error) {
+    return { error: messageForError(error), success: false };
+  }
+}
+
+export async function editInvoicePaymentTransactionAction(_previousState: { error: string | null; success: boolean }, formData: FormData) {
+  try {
+    const actor = await requireActor(DEAL_ROLES);
+    const parsed = editPaymentTransactionSchema.safeParse({ salesOrderId: formValue(formData, "salesOrderId"), transactionId: formValue(formData, "transactionId"), version: formValue(formData, "version"), paymentMethodId: formValue(formData, "paymentMethodId"), amount: formValue(formData, "amount"), paidAt: formValue(formData, "paidAt"), reference: formValue(formData, "reference"), note: formValue(formData, "note") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const paidAt = jakartaDateTime(parsed.data.paidAt);
+    if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
+    const amount = new Prisma.Decimal(parsed.data.amount);
+    await runDealTransaction(async (tx) => {
+      await assertActivePaymentMethod(tx, parsed.data.paymentMethodId);
+      const transaction = await tx.paymentTransaction.findFirst({ where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } }, select: { id: true, paymentId: true, version: true, amount: true, paidAt: true } });
+      if (!transaction) throw new UserFacingError("Pembayaran aktif tidak ditemukan.");
+      if (transaction.version !== parsed.data.version) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+      const otherPayments = await tx.paymentTransaction.aggregate({ where: { paymentId: transaction.paymentId, status: "ACTIVE", id: { not: transaction.id } }, _sum: { amount: true } });
+      const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: transaction.paymentId }, select: { salesOrder: { select: { total: true } } } });
+      const newTotal = (otherPayments._sum.amount ?? new Prisma.Decimal(0)).add(amount);
+      if (amount.lte(0) || newTotal.gt(payment.salesOrder.total)) throw new UserFacingError("Nominal harus positif dan total pembayaran tidak boleh melebihi invoice.");
+      const updated = await tx.paymentTransaction.updateMany({ where: { id: transaction.id, status: "ACTIVE", version: transaction.version }, data: { amount, paidAt, paymentMethodId: parsed.data.paymentMethodId, reference: parsed.data.reference, note: parsed.data.note, version: { increment: 1 } } });
+      if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+      await tx.dealPayment.update({ where: { id: transaction.paymentId }, data: { outstandingAmount: payment.salesOrder.total.sub(newTotal) } });
+      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_UPDATED", ["amount", "paidAt", "paymentMethodId", "reference", "note", "version"], { salesOrderId: parsed.data.salesOrderId, previousAmount: transaction.amount.toString(), amount: amount.toString(), previousPaidAt: transaction.paidAt.toISOString(), paidAt: paidAt.toISOString() });
+    });
+    revalidatePaymentViews(parsed.data.salesOrderId);
+    return { error: null, success: true };
+  } catch (error) { return { error: messageForError(error), success: false }; }
+}
+
+export async function voidInvoicePaymentTransactionAction(_previousState: { error: string | null; success: boolean }, formData: FormData) {
+  try {
+    const actor = await requireActor(DEAL_ROLES);
+    const parsed = voidPaymentTransactionSchema.safeParse({ salesOrderId: formValue(formData, "salesOrderId"), transactionId: formValue(formData, "transactionId"), reason: formValue(formData, "reason") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    await runDealTransaction(async (tx) => {
+      const transaction = await tx.paymentTransaction.findFirst({ where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } }, select: { id: true, paymentId: true } });
+      if (!transaction) throw new UserFacingError("Pembayaran aktif tidak ditemukan.");
+      const updated = await tx.paymentTransaction.updateMany({ where: { id: transaction.id, status: "ACTIVE" }, data: { status: "VOIDED", voidedAt: new Date(), voidReason: parsed.data.reason, voidedById: actor.id } });
+      if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+      const totals = await tx.paymentTransaction.aggregate({ where: { paymentId: transaction.paymentId, status: "ACTIVE" }, _sum: { amount: true } });
+      const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: transaction.paymentId }, select: { salesOrder: { select: { total: true } } } });
+      await tx.dealPayment.update({ where: { id: transaction.paymentId }, data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) } });
+      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_VOIDED", ["status", "voidedAt", "voidReason", "voidedById"], { salesOrderId: parsed.data.salesOrderId });
+    });
+    revalidatePaymentViews(parsed.data.salesOrderId);
+    return { error: null, success: true };
+  } catch (error) { return { error: messageForError(error), success: false }; }
 }
 
 export async function recordInitialPaymentAction(formData: FormData) {

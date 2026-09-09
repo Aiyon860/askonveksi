@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, ScrollText, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -24,6 +24,7 @@ const crmItems = [
   { href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock },
   { href: "/crm/purchase-orders", label: "Purchase Order", icon: FileText },
   { href: "/crm/invoices", label: "Invoice", icon: Receipt },
+  { href: "/crm/sales-orders", label: "Sales Order", icon: ScrollText },
 ] as const;
 
 const masterItems = [

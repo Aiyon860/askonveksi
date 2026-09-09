@@ -15,6 +15,7 @@ import {
   purchaseOrderDraftSchema,
   completeDealSchema,
   editPaymentTransactionSchema,
+  payInvoicePaymentTermSchema,
   payPaymentTermSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
@@ -303,6 +304,8 @@ test("pencatatan pembayaran memvalidasi waktu, referensi, dan identitas transaks
   assert.equal(recordInitialPaymentSchema.safeParse({ ...initial, paymentMethodId: "" }).success, false);
   assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "cm123456789013" }).success, true);
   assert.equal(payPaymentTermSchema.safeParse({ ...initial, paymentTermId: "" }).success, false);
+  assert.equal(payInvoicePaymentTermSchema.safeParse({ salesOrderId: initial.salesOrderId, paymentTermId: "cm123456789013", paymentMethodId: initial.paymentMethodId }).success, true);
+  assert.equal(payInvoicePaymentTermSchema.safeParse({ salesOrderId: initial.salesOrderId, paymentTermId: "", paymentMethodId: initial.paymentMethodId }).success, false);
   const edit = { ...initial, transactionId: "cm123456789013", version: "1", amount: "450000" };
   assert.equal(editPaymentTransactionSchema.safeParse(edit).success, true);
   assert.equal(editPaymentTransactionSchema.safeParse({ ...edit, amount: "-1" }).success, false);
