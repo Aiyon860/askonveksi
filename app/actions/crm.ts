@@ -554,13 +554,12 @@ export async function importCustomersAction(formData: FormData) {
     const actor = await requireActor(MASTER_DATA_ROLES);
     const rows = await parseCustomerWorkbook(customerExcelFile(formData));
     const lookupKeys = importCustomerLookupKeys(rows);
-    const customerLookupWhere = [
-      lookupKeys.customerNos.length ? { customerNo: { in: lookupKeys.customerNos } } : null,
-      lookupKeys.names.length ? { name: { in: lookupKeys.names, mode: Prisma.QueryMode.insensitive } } : null,
-      lookupKeys.whatsapps.length ? { whatsapp: { in: lookupKeys.whatsapps } } : null,
-      lookupKeys.emails.length ? { email: { in: lookupKeys.emails, mode: Prisma.QueryMode.insensitive } } : null,
-      lookupKeys.instagrams.length ? { instagram: { in: lookupKeys.instagrams, mode: Prisma.QueryMode.insensitive } } : null,
-    ].filter((condition): condition is Prisma.CustomerWhereInput => condition !== null);
+    const customerLookupWhere: Prisma.CustomerWhereInput[] = [];
+    if (lookupKeys.customerNos.length) customerLookupWhere.push({ customerNo: { in: lookupKeys.customerNos } });
+    if (lookupKeys.names.length) customerLookupWhere.push({ name: { in: lookupKeys.names, mode: Prisma.QueryMode.insensitive } });
+    if (lookupKeys.whatsapps.length) customerLookupWhere.push({ whatsapp: { in: lookupKeys.whatsapps } });
+    if (lookupKeys.emails.length) customerLookupWhere.push({ email: { in: lookupKeys.emails, mode: Prisma.QueryMode.insensitive } });
+    if (lookupKeys.instagrams.length) customerLookupWhere.push({ instagram: { in: lookupKeys.instagrams, mode: Prisma.QueryMode.insensitive } });
 
     const result = await getPrismaClient().$transaction(
       async (tx) => {
