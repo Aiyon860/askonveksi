@@ -1,5 +1,6 @@
 import { createCustomerWorkbook } from "@/lib/crm/customer-excel";
 import { getCustomersForExport, type CustomerSegment, type CustomerSort, type SortDirection } from "@/lib/crm/data";
+import { downloadFilename } from "@/lib/download-filename";
 
 const SORTS = ["customerNo", "name", "opportunities", "updatedAt"] as const satisfies readonly CustomerSort[];
 const DIRECTIONS = ["asc", "desc"] as const satisfies readonly SortDirection[];
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
   return new Response(body, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="customers.xlsx"',
+      "Content-Disposition": `attachment; filename="${downloadFilename("customer", "xlsx")}"`,
     },
   });
 }

@@ -8,7 +8,8 @@ import { flashKindForError, flashMessagePath, messageForError, UserFacingError, 
 import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, DEAL_ROLES, MASTER_DATA_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
-import { parseCustomerWorkbook, type CustomerExcelRow } from "@/lib/crm/customer-excel";
+import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
+import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
 import { calculateInvoiceLines, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
 import { nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { parseRosterFile } from "@/lib/crm/roster-import";
@@ -64,6 +65,11 @@ const PURCHASE_ORDER_ATTACHMENT_CONTENT_TYPES = new Set([
 const DOCUMENT_DRAFT_TRANSACTION_OPTIONS = {
   maxWait: 20_000,
   timeout: 10_000,
+} as const;
+const CUSTOMER_IMPORT_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 20_000,
+  timeout: 30_000,
 } as const;
 const DEAL_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -246,38 +252,6 @@ function customerExcelFile(formData: FormData) {
   return file;
 }
 
-function normalizeImportText(value: string | null | undefined) {
-  const normalized = value?.trim().toLocaleLowerCase("id-ID") ?? "";
-  return normalized || null;
-}
-
-function normalizePhone(value: string | null | undefined) {
-  let digits = value?.replace(/\D/g, "") ?? "";
-  if (!digits) return null;
-  if (digits.startsWith("62")) digits = `0${digits.slice(2)}`;
-  if (digits.startsWith("8")) digits = `0${digits}`;
-  return digits;
-}
-
-function assertNoDuplicateImportKeys(rows: CustomerExcelRow[]) {
-  const indexes = [
-    { label: "nama customer", values: rows.map((row) => [row.rowNumber, normalizeImportText(row.name)] as const) },
-    { label: "WhatsApp", values: rows.map((row) => [row.rowNumber, normalizePhone(row.whatsapp)] as const) },
-    { label: "Instagram", values: rows.map((row) => [row.rowNumber, normalizeImportText(row.instagram)] as const) },
-    { label: "email", values: rows.map((row) => [row.rowNumber, normalizeImportText(row.email)] as const) },
-  ];
-
-  for (const { label, values } of indexes) {
-    const seen = new Map<string, number>();
-    for (const [rowNumber, value] of values) {
-      if (!value) continue;
-      const existing = seen.get(value);
-      if (existing) throw new UserFacingError(`${label} pada baris ${existing} dan ${rowNumber} tidak boleh sama.`);
-      seen.set(value, rowNumber);
-    }
-  }
-}
-
 function uniqueNameMap<T extends { name: string }>(items: T[], label: string) {
   const byName = new Map<string, T[]>();
   for (const item of items) {
@@ -289,106 +263,6 @@ function uniqueNameMap<T extends { name: string }>(items: T[], label: string) {
     if (matches.length > 1) throw new UserFacingError(`${label} "${name}" memiliki data duplikat. Rapikan data master sebelum import.`);
   }
   return new Map(Array.from(byName.entries()).map(([key, matches]) => [key, matches[0]]));
-}
-
-type ImportCustomerMatch = {
-  id: string;
-  name: string;
-  companyName: string | null;
-  whatsapp: string | null;
-  email: string | null;
-  instagram: string | null;
-  address: string | null;
-  city: string | null;
-  notes: string | null;
-  customerTypeId: string;
-  leadSourceId: string | null;
-  salesPicId: string | null;
-};
-
-function indexCustomers(customers: ImportCustomerMatch[]) {
-  const add = (map: Map<string, ImportCustomerMatch[]>, key: string | null, customer: ImportCustomerMatch) => {
-    if (!key) return;
-    map.set(key, [...(map.get(key) ?? []), customer]);
-  };
-
-  const byName = new Map<string, ImportCustomerMatch[]>();
-  const byWhatsapp = new Map<string, ImportCustomerMatch[]>();
-  const byInstagram = new Map<string, ImportCustomerMatch[]>();
-  const byEmail = new Map<string, ImportCustomerMatch[]>();
-
-  for (const customer of customers) {
-    add(byName, normalizeImportText(customer.name), customer);
-    add(byWhatsapp, normalizePhone(customer.whatsapp), customer);
-    add(byInstagram, normalizeImportText(customer.instagram), customer);
-    add(byEmail, normalizeImportText(customer.email), customer);
-  }
-
-  return { byName, byWhatsapp, byInstagram, byEmail };
-}
-
-function addImportCustomer(indexes: ReturnType<typeof indexCustomers>, customer: ImportCustomerMatch) {
-  const add = (map: Map<string, ImportCustomerMatch[]>, key: string | null) => {
-    if (!key) return;
-    map.set(key, [...(map.get(key) ?? []), customer]);
-  };
-
-  add(indexes.byName, normalizeImportText(customer.name));
-  add(indexes.byWhatsapp, normalizePhone(customer.whatsapp));
-  add(indexes.byInstagram, normalizeImportText(customer.instagram));
-  add(indexes.byEmail, normalizeImportText(customer.email));
-}
-
-function singleCustomerMatch(label: string, rowNumber: number, candidates: ImportCustomerMatch[]) {
-  if (candidates.length > 1) throw new UserFacingError(`${label} pada baris ${rowNumber} cocok dengan lebih dari satu customer.`);
-  return candidates[0] ?? null;
-}
-
-function assertNoImportConflict(
-  row: CustomerExcelRow,
-  selected: ImportCustomerMatch,
-  indexes: ReturnType<typeof indexCustomers>,
-) {
-  const checks = [
-    { label: "nama customer", key: normalizeImportText(row.name), map: indexes.byName },
-    { label: "WhatsApp", key: normalizePhone(row.whatsapp), map: indexes.byWhatsapp },
-    { label: "Instagram", key: normalizeImportText(row.instagram), map: indexes.byInstagram },
-    { label: "email", key: normalizeImportText(row.email), map: indexes.byEmail },
-  ];
-
-  for (const check of checks) {
-    const conflicts = check.key ? (check.map.get(check.key) ?? []).filter((customer) => customer.id !== selected.id) : [];
-    if (conflicts.length) throw new UserFacingError(`${check.label} pada baris ${row.rowNumber} cocok dengan customer lain.`);
-  }
-}
-
-function findImportCustomer(row: CustomerExcelRow, indexes: ReturnType<typeof indexCustomers>) {
-  const nameKey = normalizeImportText(row.name);
-  const sameName = nameKey ? indexes.byName.get(nameKey) ?? [] : [];
-
-  if (sameName.length === 1) {
-    assertNoImportConflict(row, sameName[0], indexes);
-    return sameName[0];
-  }
-
-  if (sameName.length > 1) {
-    const sameNameIndexes = indexCustomers(sameName);
-    const byContact =
-      singleCustomerMatch("WhatsApp", row.rowNumber, normalizePhone(row.whatsapp) ? sameNameIndexes.byWhatsapp.get(normalizePhone(row.whatsapp) ?? "") ?? [] : []) ??
-      singleCustomerMatch("Instagram", row.rowNumber, normalizeImportText(row.instagram) ? sameNameIndexes.byInstagram.get(normalizeImportText(row.instagram) ?? "") ?? [] : []) ??
-      singleCustomerMatch("email", row.rowNumber, normalizeImportText(row.email) ? sameNameIndexes.byEmail.get(normalizeImportText(row.email) ?? "") ?? [] : []);
-    if (!byContact) throw new UserFacingError(`Nama customer pada baris ${row.rowNumber} cocok dengan lebih dari satu customer. Lengkapi kontak yang unik.`);
-    assertNoImportConflict(row, byContact, indexes);
-    return byContact;
-  }
-
-  const byContact =
-    singleCustomerMatch("WhatsApp", row.rowNumber, normalizePhone(row.whatsapp) ? indexes.byWhatsapp.get(normalizePhone(row.whatsapp) ?? "") ?? [] : []) ??
-    singleCustomerMatch("Instagram", row.rowNumber, normalizeImportText(row.instagram) ? indexes.byInstagram.get(normalizeImportText(row.instagram) ?? "") ?? [] : []) ??
-    singleCustomerMatch("email", row.rowNumber, normalizeImportText(row.email) ? indexes.byEmail.get(normalizeImportText(row.email) ?? "") ?? [] : []);
-
-  if (byContact) assertNoImportConflict(row, byContact, indexes);
-  return byContact;
 }
 
 function invoiceInput(formData: FormData) {
@@ -666,7 +540,7 @@ export async function createCustomerAction(formData: FormData) {
         ]);
         return created;
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      CUSTOMER_IMPORT_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");
@@ -679,7 +553,14 @@ export async function importCustomersAction(formData: FormData) {
   return runRedirectingAction("/customers", async () => {
     const actor = await requireActor(MASTER_DATA_ROLES);
     const rows = await parseCustomerWorkbook(customerExcelFile(formData));
-    assertNoDuplicateImportKeys(rows);
+    const lookupKeys = importCustomerLookupKeys(rows);
+    const customerLookupWhere = [
+      lookupKeys.customerNos.length ? { customerNo: { in: lookupKeys.customerNos } } : null,
+      lookupKeys.names.length ? { name: { in: lookupKeys.names, mode: Prisma.QueryMode.insensitive } } : null,
+      lookupKeys.whatsapps.length ? { whatsapp: { in: lookupKeys.whatsapps } } : null,
+      lookupKeys.emails.length ? { email: { in: lookupKeys.emails, mode: Prisma.QueryMode.insensitive } } : null,
+      lookupKeys.instagrams.length ? { instagram: { in: lookupKeys.instagrams, mode: Prisma.QueryMode.insensitive } } : null,
+    ].filter((condition): condition is Prisma.CustomerWhereInput => condition !== null);
 
     const result = await getPrismaClient().$transaction(
       async (tx) => {
@@ -688,8 +569,12 @@ export async function importCustomersAction(formData: FormData) {
           tx.leadSource.findMany({ select: { id: true, name: true } }),
           tx.appUser.findMany({ where: { role: "SALES", isActive: true }, select: { id: true, name: true } }),
           tx.customer.findMany({
+            where: {
+              OR: customerLookupWhere,
+            },
             select: {
               id: true,
+              customerNo: true,
               name: true,
               companyName: true,
               whatsapp: true,
@@ -702,15 +587,16 @@ export async function importCustomersAction(formData: FormData) {
               leadSourceId: true,
               salesPicId: true,
             },
+            orderBy: { id: "asc" },
           }),
         ]);
         const customerTypeByName = uniqueNameMap(customerTypes, "Jenis customer");
         const leadSourceByName = uniqueNameMap(leadSources, "Sumber lead");
         const salesUserByName = uniqueNameMap(salesUsers, "Sales/PIC");
         const customerIndexes = indexCustomers(currentCustomers);
-        const touchedCustomerIds = new Set<string>();
+        const createdCustomerIds = new Set<string>();
+        const updatedCustomerIds = new Set<string>();
         let createdCount = 0;
-        let updatedCount = 0;
 
         for (const row of rows) {
           const customerType = customerTypeByName.get(normalizeImportText(row.customerTypeName) ?? "");
@@ -751,21 +637,19 @@ export async function importCustomersAction(formData: FormData) {
           const current = findImportCustomer(row, customerIndexes);
 
           if (!current) {
+            const customerNo = await nextCustomerNo(tx);
             const created = await tx.customer.create({
-              data: { ...data, customerNo: await nextCustomerNo(tx) },
+              data: { ...data, customerNo },
               select: { id: true },
             });
-            addImportCustomer(customerIndexes, { id: created.id, ...data });
-            touchedCustomerIds.add(created.id);
+            upsertImportCustomerIndex(customerIndexes, null, { id: created.id, customerNo, ...data });
+            createdCustomerIds.add(created.id);
             await audit(tx, actor, "Customer", created.id, "CUSTOMER_CREATED", [
               "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
             ], { source: "xlsx-import", rowNumber: row.rowNumber });
             createdCount += 1;
             continue;
           }
-
-          if (touchedCustomerIds.has(current.id)) throw new UserFacingError(`Customer pada baris ${row.rowNumber} sudah diproses oleh baris lain.`);
-          touchedCustomerIds.add(current.id);
 
           const changedFields = [
             current.name !== data.name ? "name" : null,
@@ -781,6 +665,9 @@ export async function importCustomersAction(formData: FormData) {
             current.salesPicId !== data.salesPicId ? "salesPicId" : null,
           ].filter((field): field is string => field !== null);
 
+          const nextCustomer = { id: current.id, customerNo: current.customerNo, ...data };
+          upsertImportCustomerIndex(customerIndexes, current, nextCustomer);
+
           if (!changedFields.length) continue;
 
           await tx.customer.update({
@@ -791,12 +678,12 @@ export async function importCustomersAction(formData: FormData) {
             source: "xlsx-import",
             rowNumber: row.rowNumber,
           });
-          updatedCount += 1;
+          if (!createdCustomerIds.has(current.id)) updatedCustomerIds.add(current.id);
         }
 
-        return { createdCount, updatedCount };
+        return { createdCount, updatedCount: updatedCustomerIds.size };
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      CUSTOMER_IMPORT_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");

@@ -1,5 +1,6 @@
 import { createMasterDataWorkbook } from "@/lib/master-data-excel";
 import { getGarmentSizes } from "@/lib/master-data";
+import { downloadFilename } from "@/lib/download-filename";
 
 export async function GET() {
   const items = await getGarmentSizes();
@@ -7,7 +8,7 @@ export async function GET() {
   return new Response(body, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="ukuran-pakaian.xlsx"',
+      "Content-Disposition": `attachment; filename="${downloadFilename("ukuran-pakaian", "xlsx")}"`,
     },
   });
 }

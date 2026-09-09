@@ -296,7 +296,6 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     name: user.name,
                     role: user.role,
                     isActive: user.isActive,
-                    mustChangePassword: user.mustChangePassword,
                     updatedAt: user.updatedAt.toISOString(),
                   }))}
                   actorId={actor?.id}
@@ -363,10 +362,10 @@ function NewUserCard() {
                   </NativeSelect>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="temporaryPassword" required>Password sementara</FieldLabel>
+                  <FieldLabel htmlFor="password" required>Password awal</FieldLabel>
                   <PasswordInput
-                    id="temporaryPassword"
-                    name="temporaryPassword"
+                    id="password"
+                    name="password"
                     required
                     maxLength={128}
                     autoComplete="new-password"
@@ -394,7 +393,7 @@ export default function UsersPage({ searchParams }: { searchParams: UserSearchPa
     <>
       <PageHeader
         title="Pengguna aplikasi"
-        description="Owner membuat akun langsung dengan password sementara. Role tidak disimpan pada metadata Auth."
+        description="Owner membuat akun langsung dengan password awal. Role tidak disimpan pada metadata Auth."
       />
       <PageMessage />
 

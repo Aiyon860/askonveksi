@@ -39,6 +39,10 @@ const masterItems = [
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
 ] as const;
 
+const ownerMasterItems = [
+  { href: "/admin/users", label: "Pengguna", icon: UsersRound },
+] as const;
+
 const analyticsItems = [
   { href: "/analytics/sales-performance", label: "Performa sales", icon: ChartNoAxesCombined },
   { href: "/analytics/lead-sources", label: "Sumber & omzet", icon: Waypoints },
@@ -101,7 +105,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "SALES";
   const canViewProduction = role === "OWNER" || role === "ADMIN" || role === "PRODUCTION" || role === "QC";
   const canViewFinance = role === "OWNER" || role === "ADMIN";
-  const masterDataActive = isPathWithin(pathname, "/master-data");
+  const masterDataActive = isPathWithin(pathname, "/master-data") || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
 
@@ -153,10 +157,10 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           </CollapsibleTrigger>
           <CollapsibleContent className="flex flex-col gap-1">
             {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+            {role === "OWNER" ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />) : null}
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      {role === "OWNER" ? <NavLink pathname={pathname} item={{ href: "/admin/users", label: "Pengguna", icon: UsersRound }} onNavigate={onNavigate} /> : null}
     </nav>
   );
 });

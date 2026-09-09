@@ -28,7 +28,7 @@ export async function createUserAction(formData: FormData) {
       name: formData.get("name"),
       email: formData.get("email"),
       role: formData.get("role"),
-      temporaryPassword: formData.get("temporaryPassword"),
+      password: formData.get("password"),
     });
 
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
@@ -37,7 +37,7 @@ export async function createUserAction(formData: FormData) {
     const email = parsed.data.email.toLowerCase();
     const { data, error } = await admin.auth.admin.createUser({
       email,
-      password: parsed.data.temporaryPassword,
+      password: parsed.data.password,
       email_confirm: true,
     });
 
@@ -55,7 +55,6 @@ export async function createUserAction(formData: FormData) {
             name: parsed.data.name,
             role: parsed.data.role,
             isActive: true,
-            mustChangePassword: true,
           },
           select: { id: true },
         });
@@ -66,7 +65,7 @@ export async function createUserAction(formData: FormData) {
             entityType: "AppUser",
             entityId: created.id,
             action: "USER_CREATED",
-            changedFields: ["email", "name", "role", "isActive", "mustChangePassword"],
+            changedFields: ["email", "name", "role", "isActive", "password"],
             metadata: { role: parsed.data.role },
           },
         });
@@ -107,7 +106,6 @@ export async function updateUserAction(formData: FormData) {
         name: true,
         role: true,
         isActive: true,
-        mustChangePassword: true,
         updatedAt: true,
       },
     });
@@ -133,8 +131,6 @@ export async function updateUserAction(formData: FormData) {
     const roleWillChange = target.role !== parsed.data.role;
     const emailWillChange = target.email !== email;
     const passwordWillChange = Boolean(parsed.data.password);
-    const mustChangePassword = false;
-    if (passwordWillChange && target.mustChangePassword) changedFields.push("mustChangePassword");
     const admin = emailWillChange || passwordWillChange ? createAdminClient() : null;
 
     if (admin) {
@@ -155,7 +151,7 @@ export async function updateUserAction(formData: FormData) {
 
           const updated = await tx.appUser.updateMany({
             where: { id: target.id, updatedAt: target.updatedAt },
-            data: { name: parsed.data.name, email, role: parsed.data.role, ...(passwordWillChange ? { mustChangePassword } : {}) },
+            data: { name: parsed.data.name, email, role: parsed.data.role },
           });
           if (updated.count !== 1) throw new UserFacingError("Data pengguna sudah berubah. Muat ulang lalu coba lagi.");
 

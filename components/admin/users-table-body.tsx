@@ -24,7 +24,6 @@ export type EditableUserRow = {
   name: string;
   role: AppRole;
   isActive: boolean;
-  mustChangePassword: boolean;
   updatedAt: string;
 };
 
@@ -133,7 +132,6 @@ export function UsersTableBody({
               <Badge variant={user.isActive ? "success" : "destructive"}>
                 {user.isActive ? "Aktif" : "Nonaktif"}
               </Badge>
-              {user.mustChangePassword ? <p className="mt-1 text-xs text-muted-foreground">Wajib ganti password</p> : null}
             </TableCell>
             <TableCell>
               {isEditing ? (

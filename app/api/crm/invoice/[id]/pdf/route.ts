@@ -5,6 +5,7 @@ import { requireActor } from "@/lib/auth/session";
 import { CRM_ROLES } from "@/lib/auth/permissions";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { downloadFilename } from "@/lib/download-filename";
 
 export const runtime = "nodejs";
 
@@ -77,7 +78,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${invoice.invoiceNo}.pdf"`,
+      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${downloadFilename(`invoice-${invoice.invoiceNo}`, "pdf")}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

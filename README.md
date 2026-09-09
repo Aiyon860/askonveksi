@@ -18,7 +18,7 @@ rtk npm run bootstrap:owner
 rtk npm run dev
 ```
 
-Setelah Owner berhasil login dan mengganti password sementara, hapus `BOOTSTRAP_OWNER_PASSWORD` dari environment.
+Setelah Owner berhasil login, hapus `BOOTSTRAP_OWNER_PASSWORD` dari environment.
 
 ### Data demo Produksi
 

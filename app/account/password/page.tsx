@@ -17,11 +17,7 @@ export default async function PasswordPage() {
       <Card className="w-full max-w-lg" size="lg">
         <CardHeader>
           <CardTitle>Amankan akun Anda</CardTitle>
-          <CardDescription>
-            {actor.mustChangePassword
-              ? "Password sementara harus diganti sebelum Anda dapat membuka CRM."
-              : "Perbarui password akun bila diperlukan."}
-          </CardDescription>
+          <CardDescription>Perbarui password akun bila diperlukan.</CardDescription>
         </CardHeader>
         <CardContent>
           <PageMessage />

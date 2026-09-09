@@ -7,6 +7,7 @@ import {
   bulkUpdateMasterDataSchema,
   createCustomerSchema,
   createOpportunitySchema,
+  createUserSchema,
   sortableMasterDataFieldsSchema,
   masterDataFieldsSchema,
   moveOpportunitySchema,
@@ -23,6 +24,7 @@ import {
   updateUserSchema,
   validateOpenOpportunitySchedule,
 } from "../lib/crm/validation.ts";
+import { downloadFilename } from "../lib/download-filename.ts";
 import {
   parseAnalyticsDateRange,
   parseAnalyticsReportMode,
@@ -39,6 +41,12 @@ import {
   activityStatusFromSchedule,
   addCalendarMonthsJakarta,
 } from "../lib/crm/reminder-types.ts";
+import {
+  findImportCustomer,
+  importCustomerLookupKeys,
+  indexCustomers,
+  upsertImportCustomerIndex,
+} from "../lib/crm/customer-import.ts";
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 import {
   CRM_OPERATOR_ROLES,
@@ -186,6 +194,8 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
 test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", () => {
   assert.equal(strongPasswordSchema.safeParse("").success, false);
   assert.equal(strongPasswordSchema.safeParse("a").success, true);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "SALES", password: "a" }).success, true);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "SALES", temporaryPassword: "a" }).success, false);
 
   const invalidInvoice = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -352,10 +362,19 @@ test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", ()
   assert.equal(updateUserSchema.safeParse({ ...valid, password: "a", confirmPassword: "a" }).success, true);
 });
 
-test("aksi edit pengguna meneruskan password ke validasi", async () => {
+test("aksi pengguna memakai password awal tanpa kewajiban ganti password", async () => {
   const source = await readFile(new URL("../app/actions/users.ts", import.meta.url), "utf8");
+  assert.match(source, /password: formData\.get\("password"\)/);
+  assert.doesNotMatch(source, /temporaryPassword/);
+  assert.doesNotMatch(source, /mustChangePassword/);
   assert.match(source, /export async function updateUserAction[\s\S]+password: formData\.get\("password"\),[\s\S]+confirmPassword: formData\.get\("confirmPassword"\)/);
-  assert.match(source, /const mustChangePassword = false/);
+});
+
+test("nama file download memakai subjek dan tanggal dd-mm-yyyy", () => {
+  const fixedDate = new Date("2026-09-09T02:00:00.000Z");
+  assert.equal(downloadFilename("Jenis Customer", "xlsx", fixedDate), "jenis-customer-09-09-2026.xlsx");
+  assert.equal(downloadFilename("Invoice INV/001", ".PDF", fixedDate), "invoice-inv-001-09-09-2026.pdf");
+  assert.equal(downloadFilename("   ", "x lsx", fixedDate), "export-09-09-2026.xlsx");
 });
 
 test("migration memegang invariant concurrency dan menutup Data API", async () => {
@@ -580,6 +599,8 @@ test("flash message tidak membocorkan isi notifikasi ke URL", async () => {
   assert.doesNotMatch(responseSource, /encodeURIComponent\(message\)/);
   assert.match(responseSource, /httpOnly:\s*true/);
   assert.match(responseSource, /sameSite:\s*"lax"/);
+  assert.match(responseSource, /Proses menyimpan data melewati batas waktu/);
+  assert.doesNotMatch(responseSource, /Proses menyimpan Deal melewati batas waktu/);
 });
 
 test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", async () => {
@@ -644,7 +665,7 @@ test("parameter pagination dibatasi pada nilai aman", () => {
   assert.equal(parsePageSizeParam("5000"), DATA_PAGE_SIZE);
 });
 
-test("customer mendukung menu mandiri, popup detail, dan import export XLSX yang dibatasi", async () => {
+test("customer mendukung menu mandiri, halaman detail, dan import export XLSX yang dibatasi", async () => {
   const navSource = await readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8");
   const pageSource = await readFile(new URL("../app/(app)/customers/page.tsx", import.meta.url), "utf8");
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
@@ -655,16 +676,71 @@ test("customer mendukung menu mandiri, popup detail, dan import export XLSX yang
 
   assert.match(navSource, /href: "\/customers", label: "Customer"/);
   assert.doesNotMatch(navSource, /isPathWithin\(pathname, "\/crm\/pelanggan"\)/);
-  assert.match(pageSource, /<CustomerDetail key=\{customer\.id\} id=\{customer\.id\}>/);
+  assert.match(pageSource, /function customerDetailHref\(customerId: string, state: TableState\)/);
+  assert.match(pageSource, /<CustomerTableRowLink key=\{customer\.id\} href=\{customerDetailHref\(customer\.id, state\)\}>/);
   assert.match(pageSource, /href=\{exportHref\(state\)\}/);
   assert.match(pageSource, /form action=\{importCustomersAction\}/);
   assert.match(actionSource, /requireActor\(MASTER_DATA_ROLES\)/);
   assert.match(actionSource, /parseCustomerWorkbook\(customerExcelFile\(formData\)\)/);
+  assert.match(actionSource, /CUSTOMER_IMPORT_TRANSACTION_OPTIONS/);
+  assert.doesNotMatch(actionSource, /assertNoDuplicateImportKeys\(rows\)/);
   assert.match(actionSource, /findImportCustomer\(row, customerIndexes\)/);
+  assert.match(actionSource, /upsertImportCustomerIndex\(customerIndexes, current, nextCustomer\)/);
   assert.match(actionSource, /CUSTOMER_UPDATED/);
   assert.match(detailActionSource, /customerDetailAction/);
   assert.match(excelSource, /CUSTOMER_EXCEL_MAX_BYTES = 1 \* 1024 \* 1024/);
   assert.match(excelSource, /Excel Customer tidak boleh berisi formula/);
   assert.match(exportRouteSource, /getCustomersForExport/);
+  assert.match(exportRouteSource, /downloadFilename\("customer", "xlsx"\)/);
   assert.match(legacyPageSource, /redirect\(suffix \? `\/customers\?\$\{suffix\}` : "\/customers"\)/);
+});
+
+test("resolver import customer mengupdate duplikat dan memakai prioritas key", () => {
+  const existing = {
+    id: "customer-a",
+    customerNo: "CUST-001",
+    name: "Budi Lama",
+    companyName: null,
+    whatsapp: "0811111111",
+    email: "lama@example.com",
+    instagram: "budi_lama",
+    address: null,
+    city: null,
+    notes: null,
+    customerTypeId: "type-1",
+    leadSourceId: null,
+    salesPicId: null,
+  };
+  const other = {
+    ...existing,
+    id: "customer-b",
+    customerNo: "CUST-002",
+    name: "Nama Konflik",
+    whatsapp: "0822222222",
+    email: "baru@example.com",
+    instagram: "konflik",
+  };
+  const indexes = indexCustomers([existing, other]);
+
+  assert.equal(findImportCustomer({ customerNo: "", name: "Budi Baru", whatsapp: "62811111111", email: "", instagram: "" }, indexes)?.id, "customer-a");
+  assert.equal(findImportCustomer({ customerNo: "", name: "Nama Konflik", whatsapp: "0811111111", email: "baru@example.com", instagram: "" }, indexes)?.id, "customer-a");
+  assert.equal(findImportCustomer({ customerNo: "CUST-002", name: "Budi Lama", whatsapp: "0811111111", email: "", instagram: "" }, indexes)?.id, "customer-b");
+
+  const updated = {
+    ...existing,
+    name: "Budi Terbaru",
+    whatsapp: "0833333333",
+    email: "terbaru@example.com",
+  };
+  upsertImportCustomerIndex(indexes, existing, updated);
+
+  assert.equal(findImportCustomer({ customerNo: "", name: "Budi Terbaru", whatsapp: "", email: "", instagram: "" }, indexes)?.id, "customer-a");
+  assert.equal(findImportCustomer({ customerNo: "", name: "Budi Lama", whatsapp: "", email: "", instagram: "" }, indexes), null);
+  assert.equal(findImportCustomer({ customerNo: "", name: "Tidak Ada", whatsapp: "0833333333", email: "", instagram: "" }, indexes)?.name, "Budi Terbaru");
+
+  const lookupKeys = importCustomerLookupKeys([{ customerNo: " CUS-001 ", name: "Budi Baru", whatsapp: "+62 811-111-111", email: "BUDI@example.com", instagram: "@budi" }]);
+  assert.deepEqual(lookupKeys.customerNos, ["cus-001"]);
+  assert.deepEqual(lookupKeys.names, ["Budi Baru"]);
+  assert.deepEqual(lookupKeys.whatsapps, ["+62 811-111-111", "0811111111"]);
+  assert.deepEqual(lookupKeys.emails, ["budi@example.com"]);
 });

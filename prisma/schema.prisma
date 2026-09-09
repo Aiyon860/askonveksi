@@ -168,7 +168,6 @@ model AppUser {
   name                      String                    @db.VarChar(120)
   role                      AppRole
   isActive                  Boolean                   @default(true)
-  mustChangePassword        Boolean                   @default(true)
   communicationActivities   CommunicationActivity[]
   customerReminderReceipts  CustomerReminderReceipt[]
   purchaseOrders            PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")

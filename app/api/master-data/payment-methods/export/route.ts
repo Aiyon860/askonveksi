@@ -1,5 +1,6 @@
 import { createMasterDataWorkbook } from "@/lib/master-data-excel";
 import { getPaymentMethods } from "@/lib/master-data";
+import { downloadFilename } from "@/lib/download-filename";
 
 export async function GET() {
   const items = await getPaymentMethods();
@@ -7,7 +8,7 @@ export async function GET() {
   return new Response(body, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="metode-pembayaran.xlsx"',
+      "Content-Disposition": `attachment; filename="${downloadFilename("metode-pembayaran", "xlsx")}"`,
     },
   });
 }

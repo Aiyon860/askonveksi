@@ -386,7 +386,7 @@ export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
   role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
-  temporaryPassword: strongPasswordSchema,
+  password: strongPasswordSchema,
 });
 
 export const updateUserSchema = z.object({

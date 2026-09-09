@@ -41,6 +41,7 @@ test("rentang kosong, palsu, terbalik, atau masa depan tidak aktif", () => {
 test("default daftar dokumen tidak membuang status yang digantikan", () => {
   assert.equal(dataSource.match(/\.\.\.\(status === "all" \? \{\} : \{ status \}\)/g)?.length, 3);
   assert.match(purchaseOrderPage, /value="SUPERSEDED">Digantikan/);
-  assert.match(invoicePage, /value="SUPERSEDED">Digantikan/);
+  assert.match(invoicePage, /rawStatus === "DRAFT" \|\| rawStatus === "ISSUED" \|\| rawStatus === "SUPERSEDED"/);
+  assert.match(invoicePage, /if \(status === "SUPERSEDED"\) return "Digantikan"/);
   assert.match(salesOrderPage, /value="CANCELLED">Dibatalkan/);
 });

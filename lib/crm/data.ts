@@ -1632,7 +1632,6 @@ export async function getUsers({
         name: true,
         role: true,
         isActive: true,
-        mustChangePassword: true,
         createdAt: true,
         updatedAt: true,
       },

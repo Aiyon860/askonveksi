@@ -58,7 +58,6 @@ try {
           name: process.env.BOOTSTRAP_OWNER_NAME.trim(),
           role: "OWNER",
           isActive: true,
-          mustChangePassword: true,
         },
         select: { id: true },
       });
@@ -68,7 +67,7 @@ try {
           entityType: "AppUser",
           entityId: owner.id,
           action: "OWNER_BOOTSTRAPPED",
-          changedFields: ["email", "name", "role", "isActive", "mustChangePassword"],
+          changedFields: ["email", "name", "role", "isActive", "password"],
           metadata: { role: "OWNER" },
         },
       });
@@ -76,7 +75,7 @@ try {
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
 
-  console.log("Owner pertama berhasil dibuat. Hapus variabel BOOTSTRAP_OWNER_PASSWORD dari environment setelah login pertama.");
+  console.log("Owner pertama berhasil dibuat. Hapus variabel BOOTSTRAP_OWNER_PASSWORD dari environment setelah Owner berhasil login.");
 } catch (error) {
   if (authUserId) await supabase.auth.admin.deleteUser(authUserId);
   console.error(error instanceof Error ? error.message : "Bootstrap Owner gagal.");
