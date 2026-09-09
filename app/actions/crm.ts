@@ -34,7 +34,9 @@ import {
   purchaseOrderIdSchema,
   PURCHASE_ORDER_ATTACHMENT_MAX_BYTES,
   PURCHASE_ORDER_ATTACHMENT_MAX_FILES,
+  payInvoicePaymentTermSchema,
   payPaymentTermSchema,
+  payPendingInitialPaymentSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
   reverseSalesOrderSchema,
@@ -48,7 +50,17 @@ import { ensureProductionWorkOrder } from "@/lib/production/service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Tx = Prisma.TransactionClient;
+type CrmActionState = { error: string | null; success: boolean };
+
 const PURCHASE_ORDER_ATTACHMENT_BUCKET = "crm-po-designs";
+const PURCHASE_ORDER_ATTACHMENT_EXTENSIONS = new Set(["png", "psd"]);
+const PURCHASE_ORDER_ATTACHMENT_CONTENT_TYPES = new Set([
+  "",
+  "application/octet-stream",
+  "application/x-photoshop",
+  "image/png",
+  "image/vnd.adobe.photoshop",
+]);
 const DOCUMENT_DRAFT_TRANSACTION_OPTIONS = {
   maxWait: 20_000,
   timeout: 10_000,
@@ -92,6 +104,23 @@ function opportunityTabFallback(formData: FormData, tab: OpportunityDetailTab) {
   return opportunityId.success ? `/crm/peluang/${opportunityId.data}?tab=${tab}` : "/crm";
 }
 
+function opportunityRedirectPath(formData: FormData) {
+  const opportunityId = entityIdSchema.safeParse(formValue(formData, "opportunityId"));
+  const rawRedirectTo = formValue(formData, "redirectTo");
+  if (!opportunityId.success || typeof rawRedirectTo !== "string") return "/crm";
+
+  try {
+    const url = new URL(rawRedirectTo, "http://askonveksi.local");
+    if (url.origin === "http://askonveksi.local" && url.pathname === `/crm/peluang/${opportunityId.data}`) {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    return "/crm";
+  }
+
+  return "/crm";
+}
+
 function optionalDate(value?: string) {
   if (!value) return null;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -118,8 +147,15 @@ async function validatedPurchaseOrderAttachments(formData: FormData, purchaseOrd
   return Promise.all(files.map(async ({ file, kind }) => {
     if (file.size > PURCHASE_ORDER_ATTACHMENT_MAX_BYTES) throw new UserFacingError("Setiap lampiran desain maksimal 5 MB.");
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
     const extension = storageExtension(file.name);
+    if (!PURCHASE_ORDER_ATTACHMENT_EXTENSIONS.has(extension)) {
+      throw new UserFacingError("Lampiran desain hanya boleh memakai format PNG atau PSD.");
+    }
+    if (!PURCHASE_ORDER_ATTACHMENT_CONTENT_TYPES.has(file.type)) {
+      throw new UserFacingError("Lampiran desain hanya boleh memakai format PNG atau PSD.");
+    }
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const contentType = safeContentType(file.type);
     return {
       bytes,
@@ -435,7 +471,7 @@ function completeDealInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId"),
     invoiceVersion: formValue(formData, "invoiceVersion"),
     kind: formValue(formData, "kind"),
-    paidAt: formValue(formData, "paidAt"),
+    initialDueAt: formValue(formData, "initialDueAt"),
     initialValueType: formValue(formData, "initialValueType"),
     initialValue: formValue(formData, "initialValue"),
     terms: Array.from({ length: Math.max(valueTypes.length, values.length, dueDates.length) }, (_, index) => ({
@@ -1164,9 +1200,10 @@ async function moveOpportunityStage(formData: FormData) {
 }
 
 export async function moveOpportunityStageAction(formData: FormData) {
-  return runRedirectingAction("/crm", async () => {
+  const redirectPath = opportunityRedirectPath(formData);
+  return runRedirectingAction(redirectPath, async () => {
     await moveOpportunityStage(formData);
-    return flashMessagePath("/crm", "notice", "Status peluang diperbarui.");
+    return flashMessagePath(redirectPath, "notice", "Status peluang diperbarui.");
   });
 }
 
@@ -2150,9 +2187,8 @@ export async function completeDealAction(formData: FormData) {
     const actor = await requireActor(DEAL_ROLES);
     const parsed = completeDealSchema.safeParse(completeDealInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-    const paidAt = jakartaDateTime(parsed.data.initialDueAt);
-    if (!paidAt) throw new UserFacingError("Tanggal pembayaran wajib diisi.");
-    if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh berada di masa depan.");
+    const paidAt = optionalDate(parsed.data.initialDueAt);
+    if (!paidAt) throw new UserFacingError("Deadline pembayaran awal wajib diisi.");
     const salesOrder = await runDealTransaction(
         async (tx) => {
         const invoice = await tx.invoice.findUnique({
@@ -2339,13 +2375,396 @@ export async function completeDealAction(formData: FormData) {
   });
 }
 
+function crmActionSuccess(): CrmActionState {
+  return { error: null, success: true };
+}
+
+function crmActionFailure(error: unknown): CrmActionState {
+  return { error: messageForError(error), success: false };
+}
+
+function revalidatePaymentMutationPaths(salesOrderId?: string) {
+  if (salesOrderId) revalidatePath(`/sales-orders/${salesOrderId}`);
+  revalidatePath("/crm");
+  revalidatePath("/dashboard");
+  revalidatePath("/keuangan");
+  revalidatePath("/produksi");
+}
+
+async function createSalesOrderFromPendingPayment(formData: FormData) {
+  const actor = await requireActor(DEAL_ROLES);
+  const parsed = payPendingInitialPaymentSchema.safeParse({
+    invoiceId: formValue(formData, "invoiceId"),
+    paymentMethodId: formValue(formData, "paymentMethodId"),
+    reference: formValue(formData, "reference"),
+    note: formValue(formData, "note"),
+  });
+  if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const paidAt = new Date();
+
+  return runDealTransaction(async (tx) => {
+    const invoice = await tx.invoice.findUnique({
+      where: { id: parsed.data.invoiceId },
+      select: {
+        id: true,
+        invoiceNo: true,
+        purchaseOrderId: true,
+        status: true,
+        opportunityId: true,
+        snapshotCustomerName: true,
+        snapshotCompanyName: true,
+        snapshotWhatsapp: true,
+        snapshotEmail: true,
+        snapshotInstagram: true,
+        snapshotAddress: true,
+        discountType: true,
+        discountValue: true,
+        subtotal: true,
+        total: true,
+        salesOrder: { select: { id: true } },
+        purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true } },
+        items: {
+          select: {
+            position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
+            unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
+            discountAmount: true, taxRate: true, taxAmount: true, total: true, subtotal: true,
+          },
+          orderBy: { position: "asc" },
+        },
+        pendingPayment: {
+          select: {
+            id: true,
+            kind: true,
+            initialValueType: true,
+            initialValue: true,
+            initialAmount: true,
+            terms: { select: { id: true, position: true, valueType: true, value: true, amount: true, dueAt: true }, orderBy: { position: "asc" } },
+          },
+        },
+        opportunity: {
+          select: {
+            stage: true,
+            customerId: true,
+            purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
+            invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
+          },
+        },
+      },
+    });
+    if (!invoice || invoice.status !== "ISSUED") throw new UserFacingError("Invoice tidak lagi berstatus terbit.");
+    if (!invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran invoice tidak ditemukan.");
+    if (invoice.purchaseOrder.status !== "AGREED") throw new UserFacingError("Invoice tidak terhubung ke PO Disepakati.");
+    if (!invoice.purchaseOrder.garmentType) throw new UserFacingError("Jenis pakaian pada PO belum ditentukan. Buat revisi PO terlebih dahulu.");
+    if (!invoice.purchaseOrder.deadline) throw new UserFacingError("Deadline produksi pada PO belum ditentukan. Buat revisi PO terlebih dahulu.");
+    if (invoice.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Peluang tidak lagi berada di Negosiasi.");
+    if (invoice.opportunity.purchaseOrders.length || invoice.opportunity.invoices.length) throw new UserFacingError("Selesaikan seluruh draft PO dan invoice sebelum Deal.");
+    if (invoice.salesOrder) throw new UserFacingError("Invoice ini sudah memiliki Sales Order.");
+
+    const activeOrder = await tx.salesOrder.findFirst({ where: { opportunityId: invoice.opportunityId, status: "ACTIVE" }, select: { id: true } });
+    if (activeOrder) throw new UserFacingError("Peluang ini sudah memiliki Sales Order aktif.");
+
+    const scheduledTotal = invoice.pendingPayment.terms.reduce((sum, term) => sum.add(term.amount), invoice.pendingPayment.initialAmount);
+    if (!scheduledTotal.eq(invoice.total)) throw new UserFacingError("Jadwal pembayaran tidak sama dengan total invoice.");
+    const outstandingAmount = invoice.total.sub(invoice.pendingPayment.initialAmount);
+
+    const opportunityUpdated = await tx.opportunity.updateMany({
+      where: { id: invoice.opportunityId, stage: "NEGOSIASI" },
+      data: { stage: "DEAL", nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } },
+    });
+    if (opportunityUpdated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
+
+    const created = await tx.salesOrder.create({
+      data: {
+        salesOrderNo: await nextSalesOrderNo(tx),
+        opportunityId: invoice.opportunityId,
+        purchaseOrderId: invoice.purchaseOrderId,
+        invoiceId: invoice.id,
+        purchaseOrderNo: invoice.purchaseOrder.purchaseOrderNo,
+        invoiceNo: invoice.invoiceNo,
+        snapshotCustomerName: invoice.snapshotCustomerName,
+        snapshotCompanyName: invoice.snapshotCompanyName,
+        snapshotWhatsapp: invoice.snapshotWhatsapp,
+        snapshotEmail: invoice.snapshotEmail,
+        snapshotInstagram: invoice.snapshotInstagram,
+        snapshotAddress: invoice.snapshotAddress,
+        discountType: invoice.discountType,
+        discountValue: invoice.discountValue,
+        subtotal: invoice.subtotal,
+        total: invoice.total,
+        acceptedAt: paidAt,
+        createdById: actor.id,
+        items: { create: invoice.items },
+        payment: {
+          create: {
+            kind: invoice.pendingPayment.kind,
+            paidAt,
+            initialValueType: invoice.pendingPayment.initialValueType,
+            initialValue: invoice.pendingPayment.initialValue,
+            initialAmount: invoice.pendingPayment.initialAmount,
+            outstandingAmount,
+            createdById: actor.id,
+            terms: { create: invoice.pendingPayment.terms.map(({ position, valueType, value, amount, dueAt }) => ({ position, valueType, value, amount, dueAt })) },
+            transactions: {
+              create: {
+                amount: invoice.pendingPayment.initialAmount,
+                paidAt,
+                paymentMethodId: parsed.data.paymentMethodId,
+                reference: parsed.data.reference,
+                note: parsed.data.note,
+                createdById: actor.id,
+              },
+            },
+          },
+        },
+      },
+      select: { id: true, salesOrderNo: true },
+    });
+    const initialTransaction = await tx.paymentTransaction.findFirstOrThrow({
+      where: { payment: { salesOrderId: created.id }, paymentTermId: null, status: "ACTIVE" },
+      select: { id: true },
+    });
+
+    await tx.pendingPaymentTerm.deleteMany({ where: { pendingPaymentId: invoice.pendingPayment.id } });
+    await tx.pendingDealPayment.delete({ where: { id: invoice.pendingPayment.id } });
+    await ensureProductionWorkOrder(tx, actor, created.id);
+
+    const salesOrderAudit = await audit(tx, actor, "SalesOrder", created.id, "SALES_ORDER_CREATED", ["status", "snapshot", "items", "total", "payment", "terms"], {
+      opportunityId: invoice.opportunityId,
+      purchaseOrderId: invoice.purchaseOrderId,
+      invoiceId: invoice.id,
+      paymentKind: invoice.pendingPayment.kind,
+    });
+    await audit(tx, actor, "PaymentTransaction", initialTransaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
+      salesOrderId: created.id,
+      paymentKind: "INITIAL",
+    });
+    await audit(tx, actor, "Opportunity", invoice.opportunityId, "OPPORTUNITY_STAGE_CHANGED", ["stage"], { from: invoice.opportunity.stage, to: "DEAL" });
+    await addSystemActivity(tx, actor, {
+      customerId: invoice.opportunity.customerId,
+      opportunityId: invoice.opportunityId,
+      systemEvent: "DEAL_ORDER_CREATED",
+      content: `Customer deal dan Sales Order ${created.salesOrderNo} terbentuk.`,
+      occurredAt: paidAt,
+      metadata: {
+        invoiceId: invoice.id,
+        invoiceNo: invoice.invoiceNo,
+        purchaseOrderId: invoice.purchaseOrderId,
+        purchaseOrderNo: invoice.purchaseOrder.purchaseOrderNo,
+        salesOrderId: created.id,
+        salesOrderNo: created.salesOrderNo,
+        paymentKind: invoice.pendingPayment.kind,
+      },
+      sourceAuditEventId: salesOrderAudit.id,
+    });
+    await scheduleCustomerReminders(tx, {
+      customerId: invoice.opportunity.customerId,
+      sourceSalesOrderId: created.id,
+      acceptedAt: paidAt,
+    });
+
+    return {
+      id: created.id,
+      customerId: invoice.opportunity.customerId,
+      opportunityId: invoice.opportunityId,
+    };
+  });
+}
+
+async function recordPaymentTerm(formData: FormData, paidAt: Date) {
+  const actor = await requireActor(DEAL_ROLES);
+  const parsed = payInvoicePaymentTermSchema.safeParse({
+    salesOrderId: formValue(formData, "salesOrderId"),
+    paymentTermId: formValue(formData, "paymentTermId"),
+    paymentMethodId: formValue(formData, "paymentMethodId"),
+  });
+  if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const reference = typeof formValue(formData, "reference") === "string" ? String(formValue(formData, "reference")).trim() || null : null;
+  const note = typeof formValue(formData, "note") === "string" ? String(formValue(formData, "note")).trim() || null : null;
+
+  await runDealTransaction(async (tx) => {
+    const term = await tx.paymentTerm.findFirst({
+      where: { id: parsed.data.paymentTermId, payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
+      select: {
+        id: true,
+        amount: true,
+        paymentId: true,
+        transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 },
+      },
+    });
+    if (!term) throw new UserFacingError("Termin pembayaran tidak ditemukan.");
+    if (term.transactions.length) throw new UserFacingError("Termin ini sudah dibayar.");
+    const transaction = await tx.paymentTransaction.create({
+      data: {
+        paymentId: term.paymentId,
+        paymentTermId: term.id,
+        paymentMethodId: parsed.data.paymentMethodId,
+        amount: term.amount,
+        paidAt,
+        reference,
+        note,
+        createdById: actor.id,
+      },
+      select: { id: true },
+    });
+    const totals = await tx.paymentTransaction.aggregate({
+      where: { paymentId: term.paymentId, status: "ACTIVE" },
+      _sum: { amount: true },
+    });
+    const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: term.paymentId }, select: { salesOrder: { select: { total: true } } } });
+    await tx.dealPayment.update({
+      where: { id: term.paymentId },
+      data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
+    });
+    await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
+    await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
+      salesOrderId: parsed.data.salesOrderId,
+      paymentTermId: term.id,
+    });
+  });
+
+  revalidatePaymentMutationPaths(parsed.data.salesOrderId);
+}
+
+async function editPaymentTransaction(formData: FormData) {
+  const actor = await requireActor(DEAL_ROLES);
+  const parsed = editPaymentTransactionSchema.safeParse({
+    salesOrderId: formValue(formData, "salesOrderId"),
+    transactionId: formValue(formData, "transactionId"),
+    version: formValue(formData, "version"),
+    paymentMethodId: formValue(formData, "paymentMethodId"),
+    amount: formValue(formData, "amount"),
+    paidAt: formValue(formData, "paidAt"),
+    reference: formValue(formData, "reference"),
+    note: formValue(formData, "note"),
+  });
+  if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const paidAt = jakartaDateTime(parsed.data.paidAt);
+  if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
+  const amount = new Prisma.Decimal(parsed.data.amount);
+
+  await runDealTransaction(async (tx) => {
+    const transaction = await tx.paymentTransaction.findFirst({
+      where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
+      select: { id: true, paymentId: true, version: true, amount: true, paidAt: true },
+    });
+    if (!transaction) throw new UserFacingError("Pembayaran aktif tidak ditemukan.");
+    if (transaction.version !== parsed.data.version) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+    const otherPayments = await tx.paymentTransaction.aggregate({
+      where: { paymentId: transaction.paymentId, status: "ACTIVE", id: { not: transaction.id } },
+      _sum: { amount: true },
+    });
+    const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: transaction.paymentId }, select: { salesOrder: { select: { total: true } } } });
+    const newTotal = (otherPayments._sum.amount ?? new Prisma.Decimal(0)).add(amount);
+    if (amount.lte(0) || newTotal.gt(payment.salesOrder.total)) throw new UserFacingError("Nominal harus positif dan total pembayaran tidak boleh melebihi invoice.");
+    const updated = await tx.paymentTransaction.updateMany({
+      where: { id: transaction.id, status: "ACTIVE", version: transaction.version },
+      data: {
+        amount,
+        paidAt,
+        paymentMethodId: parsed.data.paymentMethodId,
+        reference: parsed.data.reference,
+        note: parsed.data.note,
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+    await tx.dealPayment.update({ where: { id: transaction.paymentId }, data: { outstandingAmount: payment.salesOrder.total.sub(newTotal) } });
+    await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_UPDATED", ["amount", "paidAt", "paymentMethodId", "reference", "note", "version"], {
+      salesOrderId: parsed.data.salesOrderId,
+      previousAmount: transaction.amount.toString(),
+      amount: amount.toString(),
+      previousPaidAt: transaction.paidAt.toISOString(),
+      paidAt: paidAt.toISOString(),
+    });
+  });
+
+  revalidatePaymentMutationPaths(parsed.data.salesOrderId);
+}
+
+async function voidPaymentTransaction(formData: FormData) {
+  const actor = await requireActor(DEAL_ROLES);
+  const parsed = voidPaymentTransactionSchema.safeParse({
+    salesOrderId: formValue(formData, "salesOrderId"),
+    transactionId: formValue(formData, "transactionId"),
+    reason: formValue(formData, "reason"),
+  });
+  if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+  await getPrismaClient().$transaction(async (tx) => {
+    const transaction = await tx.paymentTransaction.findFirst({
+      where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
+      select: { id: true, paymentId: true },
+    });
+    if (!transaction) throw new UserFacingError("Pembayaran aktif tidak ditemukan.");
+    const updated = await tx.paymentTransaction.updateMany({
+      where: { id: transaction.id, status: "ACTIVE" },
+      data: { status: "VOIDED", voidedAt: new Date(), voidReason: parsed.data.reason, voidedById: actor.id },
+    });
+    if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
+    const totals = await tx.paymentTransaction.aggregate({
+      where: { paymentId: transaction.paymentId, status: "ACTIVE" },
+      _sum: { amount: true },
+    });
+    const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: transaction.paymentId }, select: { salesOrder: { select: { total: true } } } });
+    await tx.dealPayment.update({
+      where: { id: transaction.paymentId },
+      data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
+    });
+    await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_VOIDED", ["status", "voidedAt", "voidReason", "voidedById"], {
+      salesOrderId: parsed.data.salesOrderId,
+    });
+  }, DEAL_TRANSACTION_OPTIONS);
+
+  revalidatePaymentMutationPaths(parsed.data.salesOrderId);
+}
+
+export async function payPendingInitialPaymentAction(_prevState: CrmActionState, formData: FormData): Promise<CrmActionState> {
+  try {
+    const salesOrder = await createSalesOrderFromPendingPayment(formData);
+    revalidatePaymentMutationPaths(salesOrder.id);
+    revalidatePath(`/crm/peluang/${salesOrder.opportunityId}`);
+    revalidatePath(`/customers/${salesOrder.customerId}`);
+    revalidateCustomerReminders();
+    return crmActionSuccess();
+  } catch (error) {
+    return crmActionFailure(error);
+  }
+}
+
+export async function payInvoicePaymentTermAction(_prevState: CrmActionState, formData: FormData): Promise<CrmActionState> {
+  try {
+    await recordPaymentTerm(formData, new Date());
+    return crmActionSuccess();
+  } catch (error) {
+    return crmActionFailure(error);
+  }
+}
+
+export async function editInvoicePaymentTransactionAction(_prevState: CrmActionState, formData: FormData): Promise<CrmActionState> {
+  try {
+    await editPaymentTransaction(formData);
+    return crmActionSuccess();
+  } catch (error) {
+    return crmActionFailure(error);
+  }
+}
+
+export async function voidInvoicePaymentTransactionAction(_prevState: CrmActionState, formData: FormData): Promise<CrmActionState> {
+  try {
+    await voidPaymentTransaction(formData);
+    return crmActionSuccess();
+  } catch (error) {
+    return crmActionFailure(error);
+  }
+}
+
 export async function payPaymentTermAction(formData: FormData) {
   const fallbackId = typeof formData.get("salesOrderId") === "string" ? String(formData.get("salesOrderId")) : "";
   return runRedirectingAction(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", async () => {
-    const actor = await requireActor(DEAL_ROLES);
     const parsed = payPaymentTermSchema.safeParse({
       salesOrderId: formValue(formData, "salesOrderId"),
       paymentTermId: formValue(formData, "paymentTermId"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
       paidAt: formValue(formData, "paidAt"),
       reference: formValue(formData, "reference"),
       note: formValue(formData, "note"),
@@ -2353,51 +2772,14 @@ export async function payPaymentTermAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
+    const normalized = new FormData();
+    normalized.set("salesOrderId", parsed.data.salesOrderId);
+    normalized.set("paymentTermId", parsed.data.paymentTermId);
+    normalized.set("paymentMethodId", parsed.data.paymentMethodId);
+    if (parsed.data.reference) normalized.set("reference", parsed.data.reference);
+    if (parsed.data.note) normalized.set("note", parsed.data.note);
+    await recordPaymentTerm(normalized, paidAt);
 
-    await runDealTransaction(async (tx) => {
-      const term = await tx.paymentTerm.findFirst({
-        where: { id: parsed.data.paymentTermId, payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
-        select: {
-          id: true,
-          amount: true,
-          paymentId: true,
-          transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 },
-        },
-      });
-      if (!term) throw new UserFacingError("Termin pembayaran tidak ditemukan.");
-      if (term.transactions.length) throw new UserFacingError("Termin ini sudah dibayar.");
-      const transaction = await tx.paymentTransaction.create({
-        data: {
-          paymentId: term.paymentId,
-          paymentTermId: term.id,
-          amount: term.amount,
-          paidAt,
-          reference: parsed.data.reference,
-          note: parsed.data.note,
-          createdById: actor.id,
-        },
-        select: { id: true },
-      });
-      const totals = await tx.paymentTransaction.aggregate({
-        where: { paymentId: term.paymentId, status: "ACTIVE" },
-        _sum: { amount: true },
-      });
-      const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: term.paymentId }, select: { salesOrder: { select: { total: true } } } });
-      await tx.dealPayment.update({
-        where: { id: term.paymentId },
-        data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
-      });
-      await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "reference", "note"], {
-        salesOrderId: parsed.data.salesOrderId,
-        paymentTermId: term.id,
-      });
-    });
-
-    revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
-    revalidatePath("/dashboard");
-    revalidatePath("/keuangan");
-    revalidatePath("/produksi");
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran termin berhasil dicatat.");
   });
 }
@@ -2408,6 +2790,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     const actor = await requireActor(DEAL_ROLES);
     const parsed = recordInitialPaymentSchema.safeParse({
       salesOrderId: formValue(formData, "salesOrderId"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
       paidAt: formValue(formData, "paidAt"),
       reference: formValue(formData, "reference"),
       note: formValue(formData, "note"),
@@ -2433,6 +2816,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
           paymentId: payment.id,
           amount: payment.initialAmount,
           paidAt,
+          paymentMethodId: parsed.data.paymentMethodId,
           reference: parsed.data.reference,
           note: parsed.data.note,
           createdById: actor.id,
@@ -2448,7 +2832,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
         data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
       });
       await ensureProductionWorkOrder(tx, actor, parsed.data.salesOrderId);
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "reference", "note"], {
+      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
         salesOrderId: parsed.data.salesOrderId,
         paymentKind: "INITIAL",
       });
@@ -2465,95 +2849,16 @@ export async function recordInitialPaymentAction(formData: FormData) {
 export async function editPaymentTransactionAction(formData: FormData) {
   const fallbackId = typeof formData.get("salesOrderId") === "string" ? String(formData.get("salesOrderId")) : "";
   return runRedirectingAction(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", async () => {
-    const actor = await requireActor(DEAL_ROLES);
-    const parsed = editPaymentTransactionSchema.safeParse({
-      salesOrderId: formValue(formData, "salesOrderId"),
-      transactionId: formValue(formData, "transactionId"),
-      version: formValue(formData, "version"),
-      amount: formValue(formData, "amount"),
-      paidAt: formValue(formData, "paidAt"),
-      reference: formValue(formData, "reference"),
-      note: formValue(formData, "note"),
-    });
-    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-    const paidAt = jakartaDateTime(parsed.data.paidAt);
-    if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
-    const amount = new Prisma.Decimal(parsed.data.amount);
-
-    await runDealTransaction(async (tx) => {
-      const transaction = await tx.paymentTransaction.findFirst({
-        where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
-        select: { id: true, paymentId: true, version: true, amount: true, paidAt: true },
-      });
-      if (!transaction) throw new UserFacingError("Pembayaran aktif tidak ditemukan.");
-      if (transaction.version !== parsed.data.version) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
-      const otherPayments = await tx.paymentTransaction.aggregate({
-        where: { paymentId: transaction.paymentId, status: "ACTIVE", id: { not: transaction.id } },
-        _sum: { amount: true },
-      });
-      const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: transaction.paymentId }, select: { salesOrder: { select: { total: true } } } });
-      const newTotal = (otherPayments._sum.amount ?? new Prisma.Decimal(0)).add(amount);
-      if (amount.lte(0) || newTotal.gt(payment.salesOrder.total)) throw new UserFacingError("Nominal harus positif dan total pembayaran tidak boleh melebihi invoice.");
-      const updated = await tx.paymentTransaction.updateMany({
-        where: { id: transaction.id, status: "ACTIVE", version: transaction.version },
-        data: { amount, paidAt, reference: parsed.data.reference, note: parsed.data.note, version: { increment: 1 } },
-      });
-      if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
-      await tx.dealPayment.update({ where: { id: transaction.paymentId }, data: { outstandingAmount: payment.salesOrder.total.sub(newTotal) } });
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_UPDATED", ["amount", "paidAt", "reference", "note", "version"], {
-        salesOrderId: parsed.data.salesOrderId,
-        previousAmount: transaction.amount.toString(),
-        amount: amount.toString(),
-        previousPaidAt: transaction.paidAt.toISOString(),
-        paidAt: paidAt.toISOString(),
-      });
-    });
-
-    revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
-    return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran berhasil diperbarui.");
+    await editPaymentTransaction(formData);
+    return flashMessagePath(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", "notice", "Pembayaran berhasil diperbarui.");
   });
 }
 
 export async function voidPaymentTransactionAction(formData: FormData) {
   const fallbackId = typeof formData.get("salesOrderId") === "string" ? String(formData.get("salesOrderId")) : "";
   return runRedirectingAction(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", async () => {
-    const actor = await requireActor(DEAL_ROLES);
-    const parsed = voidPaymentTransactionSchema.safeParse({
-      salesOrderId: formValue(formData, "salesOrderId"),
-      transactionId: formValue(formData, "transactionId"),
-      reason: formValue(formData, "reason"),
-    });
-    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-
-    await getPrismaClient().$transaction(async (tx) => {
-      const transaction = await tx.paymentTransaction.findFirst({
-        where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId, salesOrder: { status: "ACTIVE" } } },
-        select: { id: true, paymentId: true },
-      });
-      if (!transaction) throw new UserFacingError("Pembayaran aktif tidak ditemukan.");
-      const updated = await tx.paymentTransaction.updateMany({
-        where: { id: transaction.id, status: "ACTIVE" },
-        data: { status: "VOIDED", voidedAt: new Date(), voidReason: parsed.data.reason, voidedById: actor.id },
-      });
-      if (updated.count !== 1) throw new UserFacingError("Pembayaran sudah berubah. Muat ulang halaman.");
-      const totals = await tx.paymentTransaction.aggregate({
-        where: { paymentId: transaction.paymentId, status: "ACTIVE" },
-        _sum: { amount: true },
-      });
-      const payment = await tx.dealPayment.findUniqueOrThrow({ where: { id: transaction.paymentId }, select: { salesOrder: { select: { total: true } } } });
-      await tx.dealPayment.update({
-        where: { id: transaction.paymentId },
-        data: { outstandingAmount: Prisma.Decimal.max(payment.salesOrder.total.sub(totals._sum.amount ?? 0), 0) },
-      });
-      await audit(tx, actor, "PaymentTransaction", transaction.id, "PAYMENT_VOIDED", ["status", "voidedAt", "voidReason", "voidedById"], {
-        salesOrderId: parsed.data.salesOrderId,
-      });
-    }, DEAL_TRANSACTION_OPTIONS);
-
-    revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
-    revalidatePath("/dashboard");
-    revalidatePath("/keuangan");
-    return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran dibatalkan dan saldo diperbarui.");
+    await voidPaymentTransaction(formData);
+    return flashMessagePath(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", "notice", "Pembayaran dibatalkan dan saldo diperbarui.");
   });
 }
 

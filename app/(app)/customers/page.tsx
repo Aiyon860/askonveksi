@@ -16,9 +16,9 @@ import {
 
 import { archiveCustomerAction, importCustomersAction, restoreCustomerAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
-import { CustomerDetail } from "@/components/crm/customer-detail";
 import { EditCustomerForm } from "@/components/crm/edit-customer-form";
 import { CustomerRowActions } from "@/components/crm/customer-row-actions";
+import { CustomerTableRowLink } from "@/components/crm/customer-table-row-link";
 import { NewCustomerForm } from "@/components/crm/new-customer-form";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { DataPagination } from "@/components/data-pagination";
@@ -131,6 +131,11 @@ function exportHref(state: TableState) {
   if (state.direction !== defaultDirection(state.sort)) params.set("order", state.direction);
   const query = params.toString();
   return query ? `/api/customers/export?${query}` : "/api/customers/export";
+}
+
+function customerDetailHref(customerId: string, state: TableState) {
+  const returnTo = tableHref(state, {});
+  return `/customers/${customerId}?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 function CustomerExcelActions({ href }: { href: string }) {
@@ -331,7 +336,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                   const latestOrder = customer.reminders[0]?.sourceSalesOrder;
 
                   return (
-                    <CustomerDetail key={customer.id} id={customer.id}>
+                    <CustomerTableRowLink key={customer.id} href={customerDetailHref(customer.id, state)}>
                       <TableCell className="text-center font-mono text-muted-foreground tabular-nums">
                         {(page - 1) * pageSize + index + 1}
                       </TableCell>
@@ -398,7 +403,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                           </CustomerRowActions>
                         </TableCell>
                       ) : null}
-                    </CustomerDetail>
+                    </CustomerTableRowLink>
                   );
                 })}
               </TableBody>

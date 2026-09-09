@@ -405,7 +405,15 @@ async function OpportunitySidebar({ id }: { id: string }) {
       {canOperate ? (
         <Card>
           <CardHeader><CardTitle>Status pipeline</CardTitle><CardDescription>Tentukan langkah kerja berikutnya.</CardDescription></CardHeader>
-          <CardContent><OpportunityStageForm opportunityId={opportunity.id} version={opportunity.version} initialStage={opportunity.stage} cancelReason={opportunity.cancelReason} /></CardContent>
+          <CardContent>
+            <OpportunityStageForm
+              opportunityId={opportunity.id}
+              version={opportunity.version}
+              initialStage={opportunity.stage}
+              cancelReason={opportunity.cancelReason}
+              redirectTo={`/crm/peluang/${opportunity.id}?tab=peluang`}
+            />
+          </CardContent>
         </Card>
       ) : null}
     </aside>

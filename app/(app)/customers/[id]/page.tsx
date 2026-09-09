@@ -28,17 +28,38 @@ import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import { getCustomerFormOptions } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function customerListHref(value: string | string[] | undefined) {
+  const returnTo = firstParam(value);
+  if (!returnTo || !returnTo.startsWith("/customers")) return "/customers";
+
+  try {
+    const url = new URL(returnTo, "http://askonveksi.local");
+    if (url.origin === "http://askonveksi.local" && url.pathname === "/customers") {
+      return `${url.pathname}${url.search}`;
+    }
+  } catch {
+    return "/customers";
+  }
+
+  return "/customers";
+}
+
 export default async function CustomerDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ historyPage?: string | string[]; repeatFrom?: string | string[] }>;
+  searchParams: Promise<{ historyPage?: string | string[]; repeatFrom?: string | string[]; returnTo?: string | string[] }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
   const historyPage = parsePageParam(query.historyPage);
-  const repeatFrom = Array.isArray(query.repeatFrom) ? query.repeatFrom[0] : query.repeatFrom;
+  const repeatFrom = firstParam(query.repeatFrom);
+  const listHref = customerListHref(query.returnTo);
   const [customer, actor, formOptions, communicationHistory, repeatDraft] = await Promise.all([
     getCustomerDetail(id),
     getCurrentActor(),
@@ -47,7 +68,14 @@ export default async function CustomerDetailPage({
     repeatFrom ? getRepeatOrderDraft(id, repeatFrom) : Promise.resolve(null),
   ]);
   if (!customer || !actor) notFound();
-  if (historyPage > communicationHistory.pageCount) redirect(`/customers/${id}?historyPage=${communicationHistory.pageCount}#communication-history`);
+  if (historyPage > communicationHistory.pageCount) {
+    const nextParams = new URLSearchParams({
+      historyPage: String(communicationHistory.pageCount),
+      returnTo: listHref,
+    });
+    if (repeatFrom) nextParams.set("repeatFrom", repeatFrom);
+    redirect(`/customers/${id}?${nextParams.toString()}#communication-history`);
+  }
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
   const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
   const canArchive = canOperate && !customer.archivedAt;
@@ -74,7 +102,7 @@ export default async function CustomerDetailPage({
 
   return (
     <>
-      <Button variant="ghost" size="sm" render={<Link href="/customers" />} nativeButton={false} className="w-fit">
+      <Button variant="ghost" size="sm" render={<Link href={listHref} />} nativeButton={false} className="w-fit">
         <ArrowLeft data-icon="inline-start" aria-hidden="true" />
         Semua customer
       </Button>

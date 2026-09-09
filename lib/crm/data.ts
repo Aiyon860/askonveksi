@@ -1145,6 +1145,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
 
 export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED";
 export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED";
+export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER";
 export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
 export type PurchaseOrderListSort = "purchaseOrderNo" | "productName" | "customer" | "status" | "createdAt" | "deadline";
 export type InvoiceListSort = "invoiceNo" | "customer" | "purchaseOrderNo" | "status" | "total" | "createdAt";
@@ -1171,6 +1172,41 @@ function invoiceOrderBy(sort: InvoiceListSort, direction: SortDirection) {
     ? { purchaseOrder: { purchaseOrderNo: direction } }
     : { [sort]: direction };
   return [primary, { id: "asc" as const }];
+}
+
+function invoicePaymentWhere(paymentStatus: InvoicePaymentStatus) {
+  if (paymentStatus === "PAID") {
+    return {
+      salesOrder: {
+        is: {
+          status: "ACTIVE",
+          payment: { is: { outstandingAmount: 0 } },
+        },
+      },
+    } satisfies Prisma.InvoiceWhereInput;
+  }
+
+  if (paymentStatus === "UNPAID") {
+    return {
+      salesOrder: {
+        is: {
+          status: "ACTIVE",
+          payment: { is: { outstandingAmount: { gt: 0 } } },
+        },
+      },
+    } satisfies Prisma.InvoiceWhereInput;
+  }
+
+  if (paymentStatus === "NO_SALES_ORDER") {
+    return {
+      OR: [
+        { salesOrder: null },
+        { salesOrder: { is: { status: "CANCELLED" } } },
+      ],
+    } satisfies Prisma.InvoiceWhereInput;
+  }
+
+  return {};
 }
 
 function salesOrderOrderBy(sort: SalesOrderListSort, direction: SortDirection) {
@@ -1269,6 +1305,7 @@ const getCachedInvoices = unstable_cache(
   async ({
     query,
     status,
+    paymentStatus,
     start,
     end,
     page,
@@ -1278,6 +1315,7 @@ const getCachedInvoices = unstable_cache(
   }: {
     query: string;
     status: InvoiceListStatus;
+    paymentStatus: InvoicePaymentStatus;
     start: Date | null;
     end: Date | null;
     page: number;
@@ -1288,6 +1326,7 @@ const getCachedInvoices = unstable_cache(
     const normalizedQuery = query.trim().slice(0, 80);
     const where = {
       ...(status === "all" ? {} : { status }),
+      ...invoicePaymentWhere(paymentStatus),
       ...(start && end ? { createdAt: { gte: start, lt: end } } : {}),
       ...(normalizedQuery ? {
         OR: [
@@ -1312,6 +1351,7 @@ const getCachedInvoices = unstable_cache(
           createdAt: true,
           opportunityId: true,
           purchaseOrder: { select: { purchaseOrderNo: true } },
+          salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true } } } },
         },
         orderBy: invoiceOrderBy(sort, direction),
         skip: (page - 1) * pageSize,
@@ -1320,7 +1360,15 @@ const getCachedInvoices = unstable_cache(
       prisma.invoice.count({ where }),
     ]);
     return {
-      items: items.map((item) => ({ ...item, total: item.total.toString() })),
+      items: items.map((item) => ({
+        ...item,
+        total: item.total.toString(),
+        paymentStatus: item.salesOrder?.status === "ACTIVE"
+          ? item.salesOrder.payment && item.salesOrder.payment.outstandingAmount.equals(0)
+            ? "PAID" as const
+            : "UNPAID" as const
+          : "NO_SALES_ORDER" as const,
+      })),
       total,
       pageCount: Math.max(1, Math.ceil(total / pageSize)),
     };
@@ -1332,6 +1380,7 @@ const getCachedInvoices = unstable_cache(
 export async function getInvoices({
   query,
   status,
+  paymentStatus,
   start,
   end,
   page,
@@ -1341,6 +1390,7 @@ export async function getInvoices({
 }: {
   query: string;
   status: InvoiceListStatus;
+  paymentStatus: InvoicePaymentStatus;
   start: Date | null;
   end: Date | null;
   page: number;
@@ -1349,7 +1399,7 @@ export async function getInvoices({
   direction: SortDirection;
 }) {
   await requireActor();
-  return getCachedInvoices({ query, status, start, end, page, pageSize, sort, direction });
+  return getCachedInvoices({ query, status, paymentStatus, start, end, page, pageSize, sort, direction });
 }
 
 const getCachedSalesOrders = unstable_cache(
