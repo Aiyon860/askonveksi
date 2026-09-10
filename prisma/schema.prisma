@@ -11,6 +11,7 @@ enum AppRole {
   OWNER
   ADMIN
   SALES
+  DESIGNER
   PRODUCTION
   QC
 }
@@ -171,6 +172,7 @@ model AppUser {
   communicationActivities   CommunicationActivity[]
   customerReminderReceipts  CustomerReminderReceipt[]
   purchaseOrders            PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
+  designRevisions           DesignRevision[]          @relation("DesignRevisionCreatedBy")
   invoices                  Invoice[]                 @relation("InvoiceCreatedBy")
   dealPayments              DealPayment[]             @relation("DealPaymentCreatedBy")
   paymentTransactions       PaymentTransaction[]      @relation("PaymentTransactionCreatedBy")
@@ -390,6 +392,7 @@ model PurchaseOrder {
   sizes                    PurchaseOrderSize[]
   rosterEntries            PurchaseOrderRosterEntry[]
   attachments              PurchaseOrderAttachment[]
+  designTask               DesignTask?
   invoices                 Invoice[]
   salesOrder               SalesOrder?
   createdAt                DateTime                   @default(now()) @db.Timestamptz(3)
@@ -398,6 +401,47 @@ model PurchaseOrder {
   @@unique([opportunityId, revision])
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
+}
+
+model DesignTask {
+  id              String           @id @default(cuid())
+  purchaseOrderId String           @unique
+  deadline        DateTime         @db.Date
+  purchaseOrder   PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  revisions       DesignRevision[]
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([deadline])
+}
+
+model DesignRevision {
+  id          String             @id @default(cuid())
+  designTaskId String
+  revision    Int
+  notes       String?            @db.Text
+  createdById String
+  designTask  DesignTask         @relation(fields: [designTaskId], references: [id], onDelete: Restrict)
+  createdBy   AppUser            @relation("DesignRevisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  attachments DesignAttachment[]
+  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@unique([designTaskId, revision])
+  @@index([createdById, createdAt])
+}
+
+model DesignAttachment {
+  id               String                      @id @default(cuid())
+  designRevisionId String
+  path             String                      @db.VarChar(500)
+  originalName     String                      @db.VarChar(255)
+  contentType      String                      @db.VarChar(64)
+  sizeBytes        Int
+  kind             PurchaseOrderAttachmentKind @default(OTHER)
+  designRevision   DesignRevision              @relation(fields: [designRevisionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime                    @default(now()) @db.Timestamptz(3)
+
+  @@index([designRevisionId, createdAt])
 }
 
 model PurchaseOrderSize {

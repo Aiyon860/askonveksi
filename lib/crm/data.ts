@@ -565,6 +565,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
+          designTask: { select: { deadline: true } },
         },
         orderBy: { revision: "desc" },
       },

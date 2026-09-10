@@ -55,7 +55,7 @@ import {
 } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
-const USER_ROLES = ["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
+const USER_ROLES = ["OWNER", "ADMIN", "SALES", "DESIGNER", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
 const USER_STATUSES = ["all", "active", "inactive"] as const satisfies readonly UserStatusFilter[];
 const USER_SORTS = ["createdAt", "email", "isActive", "name", "role"] as const satisfies readonly UserSort[];
 const SORT_DIRECTIONS = ["asc", "desc"] as const satisfies readonly SortDirection[];
