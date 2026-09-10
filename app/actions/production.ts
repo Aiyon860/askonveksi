@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { flashMessagePath, messageForError, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { PRODUCTION_MANAGEMENT_ROLES, PRODUCTION_ROLES } from "@/lib/auth/permissions";
+import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { firstValidationMessage } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
@@ -64,8 +64,8 @@ async function moveProduction(formData: FormData) {
 
     const currentStep = order.steps.find((step) => step.stage === order.currentStage && step.status === "ACTIVE");
     if (!currentStep) throw new UserFacingError("Tahap aktif tidak valid. Muat ulang halaman.");
-    const manager = PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN" | "ADMIN_PRODUCTION");
-    if (!isStageRole(actor.role, order.currentStage)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
+    const manager = actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+    if (!isStageRole(actor.role)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
     if (!manager && currentStep.assigneeId !== actor.id) throw new UserFacingError("Ambil penugasan PIC tahap ini sebelum memperbarui progres.");
 
     const targetStep = order.steps.find((step) => step.stage === parsed.data.targetStage);
@@ -171,12 +171,12 @@ export async function assignProductionStepAction(formData: FormData) {
         select: { id: true, stage: true, assigneeId: true, workOrder: { select: { status: true } } },
       });
       if (!step || step.workOrder.status !== "ACTIVE") throw new UserFacingError("Tahap produksi tidak aktif atau tidak ditemukan.");
-      const manager = PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN" | "ADMIN_PRODUCTION");
+      const manager = actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
       if (!manager && (parsed.data.assigneeId !== actor.id || step.assigneeId)) throw new UserFacingError("Anda hanya dapat mengambil tahap yang belum memiliki PIC.");
 
       const assignee = await tx.appUser.findFirst({ where: { id: parsed.data.assigneeId, isActive: true }, select: { id: true, role: true, name: true } });
-      if (!assignee || !isStageRole(assignee.role, step.stage) || PRODUCTION_MANAGEMENT_ROLES.includes(assignee.role as "OWNER" | "ADMIN" | "ADMIN_PRODUCTION")) throw new UserFacingError("PIC tidak aktif atau rolenya tidak sesuai tahap.");
-      if (!isStageRole(actor.role, step.stage)) throw new UserFacingError("Role Anda tidak dapat mengatur PIC tahap ini.");
+      if (!assignee || !isStageRole(assignee.role) || assignee.role === "OWNER") throw new UserFacingError("PIC tidak aktif atau rolenya tidak sesuai tahap.");
+      if (!isStageRole(actor.role)) throw new UserFacingError("Role Anda tidak dapat mengatur PIC tahap ini.");
 
       await tx.productionStep.update({ where: { id: step.id }, data: { assigneeId: assignee.id } });
       await tx.productionActivity.create({ data: { workOrderId: parsed.data.workOrderId, actorId: actor.id, type: "PIC_ASSIGNED", toStage: step.stage, metadata: { assigneeId: assignee.id, assigneeName: assignee.name } } });
@@ -210,7 +210,7 @@ export async function addProductionNoteAction(formData: FormData) {
 export async function reopenProductionAction(formData: FormData) {
   const fallback = detailPath(String(value(formData, "workOrderId") ?? ""));
   return runRedirectingAction(fallback, async () => {
-    const actor = await requireActor(PRODUCTION_MANAGEMENT_ROLES);
+    const actor = await requireActor(PRODUCTION_ROLES);
     const parsed = reopenProductionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), version: value(formData, "version"), targetStage: value(formData, "targetStage"), note: value(formData, "note") });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     await getPrismaClient().$transaction(async (tx) => {

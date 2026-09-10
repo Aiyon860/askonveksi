@@ -35,7 +35,6 @@ export function nextProductionStage(sequence: readonly ProductionStage[], curren
   return index >= 0 ? sequence[index + 1] ?? null : null;
 }
 
-export function isStageRole(role: AppRole, stage: ProductionStage) {
-  if (role === "OWNER" || role === "ADMIN" || role === "ADMIN_PRODUCTION") return true;
-  return stage === "QC" ? role === "QC" : role === "PRODUCTION";
+export function isStageRole(role: AppRole) {
+  return role === "OWNER" || role === "ADMIN_PRODUCTION";
 }

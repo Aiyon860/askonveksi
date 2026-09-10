@@ -3,7 +3,10 @@ import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  prismaSchemaVersion: string | undefined;
 };
+
+const PRISMA_SCHEMA_VERSION = "four-operational-roles";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -23,7 +26,7 @@ function createPrismaClient() {
 
 function hasCurrentModelDelegates(client: PrismaClient) {
   const delegates = client as unknown as Record<string, { findMany?: unknown } | undefined>;
-  return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction"].every(
+  return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction", "designTask", "designRevision"].every(
     (model) => typeof delegates[model]?.findMany === "function",
   );
 }
@@ -32,7 +35,7 @@ export function getPrismaClient() {
   if (
     process.env.NODE_ENV !== "production" &&
     globalForPrisma.prisma &&
-    !hasCurrentModelDelegates(globalForPrisma.prisma)
+    (!hasCurrentModelDelegates(globalForPrisma.prisma) || globalForPrisma.prismaSchemaVersion !== PRISMA_SCHEMA_VERSION)
   ) {
     const staleClient = globalForPrisma.prisma;
     globalForPrisma.prisma = undefined;
@@ -41,6 +44,7 @@ export function getPrismaClient() {
 
   if (!globalForPrisma.prisma) {
     globalForPrisma.prisma = createPrismaClient();
+    globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
   }
 
   return globalForPrisma.prisma;

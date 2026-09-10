@@ -105,12 +105,12 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       .catch(() => {});
   }, []);
 
-  const canManageMasterData = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER";
-  const canViewAnalytics = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER";
-  const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER" || role === "SALES";
-  const canViewProduction = role === "OWNER" || role === "ADMIN" || role === "ADMIN_PRODUCTION" || role === "PRODUCTION" || role === "QC";
-  const canViewFinance = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER";
-  const canViewDesign = role === "OWNER" || role === "DESIGNER";
+  const canManageMasterData = role === "OWNER";
+  const canViewAnalytics = role === "OWNER";
+  const canViewCrm = role === "OWNER" || role === "ADMIN_CUSTOMER";
+  const canViewProduction = role === "OWNER" || role === "ADMIN_PRODUCTION";
+  const canViewFinance = role === "OWNER";
+  const canViewDesign = role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
   const masterDataActive = isPathWithin(pathname, "/master-data") || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");

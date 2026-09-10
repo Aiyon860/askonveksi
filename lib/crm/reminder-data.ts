@@ -27,7 +27,7 @@ export function customerReminderVisibilityWhere(
     customer: {
       archivedAt: null,
       opportunities: { none: { stage: { in: OPEN_STAGES } } },
-      ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+      ...(actor.role === "ADMIN_CUSTOMER" ? { salesPicId: actor.id } : {}),
     },
     OR: [
       { type: "REACTIVATION" },

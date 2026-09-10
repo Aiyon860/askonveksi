@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { flashMessagePath, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
-import { DESIGN_ROLES } from "@/lib/auth/permissions";
+import { DESIGN_APPROVER_ROLES, DESIGN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
@@ -13,6 +13,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const BUCKET = "crm-po-designs";
 const MAX_FILES = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_REVISIONS = 4;
 
 function extension(name: string) {
   return /\.([a-z0-9]{1,10})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
@@ -59,13 +60,17 @@ export async function uploadDesignRevisionAction(formData: FormData) {
 
       const prisma = getPrismaClient();
       await prisma.$transaction(async (tx) => {
-        const task = await tx.designTask.findUnique({ where: { id: taskId.data }, select: { id: true } });
+        const task = await tx.designTask.findUnique({ where: { id: taskId.data }, select: { id: true, purchaseOrder: { select: { status: true } }, revisions: { orderBy: { revision: "desc" }, take: 1, select: { revision: true, status: true } } } });
         if (!task) throw new UserFacingError("Tugas desain tidak ditemukan.");
-        const latest = await tx.designRevision.aggregate({ where: { designTaskId: task.id }, _max: { revision: true } });
+        if (task.purchaseOrder.status !== "DRAFT") throw new UserFacingError("Desain PO yang sudah disepakati tidak dapat diubah.");
+        const latest = task.revisions[0];
+        if (latest?.status === "PENDING_REVIEW") throw new UserFacingError("Tunggu keputusan untuk desain yang sedang ditinjau.");
+        if (latest?.status === "APPROVED") throw new UserFacingError("Desain sudah disetujui. Buat revisi PO untuk mengubah desain.");
+        if ((latest?.revision ?? 0) >= MAX_REVISIONS) throw new UserFacingError("Batas desain awal dan tiga revisi telah tercapai.");
         const revision = await tx.designRevision.create({
           data: {
             designTaskId: task.id,
-            revision: (latest._max.revision ?? 0) + 1,
+            revision: (latest?.revision ?? 0) + 1,
             notes: typeof formData.get("notes") === "string" ? String(formData.get("notes")).trim().slice(0, 4000) || null : null,
             createdById: actor.id,
             attachments: { create: attachments.map(({ path, originalName, contentType, sizeBytes }) => ({ path, originalName, contentType, sizeBytes })) },
@@ -89,5 +94,29 @@ export async function uploadDesignRevisionAction(formData: FormData) {
 
     revalidatePath("/desain");
     return flashMessagePath("/desain", "notice", "Versi desain berhasil diunggah.");
+  });
+}
+
+export async function reviewDesignRevisionAction(formData: FormData) {
+  return runRedirectingAction("/desain", async () => {
+    const actor = await requireActor(DESIGN_APPROVER_ROLES);
+    const revisionId = entityIdSchema.safeParse(formData.get("designRevisionId"));
+    const decision = formData.get("decision");
+    const reviewNotes = typeof formData.get("reviewNotes") === "string" ? String(formData.get("reviewNotes")).trim().slice(0, 4000) || null : null;
+    if (!revisionId.success || (decision !== "APPROVED" && decision !== "REJECTED")) throw new UserFacingError("Keputusan desain tidak valid.");
+    if (decision === "REJECTED" && !reviewNotes) throw new UserFacingError("Catatan penolakan wajib diisi.");
+
+    const result = await getPrismaClient().$transaction(async (tx) => {
+      const revision = await tx.designRevision.findUnique({ where: { id: revisionId.data }, select: { id: true, revision: true, status: true, designTaskId: true, designTask: { select: { purchaseOrder: { select: { status: true, opportunityId: true } } } } } });
+      if (!revision || revision.status !== "PENDING_REVIEW") throw new UserFacingError("Desain ini sudah ditinjau atau tidak ditemukan.");
+      if (revision.designTask.purchaseOrder.status !== "DRAFT") throw new UserFacingError("Desain untuk PO yang sudah disepakati tidak dapat ditinjau.");
+      await tx.designRevision.update({ where: { id: revision.id }, data: { status: decision, reviewNotes, reviewedById: actor.id, reviewedAt: new Date() } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "DesignRevision", entityId: revision.id, action: decision === "APPROVED" ? "DESIGN_REVISION_APPROVED" : "DESIGN_REVISION_REJECTED", changedFields: ["status", "reviewNotes", "reviewedById", "reviewedAt"], metadata: { designTaskId: revision.designTaskId, revision: revision.revision } } });
+      return revision.designTask.purchaseOrder.opportunityId;
+    });
+    revalidatePath("/desain");
+    revalidatePath("/crm");
+    revalidatePath(`/crm/peluang/${result}`);
+    return flashMessagePath("/desain", "notice", decision === "APPROVED" ? "Desain disetujui." : "Desain ditolak dan menunggu revisi.");
   });
 }

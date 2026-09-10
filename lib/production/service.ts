@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type AppRole, Prisma, type ProductionRoute, type ProductionStage } from "@prisma/client";
+import { type AppRole, Prisma, type ProductionRoute } from "@prisma/client";
 
 import { nextWorkOrderNo } from "@/lib/crm/numbers";
 import { productionStages } from "@/lib/production/workflow";
@@ -94,6 +94,6 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
   });
 }
 
-export function canClaimProductionStep(role: AppRole, stage: ProductionStage) {
-  return role === "OWNER" || role === "ADMIN" || role === "ADMIN_PRODUCTION" || (stage === "QC" ? role === "QC" : role === "PRODUCTION");
+export function canClaimProductionStep(role: AppRole) {
+  return role === "OWNER" || role === "ADMIN_PRODUCTION";
 }

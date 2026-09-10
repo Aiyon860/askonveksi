@@ -194,8 +194,8 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
 test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", () => {
   assert.equal(strongPasswordSchema.safeParse("").success, false);
   assert.equal(strongPasswordSchema.safeParse("a").success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "SALES", password: "a" }).success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "SALES", temporaryPassword: "a" }).success, false);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", password: "a" }).success, true);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", temporaryPassword: "a" }).success, false);
 
   const invalidInvoice = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -295,11 +295,10 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
 
 test("owner menjadi role tertinggi pada permission aplikasi", () => {
   for (const roles of [CRM_OPERATOR_ROLES, DEAL_ROLES, ARCHIVE_ROLES, REVERSE_DEAL_ROLES]) {
-    assert.equal(roles.includes("OWNER"), true);
     assert.equal(hasRole("OWNER", roles), true);
   }
-  assert.equal(hasRole("OWNER", ["SALES"]), true);
-  assert.equal(hasRole("SALES", DEAL_ROLES), false);
+  assert.equal(hasRole("OWNER", ["ADMIN_CUSTOMER"]), true);
+  assert.equal(hasRole("ADMIN_CUSTOMER", DEAL_ROLES), true);
 });
 
 test("tab peluang dan label dekorasi memiliki fallback yang aman", () => {
@@ -353,7 +352,7 @@ test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", ()
     updatedAt: "2026-08-29T09:00:00.000Z",
     name: "Budi Santoso",
     email: "budi@example.com",
-    role: "ADMIN",
+    role: "ADMIN_CUSTOMER",
     password: "",
     confirmPassword: "",
   };

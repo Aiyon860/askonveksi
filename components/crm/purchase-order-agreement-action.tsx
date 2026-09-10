@@ -12,6 +12,7 @@ type PurchaseOrderAgreementActionProps = {
   version: number;
   revisionLabel: string;
   canAgree: boolean;
+  designMessage: string | null;
 };
 
 export function PurchaseOrderAgreementAction({
@@ -20,6 +21,7 @@ export function PurchaseOrderAgreementAction({
   version,
   revisionLabel,
   canAgree,
+  designMessage,
 }: PurchaseOrderAgreementActionProps) {
   const [isDraftDirty, setIsDraftDirty] = useState(false);
   const disabled = !canAgree || isDraftDirty;
@@ -40,6 +42,7 @@ export function PurchaseOrderAgreementAction({
   }, [purchaseOrderId]);
 
   return (
+    <div className="flex flex-col items-stretch gap-2 sm:items-end">
     <form action={agreePurchaseOrderAction} className="contents">
       <input type="hidden" name="opportunityId" value={opportunityId} />
       <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
@@ -56,5 +59,7 @@ export function PurchaseOrderAgreementAction({
         {isDraftDirty ? "Simpan draft dulu" : "Sepakati PO terbaru"}
       </ConfirmSubmitButton>
     </form>
+    {designMessage ? <p className="max-w-xs text-xs text-muted-foreground">{designMessage}</p> : null}
+    </div>
   );
 }

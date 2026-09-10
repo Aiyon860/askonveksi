@@ -9,13 +9,13 @@ datasource db {
 
 enum AppRole {
   OWNER
+  ADMIN_CUSTOMER
+  ADMIN_PRODUCTION
   ADMIN
   SALES
   DESIGNER
   PRODUCTION
   QC
-  ADMIN_CUSTOMER
-  ADMIN_PRODUCTION
 }
 
 enum DesignRevisionStatus {
@@ -494,15 +494,15 @@ model DesignRevision {
   id           String               @id @default(cuid())
   designTaskId String
   revision     Int
-  notes        String?              @db.Text
-  createdById  String
   status       DesignRevisionStatus @default(PENDING_REVIEW)
+  notes        String?              @db.Text
   reviewNotes  String?              @db.Text
+  createdById  String
   reviewedById String?
   reviewedAt   DateTime?            @db.Timestamptz(3)
   designTask   DesignTask           @relation(fields: [designTaskId], references: [id], onDelete: Restrict)
   createdBy    AppUser              @relation("DesignRevisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  reviewedBy   AppUser?             @relation("DesignRevisionReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedBy   AppUser?             @relation("DesignRevisionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   attachments  DesignAttachment[]
   createdAt    DateTime             @default(now()) @db.Timestamptz(3)
 

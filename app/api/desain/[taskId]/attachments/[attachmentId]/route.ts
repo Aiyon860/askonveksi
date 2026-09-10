@@ -1,11 +1,11 @@
-import { DESIGN_ROLES } from "@/lib/auth/permissions";
+import { DESIGN_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ taskId: string; attachmentId: string }> }) {
-  try { await requireActor(DESIGN_ROLES); } catch { return new Response("Anda tidak berhak membuka file desain.", { status: 403 }); }
+  try { await requireActor(DESIGN_VIEW_ROLES); } catch { return new Response("Anda tidak berhak membuka file desain.", { status: 403 }); }
   const values = await params;
   const taskId = entityIdSchema.safeParse(values.taskId);
   const attachmentId = entityIdSchema.safeParse(values.attachmentId);

@@ -455,7 +455,7 @@ export async function createCustomerAction(formData: FormData) {
         const [customerType, leadSource, salesPic] = await Promise.all([
           tx.customerType.findUnique({ where: { id: parsed.data.customerTypeId }, select: { id: true } }),
           parsed.data.leadSourceId ? tx.leadSource.findUnique({ where: { id: parsed.data.leadSourceId }, select: { id: true } }) : null,
-          parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+          parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
         ]);
         if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
         if (parsed.data.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
@@ -495,7 +495,7 @@ export async function importCustomersAction(formData: FormData) {
         const [customerTypes, leadSources, salesUsers, currentCustomers] = await Promise.all([
           tx.customerType.findMany({ select: { id: true, name: true } }),
           tx.leadSource.findMany({ select: { id: true, name: true } }),
-          tx.appUser.findMany({ where: { role: "SALES", isActive: true }, select: { id: true, name: true } }),
+          tx.appUser.findMany({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true, name: true } }),
           tx.customer.findMany({
             where: {
               OR: customerLookupWhere,
@@ -642,7 +642,7 @@ export async function updateCustomerAction(formData: FormData) {
       const [customerType, leadSource, salesPic] = await Promise.all([
         tx.customerType.findUnique({ where: { id: fields.customerTypeId }, select: { id: true } }),
         fields.leadSourceId ? tx.leadSource.findUnique({ where: { id: fields.leadSourceId }, select: { id: true } }) : null,
-        fields.salesPicId ? tx.appUser.findFirst({ where: { id: fields.salesPicId, role: "SALES", OR: [{ isActive: true }, { id: current.salesPicId ?? "" }] }, select: { id: true } }) : null,
+        fields.salesPicId ? tx.appUser.findFirst({ where: { id: fields.salesPicId, role: "ADMIN_CUSTOMER", OR: [{ isActive: true }, { id: current.salesPicId ?? "" }] }, select: { id: true } }) : null,
       ]);
       if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
       if (fields.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
@@ -773,7 +773,7 @@ export async function createOpportunityAction(formData: FormData) {
         const salesPicId = parsed.data.salesPicId ?? customer.salesPicId;
         const [leadSource, salesPic] = await Promise.all([
           leadSourceId ? tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null,
-          salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+          salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
         ]);
         if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
         if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
@@ -830,7 +830,7 @@ export async function createLeadAction(formData: FormData) {
         const [customerType, customerLeadSource, customerSalesPic] = await Promise.all([
           tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
           customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
-          customerParsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: customerParsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+          customerParsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: customerParsed.data.salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
         ]);
         if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
         if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
@@ -853,7 +853,7 @@ export async function createLeadAction(formData: FormData) {
       const salesPicId = opportunityParsed.data.salesPicId ?? customer.salesPicId;
       const [leadSource, salesPic] = await Promise.all([
         leadSourceId ? tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null,
-        salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+        salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
       ]);
       if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
       if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
@@ -912,7 +912,7 @@ export async function updateOpportunityAction(formData: FormData) {
 
       const [leadSource, salesPic] = await Promise.all([
         parsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: parsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
-        parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+        parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
       ]);
       if (parsed.data.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
       if (parsed.data.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
@@ -1322,6 +1322,7 @@ export async function agreePurchaseOrderAction(formData: FormData) {
           status: true,
           garmentType: true,
           deadline: true,
+          designTask: { select: { revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
           sizes: { select: { id: true }, take: 1 },
           opportunity: {
             select: {
@@ -1337,6 +1338,7 @@ export async function agreePurchaseOrderAction(formData: FormData) {
       if (purchaseOrder.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum menyepakati revisi PO.");
       if (!purchaseOrder.sizes.length) throw new UserFacingError("PO belum memiliki ukuran dan jumlah.");
       if (!purchaseOrder.garmentType || !purchaseOrder.deadline) throw new UserFacingError("Jenis pakaian dan deadline produksi wajib dilengkapi sebelum PO disepakati.");
+      if (purchaseOrder.designTask?.revisions[0]?.status !== "APPROVED") throw new UserFacingError("Desain harus diunggah dan disetujui Owner atau Admin sebelum PO disepakati.");
       const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
       await tx.purchaseOrder.updateMany({

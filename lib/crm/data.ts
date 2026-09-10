@@ -209,7 +209,7 @@ function customerWhere(actor: { id: string; role: AppRole }, query: string, segm
               some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { gt: reference } },
             },
           }],
-          ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+          ...(actor.role === "ADMIN_CUSTOMER" ? { salesPicId: actor.id } : {}),
         }
       : segment === "inactive"
         ? {
@@ -218,7 +218,7 @@ function customerWhere(actor: { id: string; role: AppRole }, query: string, segm
             reminders: {
               some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { lte: reference } },
             },
-            ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
+            ...(actor.role === "ADMIN_CUSTOMER" ? { salesPicId: actor.id } : {}),
           }
         : { archivedAt: null };
 
@@ -570,7 +570,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
-          designTask: { select: { deadline: true } },
+          designTask: { select: { deadline: true, revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
         },
         orderBy: { revision: "desc" },
       },
@@ -696,7 +696,7 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
       : bucket === "tomorrow"
         ? { gte: tomorrow, lt: dayAfterTomorrow }
         : { gte: dayAfterTomorrow };
-  const selectedPicId = picId === "all" ? undefined : picId || (actor.role === "SALES" ? actor.id : undefined);
+  const selectedPicId = picId === "all" ? undefined : picId || (actor.role === "ADMIN_CUSTOMER" ? actor.id : undefined);
   const baseWhere = {
     stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] as OpportunityStage[] },
     nextActionAt: { not: null },
@@ -727,7 +727,7 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
     prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: start, lt: tomorrow } } }),
     prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: tomorrow, lt: dayAfterTomorrow } } }),
     prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: dayAfterTomorrow } } }),
-    prisma.appUser.findMany({ where: { role: "SALES", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.appUser.findMany({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   return { items, counts: { overdue, today, tomorrow: tomorrowCount, upcoming }, salesUsers, selectedPicId };
 }
@@ -739,7 +739,7 @@ async function countFollowUpBadge(actorId: string, actorRole: string) {
       stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
       nextActionAt: { lt: tomorrow },
       customer: { archivedAt: null },
-      ...(actorRole === "SALES" ? { salesPicId: actorId } : {}),
+      ...(actorRole === "ADMIN_CUSTOMER" ? { salesPicId: actorId } : {}),
     },
   });
 }

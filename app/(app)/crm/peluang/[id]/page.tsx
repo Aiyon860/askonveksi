@@ -54,7 +54,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
   const initialTab = parseOpportunityDetailTab(resolvedSearchParams.tab);
 
   return (
-    <>
+    <div className="min-w-0 overflow-x-hidden">
       <Button variant="ghost" size="sm" render={<Link href="/crm" />} nativeButton={false} className="w-fit">
         <ArrowLeft data-icon="inline-start" aria-hidden="true" />
         Kembali ke pipeline
@@ -64,7 +64,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
       </Suspense>
       <PageMessage />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>
           <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} />
         </Suspense>
@@ -72,7 +72,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
           <OpportunitySidebar id={id} />
         </Suspense>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -121,7 +121,9 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const invoiceTabStatus = invoiceDraft ? "Draft" : issuedInvoice ? "Terbit" : opportunity.invoices.length ? `${opportunity.invoices.length} revisi` : "Belum ada";
   const dealTabStatus = opportunity.stage === "DEAL" ? "Selesai" : opportunity.stage === "LOST" ? "Lost" : readyForDeal ? "Siap" : "Belum siap";
   const canShowPurchaseOrderAgreement = canOperate && inNegotiation && (Boolean(poDraft) || opportunity.purchaseOrders.length === 0);
-  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length);
+  const designRevisionStatus = poDraft?.designTask?.revisions[0]?.status;
+  const designMessage = !poDraft?.designTask ? "Tugas desain belum tersedia." : designRevisionStatus === "APPROVED" ? null : designRevisionStatus === "PENDING_REVIEW" ? "Desain sedang menunggu persetujuan Owner atau Admin." : designRevisionStatus === "REJECTED" ? "Desain ditolak. Unggah revisi baru sebelum menyepakati PO." : "Unggah desain lalu minta persetujuan Owner atau Admin.";
+  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && designRevisionStatus === "APPROVED");
 
   return (
     <OpportunityProcessTabs
@@ -175,6 +177,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   version={poDraft.version}
                   revisionLabel={documentRevisionLabel(poDraft.revision)}
                   canAgree={canAgreePurchaseOrderDraft}
+                  designMessage={designMessage}
                 />
               ) : (
                 <Button variant="outline" className="w-full sm:w-auto" disabled>
@@ -400,7 +403,7 @@ async function OpportunitySidebar({ id }: { id: string }) {
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
 
   return (
-    <aside className="flex flex-col self-start gap-5 xl:mt-[4.75rem]">
+    <aside className="flex flex-col self-start gap-5 2xl:mt-[4.75rem]">
       {canOperate ? (
         <Card>
           <CardHeader><CardTitle>Status pipeline</CardTitle><CardDescription>Tentukan langkah kerja berikutnya.</CardDescription></CardHeader>

@@ -55,7 +55,7 @@ import {
 } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
-const USER_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "SALES", "DESIGNER", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
+const USER_ROLES = ["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
 const USER_STATUSES = ["all", "active", "inactive"] as const satisfies readonly UserStatusFilter[];
 const USER_SORTS = ["createdAt", "email", "isActive", "name", "role"] as const satisfies readonly UserSort[];
 const SORT_DIRECTIONS = ["asc", "desc"] as const satisfies readonly SortDirection[];
@@ -355,7 +355,7 @@ function NewUserCard() {
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="role" required>Role</FieldLabel>
-                  <NativeSelect id="role" name="role" required defaultValue="SALES" className="w-full">
+                  <NativeSelect id="role" name="role" required defaultValue="ADMIN_CUSTOMER" className="w-full">
                     {USER_ROLES.map((role) => (
                       <NativeSelectOption key={role} value={role}>{ROLE_LABEL[role]}</NativeSelectOption>
                     ))}
