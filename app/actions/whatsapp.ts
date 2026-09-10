@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
 import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { nextCustomerNo } from "@/lib/crm/numbers";
+import { createCustomerSchema, firstValidationMessage } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeWhatsAppNumber, remoteJidForNumber, whatsappAccountSchema, whatsappTemplateSchema } from "@/lib/whatsapp/core";
@@ -215,6 +217,70 @@ export async function linkWhatsAppConversationAction(formData: FormData) {
     });
     refreshWhatsApp();
     return flashMessagePath(`/whatsapp?conversation=${conversationId}`, "notice", "Percakapan ditautkan dan nomor WhatsApp customer diperbarui.");
+  });
+}
+
+export async function createWhatsAppCustomerAction(formData: FormData) {
+  const conversationId = String(formData.get("conversationId") ?? "");
+  return runRedirectingAction(`/whatsapp?conversation=${encodeURIComponent(conversationId)}`, async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const prisma = getPrismaClient();
+    const conversation = await prisma.whatsAppConversation.findUnique({
+      where: { id: conversationId },
+      select: { id: true, remoteJid: true, customerId: true },
+    });
+    const phoneNumber = conversation?.remoteJid.endsWith("@s.whatsapp.net")
+      ? normalizeWhatsAppNumber(conversation.remoteJid.split("@")[0])
+      : null;
+    if (!conversation || conversation.customerId || !phoneNumber) throw new UserFacingError("Percakapan tidak dapat ditambahkan sebagai customer baru.");
+
+    const parsed = createCustomerSchema.safeParse({
+      name: formData.get("name"),
+      companyName: formData.get("companyName"),
+      whatsapp: phoneNumber,
+      email: formData.get("email"),
+      instagram: formData.get("instagram"),
+      address: formData.get("address"),
+      city: formData.get("city"),
+      notes: formData.get("notes"),
+      customerTypeId: formData.get("customerTypeId"),
+      leadSourceId: formData.get("leadSourceId"),
+      salesPicId: formData.get("salesPicId"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    await prisma.$transaction(async (tx) => {
+      const [customerType, leadSource, salesPic] = await Promise.all([
+        tx.customerType.findUnique({ where: { id: parsed.data.customerTypeId }, select: { id: true } }),
+        parsed.data.leadSourceId ? tx.leadSource.findUnique({ where: { id: parsed.data.leadSourceId }, select: { id: true } }) : null,
+        parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "SALES", isActive: true }, select: { id: true } }) : null,
+      ]);
+      if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
+      if (parsed.data.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
+      if (parsed.data.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
+
+      const customer = await tx.customer.create({
+        data: { ...parsed.data, email: parsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+        select: { id: true },
+      });
+      const linked = await tx.whatsAppConversation.updateMany({ where: { id: conversationId, customerId: null }, data: { customerId: customer.id } });
+      if (!linked.count) throw new UserFacingError("Percakapan sudah ditautkan ke customer lain.");
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          entityType: "Customer",
+          entityId: customer.id,
+          action: "CUSTOMER_CREATED",
+          changedFields: ["name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId"],
+          metadata: { source: "whatsapp-inbox", conversationId },
+        },
+      });
+    });
+
+    updateTag("customer-options");
+    revalidatePath("/customers");
+    refreshWhatsApp();
+    return flashMessagePath(`/whatsapp?conversation=${conversationId}`, "notice", "Customer dibuat dan percakapan berhasil ditautkan.");
   });
 }
 

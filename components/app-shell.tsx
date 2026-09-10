@@ -11,7 +11,7 @@ import { ROLE_LABEL } from "@/lib/crm/constants";
 
 export function AppShell({ actor, children }: { actor: Actor; children: React.ReactNode }) {
   return (
-    <div className="min-h-svh bg-background lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <div className="min-h-svh w-full max-w-full overflow-x-hidden bg-background lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-svh flex-col border-r bg-card lg:flex">
         <div className="flex items-center gap-3 px-5 py-5">
           <Image src="/brand/askonveksi-mark.png" alt="" width={48} height={48} className="size-9 shrink-0 object-contain" priority />

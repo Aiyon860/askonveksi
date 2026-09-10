@@ -167,7 +167,7 @@ const getCachedCustomerOptions = unstable_cache(
   async () => {
     return getPrismaClient().customer.findMany({
       where: { archivedAt: null },
-      select: { id: true, customerNo: true, name: true, companyName: true },
+      select: { id: true, customerNo: true, name: true, companyName: true, whatsapp: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 500,
     });

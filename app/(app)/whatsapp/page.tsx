@@ -1,8 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
-import { CheckCheck, MessageCircle, Send } from "lucide-react";
+import { CheckCheck, MessageCircle, Search, Send } from "lucide-react";
 
-import { linkWhatsAppConversationAction, markWhatsAppConversationReadAction, sendWhatsAppMessageAction } from "@/app/actions/whatsapp";
+import { markWhatsAppConversationReadAction, sendWhatsAppMessageAction } from "@/app/actions/whatsapp";
 import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
@@ -15,8 +15,10 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
+import { WhatsAppCustomerActions } from "@/components/whatsapp-customer-actions";
 import { WhatsAppMessageTimeline } from "@/components/whatsapp-message-timeline";
 import { getCustomerOptions } from "@/lib/crm/data";
+import { getCustomerFormOptions } from "@/lib/master-data";
 import { getWhatsAppInbox } from "@/lib/whatsapp/data";
 
 function jidNumber(jid: string) {
@@ -32,17 +34,19 @@ export default async function WhatsAppPage({ searchParams }: { searchParams: Pro
   const selected = query.conversation;
   const data = await getWhatsAppInbox(selected, query.q);
   const active = data.conversations.find((item) => item.id === data.activeId);
-  const customers = data.canSeeUnknown && active && !active.customer ? await getCustomerOptions() : [];
+  const [customers, customerFormOptions] = data.canSeeUnknown && active && !active.customer
+    ? await Promise.all([getCustomerOptions(), getCustomerFormOptions()])
+    : [[], null];
 
   return (
-    <main className="flex flex-col gap-6">
+    <main className="flex w-full min-w-0 max-w-full flex-col gap-6 overflow-x-hidden">
       <WhatsAppAutoRefresh />
       <PageHeader title="WhatsApp" description="Percakapan customer dan status pengiriman dari nomor bisnis ASKonveksi." action={<Button variant="outline" render={<Link href="/whatsapp/jobs" />} nativeButton={false}>Lihat antrean</Button>} />
-      <div className="grid min-h-[620px] gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <Card size="sm">
+      <div className="grid w-full min-w-0 max-w-full min-h-[620px] gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <Card size="sm" className="min-w-0">
           <CardHeader><CardTitle>Percakapan</CardTitle></CardHeader>
           <CardContent className="gap-1 px-2">
-            <form className="px-1 pb-2"><Input name="q" defaultValue={query.q} placeholder="Cari nama atau nomor" aria-label="Cari percakapan WhatsApp" /></form>
+            <form className="px-1 pb-2"><div className="relative"><Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" /><Input name="q" defaultValue={query.q} placeholder="Cari nama atau nomor" aria-label="Cari percakapan WhatsApp" className="pl-9" /></div></form>
             {data.conversations.length ? data.conversations.map((conversation) => (
               <Link key={conversation.id} href={`/whatsapp?conversation=${conversation.id}`} aria-current={conversation.id === data.activeId ? "page" : undefined} className="flex min-w-0 items-start gap-3 rounded-md px-3 py-2.5 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-muted">
                 <MessageCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -55,7 +59,7 @@ export default async function WhatsAppPage({ searchParams }: { searchParams: Pro
           </CardContent>
         </Card>
 
-        <Card size="sm">
+        <Card size="sm" className="min-w-0">
           {active ? (
             <>
               <CardHeader className="border-b">
@@ -65,12 +69,15 @@ export default async function WhatsAppPage({ searchParams }: { searchParams: Pro
                 </div>
               </CardHeader>
               <CardContent className="min-h-0 flex-1 gap-4 pt-4">
-                {!active.customer && data.canSeeUnknown ? (
-                  <form action={linkWhatsAppConversationAction} className="flex flex-wrap items-end gap-2 rounded-md border bg-muted/40 p-3">
-                    <input type="hidden" name="conversationId" value={active.id} />
-                    <Field className="min-w-56 flex-1"><FieldLabel htmlFor="customerId">Tautkan nomor ke customer</FieldLabel><NativeSelect id="customerId" name="customerId" required className="w-full"><NativeSelectOption value="">Pilih customer</NativeSelectOption>{customers.map((customer) => <NativeSelectOption key={customer.id} value={customer.id}>{customer.customerNo} - {customer.companyName ?? customer.name}</NativeSelectOption>)}</NativeSelect></Field>
-                    <Button type="submit" size="sm">Tautkan</Button>
-                  </form>
+                {!active.customer && data.canSeeUnknown && customerFormOptions ? (
+                  <WhatsAppCustomerActions
+                    conversationId={active.id}
+                    phoneNumber={jidNumber(active.remoteJid)}
+                    customers={customers}
+                    customerTypes={customerFormOptions.customerTypes}
+                    leadSources={customerFormOptions.leadSources}
+                    salesUsers={customerFormOptions.salesUsers}
+                  />
                 ) : null}
                 <WhatsAppMessageTimeline conversationId={active.id} latestMessageId={data.messages.at(-1)?.id ?? null}>
                   {data.messages.length ? data.messages.map((message) => (

@@ -428,8 +428,8 @@ Untuk worker, tambahkan pemeriksaan khusus yang membuktikan:
 
 - satu job hanya diklaim satu kali;
 - satu event inbound hanya membuat satu message;
-- opt-out menghentikan pengiriman;
-- job di luar jam operasional menunggu jadwal berikutnya;
+- job otomatis di luar jam operasional menunggu jadwal berikutnya;
+- pesan manual langsung diproses tanpa menunggu jam operasional;
 - restart tidak menggandakan pesan;
 - SALES tidak dapat membaca conversation milik PIC lain.
 

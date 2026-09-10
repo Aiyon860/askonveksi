@@ -2,7 +2,7 @@ import "server-only";
 
 import type { AppRole, Prisma, WhatsAppJobStatus } from "@prisma/client";
 
-import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
+import { hasRole, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -64,7 +64,7 @@ export async function getWhatsAppInbox(selectedId?: string, query?: string) {
     select: { id: true, name: true, body: true },
     orderBy: { name: "asc" },
   });
-  return { conversations, activeId, messages, templates, canSeeUnknown: actor.role !== "SALES" };
+  return { conversations, activeId, messages, templates, canSeeUnknown: hasRole(actor.role, MASTER_DATA_ROLES) };
 }
 
 export async function getWhatsAppAccounts() {
@@ -84,7 +84,7 @@ export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
     select: {
       id: true, type: true, status: true, scheduledAt: true, attempts: true, lastError: true, createdAt: true,
       customer: { select: { name: true, companyName: true } },
-      account: { select: { label: true } },
+      account: { select: { label: true, status: true, sendEnabled: true, heartbeatAt: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 200,

@@ -105,6 +105,7 @@ Checklist:
 3. Jika percakapan belum ada, gunakan **Buka inbox** untuk membuat percakapan.
 4. Kirim pesan teks biasa.
 5. Pilih template lalu kirim pesan lain.
+6. Ulangi pengiriman setelah pukul 17.00 WIB untuk memastikan pesan manual tetap langsung diproses.
 
 Periksa tiga tempat berikut:
 
@@ -114,6 +115,13 @@ Periksa tiga tempat berikut:
 - [ ] Status dapat berubah menjadi `DELIVERED` atau `READ` setelah penerima membuka pesan.
 - [ ] Communication activity customer mencatat pesan outbound.
 - [ ] Mengklik kirim dua kali tidak menghasilkan dua job yang sama untuk satu submit.
+- [ ] Pesan manual tidak ditunda ke jam operasional hari berikutnya.
+
+Uji nomor yang belum dikenal:
+
+- [ ] Cari dan tautkan percakapan ke customer existing menggunakan input pencarian.
+- [ ] Gunakan **Tambah customer baru**, lalu pastikan nomor WhatsApp terisi otomatis dan percakapan langsung tertaut.
+- [ ] Kedua opsi tidak lagi tampil setelah percakapan memiliki customer.
 
 Uji validasi:
 

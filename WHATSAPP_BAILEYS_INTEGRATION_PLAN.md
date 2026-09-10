@@ -40,8 +40,6 @@ Mengintegrasikan WhatsApp ke ERM ASKonveksi agar sistem dapat:
 | Follow-up | Otomatis saat jadwal jatuh tempo |
 | Invoice | Saat terbit, H-3, hari H, dan H+3 jika belum lunas |
 | Balasan inbound | Dicatat tanpa membatalkan jadwal automasi |
-| Consent data lama | Default `UNKNOWN`, masih dapat dikirimi sampai opt-out |
-| Opt-out | Menghentikan seluruh pengiriman manual dan otomatis |
 
 ## Risiko dan Batasan
 
@@ -51,8 +49,7 @@ Kendali minimum yang wajib diterapkan:
 
 - Tidak menyediakan broadcast massal pada V1.
 - Pengiriman otomatis hanya untuk customer yang memiliki relasi bisnis di ERM.
-- Menyediakan dan menghormati opt-out.
-- Membatasi pengiriman pada jam operasional.
+- Membatasi pengiriman otomatis pada jam operasional; pesan manual dikirim segera.
 - Menyediakan kill switch per account dan per template.
 - Menyembunyikan nomor, JID, isi pesan, pairing code, dan auth state dari log produksi.
 - Mem-pin versi Baileys `7.x` yang sudah diuji; jangan menggunakan branch `master`.
@@ -283,8 +280,8 @@ Ketentuan:
 
 ### Jam Operasional
 
-- Worker memeriksa job setiap menit.
-- Pengiriman hanya berlangsung setiap hari pukul 09.00-17.00 WIB.
+- Worker memeriksa antrean setiap 5 detik dan membentuk automasi setiap menit.
+- Pengiriman otomatis hanya berlangsung setiap hari pukul 09.00-17.00 WIB; pengiriman manual tidak ditunda.
 - Job sebelum pukul 09.00 menunggu pukul 09.00 pada hari yang sama.
 - Job pada atau setelah pukul 17.00 menunggu pukul 09.00 hari berikutnya.
 
@@ -335,7 +332,7 @@ Ketentuan:
 
 - Normalisasi nomor.
 - Schema template dan payload pengiriman.
-- Validasi consent, MIME, ukuran, dan nama file.
+- Validasi status customer, MIME, ukuran, dan nama file.
 
 ### `lib/whatsapp/templates.ts`
 
@@ -347,7 +344,7 @@ Ketentuan:
 
 - Enqueue idempoten.
 - Pembatalan schedule lama.
-- Pemeriksaan jam operasional dan suppression.
+- Pemeriksaan jam operasional untuk job otomatis dan kelayakan customer.
 - Retry classification yang dapat digunakan worker.
 
 ### `lib/whatsapp/data.ts`
@@ -579,9 +576,8 @@ Semua pembatasan diterapkan pada query dan server action, bukan hanya pada tampi
 - [x] Implementasikan kirim manual teks/media/template/invoice.
 - [x] Implementasikan pairing, reconnect, logout, dan pergantian account aktif.
 - [x] Implementasikan CRUD template dengan optimistic locking.
-- [x] Implementasikan opt-in/opt-out dan pembatalan queued job.
 - [x] Implementasikan link unknown conversation ke customer.
-- [ ] Implementasikan create customer dari unknown conversation.
+- [x] Implementasikan create customer dari unknown conversation.
 - [x] Implementasikan retry/cancel job admin.
 - [ ] Tambahkan audit event untuk tindakan sensitif.
 
@@ -615,8 +611,8 @@ Semua pembatasan diterapkan pada query dan server action, bukan hanya pada tampi
 - [x] Tambahkan pemilih template.
 - [ ] Tambahkan pemilih invoice.
 - [x] Tampilkan queued/sent/delivered/read/failed.
-- [x] Tambahkan mark read dan resolve.
-- [ ] Tambahkan alur unknown sender ke customer existing/new.
+- [x] Tambahkan mark read.
+- [x] Tambahkan alur unknown sender ke customer existing/new.
 - [ ] Buat responsive mobile list/detail navigation.
 - [ ] Verifikasi keyboard navigation, focus, label, dan announcement status.
 
@@ -625,7 +621,7 @@ Semua pembatasan diterapkan pada query dan server action, bukan hanya pada tampi
 - [x] Integrasikan kirim template pada halaman follow-up.
 - [x] Pertahankan `wa.me` sebagai fallback sekunder.
 - [ ] Integrasikan conversation pada detail opportunity.
-- [x] Tambahkan consent dan ringkasan chat pada detail customer.
+- [x] Tambahkan ringkasan chat pada detail customer.
 - [ ] Tambahkan indikator WhatsApp pada daftar customer.
 - [ ] Tambahkan kirim/kirim ulang serta status pada invoice.
 - [ ] Tambahkan status automasi pada notifications.

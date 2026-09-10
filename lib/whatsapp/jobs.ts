@@ -61,7 +61,7 @@ export async function enqueueInvoiceWhatsAppMessage(actor: Actor, invoiceId: str
       invoice_due_date: invoice.dueAt?.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" }) ?? "",
     }) : `Invoice ${invoice.invoiceNo} dari ${business?.name ?? "AS Konveksi"}.`;
     const conversation = await tx.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, customerId: invoice.opportunity.customerId }, update: { customerId: invoice.opportunity.customerId } });
-    const job = await tx.whatsAppAutomationJob.create({ data: { idempotencyKey: `manual-invoice:${invoice.id}:${crypto.randomUUID()}`, type: "MANUAL", accountId: account.id, templateId: template?.id, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, payload: { text, attachment: { type: "invoice", invoiceId: invoice.id } }, scheduledAt: nextWhatsAppSendAt(new Date()) } });
+    const job = await tx.whatsAppAutomationJob.create({ data: { idempotencyKey: `manual-invoice:${invoice.id}:${crypto.randomUUID()}`, type: "MANUAL", accountId: account.id, templateId: template?.id, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, payload: { text, attachment: { type: "invoice", invoiceId: invoice.id } }, scheduledAt: new Date() } });
     await tx.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", kind: "DOCUMENT", status: "QUEUED", text, mediaFileName: `invoice-${invoice.invoiceNo}.pdf`, mediaMimeType: "application/pdf", sentById: actor.id, automationJobId: job.id } });
     await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date(), lastMessagePreview: text.slice(0, 240), isResolved: false } });
     return conversation.id;
@@ -147,7 +147,7 @@ export async function enqueueManualWhatsAppMessage({
         templateId: templateId || null,
         customerId: conversation.customerId,
         payload: { text: renderedText, remoteJid: conversation.remoteJid, conversationId: conversation.id, attachment: attachment ?? null },
-        scheduledAt: nextWhatsAppSendAt(new Date()),
+        scheduledAt: new Date(),
       },
       select: { id: true },
     });

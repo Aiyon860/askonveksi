@@ -376,6 +376,7 @@ async function processOneJob() {
       || (customerNumber ? `${customerNumber}@s.whatsapp.net` : null);
     if (!remoteJid) throw new Error("Nomor WhatsApp customer tidak valid.");
     const text = String(payload.text || "").trim();
+    const activityContent = text || `[${String(payload.attachment?.kind || payload.attachment?.type || "pesan").toLowerCase()}]`;
     let content = { text };
     if (payload.attachment?.type === "invoice") {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -402,12 +403,13 @@ async function processOneJob() {
     await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { accountId: account.id } });
     sendStarted = true;
     const sent = await socket.sendMessage(remoteJid, content);
+    consoleInfo(`[whatsapp-worker] job ${job.id} sent to ${remoteJid}`);
     const occurredAt = new Date();
     await prisma.$transaction(async (tx) => {
-      await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { isResolved: false, lastMessageAt: occurredAt, lastMessagePreview: text.slice(0, 240) } });
+      await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { isResolved: false, lastMessageAt: occurredAt, lastMessagePreview: activityContent.slice(0, 240) } });
       const message = await tx.whatsAppMessage.update({ where: { id: preparedMessage.id }, data: { whatsappMessageId: sent.key.id, status: "SENT", sentAt: occurredAt, occurredAt } });
       const authorId = message.sentById || job.customer.salesPicId || (await tx.appUser.findFirst({ where: { role: "OWNER", isActive: true }, select: { id: true } }))?.id;
-      if (authorId) await tx.communicationActivity.upsert({ where: { whatsappMessageId: message.id }, create: { customerId: job.customerId, opportunityId: job.opportunityId, authorId, kind: "COMMUNICATION", channel: "WHATSAPP", direction: "OUTBOUND", content: text, occurredAt, whatsappMessageId: message.id }, update: {} });
+      if (authorId) await tx.communicationActivity.upsert({ where: { whatsappMessageId: message.id }, create: { customerId: job.customerId, opportunityId: job.opportunityId, authorId, kind: "COMMUNICATION", channel: "WHATSAPP", direction: "OUTBOUND", content: activityContent, occurredAt, whatsappMessageId: message.id }, update: {} });
       await tx.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: "COMPLETED", accountId: account.id, completedAt: occurredAt, leaseOwner: null, leaseExpiresAt: null, lastError: null } });
     });
   } catch (error) {
@@ -416,6 +418,7 @@ async function processOneJob() {
     const offline = message.includes("sedang offline");
     const permanent = message.includes("tidak dapat menerima") || message.includes("tidak valid") || message.includes("Konfigurasi");
     const retry = !sendStarted && (offline || (!permanent && job.attempts < 5));
+    console.error(`[whatsapp-worker] job ${job.id}: ${message}`);
     await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: retry ? "RETRY" : "FAILED", attempts: offline ? { decrement: 1 } : undefined, nextAttemptAt: retry ? new Date(Date.now() + (offline ? 5 : Math.min(30, 2 ** job.attempts)) * 60_000) : null, leaseOwner: null, leaseExpiresAt: null, lastError: message } });
     await prisma.whatsAppMessage.updateMany({ where: { automationJobId: job.id }, data: { status: retry ? "QUEUED" : "FAILED", errorMessage: message, failedAt: retry ? null : new Date() } });
   }
