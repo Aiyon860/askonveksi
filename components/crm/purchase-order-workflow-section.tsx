@@ -24,7 +24,7 @@ type PurchaseOrderDraftValues = {
   designNotes: string;
   notes: string;
   deadline: string;
-  attachmentCount: number;
+  designDeadline: string;
   sizes: Array<{ sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string }>;
 };

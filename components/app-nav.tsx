@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Receipt, Ruler, ScrollText, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Palette, Receipt, Ruler, ScrollText, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -105,6 +105,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "SALES";
   const canViewProduction = role === "OWNER" || role === "ADMIN" || role === "PRODUCTION" || role === "QC";
   const canViewFinance = role === "OWNER" || role === "ADMIN";
+  const canViewDesign = role === "OWNER" || role === "DESIGNER";
   const masterDataActive = isPathWithin(pathname, "/master-data") || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
@@ -135,6 +136,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
+      {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (
         <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible flex flex-col gap-1">

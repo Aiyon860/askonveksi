@@ -214,6 +214,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     productName: "Jersey tim",
     material: "Dry fit",
     deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
     sizes: [
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
       { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 },
@@ -227,6 +228,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   const missingDeadline = purchaseOrderDraftSchema.safeParse({ ...valid, deadline: "" });
   assert.equal(missingDeadline.success, false);
   assert.equal(missingDeadline.error.issues[0]?.message, "Deadline produksi wajib dipilih.");
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, designDeadline: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
 });
@@ -257,6 +259,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     productName: "Kaos komunitas",
     material: "Cotton combed",
     deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
     roster: [],
   };
   const size = { sizeId: "garment-size-m", sleeveLength: "PENDEK" };
@@ -278,6 +281,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     productName: "Jersey tim",
     material: "Dry fit",
     deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     roster: [],
   };

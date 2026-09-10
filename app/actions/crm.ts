@@ -33,8 +33,6 @@ import {
   invoiceIdSchema,
   purchaseOrderDraftSchema,
   purchaseOrderIdSchema,
-  PURCHASE_ORDER_ATTACHMENT_MAX_BYTES,
-  PURCHASE_ORDER_ATTACHMENT_MAX_FILES,
   payInvoicePaymentTermSchema,
   payPaymentTermSchema,
   payPendingInitialPaymentSchema,
@@ -53,15 +51,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 type Tx = Prisma.TransactionClient;
 type CrmActionState = { error: string | null; success: boolean };
 
-const PURCHASE_ORDER_ATTACHMENT_BUCKET = "crm-po-designs";
-const PURCHASE_ORDER_ATTACHMENT_EXTENSIONS = new Set(["png", "psd"]);
-const PURCHASE_ORDER_ATTACHMENT_CONTENT_TYPES = new Set([
-  "",
-  "application/octet-stream",
-  "application/x-photoshop",
-  "image/png",
-  "image/vnd.adobe.photoshop",
-]);
 const DOCUMENT_DRAFT_TRANSACTION_OPTIONS = {
   maxWait: 20_000,
   timeout: 10_000,
@@ -71,6 +60,7 @@ const CUSTOMER_IMPORT_TRANSACTION_OPTIONS = {
   maxWait: 20_000,
   timeout: 30_000,
 } as const;
+const PURCHASE_ORDER_ATTACHMENT_BUCKET = "crm-po-designs";
 const DEAL_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   maxWait: 10_000,
@@ -134,6 +124,10 @@ function optionalDate(value?: string) {
   return date;
 }
 
+async function cleanupPurchaseOrderAttachments(paths: string[]) {
+  if (paths.length) await createAdminClient().storage.from(PURCHASE_ORDER_ATTACHMENT_BUCKET).remove(paths);
+}
+
 function jakartaDateTime(value?: string) {
   if (!value) return null;
   const zoned = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}:00+07:00`;
@@ -142,50 +136,6 @@ function jakartaDateTime(value?: string) {
   return date;
 }
 
-async function validatedPurchaseOrderAttachments(formData: FormData, purchaseOrderId: string) {
-  const kinds = formData.getAll("designAttachmentKind");
-  const files: Array<{ file: File; kind: FormDataEntryValue | undefined }> = [];
-  formData.getAll("designAttachments").forEach((value, index) => {
-    if (value instanceof File && value.size > 0) files.push({ file: value, kind: kinds[index] });
-  });
-  if (files.length > PURCHASE_ORDER_ATTACHMENT_MAX_FILES) throw new UserFacingError("Maksimal lima lampiran desain per revisi PO.");
-
-  return Promise.all(files.map(async ({ file, kind }) => {
-    if (file.size > PURCHASE_ORDER_ATTACHMENT_MAX_BYTES) throw new UserFacingError("Setiap lampiran desain maksimal 5 MB.");
-
-    const extension = storageExtension(file.name);
-    if (!PURCHASE_ORDER_ATTACHMENT_EXTENSIONS.has(extension)) {
-      throw new UserFacingError("Lampiran desain hanya boleh memakai format PNG atau PSD.");
-    }
-    if (!PURCHASE_ORDER_ATTACHMENT_CONTENT_TYPES.has(file.type)) {
-      throw new UserFacingError("Lampiran desain hanya boleh memakai format PNG atau PSD.");
-    }
-
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const contentType = safeContentType(file.type);
-    return {
-      bytes,
-      contentType,
-      originalName: file.name.slice(0, 255),
-      sizeBytes: file.size,
-      path: `${purchaseOrderId}/${randomUUID()}.${extension}`,
-      kind: typeof kind === "string" && ["MAIN_DESIGN", "FRONT", "BACK", "LOGO_RIGHT", "LOGO_BACK", "LOGO_FRONT", "OTHER"].includes(kind)
-        ? kind as "MAIN_DESIGN" | "FRONT" | "BACK" | "LOGO_RIGHT" | "LOGO_BACK" | "LOGO_FRONT" | "OTHER"
-        : "OTHER" as const,
-    };
-  }));
-}
-
-function storageExtension(fileName: string) {
-  const match = /\.([a-z0-9]{1,10})$/i.exec(fileName);
-  return match ? match[1].toLowerCase() : "bin";
-}
-
-function safeContentType(contentType: string) {
-  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(contentType) && contentType.length <= 64
-    ? contentType
-    : "application/octet-stream";
-}
 
 async function audit(
   tx: Tx,
@@ -321,6 +271,7 @@ function purchaseOrderInput(formData: FormData) {
     designNotes: formValue(formData, "designNotes"),
     notes: formValue(formData, "notes"),
     deadline: formValue(formData, "deadline"),
+    designDeadline: formValue(formData, "designDeadline"),
     sizes: Array.from({ length: Math.max(sizeIds.length, quantities.length) }, (_, index) => ({
       sizeId: sizeIds[index],
       sleeveLength: sleeveLengths[index],
@@ -387,28 +338,6 @@ function opportunityInput(formData: FormData) {
     nextAction: formValue(formData, "nextAction"),
     nextActionAt: formValue(formData, "nextActionAt"),
   };
-}
-
-async function uploadPurchaseOrderAttachments(
-  attachments: Awaited<ReturnType<typeof validatedPurchaseOrderAttachments>>,
-) {
-  const uploaded: string[] = [];
-  const storage = createAdminClient().storage.from(PURCHASE_ORDER_ATTACHMENT_BUCKET);
-  try {
-    await Promise.all(attachments.map(async (attachment) => {
-      const { error } = await storage.upload(attachment.path, attachment.bytes, { contentType: attachment.contentType, upsert: false });
-      if (error) throw new UserFacingError("Lampiran desain belum dapat disimpan.");
-      uploaded.push(attachment.path);
-    }));
-    return uploaded;
-  } catch (error) {
-    if (uploaded.length) await storage.remove(uploaded);
-    throw error;
-  }
-}
-
-async function cleanupPurchaseOrderAttachments(paths: string[]) {
-  if (paths.length) await createAdminClient().storage.from(PURCHASE_ORDER_ATTACHMENT_BUCKET).remove(paths);
 }
 
 type PurchaseOrderRowReader = {
@@ -1260,14 +1189,9 @@ export async function createPurchaseOrderDraftAction(formData: FormData) {
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const attachments = await validatedPurchaseOrderAttachments(formData, purchaseOrderId);
-    timer.mark("attachments:read");
     const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
     timer.mark("rows");
-    const uploadedPaths = await uploadPurchaseOrderAttachments(attachments);
-    timer.mark("attachments:upload");
-    try {
-      await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
         const opportunity = await tx.opportunity.findUnique({
           where: { id: parsed.data.opportunityId },
           select: {
@@ -1301,24 +1225,18 @@ export async function createPurchaseOrderDraftAction(formData: FormData) {
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
             sizes: { create: rows.sizes },
             rosterEntries: { create: rows.roster },
-            attachments: {
-              create: attachments.map(({ path, originalName, contentType, sizeBytes, kind }) => ({ path, originalName, contentType, sizeBytes, kind })),
-            },
           },
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_DRAFT_CREATED", [
-          "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "sizes", "roster", "attachments",
+          "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
         ], { opportunityId: parsed.data.opportunityId });
-      }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
-      timer.mark("transaction");
-    } catch (error) {
-      await cleanupPurchaseOrderAttachments(uploadedPaths);
-      throw error;
-    }
+    }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
+    timer.mark("transaction");
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
@@ -1343,20 +1261,9 @@ export async function updatePurchaseOrderDraftAction(formData: FormData) {
     timer.mark("roster");
     const prisma = getPrismaClient();
     const purchaseOrderId = parsed.data.purchaseOrderId;
-    const attachments = await validatedPurchaseOrderAttachments(formData, purchaseOrderId);
-    timer.mark("attachments:read");
-    const [rows, existingAttachmentCount] = await Promise.all([
-      preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile),
-      prisma.purchaseOrderAttachment.count({ where: { purchaseOrderId } }),
-    ]);
-    timer.mark("rows-and-existing-attachments");
-    if (existingAttachmentCount + attachments.length > PURCHASE_ORDER_ATTACHMENT_MAX_FILES) {
-      throw new UserFacingError("Maksimal lima lampiran desain per revisi PO.");
-    }
-    const uploadedPaths = await uploadPurchaseOrderAttachments(attachments);
-    timer.mark("attachments:upload");
-    try {
-      await prisma.$transaction(async (tx) => {
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    timer.mark("rows");
+    await prisma.$transaction(async (tx) => {
         const updated = await tx.purchaseOrder.updateMany({
           where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", version: parsed.data.version },
           data: {
@@ -1377,26 +1284,18 @@ export async function updatePurchaseOrderDraftAction(formData: FormData) {
           },
         });
         if (updated.count !== 1) throw new UserFacingError("Draft PO sudah berubah atau tidak lagi dapat diedit.");
+        await tx.designTask.upsert({ where: { purchaseOrderId }, update: { deadline: optionalDate(parsed.data.designDeadline)! }, create: { purchaseOrderId, deadline: optionalDate(parsed.data.designDeadline)! } });
         await tx.purchaseOrderRosterEntry.deleteMany({ where: { purchaseOrderId } });
         await tx.purchaseOrderSize.deleteMany({ where: { purchaseOrderId } });
         await tx.purchaseOrderSize.createMany({
           data: rows.sizes.map((item) => ({ purchaseOrderId, ...item })),
         });
         if (rows.roster.length) await tx.purchaseOrderRosterEntry.createMany({ data: rows.roster.map((item) => ({ purchaseOrderId, ...item })) });
-        if (attachments.length) {
-          await tx.purchaseOrderAttachment.createMany({
-            data: attachments.map(({ path, originalName, contentType, sizeBytes, kind }) => ({ purchaseOrderId, path, originalName, contentType, sizeBytes, kind })),
-          });
-        }
         await audit(tx, actor, "PurchaseOrder", purchaseOrderId, "PURCHASE_ORDER_DRAFT_UPDATED", [
-          "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "sizes", "roster", "attachments",
+          "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
         ]);
-      }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
-      timer.mark("transaction");
-    } catch (error) {
-      await cleanupPurchaseOrderAttachments(uploadedPaths);
-      throw error;
-    }
+    }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
+    timer.mark("transaction");
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
@@ -1535,6 +1434,7 @@ export async function cancelPurchaseOrderDraftAction(formData: FormData) {
         : [];
       const reusedAttachmentPaths = new Set(reusedAttachments.map((attachment) => attachment.path));
       await tx.purchaseOrderAttachment.deleteMany({ where: { purchaseOrderId: purchaseOrder.id } });
+      await tx.designTask.deleteMany({ where: { purchaseOrderId: purchaseOrder.id } });
       await tx.purchaseOrderRosterEntry.deleteMany({ where: { purchaseOrderId: purchaseOrder.id } });
       await tx.purchaseOrderSize.deleteMany({ where: { purchaseOrderId: purchaseOrder.id } });
       const deleted = await tx.purchaseOrder.deleteMany({
@@ -1579,23 +1479,9 @@ export async function createPurchaseOrderRevisionAction(formData: FormData) {
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const attachments = await validatedPurchaseOrderAttachments(formData, purchaseOrderId);
-    timer.mark("attachments:read");
-    const [rows, sourceAttachmentCount] = await Promise.all([
-      preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile),
-      prisma.purchaseOrderAttachment.count({
-        where: { purchaseOrderId: sourcePurchaseOrderId.data },
-      }),
-    ]);
-    timer.mark("rows-and-existing-attachments");
-    if (sourceAttachmentCount + attachments.length > PURCHASE_ORDER_ATTACHMENT_MAX_FILES) {
-      throw new UserFacingError("Maksimal lima lampiran desain per revisi PO.");
-    }
-    const uploadedPaths = await uploadPurchaseOrderAttachments(attachments);
-    timer.mark("attachments:upload");
-    let opportunityId: string;
-    try {
-      opportunityId = await prisma.$transaction(async (tx) => {
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    timer.mark("rows");
+    const opportunityId = await prisma.$transaction(async (tx) => {
         const source = await tx.purchaseOrder.findUnique({
           where: { id: sourcePurchaseOrderId.data },
           select: {
@@ -1608,7 +1494,6 @@ export async function createPurchaseOrderRevisionAction(formData: FormData) {
                 invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
               },
             },
-            attachments: { select: { path: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true } },
           },
         });
         if (!source || source.status !== "AGREED") throw new UserFacingError("Revisi hanya dapat dibuat dari PO Disepakati.");
@@ -1617,9 +1502,6 @@ export async function createPurchaseOrderRevisionAction(formData: FormData) {
         if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
         const draft = await tx.purchaseOrder.findFirst({ where: { opportunityId: source.opportunityId, status: "DRAFT" }, select: { id: true } });
         if (draft) throw new UserFacingError("Selesaikan draft PO yang sedang aktif.");
-        if (source.attachments.length + attachments.length > PURCHASE_ORDER_ATTACHMENT_MAX_FILES) {
-          throw new UserFacingError("Maksimal lima lampiran desain per revisi PO.");
-        }
         const aggregate = await tx.purchaseOrder.aggregate({ where: { opportunityId: source.opportunityId }, _max: { revision: true } });
         const created = await tx.purchaseOrder.create({
           data: {
@@ -1640,28 +1522,19 @@ export async function createPurchaseOrderRevisionAction(formData: FormData) {
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
             sizes: { create: rows.sizes },
             rosterEntries: { create: rows.roster },
-            attachments: {
-              create: [
-                ...source.attachments,
-                ...attachments.map(({ path, originalName, contentType, sizeBytes, kind }) => ({ path, originalName, contentType, sizeBytes, kind })),
-              ],
-            },
           },
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
-          "revision", "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "sizes", "roster", "attachments",
+          "revision", "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
         ], { sourcePurchaseOrderId: source.id });
         return source.opportunityId;
-      }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
-      timer.mark("transaction");
-    } catch (error) {
-      await cleanupPurchaseOrderAttachments(uploadedPaths);
-      throw error;
-    }
+    }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
+    timer.mark("transaction");
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${opportunityId}`);

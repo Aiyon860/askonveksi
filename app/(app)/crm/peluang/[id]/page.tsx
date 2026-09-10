@@ -223,7 +223,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       designNotes: purchaseOrder.designNotes ?? "",
                       notes: purchaseOrder.notes ?? "",
                       deadline: dateInputValue(purchaseOrder.deadline),
-                      attachmentCount: purchaseOrder.attachments.length,
+                      designDeadline: dateInputValue(purchaseOrder.designTask?.deadline ?? null),
                       sizes: purchaseOrder.sizes,
                       roster: purchaseOrder.rosterEntries,
                     }}

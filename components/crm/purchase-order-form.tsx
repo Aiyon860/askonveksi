@@ -33,16 +33,11 @@ type PurchaseOrderFormValues = {
   designNotes: string;
   notes: string;
   deadline: string;
-  attachmentCount: number;
+  designDeadline: string;
   sizes: MatrixRow[];
   roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string }>;
 };
 type Draft = PurchaseOrderFormValues & { id: string; version: number };
-
-const ATTACHMENT_KINDS = [
-  ["MAIN_DESIGN", "Desain utama"], ["FRONT", "Tampak depan"], ["BACK", "Tampak belakang"],
-  ["LOGO_RIGHT", "Logo kanan"], ["LOGO_BACK", "Logo belakang"], ["LOGO_FRONT", "Logo depan"], ["OTHER", "Lainnya"],
-] as const;
 
 function jakartaToday() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
@@ -82,7 +77,6 @@ export function PurchaseOrderForm({
     name: item.name,
     sizeId: item.sizeId ?? sizeOptions.find((size) => size.name.toLocaleLowerCase("id-ID") === item.size.toLocaleLowerCase("id-ID"))?.id ?? "",
   })) ?? []);
-  const [attachmentRows, setAttachmentRows] = useState(() => [{ key: "attachment-0", kind: "MAIN_DESIGN" }]);
   const [garmentType, setGarmentType] = useState(values?.garmentType ?? "");
   const deadlineOptions = useMemo(() => productionDeadlineOptions(new Date(), values?.deadline), [values?.deadline]);
   const action = draft ? updatePurchaseOrderDraftAction : sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
@@ -145,6 +139,7 @@ export function PurchaseOrderForm({
                 ))}
               </NativeSelect>
             </Field>
+            <Field><FieldLabel htmlFor={`po-design-deadline-${fieldKey}`} required>Deadline upload desain</FieldLabel><Input id={`po-design-deadline-${fieldKey}`} name="designDeadline" type="date" required min={jakartaToday()} defaultValue={values?.designDeadline ?? ""} /></Field>
             {garmentType === "JERSEY" ? (
               <Field><FieldLabel htmlFor={`po-sample-size-${fieldKey}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${fieldKey}`} name="sampleSize" defaultValue={values?.sampleSize ?? ""}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
             ) : null}
@@ -183,12 +178,6 @@ export function PurchaseOrderForm({
             </div>
           ))}</div> : null}
           <Field><FieldLabel htmlFor={`po-roster-file-${fieldKey}`}>Impor roster</FieldLabel><FilePicker id={`po-roster-file-${fieldKey}`} name="rosterFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Sheet pertama saja; formula ditolak. File yang dipilih menggantikan roster manual saat disimpan.</FieldDescription></Field>
-        </FieldSet>
-
-        <FieldSet>
-          <div className="flex items-start justify-between gap-4"><div><FieldLegend>Referensi desain</FieldLegend><FieldDescription>Format PNG/PSD. Maksimal lima file per revisi, masing-masing 5 MB.</FieldDescription></div><Button type="button" variant="outline" size="sm" disabled={attachmentRows.length >= 5} onClick={() => setAttachmentRows((current) => [...current, { key: `attachment-${Date.now()}-${current.length}`, kind: "OTHER" }])}><Plus data-icon="inline-start" aria-hidden="true" />Tambah file</Button></div>
-          {attachmentRows.map((row, index) => <div key={row.key} className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end"><Field><FieldLabel htmlFor={`attachment-kind-${row.key}`}>Kategori</FieldLabel><NativeSelect id={`attachment-kind-${row.key}`} name="designAttachmentKind" value={row.kind} onChange={(event) => setAttachmentRows((current) => current.map((item) => item.key === row.key ? { ...item, kind: event.target.value } : item))}>{ATTACHMENT_KINDS.map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor={`attachment-file-${row.key}`}>File {index + 1}</FieldLabel><FilePicker id={`attachment-file-${row.key}`} name="designAttachments" accept=".png,.psd,image/png,image/vnd.adobe.photoshop,application/x-photoshop" /></Field><Button type="button" variant="ghost" size="icon" disabled={attachmentRows.length === 1} aria-label={`Hapus slot file ${index + 1}`} onClick={() => setAttachmentRows((current) => current.filter((item) => item.key !== row.key))}><Trash2 aria-hidden="true" /></Button></div>)}
-          {values?.attachmentCount ? <p className="text-xs text-muted-foreground">Dokumen ini sudah memiliki {values.attachmentCount} lampiran.</p> : null}
         </FieldSet>
 
         <div className="grid gap-4 sm:grid-cols-2">
