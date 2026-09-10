@@ -37,7 +37,10 @@ export function DocumentDetailTrigger({
       tabIndex={0}
       role="button"
       aria-haspopup="dialog"
-      onClick={onActivate}
+      onClick={(event) => {
+        if ((event.target as Element).closest("button,a,input,select,textarea,form")) return;
+        onActivate();
+      }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {

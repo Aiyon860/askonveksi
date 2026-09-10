@@ -461,6 +461,11 @@ export async function getCustomerDetail(customerId: string) {
       archivedAt: true,
       version: true,
       updatedAt: true,
+      whatsappConversations: {
+        select: { id: true, unreadCount: true, lastMessageAt: true, lastMessagePreview: true, account: { select: { status: true } } },
+        orderBy: { lastMessageAt: "desc" },
+        take: 1,
+      },
       opportunities: {
         select: {
           id: true,
@@ -712,7 +717,7 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
         nextActionAt: true,
         lastContactedAt: true,
         cancelReason: true,
-        customer: { select: { name: true, companyName: true, whatsapp: true } },
+        customer: { select: { id: true, name: true, companyName: true, whatsapp: true } },
         salesPic: { select: { id: true, name: true } },
       },
       orderBy: [{ nextActionAt: "asc" }, { id: "asc" }],

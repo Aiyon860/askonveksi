@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Archive, ExternalLink } from "lucide-react";
+import { ArrowLeft, Archive, ExternalLink, MessageCircle } from "lucide-react";
 
 import { archiveCustomerAction, createOpportunityAction, updateCustomerAction } from "@/app/actions/crm";
+import { openCustomerWhatsAppAction } from "@/app/actions/whatsapp";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
 import { CommunicationHistory } from "@/components/crm/communication-history";
@@ -99,6 +100,7 @@ export default async function CustomerDetailPage({
   const activityStatus = activityStatusFromSchedule(customer.reminders, new Date(), hasOpenOpportunity);
   const repeatSchedule = customer.reminders.find((reminder) => reminder.type === "REPEAT_ORDER");
   const reactivationSchedule = customer.reminders.find((reminder) => reminder.type === "REACTIVATION");
+  const recentConversation = customer.whatsappConversations[0];
 
   return (
     <>
@@ -373,6 +375,17 @@ export default async function CustomerDetailPage({
         </div>
 
         <aside className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>WhatsApp</CardTitle>
+              <CardDescription>Buka percakapan dan lihat aktivitas WhatsApp customer.</CardDescription>
+            </CardHeader>
+            <CardContent className="gap-4">
+              {recentConversation ? <div className="rounded-md border p-3 text-sm"><div className="flex items-center justify-between gap-3"><span>{recentConversation.unreadCount ? `${recentConversation.unreadCount} belum dibaca` : "Aktif"}</span><span className="text-xs text-muted-foreground">{recentConversation.account.status}</span></div><p className="mt-1 truncate text-muted-foreground">{recentConversation.lastMessagePreview ?? "Belum ada pesan"}</p></div> : null}
+              {customer.whatsapp && !customer.archivedAt ? <form action={openCustomerWhatsAppAction}><input type="hidden" name="customerId" value={customer.id} /><Button type="submit" className="w-full"><MessageCircle data-icon="inline-start" />Buka inbox</Button></form> : null}
+            </CardContent>
+          </Card>
+
           {canOperate && !customer.archivedAt ? (
             <Card id="repeat-order">
               <CardHeader>

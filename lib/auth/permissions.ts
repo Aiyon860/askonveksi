@@ -1,17 +1,17 @@
 import type { AppRole } from "@prisma/client";
 
-export const APP_ROLES = ["OWNER", "ADMIN", "SALES", "DESIGNER", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
-export const CRM_ROLES = ["OWNER", "ADMIN", "SALES"] as const satisfies readonly AppRole[];
-export const CRM_OPERATOR_ROLES = ["OWNER", "ADMIN", "SALES"] as const satisfies readonly AppRole[];
-export const DEAL_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
+export const APP_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "SALES", "DESIGNER", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
+export const CRM_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER", "SALES"] as const satisfies readonly AppRole[];
+export const CRM_OPERATOR_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER", "SALES"] as const satisfies readonly AppRole[];
+export const DEAL_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const ARCHIVE_ROLES = CRM_OPERATOR_ROLES;
 export const REVERSE_DEAL_ROLES = DEAL_ROLES;
 export const USER_ADMIN_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
-export const MASTER_DATA_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
-export const ANALYTICS_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
-export const FINANCE_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
-export const PRODUCTION_ROLES = ["OWNER", "ADMIN", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
-export const PRODUCTION_MANAGEMENT_ROLES = ["OWNER", "ADMIN"] as const satisfies readonly AppRole[];
+export const MASTER_DATA_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
+export const ANALYTICS_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
+export const FINANCE_ROLES = ["OWNER", "ADMIN", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
+export const PRODUCTION_ROLES = ["OWNER", "ADMIN", "ADMIN_PRODUCTION", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
+export const PRODUCTION_MANAGEMENT_ROLES = ["OWNER", "ADMIN", "ADMIN_PRODUCTION"] as const satisfies readonly AppRole[];
 export const DESIGN_ROLES = ["DESIGNER"] as const satisfies readonly AppRole[];
 
 export function hasRole(role: AppRole, allowedRoles: readonly AppRole[]) {

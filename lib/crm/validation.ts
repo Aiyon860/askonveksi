@@ -386,7 +386,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES", "DESIGNER", "PRODUCTION", "QC"]),
+  role: z.enum(["OWNER", "ADMIN", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "SALES", "DESIGNER", "PRODUCTION", "QC"]),
   password: strongPasswordSchema,
 });
 
@@ -395,7 +395,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES", "DESIGNER", "PRODUCTION", "QC"]),
+  role: z.enum(["OWNER", "ADMIN", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "SALES", "DESIGNER", "PRODUCTION", "QC"]),
   password: z.preprocess(
     (value) => (typeof value === "string" && value === "" ? undefined : value),
     strongPasswordSchema.optional(),

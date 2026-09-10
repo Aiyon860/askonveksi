@@ -95,5 +95,5 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
 }
 
 export function canClaimProductionStep(role: AppRole, stage: ProductionStage) {
-  return role === "OWNER" || role === "ADMIN" || (stage === "QC" ? role === "QC" : role === "PRODUCTION");
+  return role === "OWNER" || role === "ADMIN" || role === "ADMIN_PRODUCTION" || (stage === "QC" ? role === "QC" : role === "PRODUCTION");
 }

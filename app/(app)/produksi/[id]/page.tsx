@@ -37,7 +37,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   const result = await getProductionDetail(id);
   if (!result) notFound();
   const { workOrder, users, actor } = result;
-  const manager = actor.role === "OWNER" || actor.role === "ADMIN";
+  const manager = actor.role === "OWNER" || actor.role === "ADMIN" || actor.role === "ADMIN_PRODUCTION";
 
   return (
     <>

@@ -38,7 +38,7 @@ export async function loginAction(formData: FormData) {
       throw new UserFacingError("Akun tidak aktif atau belum terdaftar di aplikasi.");
     }
 
-    return profile.role === "PRODUCTION" || profile.role === "QC" ? "/produksi" : profile.role === "DESIGNER" ? "/desain" : "/dashboard";
+    return profile.role === "PRODUCTION" || profile.role === "QC" || profile.role === "ADMIN_PRODUCTION" ? "/produksi" : profile.role === "DESIGNER" ? "/desain" : "/dashboard";
   });
 }
 

@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Palette, Receipt, Ruler, ScrollText, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -29,6 +29,7 @@ const crmItems = [
 
 const customerItems = [
   { href: "/customers", label: "Customer", icon: UsersRound },
+  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
 ] as const;
 
 const masterItems = [
@@ -37,6 +38,8 @@ const masterItems = [
   { href: "/master-data/garment-sizes", label: "Ukuran pakaian", icon: Ruler },
   { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CircleDollarSign },
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
+  { href: "/master-data/whatsapp/accounts", label: "Account WhatsApp", icon: Settings2 },
+  { href: "/master-data/whatsapp/templates", label: "Template WhatsApp", icon: MessageCircle },
 ] as const;
 
 const ownerMasterItems = [
@@ -89,6 +92,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const [crmOpen, setCrmOpen] = useState(false);
   const [followUpCount, setFollowUpCount] = useState(0);
   const [reminderCount, setReminderCount] = useState(0);
+  const [whatsAppCount, setWhatsAppCount] = useState(0);
 
   useEffect(() => {
     fetch("/api/crm/badge-counts", { cache: "no-store" })
@@ -96,15 +100,16 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       .then((data) => {
         setFollowUpCount(data.followUpCount ?? 0);
         setReminderCount(data.reminderCount ?? 0);
+        setWhatsAppCount(data.whatsAppCount ?? 0);
       })
       .catch(() => {});
   }, []);
 
-  const canManageMasterData = role === "OWNER" || role === "ADMIN";
-  const canViewAnalytics = role === "OWNER" || role === "ADMIN";
-  const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "SALES";
-  const canViewProduction = role === "OWNER" || role === "ADMIN" || role === "PRODUCTION" || role === "QC";
-  const canViewFinance = role === "OWNER" || role === "ADMIN";
+  const canManageMasterData = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER";
+  const canViewAnalytics = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER";
+  const canViewCrm = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER" || role === "SALES";
+  const canViewProduction = role === "OWNER" || role === "ADMIN" || role === "ADMIN_PRODUCTION" || role === "PRODUCTION" || role === "QC";
+  const canViewFinance = role === "OWNER" || role === "ADMIN" || role === "ADMIN_CUSTOMER";
   const canViewDesign = role === "OWNER" || role === "DESIGNER";
   const masterDataActive = isPathWithin(pathname, "/master-data") || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
@@ -134,7 +139,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           </CollapsibleContent>
         </Collapsible>
       ) : null}
-      {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
+      {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} onNavigate={onNavigate} />) : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} onNavigate={onNavigate} /> : null}

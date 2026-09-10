@@ -13,6 +13,7 @@ type FilePickerProps = Omit<ComponentProps<typeof Input>, "type" | "value"> & {
 export function FilePicker({
   id,
   emptyLabel = "Belum ada file",
+  disabled,
   onChange,
   ...props
 }: FilePickerProps) {
@@ -32,6 +33,7 @@ export function FilePicker({
         ref={inputRef}
         id={id}
         type="file"
+        disabled={disabled}
         className="sr-only"
         onChange={(event) => {
           setFileName(event.currentTarget.files?.[0]?.name ?? null);
@@ -39,7 +41,7 @@ export function FilePicker({
         }}
         {...props}
       />
-      <Button ref={triggerRef} type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => inputRef.current?.click()}>
+      <Button ref={triggerRef} type="button" variant="outline" disabled={disabled} className="min-h-11 sm:min-h-9" onClick={() => inputRef.current?.click()}>
         <FileUp data-icon="inline-start" aria-hidden="true" />
         Pilih file
       </Button>

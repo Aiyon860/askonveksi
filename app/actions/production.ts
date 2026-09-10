@@ -64,7 +64,7 @@ async function moveProduction(formData: FormData) {
 
     const currentStep = order.steps.find((step) => step.stage === order.currentStage && step.status === "ACTIVE");
     if (!currentStep) throw new UserFacingError("Tahap aktif tidak valid. Muat ulang halaman.");
-    const manager = PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN");
+    const manager = PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN" | "ADMIN_PRODUCTION");
     if (!isStageRole(actor.role, order.currentStage)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
     if (!manager && currentStep.assigneeId !== actor.id) throw new UserFacingError("Ambil penugasan PIC tahap ini sebelum memperbarui progres.");
 
@@ -171,11 +171,11 @@ export async function assignProductionStepAction(formData: FormData) {
         select: { id: true, stage: true, assigneeId: true, workOrder: { select: { status: true } } },
       });
       if (!step || step.workOrder.status !== "ACTIVE") throw new UserFacingError("Tahap produksi tidak aktif atau tidak ditemukan.");
-      const manager = PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN");
+      const manager = PRODUCTION_MANAGEMENT_ROLES.includes(actor.role as "OWNER" | "ADMIN" | "ADMIN_PRODUCTION");
       if (!manager && (parsed.data.assigneeId !== actor.id || step.assigneeId)) throw new UserFacingError("Anda hanya dapat mengambil tahap yang belum memiliki PIC.");
 
       const assignee = await tx.appUser.findFirst({ where: { id: parsed.data.assigneeId, isActive: true }, select: { id: true, role: true, name: true } });
-      if (!assignee || !isStageRole(assignee.role, step.stage) || assignee.role === "OWNER" || assignee.role === "ADMIN") throw new UserFacingError("PIC tidak aktif atau rolenya tidak sesuai tahap.");
+      if (!assignee || !isStageRole(assignee.role, step.stage) || PRODUCTION_MANAGEMENT_ROLES.includes(assignee.role as "OWNER" | "ADMIN" | "ADMIN_PRODUCTION")) throw new UserFacingError("PIC tidak aktif atau rolenya tidak sesuai tahap.");
       if (!isStageRole(actor.role, step.stage)) throw new UserFacingError("Role Anda tidak dapat mengatur PIC tahap ini.");
 
       await tx.productionStep.update({ where: { id: step.id }, data: { assigneeId: assignee.id } });
