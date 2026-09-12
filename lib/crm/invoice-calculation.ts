@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { UserFacingError } from "@/lib/actions/response";
+import { UserFacingError } from "../actions/errors.ts";
 
 export type InvoicePricingInput = {
   purchaseOrderSizeId: string;
@@ -63,11 +63,12 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], taxRate: str
   const total = summary.taxableAmount.add(totalTax).toDecimalPlaces(2);
 
   return {
-    items: calculatedItems.map((item) => ({
-      ...item,
-      taxAmount: item.total.mul(orderTaxRate).div(100).toDecimalPlaces(2),
-      total: item.total.add(item.total.mul(orderTaxRate).div(100)).toDecimalPlaces(2),
-    })),
+    // DB CHECK InvoiceItem_charges_valid requires item subtotal = total (line total incl. tax).
+    items: calculatedItems.map((item) => {
+      const taxAmount = item.total.mul(orderTaxRate).div(100).toDecimalPlaces(2);
+      const total = item.total.add(item.total.mul(orderTaxRate).div(100)).toDecimalPlaces(2);
+      return { ...item, taxAmount, total, subtotal: total };
+    }),
     subtotal: summary.subtotal,
     totalDiscount: summary.totalDiscount,
     totalTax,

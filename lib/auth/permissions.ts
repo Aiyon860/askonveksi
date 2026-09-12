@@ -3,6 +3,7 @@ import type { AppRole } from "@prisma/client";
 export const APP_ROLES = ["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
 export const CRM_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const CRM_OPERATOR_ROLES = CRM_ROLES;
+export const CUSTOMER_REMINDER_SETTING_ROLES = ["OWNER", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const DEAL_ROLES = CRM_ROLES;
 export const ARCHIVE_ROLES = CRM_OPERATOR_ROLES;
 export const REVERSE_DEAL_ROLES = DEAL_ROLES;

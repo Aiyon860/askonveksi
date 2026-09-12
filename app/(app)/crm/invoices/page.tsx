@@ -1,8 +1,9 @@
-import { MessageCircle, Receipt } from "lucide-react";
+import { Receipt } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { InvoiceDetail } from "@/components/crm/invoice-detail";
+import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { InvoiceFilterSheet } from "@/components/crm/invoice-filter-sheet";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
@@ -19,8 +20,6 @@ import { getInvoices, type InvoiceListSort, type InvoiceListStatus, type Invoice
 import { parseDocumentDateRange } from "@/lib/crm/document-list-filters";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
-import { sendInvoiceWhatsAppAction } from "@/app/actions/whatsapp";
-import { Button } from "@/components/ui/button";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
@@ -159,7 +158,7 @@ async function InvoicesTableSection({ searchParams }: { searchParams: SearchPara
       <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
         <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-16 text-center">No</TableHead><SortableTableHead label="No. Invoice" href={sortHref(state, "invoiceNo")} active={sort === "invoiceNo"} direction={direction} /><SortableTableHead label="Customer" href={sortHref(state, "customer")} active={sort === "customer"} direction={direction} /><SortableTableHead label="No. PO" href={sortHref(state, "purchaseOrderNo")} active={sort === "purchaseOrderNo"} direction={direction} /><SortableTableHead label="Status" href={sortHref(state, "status")} active={sort === "status"} direction={direction} /><TableHead className="min-w-32">Pembayaran</TableHead><SortableTableHead label="Total" href={sortHref(state, "total")} active={sort === "total"} direction={direction} className="text-right" /><SortableTableHead label="Tanggal dibuat" href={sortHref(state, "createdAt")} active={sort === "createdAt"} direction={direction} /><TableHead className="w-24 text-center"><span className="sr-only">Aksi</span></TableHead></TableRow></TableHeader>
         <TableBody>{items.map((item, index) => <InvoiceDetail key={item.id} id={item.id}>
-          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono">{item.invoiceNo}</TableCell><TableCell>{item.snapshotCompanyName ?? item.snapshotCustomerName}</TableCell><TableCell className="font-mono">{item.purchaseOrder.purchaseOrderNo}</TableCell><TableCell><InvoiceStatusBadge status={item.status} /></TableCell><TableCell><InvoicePaymentBadge status={item.paymentStatus} /></TableCell><TableCell className="text-right tabular-nums">{formatCurrency(item.total)}</TableCell><TableCell>{formatDate(item.createdAt)}</TableCell><TableCell className="text-center"><div className="flex items-center justify-center"><DocumentPrintButton href={`/api/crm/invoice/${item.id}/pdf`} label={`Print ${item.invoiceNo}`} />{item.status === "ISSUED" ? <form action={sendInvoiceWhatsAppAction}><input type="hidden" name="invoiceId" value={item.id} /><Button type="submit" variant="ghost" size="icon" aria-label={`Kirim ${item.invoiceNo} melalui WhatsApp`} title="Kirim melalui WhatsApp"><MessageCircle aria-hidden="true" /></Button></form> : null}</div></TableCell>
+          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono">{item.invoiceNo}</TableCell><TableCell>{item.snapshotCompanyName ?? item.snapshotCustomerName}</TableCell><TableCell className="font-mono">{item.purchaseOrder.purchaseOrderNo}</TableCell><TableCell><InvoiceStatusBadge status={item.status} /></TableCell><TableCell><InvoicePaymentBadge status={item.paymentStatus} /></TableCell><TableCell className="text-right tabular-nums">{formatCurrency(item.total)}</TableCell><TableCell>{formatDate(item.createdAt)}</TableCell><TableCell className="text-center"><div className="flex items-center justify-center"><DocumentPrintButton href={`/api/crm/invoice/${item.id}/pdf`} label={`Print ${item.invoiceNo}`} />{item.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={item.id} invoiceNo={item.invoiceNo} compact /> : null}</div></TableCell>
         </InvoiceDetail>)}</TableBody>
       </Table>
       <DataPagination pathname="/crm/invoices" page={page} pageCount={pageCount} total={total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />

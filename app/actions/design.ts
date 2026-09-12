@@ -65,7 +65,7 @@ export async function uploadDesignRevisionAction(formData: FormData) {
         if (task.purchaseOrder.status !== "DRAFT") throw new UserFacingError("Desain PO yang sudah disepakati tidak dapat diubah.");
         const latest = task.revisions[0];
         if (latest?.status === "PENDING_REVIEW") throw new UserFacingError("Tunggu keputusan untuk desain yang sedang ditinjau.");
-        if (latest?.status === "APPROVED") throw new UserFacingError("Desain sudah disetujui. Buat revisi PO untuk mengubah desain.");
+        if (latest?.status === "APPROVED") throw new UserFacingError("Desain sudah disetujui. Buat versi revisi PO sebelum mengubah desain.");
         if ((latest?.revision ?? 0) >= MAX_REVISIONS) throw new UserFacingError("Batas desain awal dan tiga revisi telah tercapai.");
         const revision = await tx.designRevision.create({
           data: {

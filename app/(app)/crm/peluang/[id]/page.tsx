@@ -54,14 +54,16 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
   const initialTab = parseOpportunityDetailTab(resolvedSearchParams.tab);
 
   return (
-    <div className="min-w-0 overflow-x-hidden">
-      <Button variant="ghost" size="sm" render={<Link href="/crm" />} nativeButton={false} className="w-fit">
-        <ArrowLeft data-icon="inline-start" aria-hidden="true" />
-        Kembali ke pipeline
-      </Button>
-      <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-        <OpportunityHeader id={id} />
-      </Suspense>
+    <div className="flex min-w-0 max-w-full flex-col gap-6 overflow-x-clip">
+      <div className="flex flex-col gap-3">
+        <Button variant="ghost" size="sm" render={<Link href="/crm" />} nativeButton={false} className="w-fit">
+          <ArrowLeft data-icon="inline-start" aria-hidden="true" />
+          Kembali ke pipeline
+        </Button>
+        <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+          <OpportunityHeader id={id} />
+        </Suspense>
+      </div>
       <PageMessage />
 
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -188,7 +190,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             </CardAction>
           ) : null}
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 max-w-full">
           {!inNegotiation && opportunity.purchaseOrders.length === 0 ? (
             <Empty className="p-8">
               <EmptyHeader>
@@ -198,9 +200,9 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex min-w-0 max-w-full flex-col gap-6">
               {opportunity.purchaseOrders.map((purchaseOrder) => (
-                <section key={purchaseOrder.id} aria-labelledby={`po-${purchaseOrder.id}`} className="rounded-lg border p-4">
+                <section key={purchaseOrder.id} aria-labelledby={`po-${purchaseOrder.id}`} className="min-w-0 rounded-lg border p-4">
                   <PurchaseOrderWorkflowSection
                     opportunityId={opportunity.id}
                     purchaseOrderId={purchaseOrder.id}
@@ -211,7 +213,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     description={`Dibuat ${formatDate(purchaseOrder.createdAt, true)} oleh ${purchaseOrder.createdBy.name}`}
                     canOperate={canOperate}
                     inNegotiation={inNegotiation}
-                    hasActiveDraft={Boolean(poDraft)}
                     sizeOptions={sizeOptions}
                     draftValues={{
                       customerReference: purchaseOrder.customerReference ?? "",
@@ -267,7 +268,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
               </EmptyHeader>
             </Empty>
            ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex min-w-0 max-w-full flex-col gap-6">
               {canOperate && inNegotiation && agreedPo && !invoiceDraft && !issuedInvoice ? (
                 <InvoiceForm
                   opportunityId={opportunity.id}
@@ -289,7 +290,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   })),
                 };
                 return (
-                  <section key={invoice.id} aria-labelledby={`invoice-${invoice.id}`} className="rounded-lg border p-4">
+                  <section key={invoice.id} aria-labelledby={`invoice-${invoice.id}`} className="min-w-0 rounded-lg border p-4">
                     <InvoiceWorkflowSection
                       opportunityId={opportunity.id}
                       invoiceId={invoice.id}
@@ -300,8 +301,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       description={`Berdasarkan ${invoicePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
                       canOperate={canOperate}
                       inNegotiation={inNegotiation}
-                      hasActiveDraft={Boolean(invoiceDraft)}
-                      canCreateRevision={invoice.status === "ISSUED" && invoice.purchaseOrderId === agreedPo?.id}
                       purchaseOrder={editableInvoicePo}
                       draftValues={invoiceDraftValues}
                       salesOrderHref={invoice.salesOrder ? `/sales-orders/${invoice.salesOrder.id}` : undefined}
@@ -324,7 +323,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             <CardTitle>Deal dan Sales Order</CardTitle>
             <CardDescription>Periksa kesiapan dokumen sebelum Admin mengonfirmasi pembayaran dan membentuk Sales Order.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-6">
+          <CardContent className="flex min-w-0 max-w-full flex-col gap-6">
             {inNegotiation && canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
               <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} />
             ) : opportunity.stage === "DEAL" ? (

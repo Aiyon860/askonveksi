@@ -314,6 +314,14 @@ test("lead baru dapat divalidasi untuk langsung masuk negosiasi", () => {
   assert.equal(moveOpportunitySchema.safeParse({ opportunityId: "cm123456789012", version: "1", stage: "NEGOSIASI", cancelReason: "" }).success, true);
 });
 
+test("aksi pindah status dari detail peluang tidak fallback ke board", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(actionSource, /function opportunityRedirectPath[\s\S]+const fallback = opportunityTabFallback\(formData, "peluang"\)/);
+  assert.match(actionSource, /export async function moveOpportunityStageAction[\s\S]+const redirectPath = opportunityRedirectPath\(formData\)/);
+  assert.match(detailPageSource, /redirectTo=\{`\/crm\/peluang\/\$\{opportunity\.id\}\?tab=peluang`\}/);
+});
+
 test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
   const base = {
     opportunityId: "cm123456789012",
@@ -423,7 +431,7 @@ test("migration riwayat komunikasi menjaga catatan lama dan menutup Data API", a
   assert.match(sql, /REVOKE ALL ON TABLE "CommunicationActivity" FROM anon, authenticated/);
 });
 
-test("jadwal repeat order memakai bulan kalender Jakarta dan menangani akhir bulan", () => {
+test("jadwal reminder order memakai bulan kalender Jakarta dan menangani akhir bulan", () => {
   const acceptedAt = new Date("2026-08-30T20:00:00.000Z");
   assert.equal(addCalendarMonthsJakarta(acceptedAt, 3).toISOString(), "2026-11-29T20:00:00.000Z");
   assert.equal(addCalendarMonthsJakarta(acceptedAt, 6).toISOString(), "2027-02-27T20:00:00.000Z");
@@ -432,16 +440,31 @@ test("jadwal repeat order memakai bulan kalender Jakarta dan menangani akhir bul
   assert.equal(addCalendarMonthsJakarta(januaryEnd, 3).toISOString(), "2026-04-29T20:00:00.000Z");
 });
 
-test("status aktivitas berubah pada bulan ke-3 dan ke-6 serta ditahan oleh peluang terbuka", () => {
+test("status aktivitas berubah pada bulan ke-6 serta ditahan oleh peluang terbuka", () => {
   const schedule = [
-    { type: "REPEAT_ORDER", dueAt: new Date("2026-11-29T20:00:00.000Z") },
     { type: "REACTIVATION", dueAt: new Date("2027-02-27T20:00:00.000Z") },
   ];
   assert.equal(activityStatusFromSchedule([], new Date("2026-09-01T00:00:00.000Z")), "BELUM_ORDER");
   assert.equal(activityStatusFromSchedule(schedule, new Date("2026-11-01T00:00:00.000Z")), "AKTIF");
-  assert.equal(activityStatusFromSchedule(schedule, new Date("2026-12-01T00:00:00.000Z")), "POTENSI_REPEAT");
   assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z")), "TIDAK_AKTIF");
   assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z"), true), "AKTIF");
+});
+
+test("revisi dokumen hanya berasal dari draft sampai revisi keempat dan final tidak ditimpa", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /source\.status !== "DRAFT"[\s\S]+source\.revision >= 4/);
+  assert.match(actionSource, /revision: \{ lt: 4 \}/);
+  assert.doesNotMatch(actionSource, /where: \{ opportunityId: invoice\.opportunityId, status: "ISSUED"/);
+  assert.doesNotMatch(actionSource, /where: \{ opportunityId: purchaseOrder\.opportunityId, status: "AGREED"/);
+});
+
+test("migration follow up menyimpan tiga offset, switch customer, template bawaan, dan menutup job lama", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260911090000_revision_follow_up_settings/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /invoiceReminderOffsets/);
+  assert.match(sql, /orderReminderEnabled/);
+  assert.match(sql, /triggerType" <> 'MANUAL'/);
+  assert.match(sql, /Selamat datang customer baru/);
+  assert.match(sql, /Fitur repeat order telah dinonaktifkan/);
 });
 
 test("migration reminder membackfill order terakhir dan menutup Data API", async () => {

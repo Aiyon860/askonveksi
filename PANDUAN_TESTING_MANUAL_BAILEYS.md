@@ -1,258 +1,194 @@
 # Panduan Testing Manual WhatsApp Baileys
 
-Dokumen ini dipakai untuk menguji integrasi WhatsApp di ASKonveksi dari awal sampai akhir. Jalankan pada database development/staging dan gunakan nomor WhatsApp khusus testing. Jangan memakai nomor utama bisnis.
+Gunakan database development atau staging, nomor WhatsApp khusus testing, dan data customer nonproduksi. Jangan pernah menyalin auth state, token, secret, atau isi pesan customer ke issue tracker.
 
 ## 0. Persiapan
 
-- [ ] Pastikan Node.js dan dependency sudah terpasang: `npm install`.
-- [ ] Pastikan `.env` berisi `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `WHATSAPP_AUTH_PATH`, `WHATSAPP_WORKER_ID`, `WHATSAPP_WORKER_SECRET`, `WHATSAPP_HEALTH_PORT`, dan konfigurasi Supabase Storage.
-- [ ] Pastikan migration sudah diterapkan dan client sudah dibuat:
-
-  ```bash
-  npx prisma migrate status
-  npm run db:generate
-  ```
-
-- [ ] Pastikan bucket private `whatsapp-media` tersedia.
-- [ ] Siapkan dua akun WhatsApp: nomor bisnis staging sebagai pengirim dan nomor pribadi tester sebagai penerima.
-- [ ] Isi customer testing dengan nomor penerima dalam format `628...`, nama, dan perusahaan.
-- [ ] Catat ID customer, invoice, opportunity, account WhatsApp, dan job yang dibuat selama pengujian.
-- [ ] Hanya satu worker yang boleh memakai database dan nomor staging pada satu waktu. Dua developer tidak boleh menjalankan sesi Baileys yang sama.
-
-## 1. Menjalankan aplikasi
-
-Buka dua terminal dari root repository.
-
-Terminal aplikasi:
+- [ ] Dependency sudah terpasang dan `.env` memuat `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `WHATSAPP_AUTH_PATH`, `WHATSAPP_WORKER_ID`, `WHATSAPP_WORKER_SECRET`, `WHATSAPP_HEALTH_PORT`, serta konfigurasi Supabase Storage.
+- [ ] Migration sudah diterapkan dan Prisma Client sudah dibuat.
+- [ ] Bucket private `whatsapp-media` tersedia.
+- [ ] Siapkan nomor bisnis staging, nomor penerima, customer testing, invoice `ISSUED`, dan template untuk semua trigger.
+- [ ] Catat role tester serta ID account, customer, conversation, invoice, message, dan job yang dipakai.
 
 ```bash
+npx prisma migrate status
+npm run db:generate
 npm run dev
-```
-
-Terminal worker:
-
-```bash
 npm run whatsapp:worker:dev
 ```
 
-Checklist:
+Pastikan aplikasi terbuka di `http://localhost:3000` dan `curl -i http://localhost:3001/health` mengembalikan HTTP `200` dengan `{"status":"ok"}`.
 
-- [ ] Next.js berjalan di `http://localhost:3000`.
-- [ ] Worker tidak menampilkan error koneksi database, lock, atau konfigurasi.
-- [ ] `curl -i http://localhost:3001/health` mengembalikan HTTP `200` dan JSON `{"status":"ok"}` setelah maksimal satu menit.
-- [ ] Jika worker kedua dijalankan, worker kedua gagal mengambil advisory lock. Hentikan worker kedua dan lanjutkan dengan satu worker saja.
+## 1. Baseline yang sudah diuji
 
-## 2. Membuat dan pairing account
+Sebelum melanjutkan, pastikan pengujian dasar berikut memang sudah lulus pada environment yang sama:
 
-1. Login sebagai `OWNER` atau `ADMIN`.
-2. Buka **Master Data > WhatsApp > Account**.
-3. Tambahkan account baru dengan label, misalnya `Staging`, dan nomor pengirim tanpa tanda `+`.
-4. Klik **Pairing**.
-5. Tunggu worker mengambil permintaan pairing.
-6. Di WhatsApp pada ponsel pengirim, buka **Perangkat tertaut > Tautkan perangkat**, lalu masukkan pairing code yang tampil di halaman.
+- [ ] Pairing account hingga status `CONNECTED` dan `heartbeatAt` terus berubah.
+- [ ] Hanya satu account `CONNECTED` yang aktif sebagai pengirim.
+- [ ] Template `MANUAL` merender variabel yang didukung dan menolak variabel asing.
+- [ ] Pesan teks biasa dan berbasis template diterima satu kali.
+- [ ] Gambar JPG, PNG, atau WebP diterima dan dapat dibuka dari inbox.
+- [ ] Dokumen PDF diterima dan dapat diunduh oleh user yang berhak.
+- [ ] Media berada di bucket private, bukan URL publik.
 
-Hasil yang diharapkan:
+## 2. Reliability
 
-- [ ] Account berubah dari `DISCONNECTED/PAIRING` menjadi `CONNECTED`.
-- [ ] Pairing code hilang setelah koneksi terbuka atau setelah kedaluwarsa.
-- [ ] `heartbeatAt` pada halaman account terus diperbarui.
-- [ ] Folder auth lokal terbentuk di `WHATSAPP_AUTH_PATH/<account-id>` dan tidak masuk Git.
-- [ ] Refresh halaman tidak menghilangkan status koneksi.
+### Pairing code kedaluwarsa
 
-Uji reconnect:
+1. Klik **Pairing** dan biarkan kode melewati waktu kedaluwarsa.
+2. Klik **Pairing** lagi.
 
-- [ ] Matikan koneksi internet ponsel sementara, lalu hidupkan kembali.
-- [ ] Worker mengubah status sementara menjadi `DISCONNECTED` lalu kembali `CONNECTED` tanpa pairing ulang.
-- [ ] Hentikan dan jalankan worker kembali. Sesi tetap terhubung karena auth state tersimpan.
+- [ ] Kode lama hilang setelah kedaluwarsa.
+- [ ] Worker menghasilkan kode baru tanpa harus direstart.
+- [ ] Kode baru berbeda dan dapat dipakai untuk pairing.
 
-Uji logout:
+### Pemulihan sesi setelah restart
 
-- [ ] Klik **Logout** pada account.
-- [ ] Status menjadi `LOGGED_OUT`, `sendEnabled` menjadi nonaktif, dan sesi tidak otomatis tersambung lagi.
-- [ ] Untuk memakai kembali nomor tersebut, lakukan pairing ulang.
+1. Pastikan account sudah `CONNECTED`.
+2. Hentikan worker, lalu jalankan kembali worker yang sama.
 
-## 3. Mengaktifkan nomor pengirim
+- [ ] Sesi tersambung kembali dari `WHATSAPP_AUTH_PATH` tanpa pairing ulang.
+- [ ] Account kembali `CONNECTED` dan heartbeat berjalan lagi.
 
-- [ ] Pada account yang `CONNECTED`, klik **Jadikan aktif**.
-- [ ] Pastikan hanya satu account yang memiliki `sendEnabled` aktif.
-- [ ] Account yang belum `CONNECTED` tidak dapat diaktifkan.
-- [ ] Jika tidak ada account aktif, pengiriman dari UI menampilkan pesan bahwa belum ada nomor pengirim.
+### Lock worker
 
-## 4. Membuat dan menguji template
+1. Biarkan worker pertama berjalan.
+2. Jalankan worker kedua dengan database dan account yang sama.
 
-1. Buka **Master Data > WhatsApp > Template**.
-2. Buat template dengan trigger `MANUAL`, misalnya:
+- [ ] Worker kedua ditolak oleh advisory lock.
+- [ ] Worker pertama tetap sehat dan tidak ada dua proses yang mengirim job.
 
-   ```text
-   Halo {{customer_name}}, ini pesan dari {{business_name}}.
-   ```
+### Logout dan pairing ulang
 
-3. Simpan template dan gunakan dari inbox.
+1. Klik **Logout** pada account aktif.
+2. Pastikan status menjadi `LOGGED_OUT` dan pengiriman nonaktif.
+3. Klik **Pairing**, masukkan kode baru, lalu aktifkan kembali account.
 
-Checklist:
+- [ ] Sesi lama tidak tersambung otomatis setelah logout.
+- [ ] Pairing ulang menghasilkan sesi baru yang sehat.
 
-- [ ] Template tampil pada daftar dan dapat diedit.
-- [ ] Template nonaktif tidak muncul sebagai pilihan pengiriman.
-- [ ] Variabel yang didukung dirender menjadi nilai sebenarnya, bukan teks `{{...}}`.
-- [ ] Variabel yang tidak dikenal ditolak dengan pesan error yang jelas.
-- [ ] Template kosong atau melebihi batas input ditolak.
-- [ ] Buat juga template untuk `NEXT_ACTION`, `REPEAT_ORDER`, `REACTIVATION`, `INVOICE_ISSUED`, dan `INVOICE_DUE` untuk pengujian automasi.
+## 3. Health dan recovery
 
-## 5. Menguji pesan manual dari inbox
+1. Hentikan worker dan tunggu heartbeat berumur lebih dari 30 detik.
+2. Pastikan banner masalah WhatsApp muncul.
+3. Jalankan worker kembali.
 
-1. Pastikan customer memiliki nomor WhatsApp yang valid.
-2. Buka **WhatsApp** dari navigasi atau tombol WhatsApp pada detail customer.
-3. Jika percakapan belum ada, gunakan **Buka inbox** untuk membuat percakapan.
-4. Kirim pesan teks biasa.
-5. Pilih template lalu kirim pesan lain.
-6. Ulangi pengiriman setelah pukul 17.00 WIB untuk memastikan pesan manual tetap langsung diproses.
+- [ ] Banner hilang maksimal sekitar 3 detik setelah endpoint kembali `HEALTHY`.
+- [ ] Toast pemulihan muncul tepat satu kali.
 
-Periksa tiga tempat berikut:
+Kemudian buat satu job berstatus `FAILED`.
 
-- [ ] Ponsel penerima menerima pesan satu kali.
-- [ ] Inbox menampilkan pesan outbound dan status awal `SENT`.
-- [ ] **Antrean WhatsApp** menampilkan job `COMPLETED` setelah worker memprosesnya.
-- [ ] Status dapat berubah menjadi `DELIVERED` atau `READ` setelah penerima membuka pesan.
-- [ ] Communication activity customer mencatat pesan outbound.
-- [ ] Mengklik kirim dua kali tidak menghasilkan dua job yang sama untuk satu submit.
-- [ ] Pesan manual tidak ditunda ke jam operasional hari berikutnya.
+- [ ] Banner tetap terlihat walaupun koneksi sudah `HEALTHY`.
+- [ ] Banner menjelaskan adanya job gagal dan menyediakan tautan ke antrean bagi role yang berhak.
+- [ ] Setelah job diulang atau dibatalkan, banner hilang otomatis pada polling berikutnya tanpa reload manual.
 
-Uji nomor yang belum dikenal:
+Buka Network panel, lalu pindahkan tab ke background selama lebih dari 10 detik.
 
-- [ ] Cari dan tautkan percakapan ke customer existing menggunakan input pencarian.
-- [ ] Gunakan **Tambah customer baru**, lalu pastikan nomor WhatsApp terisi otomatis dan percakapan langsung tertaut.
-- [ ] Kedua opsi tidak lagi tampil setelah percakapan memiliki customer.
+- [ ] Request health berhenti ketika tab tersembunyi.
+- [ ] Polling langsung dilanjutkan ketika tab terlihat kembali.
+- [ ] Tidak ada request health lama yang tetap berjalan bersamaan.
 
-Uji validasi:
+## 4. Queue dan kegagalan
 
-- [ ] Nomor kosong atau format tidak valid ditolak.
-- [ ] Pesan kosong tanpa lampiran ditolak.
-- [ ] Customer archived ditolak.
-- [ ] Sales tidak dapat melihat atau mengirim ke customer sales lain.
-- [ ] Role yang tidak berhak tidak dapat membuka action pengiriman dengan memanggil request secara langsung.
+### Antrean saat worker mati
 
-## 6. Menguji lampiran gambar dan dokumen
+1. Matikan worker.
+2. Kirim satu pesan manual.
+3. Jalankan worker kembali.
 
-- [ ] Dari inbox, kirim satu PDF kecil.
-- [ ] Kirim satu gambar JPG/PNG/WEBP kecil.
-- [ ] Pastikan penerima menerima file dan caption.
-- [ ] Pastikan nama file, tipe MIME, ukuran, dan status tersimpan.
-- [ ] Buka lampiran inbound dari inbox; route media hanya memberi akses kepada user yang berhak.
-- [ ] Coba file tipe yang tidak diizinkan dan file lebih besar dari batas; sistem harus menolak sebelum membuat job.
-- [ ] Pastikan file tersimpan di bucket private, bukan URL publik.
+- [ ] Job tetap tersimpan selama worker mati.
+- [ ] Setelah worker hidup, penerima mendapat pesan tepat satu kali.
+- [ ] Job berakhir `COMPLETED` dan message berakhir minimal `SENT`.
 
-## 7. Menguji pengiriman invoice
+### Status dan tindakan manual
 
-1. Pastikan ada invoice berstatus `ISSUED` untuk customer testing.
-2. Buka **CRM > Invoice**.
-3. Klik tombol kirim WhatsApp pada invoice.
-4. Tunggu worker memproses job.
+- [ ] Paksa kegagalan sementara dan pastikan job masuk `RETRY` dengan `attempts`, `nextAttemptAt`, dan alasan gagal.
+- [ ] Paksa kegagalan permanen dan pastikan job masuk `FAILED` tanpa retry tanpa batas.
+- [ ] Klik **Ulangi** pada job `FAILED`, lalu pastikan job diproses lagi tanpa menghapus riwayat.
+- [ ] Batalkan job yang masih dapat dibatalkan dan pastikan status menjadi `CANCELLED`.
+- [ ] Alasan gagal tampil di antrean dan bubble pesan yang gagal.
 
-Hasil yang diharapkan:
+### Worker berhenti saat pemrosesan
 
-- [ ] Job menyimpan `invoiceId` dan payload attachment bertipe invoice.
-- [ ] Worker mengambil PDF melalui endpoint invoice dengan secret worker.
-- [ ] Penerima menerima satu dokumen PDF dengan nama invoice dan caption template.
-- [ ] Job menjadi `COMPLETED`; pesan menjadi `SENT`/`DELIVERED`/`READ`.
-- [ ] Invoice yang bukan `ISSUED` tidak dapat dikirim.
-- [ ] Customer tanpa nomor atau archived ditolak.
-- [ ] Secret worker tidak terlihat di URL, HTML, atau log browser.
+1. Kirim pesan dan hentikan worker ketika job `PROCESSING` atau message `SENDING`.
+2. Jalankan worker kembali.
 
-## 8. Menguji cron dan follow-up otomatis
+- [ ] Status ambigu terlihat sebagai masalah yang perlu ditindaklanjuti.
+- [ ] Sistem tidak diam-diam mengirim pesan duplikat.
 
-Gunakan data testing dengan waktu jadwal yang sudah lewat atau jadwalkan beberapa menit ke depan. Jangan mengubah data customer produksi.
+## 5. Fitur yang belum diuji
 
-### Next action opportunity
+### Invoice PDF dan worker secret
 
-- [ ] Buat opportunity pada stage yang mendukung follow-up dan isi `nextActionAt`.
-- [ ] Pastikan template `NEXT_ACTION` aktif.
-- [ ] Setelah satu siklus worker, job `NEXT_ACTION` dibuat.
-- [ ] Job memakai idempotency key yang sama saat worker dijalankan ulang.
-- [ ] Tidak ada job duplikat untuk opportunity dan waktu yang sama.
+- [ ] Kirim invoice `ISSUED` dari UI CRM.
+- [ ] Worker mengambil PDF dengan header otorisasi worker secret yang benar.
+- [ ] Request tanpa secret atau dengan secret salah ditolak.
+- [ ] Secret tidak muncul di URL, HTML, log browser, atau nama file.
+- [ ] Penerima mendapat satu PDF dengan nama dan caption yang benar.
 
-### Reminder customer
+### Receipt
 
-- [ ] Buat reminder yang sudah jatuh tempo.
-- [ ] Pastikan template sesuai jenis reminder aktif.
-- [ ] Worker membuat job reminder dan mengirimkannya.
-- [ ] Ubah jadwal atau generation reminder, lalu pastikan job lama dibatalkan dan job baru dibuat.
+- [ ] Pesan outbound berubah dari `SENT` menjadi `DELIVERED` ketika diterima perangkat tujuan.
+- [ ] Status berubah menjadi `READ` setelah pesan dibuka bila receipt tersedia.
+- [ ] Event receipt berulang tidak membuat message baru.
 
-### Invoice issued dan invoice due
+### Nomor belum dikenal
 
-- [ ] Terbitkan invoice dan aktifkan template `INVOICE_ISSUED`; satu job invoice issued dibuat.
-- [ ] Siapkan invoice belum lunas dengan due date yang sudah memenuhi aturan; job `INVOICE_DUE` dibuat untuk offset yang sesuai.
-- [ ] Invoice lunas tidak menghasilkan reminder jatuh tempo.
-- [ ] Jalankan worker beberapa kali; idempotency tetap mencegah pesan ganda.
+- [ ] Pesan dari nomor yang tidak cocok dengan customer membuat percakapan tanpa customer.
+- [ ] Percakapan dapat ditautkan ke customer existing.
+- [ ] Percakapan dapat membuat customer baru dengan nomor terisi otomatis.
+- [ ] Pilihan tautkan atau buat customer hilang setelah relasi terbentuk.
 
-## 9. Menguji retry dan kegagalan
+### Automasi dan idempotensi
 
-1. Matikan worker atau putuskan koneksi nomor pengirim.
-2. Buat kiriman manual.
-3. Buka **WhatsApp > Antrean WhatsApp**.
+- [ ] Uji trigger `NEXT_ACTION`, `REPEAT_ORDER`, `REACTIVATION`, `INVOICE_ISSUED`, dan `INVOICE_DUE` satu per satu.
+- [ ] Pesan automasi di luar jam operasional dijadwalkan ke waktu kirim berikutnya.
+- [ ] Pesan manual tetap dapat diproses tanpa aturan jam automasi.
+- [ ] Restart worker tidak membuat job atau pesan automasi duplikat untuk idempotency key yang sama.
 
-Checklist:
+### Validasi file
 
-- [ ] Job tidak hilang; status menjadi `RETRY` ketika kegagalan masih dapat dicoba ulang.
-- [ ] `attempts`, `nextAttemptAt`, dan `lastError` terisi.
-- [ ] Setelah worker/connection pulih, job terkirim dan menjadi `COMPLETED`.
-- [ ] Klik **Ulangi** pada job `FAILED`/`CANCELLED` membuat job dapat diproses kembali tanpa menghapus riwayat.
-- [ ] Error permanen seperti nomor invalid, opt-out, atau konfigurasi tidak masuk retry tanpa batas.
-- [ ] Jika proses berhenti saat status `SENDING`, worker berikutnya tidak membuat pesan ganda secara diam-diam; status ambigu harus terlihat sebagai error untuk ditindaklanjuti.
+- [ ] File yang bukan PDF, JPG, PNG, atau WebP ditolak sebelum job dibuat.
+- [ ] File dengan ekstensi atau MIME palsu ditolak berdasarkan isi file.
+- [ ] File di atas 10 MB ditolak sebelum upload atau pembuatan job.
 
-## 10. Menguji pesan masuk
+### Otorisasi langsung
 
-1. Dari nomor tester, balas ke nomor staging.
-2. Tunggu worker menerima event inbound.
+- [ ] Sales tidak dapat membuka conversation atau media milik Sales lain melalui URL langsung.
+- [ ] Sales hanya dapat membuka conversation customer yang menjadi tanggung jawabnya.
+- [ ] Role non-CRM tidak dapat membuka inbox, endpoint pesan, endpoint media, atau server action WhatsApp.
+- [ ] Respons endpoint pesan tidak memuat remote JID, path storage, payload job, token, secret, atau data auth.
 
-Hasil yang diharapkan:
+## 6. Performa chat
 
-- [ ] Percakapan baru muncul di inbox dengan unread count bertambah.
-- [ ] Pesan inbound tersimpan satu kali meskipun event diterima ulang.
-- [ ] Customer otomatis terhubung jika nomor cocok.
-- [ ] Pesan inbound tercatat di communication activity.
-- [ ] Pesan gambar/dokumen tersimpan ke Storage private dan dapat dibuka dari inbox.
-- [ ] Klik **Tandai dibaca** mengurangi unread count sesuai perilaku halaman.
-- [ ] Klik **Selesaikan** menandai percakapan resolved; pesan baru membukanya kembali.
+1. Buka Network panel dan pertahankan tab tetap terlihat.
+2. Buka chat A, lalu chat B untuk mengisi cache.
+3. Kembali ke chat A.
 
-## 11. Menguji role dan keamanan
+- [ ] Pesan chat A tampil langsung tanpa blank state atau skeleton.
+- [ ] Setelah data cache tampil, hanya satu revalidasi chat A yang berjalan.
+- [ ] Pesan chat B tidak pernah terlihat sementara ketika chat A dipilih.
+- [ ] Chat yang belum pernah dibuka hanya menampilkan skeleton pada panel timeline, bukan pada seluruh halaman.
+- [ ] Hover dan fokus keyboard pada link chat memulai prefetch pesan.
+- [ ] Polling pesan aktif berjalan sekitar setiap 3 detik dan berhenti ketika tab tersembunyi.
+- [ ] Refresh daftar percakapan berjalan sekitar setiap 10 detik tanpa mengosongkan cache pesan.
+- [ ] Back dan forward browser mengembalikan conversation yang sesuai tanpa reload penuh.
+- [ ] Navigasi dengan Tab dan Enter bekerja serta fokus terlihat jelas.
+- [ ] Layout mobile tidak overflow dan perpindahan chat tetap dapat digunakan.
+- [ ] Pesan baru muncul ketika chat aktif tanpa mengubah chat yang dipilih.
 
-Ulangi smoke test dengan akun berikut:
+## 7. Bukti hasil testing
 
-- [ ] `OWNER`: dapat mengatur account/template, inbox, job, dan pengiriman.
-- [ ] `ADMIN`: dapat mengatur fitur sesuai permission aplikasi.
-- [ ] `ADMIN_CUSTOMER`: dapat memakai CRM, customer, invoice, dan WhatsApp yang diizinkan.
-- [ ] `ADMIN_PRODUCTION`: diarahkan ke produksi dan tidak memperoleh akses CRM/WhatsApp yang tidak diizinkan.
-- [ ] `SALES`: hanya melihat customer dan percakapan yang menjadi tanggung jawabnya.
-- [ ] `PRODUCTION`, `QC`, dan `DESIGNER`: tidak dapat menjalankan action WhatsApp yang tidak diberikan.
+Untuk setiap skenario, simpan waktu, environment, role tester, ID terkait, screenshot, status akhir, dan potongan log worker yang sudah disamarkan. Jangan simpan nomor lengkap, isi pesan sensitif, `.data/baileys-auth`, pairing credential, `SUPABASE_SECRET_KEY`, atau `WHATSAPP_WORKER_SECRET`.
 
-Untuk setiap role, uji akses langsung ke URL dan server action, bukan hanya visibilitas tombol. Hasil yang diharapkan adalah redirect atau error permission, tanpa perubahan database.
-
-## 12. Bukti hasil testing
-
-Untuk setiap tahap yang lulus, simpan:
-
-- waktu dan environment;
-- role tester;
-- account ID dan nomor staging (boleh disamarkan);
-- customer/invoice/job ID;
-- screenshot halaman yang relevan;
-- potongan log worker tanpa auth state, token, secret, atau isi pesan sensitif;
-- status akhir job dan pesan.
-
-Jangan mengunggah folder `.data/baileys-auth`, QR/pairing credential, `SUPABASE_SECRET_KEY`, `WHATSAPP_WORKER_SECRET`, atau isi database customer ke issue tracker.
-
-## 13. Smoke test sebelum merge/deploy
+## 8. Pemeriksaan sebelum merge
 
 - [ ] `npm test`
 - [ ] `npx prisma validate`
-- [ ] `npx prisma generate`
+- [ ] `npm run db:generate`
 - [ ] `npx tsc --noEmit`
-- [ ] Pairing nomor staging berhasil.
-- [ ] Pesan teks dan invoice PDF berhasil.
-- [ ] Pesan inbound muncul di inbox.
-- [ ] Satu automasi follow-up menghasilkan satu job dan satu pesan.
-- [ ] Opt-out memblokir semua pengiriman.
-- [ ] Retry setelah worker offline berhasil.
-- [ ] Tidak ada secret atau auth state masuk Git.
+- [ ] ESLint file WhatsApp yang berubah lulus.
+- [ ] `git diff --check`
+- [ ] Smoke test desktop dan mobile lulus.
 
-Jika semua checklist selesai, catat hasilnya di pull request. Untuk pengujian production, ulangi smoke test dengan nomor bisnis yang sudah mendapat persetujuan dan jadwal pengiriman yang disepakati.
+Catat hasil dan bukti yang aman di pull request. Ulangi pengujian production hanya dengan nomor bisnis yang telah disetujui dan jadwal pengiriman yang disepakati.

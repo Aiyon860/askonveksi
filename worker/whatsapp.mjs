@@ -25,6 +25,10 @@ let lastTickAt = 0;
 let lastAutomationAt = 0;
 let ticking = false;
 
+const DEFAULT_INVOICE_ISSUED_TEMPLATE = "Halo {{customer_name}}, invoice {{invoice_no}} dari {{business_name}} sebesar {{invoice_total}} telah diterbitkan. Batas pembayaran: {{invoice_due_date}}. Dokumen invoice terlampir. Mohon konfirmasi setelah pembayaran. Terima kasih.";
+const DEFAULT_INVOICE_DUE_TEMPLATE = "Halo {{customer_name}}, pengingat pembayaran {{payment_label}} untuk invoice {{invoice_no}} sebesar {{payment_amount}} jatuh tempo pada {{payment_due_date}}. Mohon konfirmasi setelah pembayaran. Terima kasih.";
+const DEFAULT_ORDER_REMINDER_TEMPLATE = "Halo {{customer_name}}, sudah enam bulan sejak order terakhir di {{business_name}}. Jika ada kebutuhan produksi baru, balas pesan ini dan kami akan membuat order baru dari awal.";
+
 const silentLogger = {
   level: "silent",
   child() { return this; },
@@ -72,6 +76,13 @@ function render(body, values) {
   return body.replace(/{{\s*([a-z_]+)\s*}}/g, (_, name) => values[name] || "").trim();
 }
 
+function addSixCalendarMonthsJakarta(value) {
+  const local = new Date(value.getTime() + 7 * 60 * 60 * 1000);
+  const start = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 6, 1));
+  const lastDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), Math.min(local.getUTCDate(), lastDay), 2));
+}
+
 function messageText(message) {
   const content = message.message || {};
   return content.conversation || content.extendedTextMessage?.text || content.imageMessage?.caption || content.documentMessage?.caption || null;
@@ -96,6 +107,17 @@ async function directMessageJid(socket, message) {
   return await socket.signalRepository.lidMapping.getPNForLID(primary) || primary;
 }
 
+async function issuePairingCode(socket, account, delay = 0) {
+  if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+  const phoneNumber = normalizeNumber(account.phoneNumber);
+  if (!phoneNumber) throw new Error("Nomor WhatsApp account tidak valid.");
+  const code = await socket.requestPairingCode(phoneNumber);
+  await prisma.whatsAppAccount.update({
+    where: { id: account.id },
+    data: { status: "PAIRING", pairingCode: code, pairingCodeExpiresAt: new Date(Date.now() + 60_000), lastError: null },
+  });
+}
+
 async function connectAccount(account) {
   if (sessions.has(account.id) || stopping) return;
   const authPath = path.join(authRoot, account.id);
@@ -107,15 +129,7 @@ async function connectAccount(account) {
 
   if (!state.creds.registered && account.connectRequestedAt) {
     try {
-      // Baileys needs a brief moment to establish its socket before the pairing request.
-      await new Promise((resolve) => setTimeout(resolve, 3_000));
-      const phoneNumber = normalizeNumber(account.phoneNumber);
-      if (!phoneNumber) throw new Error("Nomor WhatsApp account tidak valid.");
-      const code = await socket.requestPairingCode(phoneNumber);
-      await prisma.whatsAppAccount.update({
-        where: { id: account.id },
-        data: { status: "PAIRING", pairingCode: code, pairingCodeExpiresAt: new Date(Date.now() + 60_000), lastError: null },
-      });
+      await issuePairingCode(socket, account, 3_000);
     } catch (error) {
       const detail = cleanError(error);
       console.error(`[whatsapp-worker] pairing ${account.id}: ${detail}`);
@@ -218,8 +232,16 @@ async function reloadAccounts() {
       await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "LOGGED_OUT", sendEnabled: false, disconnectedAt: new Date(), pairingCode: null } });
       continue;
     }
-    const shouldConnect = account.connectRequestedAt || account.status === "CONNECTED";
-    if (shouldConnect && !sessions.has(account.id)) await connectAccount(account);
+    const socket = sessions.get(account.id);
+    if (account.status === "PAIRING" && account.connectRequestedAt && !account.pairingCodeExpiresAt && socket) {
+      try {
+        await issuePairingCode(socket, account);
+      } catch (error) {
+        await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "ERROR", lastError: cleanError(error) } });
+      }
+    } else if ((account.connectRequestedAt || account.status === "CONNECTED") && !socket) {
+      await connectAccount(account);
+    }
   }
   const ids = [...sessions.keys()];
   if (ids.length) await prisma.whatsAppAccount.updateMany({ where: { id: { in: ids } }, data: { heartbeatAt: new Date() } });
@@ -229,11 +251,13 @@ async function scheduleAutomations() {
   const now = new Date();
   const templates = await prisma.whatsAppTemplate.findMany({ where: { isActive: true } });
   const byType = new Map(templates.map((template) => [template.triggerType, template]));
-  const business = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } });
+  const business = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true, invoiceReminderOffsets: true } });
   const baseValues = { business_name: business?.name || "AS Konveksi" };
+  const reminderOffsets = business?.invoiceReminderOffsets || [-3, 0, 3];
+  const reminderSettingsKey = reminderOffsets.join(",");
 
   const opportunities = await prisma.opportunity.findMany({
-    where: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] }, nextActionAt: { lte: now }, customer: { archivedAt: null, whatsapp: { not: null } } },
+    where: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] }, nextActionAt: { lte: now }, customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" } } },
     select: { id: true, opportunityNo: true, title: true, nextAction: true, nextActionAt: true, customerId: true, customer: { select: { name: true, companyName: true } }, salesPic: { select: { name: true } } },
     take: 200,
   });
@@ -245,12 +269,12 @@ async function scheduleAutomations() {
   }
 
   const reminders = await prisma.customerReminder.findMany({
-    where: { dueAt: { lte: now }, resolvedAt: null, customer: { archivedAt: null, whatsapp: { not: null } } },
+    where: { type: "REACTIVATION", dueAt: { lte: now }, resolvedAt: null, customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" }, orderReminderEnabled: true, opportunities: { none: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] } } } } },
     select: { id: true, type: true, dueAt: true, generation: true, customerId: true, customer: { select: { name: true, companyName: true, salesPic: { select: { name: true } } } } },
     take: 200,
   });
   for (const item of reminders) {
-    const template = byType.get(item.type);
+    const template = byType.get("REACTIVATION") || { id: null, body: DEFAULT_ORDER_REMINDER_TEMPLATE };
     if (template) {
       const idempotencyKey = `reminder:${item.id}:${item.generation}`;
       await prisma.whatsAppAutomationJob.updateMany({ where: { reminderId: item.id, idempotencyKey: { not: idempotencyKey }, status: { in: ["QUEUED", "RETRY"] } }, data: { status: "CANCELLED", lastError: "Jadwal reminder berubah." } });
@@ -259,7 +283,7 @@ async function scheduleAutomations() {
   }
 
   const invoices = await prisma.invoice.findMany({
-    where: { status: "ISSUED", opportunity: { customer: { archivedAt: null, whatsapp: { not: null } } } },
+    where: { status: "ISSUED", opportunity: { customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" } } } },
     select: {
       id: true,
       invoiceNo: true,
@@ -276,35 +300,51 @@ async function scheduleAutomations() {
           salesPic: { select: { name: true } },
         },
       },
-      salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true } } } },
+      pendingPayment: { select: { id: true, kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true } } } },
+      salesOrder: { select: { status: true, payment: { select: { id: true, terms: { select: { id: true, position: true, amount: true, dueAt: true, transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 } } } } } } },
     },
     take: 200,
   });
   for (const invoice of invoices) {
     const values = { ...baseValues, customer_name: invoice.opportunity.customer.name, company_name: invoice.opportunity.customer.companyName || "", sales_pic_name: invoice.opportunity.salesPic?.name || "", opportunity_no: invoice.opportunity.opportunityNo, opportunity_title: invoice.opportunity.title, invoice_no: invoice.invoiceNo, invoice_total: new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(invoice.total)), invoice_due_date: invoice.dueAt?.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" }) || "" };
-    const issuedTemplate = byType.get("INVOICE_ISSUED");
+    const issuedTemplate = byType.get("INVOICE_ISSUED") || { id: null, body: DEFAULT_INVOICE_ISSUED_TEMPLATE };
     if (issuedTemplate && invoice.issuedAt) await createScheduledJob({ idempotencyKey: `invoice-issued:${invoice.id}`, type: "INVOICE_ISSUED", template: issuedTemplate, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, scheduledAt: invoice.issuedAt, values, attachment: { type: "invoice", invoiceId: invoice.id } });
-    const unpaid = !invoice.salesOrder || (invoice.salesOrder.status === "ACTIVE" && Number(invoice.salesOrder.payment?.outstandingAmount || invoice.total) > 0);
-    const dueTemplate = byType.get("INVOICE_DUE");
-    if (unpaid && dueTemplate && invoice.dueAt) for (const offset of [-3, 0, 3]) {
-      const scheduledAt = new Date(invoice.dueAt.getTime() + offset * 86_400_000);
-      if (scheduledAt <= now) await createScheduledJob({ idempotencyKey: `invoice-due:${invoice.id}:${offset}`, type: "INVOICE_DUE", template: dueTemplate, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, scheduledAt, values });
+    const targets = invoice.pendingPayment
+      ? [
+          { key: `pending-initial:${invoice.pendingPayment.id}`, label: invoice.pendingPayment.kind === "LUNAS" ? "pelunasan" : "DP", amount: invoice.pendingPayment.initialAmount, dueAt: invoice.pendingPayment.initialDueAt },
+          ...invoice.pendingPayment.terms.map((term) => ({ key: `pending-term:${term.id}`, label: `termin ${term.position + 1}`, amount: term.amount, dueAt: term.dueAt })),
+        ]
+      : invoice.salesOrder?.status === "ACTIVE" && invoice.salesOrder.payment
+        ? invoice.salesOrder.payment.terms.filter((term) => !term.transactions.length).map((term) => ({ key: `deal-term:${term.id}`, label: `termin ${term.position + 1}`, amount: term.amount, dueAt: term.dueAt }))
+        : [];
+    const dueTemplate = byType.get("INVOICE_DUE") || { id: null, body: DEFAULT_INVOICE_DUE_TEMPLATE };
+    for (const target of targets) for (const offset of reminderOffsets) {
+      const scheduledAt = new Date(target.dueAt.getTime() + offset * 86_400_000);
+      if (scheduledAt <= now) await createScheduledJob({
+        idempotencyKey: `invoice-due:${invoice.id}:${target.key}:${target.dueAt.toISOString().slice(0, 10)}:${offset}:settings-${reminderSettingsKey}`,
+        type: "INVOICE_DUE", template: dueTemplate, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, scheduledAt,
+        values: { ...values, payment_label: target.label, payment_amount: new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(target.amount)), payment_due_date: target.dueAt.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" }) },
+        metadata: { paymentTarget: target.key, dueDate: target.dueAt.toISOString().slice(0, 10), offset },
+      });
     }
   }
 }
 
-async function createScheduledJob({ template, values, attachment, ...data }) {
-  const text = render(template.body, values);
+async function createScheduledJob({ template, values, attachment, metadata, ...data }) {
+  const body = data.type === "INVOICE_ISSUED" && !values.invoice_due_date
+    ? template.body.replace(/\s*Batas pembayaran:\s*{{\s*invoice_due_date\s*}}\s*\.\s*/i, " ")
+    : template.body;
+  const text = render(body, values).replace(/\s{2,}/g, " ");
   if (!text) return;
   const scheduledAt = nextSendAt(data.scheduledAt);
-  const payload = { text, attachment: attachment || null };
+  const payload = { text, attachment: attachment || null, metadata: metadata || null };
   const updated = await prisma.whatsAppAutomationJob.updateMany({
     where: { idempotencyKey: data.idempotencyKey, status: { in: ["QUEUED", "RETRY"] } },
-    data: { templateId: template.id, scheduledAt, nextAttemptAt: null, payload },
+    data: { templateId: template.id || null, scheduledAt, nextAttemptAt: null, payload },
   });
   if (!updated.count) await prisma.whatsAppAutomationJob.upsert({
     where: { idempotencyKey: data.idempotencyKey },
-    create: { ...data, templateId: template.id, scheduledAt, payload },
+    create: { ...data, templateId: template.id || null, scheduledAt, payload },
     update: {},
   });
 }
@@ -327,16 +367,32 @@ async function claimJob() {
 async function automationSourceIsValid(job) {
   if (job.type === "MANUAL") return true;
   if (job.type === "NEXT_ACTION") {
-    const opportunity = await prisma.opportunity.findUnique({ where: { id: job.opportunityId || "" }, select: { stage: true, nextActionAt: true } });
-    return Boolean(opportunity?.nextActionAt && ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"].includes(opportunity.stage) && job.idempotencyKey === `next:${job.opportunityId}:${opportunity.nextActionAt.toISOString()}`);
+    const opportunity = await prisma.opportunity.findUnique({ where: { id: job.opportunityId || "" }, select: { stage: true, nextActionAt: true, customer: { select: { archivedAt: true, whatsappConsentStatus: true } } } });
+    return Boolean(opportunity?.nextActionAt && !opportunity.customer.archivedAt && opportunity.customer.whatsappConsentStatus !== "OPTED_OUT" && ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"].includes(opportunity.stage) && job.idempotencyKey === `next:${job.opportunityId}:${opportunity.nextActionAt.toISOString()}`);
   }
-  if (job.type === "REPEAT_ORDER" || job.type === "REACTIVATION") {
-    const reminder = await prisma.customerReminder.findUnique({ where: { id: job.reminderId || "" }, select: { type: true, generation: true, resolvedAt: true } });
-    return Boolean(reminder && !reminder.resolvedAt && reminder.type === job.type && job.idempotencyKey === `reminder:${job.reminderId}:${reminder.generation}`);
+  if (job.type === "REPEAT_ORDER") return false;
+  if (job.type === "REACTIVATION") {
+    const reminder = await prisma.customerReminder.findUnique({ where: { id: job.reminderId || "" }, select: { type: true, generation: true, resolvedAt: true, customer: { select: { archivedAt: true, whatsappConsentStatus: true, orderReminderEnabled: true, opportunities: { where: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] } }, select: { id: true }, take: 1 } } } } });
+    return Boolean(reminder && !reminder.resolvedAt && reminder.type === "REACTIVATION" && !reminder.customer.archivedAt && reminder.customer.whatsappConsentStatus !== "OPTED_OUT" && reminder.customer.orderReminderEnabled && !reminder.customer.opportunities.length && job.idempotencyKey === `reminder:${job.reminderId}:${reminder.generation}`);
   }
-  const invoice = await prisma.invoice.findUnique({ where: { id: job.invoiceId || "" }, select: { status: true, total: true, salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true } } } } } });
+  const invoice = await prisma.invoice.findUnique({ where: { id: job.invoiceId || "" }, select: {
+    status: true,
+    opportunity: { select: { customer: { select: { archivedAt: true, whatsappConsentStatus: true } } } },
+    pendingPayment: { select: { id: true, initialDueAt: true, terms: { select: { id: true, dueAt: true } } } },
+    salesOrder: { select: { status: true, payment: { select: { terms: { select: { id: true, dueAt: true, transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 } } } } } } },
+  } });
   if (!invoice || invoice.status !== "ISSUED") return false;
-  return job.type === "INVOICE_ISSUED" || !invoice.salesOrder || (invoice.salesOrder.status === "ACTIVE" && Number(invoice.salesOrder.payment?.outstandingAmount || invoice.total) > 0);
+  if (invoice.opportunity.customer.archivedAt || invoice.opportunity.customer.whatsappConsentStatus === "OPTED_OUT") return false;
+  if (job.type === "INVOICE_ISSUED") return true;
+  const settings = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { invoiceReminderOffsets: true } });
+  if (!settings || !settings.invoiceReminderOffsets.includes(job.payload?.metadata?.offset)) return false;
+  const key = job.payload?.metadata?.paymentTarget;
+  const dueDate = job.payload?.metadata?.dueDate;
+  if (typeof key !== "string" || typeof dueDate !== "string") return false;
+  if (invoice.pendingPayment && key === `pending-initial:${invoice.pendingPayment.id}`) return invoice.pendingPayment.initialDueAt.toISOString().slice(0, 10) === dueDate;
+  if (key.startsWith("pending-term:")) return Boolean(invoice.pendingPayment?.terms.some((term) => key === `pending-term:${term.id}` && term.dueAt.toISOString().slice(0, 10) === dueDate));
+  if (key.startsWith("deal-term:") && invoice.salesOrder?.status === "ACTIVE") return Boolean(invoice.salesOrder.payment?.terms.some((term) => key === `deal-term:${term.id}` && !term.transactions.length && term.dueAt.toISOString().slice(0, 10) === dueDate));
+  return false;
 }
 
 async function processOneJob() {
@@ -399,7 +455,7 @@ async function processOneJob() {
     const conversation = await prisma.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, customerId: job.customerId }, update: { customerId: job.customerId } });
     const preparedMessage = job.message
       ? await prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { accountId: account.id, conversationId: conversation.id, status: "SENDING", errorMessage: null, failedAt: null } })
-      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? "DOCUMENT" : "TEXT", text, automationJobId: job.id, occurredAt: preparedAt } });
+      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? "DOCUMENT" : "TEXT", text, mediaFileName: payload.attachment?.type === "invoice" ? `invoice-${job.invoiceId}.pdf` : payload.attachment?.fileName ?? null, mediaMimeType: payload.attachment?.type === "invoice" ? "application/pdf" : payload.attachment?.mimeType ?? null, automationJobId: job.id, occurredAt: preparedAt } });
     await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { accountId: account.id } });
     sendStarted = true;
     const sent = await socket.sendMessage(remoteJid, content);
@@ -411,6 +467,14 @@ async function processOneJob() {
       const authorId = message.sentById || job.customer.salesPicId || (await tx.appUser.findFirst({ where: { role: "OWNER", isActive: true }, select: { id: true } }))?.id;
       if (authorId) await tx.communicationActivity.upsert({ where: { whatsappMessageId: message.id }, create: { customerId: job.customerId, opportunityId: job.opportunityId, authorId, kind: "COMMUNICATION", channel: "WHATSAPP", direction: "OUTBOUND", content: activityContent, occurredAt, whatsappMessageId: message.id }, update: {} });
       await tx.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: "COMPLETED", accountId: account.id, completedAt: occurredAt, leaseOwner: null, leaseExpiresAt: null, lastError: null } });
+      if (job.type === "REACTIVATION" && job.reminderId) {
+        const reminder = await tx.customerReminder.findUnique({ where: { id: job.reminderId }, select: { dueAt: true, generation: true } });
+        if (reminder) {
+          let dueAt = reminder.dueAt;
+          do dueAt = addSixCalendarMonthsJakarta(dueAt); while (dueAt <= occurredAt);
+          await tx.customerReminder.updateMany({ where: { id: job.reminderId, generation: reminder.generation, resolvedAt: null }, data: { dueAt, generation: { increment: 1 } } });
+        }
+      }
     });
   } catch (error) {
     const detail = cleanError(error);
@@ -473,4 +537,4 @@ const healthServer = createServer((request, response) => {
 });
 healthServer.listen(healthPort, "0.0.0.0");
 await tick();
-setInterval(() => void tick(), 5_000);
+setInterval(() => void tick(), 2_000);

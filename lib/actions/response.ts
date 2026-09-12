@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export class UserFacingError extends Error {}
+import type { FormActionState } from "./form-state";
+import { UserFacingError } from "./errors";
+
+export { UserFacingError };
 
 export function messageForError(error: unknown) {
   if (error instanceof UserFacingError) return error.message;
@@ -62,6 +65,21 @@ export async function runRedirectingAction(
     destination = await work();
   } catch (error) {
     destination = await flashMessagePath(fallbackPath, flashKindForError(error), messageForError(error));
+  }
+
+  redirect(destination);
+}
+
+export type { FormActionState };
+
+export async function runFormAction(actionName: string, work: () => Promise<string>): Promise<FormActionState> {
+  let destination: string;
+
+  try {
+    destination = await work();
+  } catch (error) {
+    console.error(`[form-action:${actionName}]`, error);
+    return { ok: false, message: messageForError(error) };
   }
 
   redirect(destination);

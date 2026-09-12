@@ -25,7 +25,7 @@ export function IssueInvoiceAction({
         className="w-full sm:w-auto"
         pendingLabel="Menerbitkan..."
         confirmTitle="Terbitkan dan kunci invoice?"
-        confirmDescription="Draft tidak dapat diedit setelah diterbitkan. Perubahan harga berikutnya dibuat sebagai revisi."
+        confirmDescription="Invoice akan dikunci dan dikirim ke WhatsApp customer bersama pesan pendamping. Setelah diterbitkan, invoice tidak dapat direvisi."
         confirmLabel="Ya, terbitkan"
       >
         <Send data-icon="inline-start" aria-hidden="true" />

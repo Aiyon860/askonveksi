@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BellRing, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -22,6 +22,7 @@ const financeItems = [
 const crmItems = [
   { href: "/crm", label: "Pipeline", icon: KanbanSquare },
   { href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock },
+  { href: "/crm/follow-up/settings", label: "Pengaturan follow up", icon: Settings2 },
   { href: "/crm/purchase-orders", label: "Purchase Order", icon: FileText },
   { href: "/crm/invoices", label: "Invoice", icon: Receipt },
   { href: "/crm/sales-orders", label: "Sales Order", icon: ScrollText },
@@ -30,6 +31,7 @@ const crmItems = [
 const customerItems = [
   { href: "/customers", label: "Customer", icon: UsersRound },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { href: "/master-data/whatsapp/templates", label: "Template chat", icon: MessageCircle },
 ] as const;
 
 const masterItems = [
@@ -39,7 +41,6 @@ const masterItems = [
   { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CircleDollarSign },
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
   { href: "/master-data/whatsapp/accounts", label: "Account WhatsApp", icon: Settings2 },
-  { href: "/master-data/whatsapp/templates", label: "Template WhatsApp", icon: MessageCircle },
 ] as const;
 
 const ownerMasterItems = [
@@ -57,6 +58,7 @@ function isPathWithin(pathname: string, href: string) {
 
 function isNavItemActive(pathname: string, href: string) {
   if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang") || isPathWithin(pathname, "/sales-orders");
+  if (href === "/crm/follow-up") return pathname === href;
   return isPathWithin(pathname, href);
 }
 
@@ -91,7 +93,6 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
   const [followUpCount, setFollowUpCount] = useState(0);
-  const [reminderCount, setReminderCount] = useState(0);
   const [whatsAppCount, setWhatsAppCount] = useState(0);
 
   useEffect(() => {
@@ -99,7 +100,6 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       .then((r) => r.json())
       .then((data) => {
         setFollowUpCount(data.followUpCount ?? 0);
-        setReminderCount(data.reminderCount ?? 0);
         setWhatsAppCount(data.whatsAppCount ?? 0);
       })
       .catch(() => {});
@@ -111,7 +111,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const canViewProduction = role === "OWNER" || role === "ADMIN_PRODUCTION";
   const canViewFinance = role === "OWNER";
   const canViewDesign = role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
-  const masterDataActive = isPathWithin(pathname, "/master-data") || isPathWithin(pathname, "/admin/users");
+  const masterDataActive = (isPathWithin(pathname, "/master-data") && pathname !== "/master-data/whatsapp/templates") || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
 
@@ -142,7 +142,6 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} onNavigate={onNavigate} />) : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
-      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/notifications", label: "Repeat order", icon: BellRing, count: reminderCount }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (
         <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible flex flex-col gap-1">
           <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">

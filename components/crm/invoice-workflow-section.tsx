@@ -5,9 +5,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { CopyPlus, FileDown, XCircle } from "lucide-react";
 
-import { cancelInvoiceDraftAction } from "@/app/actions/crm";
-import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { InvoiceForm } from "@/components/crm/invoice-form";
+import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { Button } from "@/components/ui/button";
 
 type PurchaseOrder = {
@@ -39,8 +38,6 @@ type InvoiceWorkflowSectionProps = {
   description: string;
   canOperate: boolean;
   inNegotiation: boolean;
-  hasActiveDraft: boolean;
-  canCreateRevision: boolean;
   purchaseOrder: PurchaseOrder | null;
   draftValues: InvoiceDraftValues;
   salesOrderHref?: string;
@@ -58,8 +55,6 @@ export function InvoiceWorkflowSection({
   description,
   canOperate,
   inNegotiation,
-  hasActiveDraft,
-  canCreateRevision,
   purchaseOrder,
   draftValues,
   salesOrderHref,
@@ -67,9 +62,9 @@ export function InvoiceWorkflowSection({
   children,
 }: InvoiceWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
-  const isEditingPersistedDraft = invoiceStatus === "DRAFT" && canOperate && inNegotiation && Boolean(purchaseOrder);
+  const isEditingPersistedDraft = invoiceStatus === "DRAFT" && invoiceRevision < 4 && canOperate && inNegotiation && Boolean(purchaseOrder) && !isCreatingRevision;
   const isEditing = isEditingPersistedDraft || isCreatingRevision;
-  const showCreateRevision = canCreateRevision && !hasActiveDraft && !isCreatingRevision && Boolean(purchaseOrder);
+  const showCreateRevision = invoiceStatus === "DRAFT" && invoiceRevision < 4 && canOperate && inNegotiation && !isCreatingRevision && Boolean(purchaseOrder);
 
   return (
     <>
@@ -79,7 +74,8 @@ export function InvoiceWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isEditing ? (
+          {!isEditing && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} /> : null}
+          {!isEditing && invoiceStatus !== "ISSUED" ? (
             <Button className="w-full sm:w-auto" render={<Link href={`/api/crm/invoice/${invoiceId}/pdf`} />} nativeButton={false}>
               <FileDown data-icon="inline-start" aria-hidden="true" />
               Unduh PDF
@@ -88,7 +84,7 @@ export function InvoiceWorkflowSection({
           {showCreateRevision ? (
             <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
               <CopyPlus data-icon="inline-start" aria-hidden="true" />
-              Buat revisi invoice
+              Buat versi revisi
             </Button>
           ) : null}
           {!isEditing && salesOrderHref && salesOrderLabel ? (
@@ -106,7 +102,7 @@ export function InvoiceWorkflowSection({
             draft={isEditingPersistedDraft ? { id: invoiceId, version: invoiceVersion, ...draftValues } : undefined}
             initialValues={isCreatingRevision ? draftValues : undefined}
             sourceInvoiceId={isCreatingRevision ? invoiceId : undefined}
-            submitLabel="Perbarui draft invoice"
+            submitLabel={isCreatingRevision ? "Buat versi revisi" : "Perbarui draft invoice"}
           />
           {isCreatingRevision ? (
             <Button
@@ -118,24 +114,6 @@ export function InvoiceWorkflowSection({
               <XCircle data-icon="inline-start" aria-hidden="true" />
               Batalkan draft revisi
             </Button>
-          ) : invoiceRevision > 1 ? (
-            <form action={cancelInvoiceDraftAction} className="mt-2">
-              <input type="hidden" name="opportunityId" value={opportunityId} />
-              <input type="hidden" name="invoiceId" value={invoiceId} />
-              <input type="hidden" name="version" value={invoiceVersion} />
-              <ConfirmSubmitButton
-                variant="outline"
-                className="w-full border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-                confirmButtonClassName="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20"
-                pendingLabel="Membatalkan..."
-                confirmTitle="Batalkan draft revisi invoice?"
-                confirmDescription="Draft revisi ini akan dihapus. Invoice terbit sebelumnya tetap menjadi dokumen aktif."
-                confirmLabel="Ya, batalkan draft"
-              >
-                <XCircle data-icon="inline-start" aria-hidden="true" />
-                Batalkan draft revisi
-              </ConfirmSubmitButton>
-            </form>
           ) : null}
         </>
       ) : (

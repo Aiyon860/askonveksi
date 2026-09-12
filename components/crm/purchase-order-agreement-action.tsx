@@ -52,7 +52,7 @@ export function PurchaseOrderAgreementAction({
         disabled={disabled || undefined}
         pendingLabel="Mengunci PO..."
         confirmTitle="Sepakati draft PO terbaru?"
-        confirmDescription={`${revisionLabel} akan menjadi sumber resmi ukuran dan jumlah untuk invoice. Perubahan berikutnya dibuat sebagai revisi baru.`}
+        confirmDescription={`${revisionLabel} akan menjadi sumber resmi ukuran dan jumlah untuk invoice. Setelah disepakati, PO bersifat final dan tidak dapat direvisi.`}
         confirmLabel="Ya, sepakati PO"
       >
         <CheckCircle2 data-icon="inline-start" aria-hidden="true" />

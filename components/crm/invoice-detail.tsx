@@ -7,6 +7,7 @@ import { editInvoicePaymentTransactionAction, payInvoicePaymentTermAction, payPe
 import { invoiceDetailAction } from "@/app/actions/crm-details";
 import { DocumentDetailTrigger } from "@/components/crm/document-detail-trigger";
 import { InvoiceStatusBadge } from "@/components/status-badge";
+import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,7 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
             <Info label="No. Invoice" value={detail.invoiceNo} mono /><Info label="No. PO" value={detail.purchaseOrder.purchaseOrderNo} mono />
             <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1"><InvoiceStatusBadge status={detail.status} /></dd></div>
             <Info label="Customer" value={detail.snapshotCompanyName ?? detail.snapshotCustomerName} /><Info label="Tanggal dibuat" value={formatDate(detail.createdAt)} />
-            {detail.pendingPayment || detail.salesOrder ? <Info label={`Deadline ${detail.pendingPayment?.kind ?? detail.salesOrder?.kind}`} value={formatDate(detail.dueAt)} /> : null}
+            {detail.pendingPayment || detail.salesOrder ? <Info label={`Deadline ${detail.pendingPayment?.kind ?? detail.salesOrder?.kind}`} value={formatDate(detail.pendingPayment?.initialDueAt ?? detail.dueAt)} /> : null}
           </dl>
           <Table><TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Subtotal</TableHead></TableRow></TableHeader><TableBody>{detail.items.map((item) => <TableRow key={item.id}><TableCell>{item.size}</TableCell><TableCell>{item.description}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell><TableCell className="text-right tabular-nums">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right tabular-nums">{formatCurrency(item.subtotal)}</TableCell></TableRow>)}</TableBody></Table>
           <dl className="ml-auto grid w-full gap-2 sm:max-w-xs"><Total label="Subtotal" value={formatCurrency(detail.subtotal)} /><Total label="Diskon" value={detail.discountType === "PERCENTAGE" ? `${detail.discountValue}%` : formatCurrency(detail.discountValue)} /><Total label="Total" value={formatCurrency(detail.total)} strong /></dl>
@@ -63,7 +64,7 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
           {!detail.salesOrder && !detail.pendingPayment ? <section className="rounded-lg border bg-muted/30 p-3 text-sm" aria-label="Status jadwal pembayaran"><Badge variant="secondary">Jadwal pembayaran belum diatur</Badge><p className="mt-2 text-muted-foreground">Atur deadline dan nominal pembayaran awal dari tab Deal SO.</p></section> : null}
           {detail.notes ? <Info label="Catatan" value={detail.notes} /> : null}
         </div> : null}
-        {detail ? <DialogFooter><Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=invoice`} />}>Lihat Invoice</Button></DialogFooter> : null}
+        {detail ? <DialogFooter>{detail.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={detail.id} invoiceNo={detail.invoiceNo} /> : null}<Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=invoice`} />}>Lihat Invoice</Button></DialogFooter> : null}
       </DialogContent>
     </Dialog>
   </>;

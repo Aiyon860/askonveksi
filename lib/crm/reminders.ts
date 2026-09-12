@@ -1,14 +1,16 @@
 import "server-only";
 
-import { Prisma, type CustomerReminderType } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import {
   addCalendarMonthsJakarta,
   CUSTOMER_REMINDER_DELAYS,
 } from "@/lib/crm/reminder-types";
 
-function reminderDueAt(type: CustomerReminderType, acceptedAt: Date) {
-  return addCalendarMonthsJakarta(acceptedAt, CUSTOMER_REMINDER_DELAYS[type]);
+function reminderDueAt(type: "REACTIVATION", acceptedAt: Date) {
+  const target = addCalendarMonthsJakarta(acceptedAt, CUSTOMER_REMINDER_DELAYS[type] ?? 6);
+  const jakarta = new Date(target.getTime() + 7 * 60 * 60 * 1000);
+  return new Date(Date.UTC(jakarta.getUTCFullYear(), jakarta.getUTCMonth(), jakarta.getUTCDate(), 2));
 }
 
 async function upsertReminderSchedule(
@@ -17,7 +19,7 @@ async function upsertReminderSchedule(
     customerId: string;
     sourceSalesOrderId: string;
     acceptedAt: Date;
-    type: CustomerReminderType;
+    type: "REACTIVATION";
     rearm: boolean;
   },
 ) {
@@ -58,9 +60,7 @@ export async function scheduleCustomerReminders(
     data: { resolvedAt },
   });
 
-  for (const type of Object.keys(CUSTOMER_REMINDER_DELAYS) as CustomerReminderType[]) {
-    await upsertReminderSchedule(tx, { ...data, type, rearm: false });
-  }
+  await upsertReminderSchedule(tx, { ...data, type: "REACTIVATION", rearm: false });
 }
 
 export async function restoreCustomerRemindersAfterCancellation(
@@ -80,16 +80,13 @@ export async function restoreCustomerRemindersAfterCancellation(
   });
   if (!previousOrder) return;
 
-  const reminders: Array<{ id: string }> = [];
-  for (const type of Object.keys(CUSTOMER_REMINDER_DELAYS) as CustomerReminderType[]) {
-    reminders.push(await upsertReminderSchedule(tx, {
-      customerId,
-      sourceSalesOrderId: previousOrder.id,
-      acceptedAt: previousOrder.acceptedAt,
-      type,
-      rearm: true,
-    }));
-  }
+  const reminders = [await upsertReminderSchedule(tx, {
+    customerId,
+    sourceSalesOrderId: previousOrder.id,
+    acceptedAt: previousOrder.acceptedAt,
+    type: "REACTIVATION",
+    rearm: true,
+  })];
   await tx.customerReminderReceipt.deleteMany({
     where: { reminderId: { in: reminders.map((reminder) => reminder.id) } },
   });
@@ -108,7 +105,7 @@ export async function rearmCustomerRemindersAfterLost(
   if (openOpportunityCount > 0) return;
 
   const reminders = await tx.customerReminder.findMany({
-    where: { customerId, resolvedAt: null },
+    where: { customerId, type: "REACTIVATION", resolvedAt: null },
     select: { id: true },
   });
   if (!reminders.length) return;

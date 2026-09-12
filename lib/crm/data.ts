@@ -183,7 +183,7 @@ export async function getCustomerOptions() {
 
 export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt";
 export type SortDirection = "asc" | "desc";
-export type CustomerSegment = "all" | "repeat" | "inactive" | "archived";
+export type CustomerSegment = "all" | "archived";
 
 type CustomerListQuery = {
   query: string;
@@ -194,33 +194,9 @@ type CustomerListQuery = {
 
 function customerWhere(actor: { id: string; role: AppRole }, query: string, segment: CustomerSegment) {
   const normalizedQuery = query.trim().slice(0, 80);
-  const reference = new Date();
   const segmentWhere = segment === "archived"
     ? { archivedAt: { not: null } }
-    : segment === "repeat"
-      ? {
-          archivedAt: null,
-          opportunities: { none: { stage: { in: OPEN_STAGES } } },
-          reminders: {
-            some: { type: "REPEAT_ORDER" as const, resolvedAt: null, dueAt: { lte: reference } },
-          },
-          AND: [{
-            reminders: {
-              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { gt: reference } },
-            },
-          }],
-          ...(actor.role === "ADMIN_CUSTOMER" ? { salesPicId: actor.id } : {}),
-        }
-      : segment === "inactive"
-        ? {
-            archivedAt: null,
-            opportunities: { none: { stage: { in: OPEN_STAGES } } },
-            reminders: {
-              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { lte: reference } },
-            },
-            ...(actor.role === "ADMIN_CUSTOMER" ? { salesPicId: actor.id } : {}),
-          }
-        : { archivedAt: null };
+    : { archivedAt: null };
 
   return {
     ...segmentWhere,
@@ -301,7 +277,7 @@ export async function getCustomers({
           take: 1,
         },
         reminders: {
-          where: { resolvedAt: null },
+          where: { resolvedAt: null, type: "REACTIVATION" },
           select: {
             type: true,
             dueAt: true,
@@ -422,7 +398,7 @@ export async function getCustomerPopupDetail(customerId: string) {
         take: 6,
       },
       reminders: {
-        where: { resolvedAt: null },
+        where: { resolvedAt: null, type: "REACTIVATION" },
         select: {
           id: true,
           type: true,
@@ -452,6 +428,7 @@ export async function getCustomerDetail(customerId: string) {
       address: true,
       city: true,
       notes: true,
+      orderReminderEnabled: true,
       customerTypeId: true,
       leadSourceId: true,
       salesPicId: true,
@@ -491,7 +468,7 @@ export async function getCustomerDetail(customerId: string) {
         orderBy: { updatedAt: "desc" },
       },
       reminders: {
-        where: { resolvedAt: null },
+        where: { resolvedAt: null, type: "REACTIVATION" },
         select: {
           id: true,
           type: true,

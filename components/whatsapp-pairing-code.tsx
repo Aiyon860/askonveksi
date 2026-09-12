@@ -31,9 +31,9 @@ export function WhatsAppPairingCode({ code, expiresAt, waiting }: WhatsAppPairin
 
   if (!code || !expiresAt) {
     return waiting ? (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-        <Spinner />
-        Menunggu kode dari worker...
+      <div className="space-y-1 text-sm text-muted-foreground" role="status">
+        <p className="flex items-center gap-2"><Spinner />Menunggu kode dari worker...</p>
+        <p className="text-xs">Biasanya kode muncul dalam beberapa detik. Pastikan satu worker WhatsApp sedang aktif.</p>
       </div>
     ) : null;
   }
@@ -47,7 +47,7 @@ export function WhatsAppPairingCode({ code, expiresAt, waiting }: WhatsAppPairin
         </Badge>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        {remaining === 0 ? "Klik Pairing untuk meminta kode baru." : "Masukkan kode ini di WhatsApp sebelum waktunya habis."}
+        {remaining === 0 ? "Kode hanya berlaku sekali. Klik Pairing untuk meminta kode baru." : "Masukkan kode ini di WhatsApp sebelum waktunya habis. Jika kedaluwarsa, klik Pairing lagi."}
       </p>
     </div>
   );

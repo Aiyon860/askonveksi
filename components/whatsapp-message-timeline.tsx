@@ -19,7 +19,7 @@ export function WhatsAppMessageTimeline({
   }, [conversationId, latestMessageId]);
 
   return (
-    <div ref={timelineRef} className="flex min-w-0 max-h-[390px] flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md bg-muted/30 p-3" aria-live="polite">
+    <div ref={timelineRef} className="flex h-[60vh] max-h-[640px] min-h-[480px] min-w-0 flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-md bg-muted/30 p-3" aria-live="polite">
       {children}
     </div>
   );

@@ -5,7 +5,63 @@ import { Prisma, type WhatsAppJobType } from "@prisma/client";
 import { UserFacingError } from "@/lib/actions/response";
 import type { Actor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { nextWhatsAppSendAt, remoteJidForNumber, renderWhatsAppTemplate } from "@/lib/whatsapp/core";
+import {
+  DEFAULT_INVOICE_ISSUED_TEMPLATE,
+  nextWhatsAppSendAt,
+  remoteJidForNumber,
+  renderInvoiceIssuedTemplate,
+  renderWhatsAppTemplate,
+} from "@/lib/whatsapp/core";
+
+async function loadInvoiceDelivery(tx: Prisma.TransactionClient, invoiceId: string) {
+  const [invoice, business, template] = await Promise.all([
+    tx.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        id: true, invoiceNo: true, status: true, total: true, dueAt: true, opportunityId: true,
+        opportunity: { select: { opportunityNo: true, title: true, customerId: true, salesPicId: true, salesPic: { select: { name: true } }, customer: { select: { name: true, companyName: true, whatsapp: true, archivedAt: true } } } },
+      },
+    }),
+    tx.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
+    tx.whatsAppTemplate.findFirst({ where: { triggerType: "INVOICE_ISSUED", isActive: true }, orderBy: { updatedAt: "desc" }, select: { id: true, body: true } }),
+  ]);
+  if (!invoice || invoice.status !== "ISSUED") throw new UserFacingError("Hanya invoice terbit yang dapat dikirim.");
+  const text = renderInvoiceIssuedTemplate(template?.body ?? DEFAULT_INVOICE_ISSUED_TEMPLATE, {
+    business_name: business?.name ?? "AS Konveksi",
+    customer_name: invoice.opportunity.customer.name,
+    company_name: invoice.opportunity.customer.companyName ?? "",
+    sales_pic_name: invoice.opportunity.salesPic?.name ?? "",
+    opportunity_no: invoice.opportunity.opportunityNo,
+    opportunity_title: invoice.opportunity.title,
+    invoice_no: invoice.invoiceNo,
+    invoice_total: new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(invoice.total.toNumber()),
+    invoice_due_date: invoice.dueAt?.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" }) ?? "",
+  });
+  return { invoice, templateId: template?.id, text };
+}
+
+export async function getInvoiceWhatsAppMessage(invoiceId: string) {
+  return getPrismaClient().$transaction(async (tx) => (await loadInvoiceDelivery(tx, invoiceId)).text);
+}
+
+export async function enqueueIssuedInvoiceWhatsAppJob(tx: Prisma.TransactionClient, invoiceId: string) {
+  const { invoice, templateId, text } = await loadInvoiceDelivery(tx, invoiceId);
+  return tx.whatsAppAutomationJob.upsert({
+    where: { idempotencyKey: `invoice-issued:${invoice.id}` },
+    create: {
+      idempotencyKey: `invoice-issued:${invoice.id}`,
+      type: "INVOICE_ISSUED",
+      customerId: invoice.opportunity.customerId,
+      opportunityId: invoice.opportunityId,
+      invoiceId: invoice.id,
+      templateId,
+      payload: { text, attachment: { type: "invoice", invoiceId: invoice.id } },
+      scheduledAt: new Date(),
+    },
+    update: {},
+    select: { id: true },
+  });
+}
 
 export async function ensureCustomerWhatsAppConversation(actor: Actor, customerId: string) {
   const prisma = getPrismaClient();
@@ -31,37 +87,18 @@ export async function ensureCustomerWhatsAppConversation(actor: Actor, customerI
 export async function enqueueInvoiceWhatsAppMessage(actor: Actor, invoiceId: string) {
   const prisma = getPrismaClient();
   return prisma.$transaction(async (tx) => {
-    const [account, invoice, business, template] = await Promise.all([
+    const [account, delivery] = await Promise.all([
       tx.whatsAppAccount.findFirst({ where: { sendEnabled: true }, select: { id: true } }),
-      tx.invoice.findUnique({
-        where: { id: invoiceId },
-        select: {
-          id: true, invoiceNo: true, status: true, total: true, dueAt: true, opportunityId: true,
-          opportunity: { select: { opportunityNo: true, title: true, customerId: true, salesPicId: true, salesPic: { select: { name: true } }, customer: { select: { name: true, companyName: true, whatsapp: true, archivedAt: true } } } },
-        },
-      }),
-      tx.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
-      tx.whatsAppTemplate.findFirst({ where: { triggerType: "INVOICE_ISSUED", isActive: true }, orderBy: { updatedAt: "desc" } }),
+      loadInvoiceDelivery(tx, invoiceId),
     ]);
+    const { invoice, templateId, text } = delivery;
     if (!account) throw new UserFacingError("Belum ada nomor WhatsApp yang diaktifkan sebagai pengirim.");
-    if (!invoice || invoice.status !== "ISSUED") throw new UserFacingError("Hanya invoice terbit yang dapat dikirim.");
     if (invoice.opportunity.customer.archivedAt) throw new UserFacingError("Customer tidak tersedia.");
     if (actor.role === "SALES" && invoice.opportunity.salesPicId !== actor.id) throw new UserFacingError("Invoice ini bukan bagian Anda.");
     const remoteJid = remoteJidForNumber(invoice.opportunity.customer.whatsapp ?? "");
     if (!remoteJid) throw new UserFacingError("Nomor WhatsApp customer tidak valid.");
-    const text = template ? renderWhatsAppTemplate(template.body, {
-      business_name: business?.name ?? "AS Konveksi",
-      customer_name: invoice.opportunity.customer.name,
-      company_name: invoice.opportunity.customer.companyName ?? "",
-      sales_pic_name: invoice.opportunity.salesPic?.name ?? "",
-      opportunity_no: invoice.opportunity.opportunityNo,
-      opportunity_title: invoice.opportunity.title,
-      invoice_no: invoice.invoiceNo,
-      invoice_total: new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(invoice.total.toNumber()),
-      invoice_due_date: invoice.dueAt?.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" }) ?? "",
-    }) : `Invoice ${invoice.invoiceNo} dari ${business?.name ?? "AS Konveksi"}.`;
     const conversation = await tx.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, customerId: invoice.opportunity.customerId }, update: { customerId: invoice.opportunity.customerId } });
-    const job = await tx.whatsAppAutomationJob.create({ data: { idempotencyKey: `manual-invoice:${invoice.id}:${crypto.randomUUID()}`, type: "MANUAL", accountId: account.id, templateId: template?.id, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, payload: { text, attachment: { type: "invoice", invoiceId: invoice.id } }, scheduledAt: new Date() } });
+    const job = await tx.whatsAppAutomationJob.create({ data: { idempotencyKey: `manual-invoice:${invoice.id}:${crypto.randomUUID()}`, type: "MANUAL", accountId: account.id, templateId, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, payload: { text, attachment: { type: "invoice", invoiceId: invoice.id } }, scheduledAt: new Date() } });
     await tx.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", kind: "DOCUMENT", status: "QUEUED", text, mediaFileName: `invoice-${invoice.invoiceNo}.pdf`, mediaMimeType: "application/pdf", sentById: actor.id, automationJobId: job.id } });
     await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date(), lastMessagePreview: text.slice(0, 240), isResolved: false } });
     return conversation.id;

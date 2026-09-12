@@ -14,7 +14,7 @@ export function WhatsAppAutoRefresh({ enabled = true }: { enabled?: boolean }) {
       if (document.visibilityState === "visible" && !pending) {
         startTransition(() => router.refresh());
       }
-    }, 3_000);
+    }, 10_000);
 
     return () => window.clearInterval(interval);
   }, [enabled, pending, router]);

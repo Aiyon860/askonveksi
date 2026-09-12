@@ -7,6 +7,9 @@ export const WHATSAPP_TEMPLATE_VARIABLES = [
   "invoice_due_date",
   "invoice_no",
   "invoice_total",
+  "payment_amount",
+  "payment_due_date",
+  "payment_label",
   "next_action",
   "opportunity_no",
   "opportunity_title",
@@ -14,6 +17,10 @@ export const WHATSAPP_TEMPLATE_VARIABLES = [
 ] as const;
 
 export type WhatsAppTemplateVariables = Partial<Record<(typeof WHATSAPP_TEMPLATE_VARIABLES)[number], string>>;
+
+export const DEFAULT_INVOICE_ISSUED_TEMPLATE = "Halo {{customer_name}}, invoice {{invoice_no}} dari {{business_name}} sebesar {{invoice_total}} telah diterbitkan. Batas pembayaran: {{invoice_due_date}}. Dokumen invoice terlampir. Mohon konfirmasi setelah pembayaran. Terima kasih.";
+export const DEFAULT_INVOICE_DUE_TEMPLATE = "Halo {{customer_name}}, pengingat pembayaran {{payment_label}} untuk invoice {{invoice_no}} sebesar {{payment_amount}} jatuh tempo pada {{payment_due_date}}. Mohon konfirmasi setelah pembayaran. Terima kasih.";
+export const DEFAULT_ORDER_REMINDER_TEMPLATE = "Halo {{customer_name}}, sudah enam bulan sejak order terakhir di {{business_name}}. Jika ada kebutuhan produksi baru, balas pesan ini dan kami akan membuat order baru dari awal.";
 
 export function normalizeWhatsAppNumber(input: string | null | undefined) {
   const digits = (input ?? "").replace(/\D/g, "");
@@ -42,6 +49,13 @@ export function renderWhatsAppTemplate(body: string, variables: WhatsAppTemplate
   return rendered;
 }
 
+export function renderInvoiceIssuedTemplate(body: string, variables: WhatsAppTemplateVariables) {
+  const source = variables.invoice_due_date?.trim()
+    ? body
+    : body.replace(/\s*Batas pembayaran:\s*{{\s*invoice_due_date\s*}}\s*\.\s*/i, " ");
+  return renderWhatsAppTemplate(source, variables).replace(/\s{2,}/g, " ");
+}
+
 export function nextWhatsAppSendAt(reference: Date) {
   const jakarta = new Date(reference.getTime() + 7 * 60 * 60 * 1000);
   const year = jakarta.getUTCFullYear();
@@ -65,7 +79,7 @@ export const whatsappAccountSchema = z.object({
 export const whatsappTemplateSchema = z.object({
   id: z.string().trim().optional(),
   name: z.string().trim().min(2).max(80),
-  triggerType: z.enum(["MANUAL", "NEXT_ACTION", "REPEAT_ORDER", "REACTIVATION", "INVOICE_ISSUED", "INVOICE_DUE"]),
+  triggerType: z.enum(["MANUAL", "NEXT_ACTION", "REACTIVATION", "INVOICE_ISSUED", "INVOICE_DUE"]),
   body: z.string().trim().min(1).max(4000).refine((body) => unknownTemplateVariables(body).length === 0, "Template memakai variabel yang tidak dikenal."),
   isActive: z.boolean(),
   version: z.coerce.number().int().positive().optional(),
@@ -76,4 +90,3 @@ export const whatsappMessageSchema = z.object({
   text: z.string().trim().min(1).max(4000),
   templateId: z.string().trim().optional(),
 });
-

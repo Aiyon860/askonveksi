@@ -1,19 +1,15 @@
 import "server-only";
 
-import type { AppRole, Prisma, WhatsAppJobStatus } from "@prisma/client";
+import type { Prisma, WhatsAppJobStatus } from "@prisma/client";
 
-import { hasRole, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
-import { requireActor } from "@/lib/auth/session";
+import { CRM_OPERATOR_ROLES, hasRole, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
+import { requireActor, type Actor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-
-function conversationVisibility(actor: { id: string; role: AppRole }) {
-  return actor.role === "SALES"
-    ? { customer: { is: { salesPicId: actor.id } } }
-    : {};
-}
+import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
+import { conversationVisibility } from "@/lib/whatsapp/visibility";
 
 export async function getWhatsAppInbox(selectedId?: string, query?: string) {
-  const actor = await requireActor();
+  const actor = await requireActor(WHATSAPP_INBOX_ROLES);
   const prisma = getPrismaClient();
   const visibility = conversationVisibility(actor);
   const search = query?.trim();
@@ -32,16 +28,26 @@ export async function getWhatsAppInbox(selectedId?: string, query?: string) {
       unreadCount: true,
       lastMessageAt: true,
       lastMessagePreview: true,
-      account: { select: { label: true, phoneNumber: true, status: true } },
-      customer: { select: { id: true, name: true, companyName: true, salesPicId: true } },
+      account: { select: { label: true } },
+      customer: { select: { id: true, name: true, companyName: true } },
     },
     orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }],
     take: 100,
   });
   const activeId = selectedId && conversations.some((item) => item.id === selectedId) ? selectedId : conversations[0]?.id;
-  const messages = activeId
-    ? await prisma.whatsAppMessage.findMany({
-        where: { conversationId: activeId },
+  const templates = await prisma.whatsAppTemplate.findMany({
+    where: { isActive: true, triggerType: "MANUAL" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  return { conversations, activeId, templates, canSeeUnknown: hasRole(actor.role, MASTER_DATA_ROLES) };
+}
+
+export async function getWhatsAppConversationMessages(actor: Actor, conversationId: string) {
+  const conversation = await getPrismaClient().whatsAppConversation.findFirst({
+    where: { id: conversationId, ...conversationVisibility(actor) },
+    select: {
+      messages: {
         select: {
           id: true,
           direction: true,
@@ -53,18 +59,14 @@ export async function getWhatsAppInbox(selectedId?: string, query?: string) {
           mediaMimeType: true,
           errorMessage: true,
           occurredAt: true,
-          sentBy: { select: { name: true } },
+          automationJob: { select: { invoiceId: true, invoice: { select: { invoiceNo: true } } } },
         },
-        orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
+        orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
         take: 200,
-      })
-    : [];
-  const templates = await prisma.whatsAppTemplate.findMany({
-    where: { isActive: true, triggerType: "MANUAL" },
-    select: { id: true, name: true, body: true },
-    orderBy: { name: "asc" },
+      },
+    },
   });
-  return { conversations, activeId, messages, templates, canSeeUnknown: hasRole(actor.role, MASTER_DATA_ROLES) };
+  return conversation?.messages.reverse() ?? null;
 }
 
 export async function getWhatsAppAccounts() {
@@ -73,12 +75,12 @@ export async function getWhatsAppAccounts() {
 }
 
 export async function getWhatsAppTemplates() {
-  await requireActor(MASTER_DATA_ROLES);
+  await requireActor(CRM_OPERATOR_ROLES);
   return getPrismaClient().whatsAppTemplate.findMany({ orderBy: [{ triggerType: "asc" }, { name: "asc" }] });
 }
 
 export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
-  await requireActor(MASTER_DATA_ROLES);
+  await requireActor(CRM_OPERATOR_ROLES);
   return getPrismaClient().whatsAppAutomationJob.findMany({
     where: status ? { status } : undefined,
     select: {
