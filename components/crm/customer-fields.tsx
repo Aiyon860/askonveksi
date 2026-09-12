@@ -26,6 +26,7 @@ export function CustomerFields({
   salesUsers,
   values,
   currentSalesPic,
+  fixedWhatsapp,
 }: {
   idPrefix: string;
   customerTypes: CustomerFormOption[];
@@ -33,6 +34,7 @@ export function CustomerFields({
   salesUsers: CustomerFormOption[];
   values?: CustomerFormValues;
   currentSalesPic?: CustomerFormOption & { isActive: boolean };
+  fixedWhatsapp?: string;
 }) {
   const currentSalesPicIsMissing = Boolean(
     values?.salesPicId
@@ -103,7 +105,7 @@ export function CustomerFields({
         <div className="grid gap-4 sm:grid-cols-3">
           <Field>
             <FieldLabel htmlFor={`${idPrefix}-whatsapp`}>WhatsApp</FieldLabel>
-            <Input id={`${idPrefix}-whatsapp`} name="whatsapp" inputMode="tel" maxLength={32} defaultValue={values?.whatsapp ?? ""} />
+            <Input id={`${idPrefix}-whatsapp`} name="whatsapp" inputMode="tel" maxLength={32} defaultValue={fixedWhatsapp ?? values?.whatsapp ?? ""} readOnly={Boolean(fixedWhatsapp)} />
           </Field>
           <Field>
             <FieldLabel htmlFor={`${idPrefix}-email`}>Email</FieldLabel>

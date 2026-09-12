@@ -4,15 +4,18 @@ import Image from "next/image";
 import { logoutAction } from "@/app/actions/auth";
 import { AppNav } from "@/components/app-nav";
 import { MobileAppNav } from "@/components/mobile-app-nav";
+import { PageMessage } from "@/components/page-message";
 import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
+import { WhatsAppHealthMonitor } from "@/components/whatsapp-health-monitor";
 import type { Actor } from "@/lib/auth/session";
+import { CRM_ROLES, hasRole } from "@/lib/auth/permissions";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 
 export function AppShell({ actor, children }: { actor: Actor; children: React.ReactNode }) {
   return (
-    <div className="min-h-svh bg-background lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-svh flex-col border-r bg-card lg:flex">
+    <div className="min-h-svh w-full max-w-full overflow-x-clip bg-background lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+      <aside className="sticky top-0 hidden h-svh self-start flex-col border-r bg-card lg:flex">
         <div className="flex items-center gap-3 px-5 py-5">
           <Image src="/brand/askonveksi-mark.png" alt="" width={48} height={48} className="size-9 shrink-0 object-contain" priority />
           <div className="flex min-w-0 items-center gap-3">
@@ -44,6 +47,8 @@ export function AppShell({ actor, children }: { actor: Actor; children: React.Re
       <main className="min-w-0 overflow-x-clip">
         <MobileAppNav actor={actor} />
         <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+          <PageMessage />
+          {hasRole(actor.role, CRM_ROLES) ? <WhatsAppHealthMonitor role={actor.role} /> : null}
           {children}
         </div>
       </main>

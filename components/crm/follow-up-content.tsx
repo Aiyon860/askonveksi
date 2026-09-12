@@ -13,6 +13,7 @@ import { getFollowUpData } from "@/lib/crm/data";
 import { getCurrentActor } from "@/lib/auth/session";
 import { formatDate, whatsappHref } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
+import { openCustomerWhatsAppAction } from "@/app/actions/whatsapp";
 
 const BUCKETS = ["overdue", "today", "tomorrow", "upcoming"] as const;
 type Bucket = (typeof BUCKETS)[number];
@@ -92,6 +93,7 @@ export async function FollowUpContent({ bucket, picId }: { bucket: Bucket; picId
                       </dl>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                      <form action={openCustomerWhatsAppAction}><input type="hidden" name="customerId" value={item.customer.id} /><Button type="submit" size="sm"><MessageCircle data-icon="inline-start" aria-hidden="true" />Buka inbox</Button></form>
                       {waHref ? (
                         <Button variant="outline" size="sm" render={<a href={waHref} target="_blank" rel="noreferrer" />} nativeButton={false}>
                           <MessageCircle data-icon="inline-start" aria-hidden="true" />

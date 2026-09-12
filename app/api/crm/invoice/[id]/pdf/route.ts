@@ -6,14 +6,26 @@ import { CRM_ROLES } from "@/lib/auth/permissions";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { downloadFilename } from "@/lib/download-filename";
+import { timingSafeEqual } from "node:crypto";
 
 export const runtime = "nodejs";
 
+function workerAuthorized(request: Request) {
+  const expected = process.env.WHATSAPP_WORKER_SECRET;
+  const actual = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!expected || !actual) return false;
+  const expectedBytes = Buffer.from(expected);
+  const actualBytes = Buffer.from(actual);
+  return expectedBytes.length === actualBytes.length && timingSafeEqual(expectedBytes, actualBytes);
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    await requireActor(CRM_ROLES);
-  } catch {
-    return new Response("Anda harus masuk untuk mengunduh invoice.", { status: 401 });
+  if (!workerAuthorized(request)) {
+    try {
+      await requireActor(CRM_ROLES);
+    } catch {
+      return new Response("Anda harus masuk untuk mengunduh invoice.", { status: 401 });
+    }
   }
   const parsed = entityIdSchema.safeParse((await params).id);
   if (!parsed.success) return new Response("Invoice tidak ditemukan.", { status: 404 });

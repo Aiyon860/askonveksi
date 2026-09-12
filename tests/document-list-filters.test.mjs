@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { parseDocumentDateRange } from "../lib/crm/document-list-filters.ts";
+import { parseDocumentDateRange, parseOpenDateRange } from "../lib/crm/document-list-filters.ts";
 
 const reference = new Date("2026-09-08T06:00:00.000Z");
 
@@ -36,6 +36,13 @@ test("rentang kosong, palsu, terbalik, atau masa depan tidak aktif", () => {
   ]) {
     assert.equal(parseDocumentDateRange(from, to, reference).start, null);
   }
+});
+
+test("rentang deadline desain menerima tanggal masa depan dan batas terbuka", () => {
+  const range = parseOpenDateRange("2026-09-12", undefined);
+  assert.equal(range.start?.toISOString(), "2026-09-11T17:00:00.000Z");
+  assert.equal(range.end, null);
+  assert.equal(parseOpenDateRange(undefined, "2026-09-12").end?.toISOString(), "2026-09-12T17:00:00.000Z");
 });
 
 test("default daftar dokumen tidak membuang status yang digantikan", () => {

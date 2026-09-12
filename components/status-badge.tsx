@@ -36,9 +36,7 @@ export function CustomerActivityBadge({
   if (archived) return <Badge variant="outline">Diarsipkan</Badge>;
   const variant = status === "TIDAK_AKTIF"
     ? "destructive"
-    : status === "POTENSI_REPEAT"
-      ? "warning"
-      : status === "AKTIF"
+    : status === "AKTIF"
         ? "success"
         : "outline";
   return <Badge variant={variant}>{CUSTOMER_ACTIVITY_LABELS[status]}</Badge>;

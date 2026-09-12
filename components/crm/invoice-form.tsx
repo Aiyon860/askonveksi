@@ -1,7 +1,11 @@
 "use client";
 
+import { useActionState } from "react";
+
 import { createInvoiceDraftAction, createInvoiceRevisionAction, updateInvoiceDraftAction } from "@/app/actions/crm";
 import { SubmitButton } from "@/components/submit-button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { initialFormActionState } from "@/lib/actions/form-state";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -40,12 +44,13 @@ export function InvoiceForm({
   sourceInvoiceId?: string;
   submitLabel?: string;
 }) {
-  const action = draft ? updateInvoiceDraftAction : sourceInvoiceId ? createInvoiceRevisionAction : createInvoiceDraftAction;
+  const serverAction = draft ? updateInvoiceDraftAction : sourceInvoiceId ? createInvoiceRevisionAction : createInvoiceDraftAction;
+  const [formState, formAction] = useActionState(serverAction, initialFormActionState);
   const values = draft ?? initialValues;
   const fieldKey = draft?.id ?? sourceInvoiceId ?? "new";
   const byKey = new Map(values?.items.map((item) => [`${item.sleeveLength ?? "PANJANG"}:${item.size.toLocaleLowerCase("id-ID")}`, item]));
   return (
-    <form action={action}>
+    <form action={formAction}>
       <input type="hidden" name="opportunityId" value={opportunityId} />
       <input type="hidden" name="purchaseOrderId" value={purchaseOrder.id} />
       {sourceInvoiceId ? <input type="hidden" name="sourceInvoiceId" value={sourceInvoiceId} /> : null}
@@ -73,6 +78,12 @@ export function InvoiceForm({
           <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
         </div>
         <FieldDescription>Diskon dihitung dari harga kotor per baris. Pajak dikenakan pada keseluruhan order setelah diskon.</FieldDescription>
+        {formState.ok === false && formState.message ? (
+          <Alert variant="destructive">
+            <AlertTitle>Invoice belum tersimpan</AlertTitle>
+            <AlertDescription>{formState.message} Periksa harga, diskon, dan pajak, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
+          </Alert>
+        ) : null}
         <SubmitButton pendingLabel="Menyimpan draft...">{submitLabel ?? (draft ? "Perbarui draft invoice" : "Buat draft invoice")}</SubmitButton>
       </FieldGroup>
     </form>

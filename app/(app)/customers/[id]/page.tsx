@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Archive, ExternalLink } from "lucide-react";
+import { ArrowLeft, Archive, ExternalLink, MessageCircle } from "lucide-react";
 
 import { archiveCustomerAction, createOpportunityAction, updateCustomerAction } from "@/app/actions/crm";
+import { openCustomerWhatsAppAction } from "@/app/actions/whatsapp";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
 import { CommunicationHistory } from "@/components/crm/communication-history";
+import { CustomerOrderReminderSetting } from "@/components/crm/customer-order-reminder-setting";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { CustomerActivityBadge, OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
@@ -16,14 +18,14 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getCustomerDetail } from "@/lib/crm/data";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
-import { getRepeatOrderDraft } from "@/lib/crm/reminder-data";
 import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import { getCustomerFormOptions } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
@@ -53,19 +55,17 @@ export default async function CustomerDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ historyPage?: string | string[]; repeatFrom?: string | string[]; returnTo?: string | string[] }>;
+  searchParams: Promise<{ historyPage?: string | string[]; returnTo?: string | string[] }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
   const historyPage = parsePageParam(query.historyPage);
-  const repeatFrom = firstParam(query.repeatFrom);
   const listHref = customerListHref(query.returnTo);
-  const [customer, actor, formOptions, communicationHistory, repeatDraft] = await Promise.all([
+  const [customer, actor, formOptions, communicationHistory] = await Promise.all([
     getCustomerDetail(id),
     getCurrentActor(),
     getCustomerFormOptions(),
     getCommunicationTimeline({ customerId: id, page: historyPage }),
-    repeatFrom ? getRepeatOrderDraft(id, repeatFrom) : Promise.resolve(null),
   ]);
   if (!customer || !actor) notFound();
   if (historyPage > communicationHistory.pageCount) {
@@ -73,10 +73,10 @@ export default async function CustomerDetailPage({
       historyPage: String(communicationHistory.pageCount),
       returnTo: listHref,
     });
-    if (repeatFrom) nextParams.set("repeatFrom", repeatFrom);
     redirect(`/customers/${id}?${nextParams.toString()}#communication-history`);
   }
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
+  const canManageReminder = hasRole(actor.role, CUSTOMER_REMINDER_SETTING_ROLES);
   const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
   const canArchive = canOperate && !customer.archivedAt;
   const salesOrders = customer.opportunities
@@ -97,8 +97,8 @@ export default async function CustomerDetailPage({
   const latestOrder = validOrders[0];
   const hasOpenOpportunity = customer.opportunities.some((opportunity) => OPEN_STAGES.includes(opportunity.stage));
   const activityStatus = activityStatusFromSchedule(customer.reminders, new Date(), hasOpenOpportunity);
-  const repeatSchedule = customer.reminders.find((reminder) => reminder.type === "REPEAT_ORDER");
   const reactivationSchedule = customer.reminders.find((reminder) => reminder.type === "REACTIVATION");
+  const recentConversation = customer.whatsappConversations[0];
 
   return (
     <>
@@ -141,13 +141,11 @@ export default async function CustomerDetailPage({
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Reminder berikutnya</dt>
                   <dd className="text-sm font-semibold md:text-base">
-                    {activityStatus === "TIDAK_AKTIF"
-                      ? reactivationSchedule ? `Sejak ${formatDate(reactivationSchedule.dueAt)}` : "Tidak aktif"
-                      : activityStatus === "POTENSI_REPEAT"
-                        ? repeatSchedule ? `Sejak ${formatDate(repeatSchedule.dueAt)}` : "Follow-up repeat"
-                        : repeatSchedule
-                          ? formatDate(repeatSchedule.dueAt)
-                          : "Belum dijadwalkan"}
+                    {!customer.orderReminderEnabled
+                      ? "Dinonaktifkan"
+                      : reactivationSchedule
+                        ? formatDate(reactivationSchedule.dueAt)
+                        : "Belum dijadwalkan"}
                   </dd>
                 </div>
               </dl>
@@ -235,7 +233,7 @@ export default async function CustomerDetailPage({
           <Card>
             <CardHeader>
               <CardTitle>Peluang CRM</CardTitle>
-              <CardDescription>Semua repeat order tetap memakai profil customer ini.</CardDescription>
+              <CardDescription>Profil ini dipakai kembali setiap kali customer membuat order baru.</CardDescription>
             </CardHeader>
             <CardContent>
               {customer.opportunities.length ? (
@@ -373,15 +371,35 @@ export default async function CustomerDetailPage({
         </div>
 
         <aside className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>WhatsApp</CardTitle>
+              <CardDescription>Buka percakapan dan lihat aktivitas WhatsApp customer.</CardDescription>
+            </CardHeader>
+            <CardContent className="gap-4">
+              {recentConversation ? <div className="rounded-md border p-3 text-sm"><div className="flex items-center justify-between gap-3"><span>{recentConversation.unreadCount ? `${recentConversation.unreadCount} belum dibaca` : "Aktif"}</span><span className="text-xs text-muted-foreground">{recentConversation.account.status}</span></div><p className="mt-1 truncate text-muted-foreground">{recentConversation.lastMessagePreview ?? "Belum ada pesan"}</p></div> : null}
+              {customer.whatsapp && !customer.archivedAt ? <form action={openCustomerWhatsAppAction}><input type="hidden" name="customerId" value={customer.id} /><Button type="submit" className="w-full"><MessageCircle data-icon="inline-start" />Buka inbox</Button></form> : null}
+              {canManageReminder && !customer.archivedAt ? (
+                <CustomerOrderReminderSetting key={`${customer.id}-${customer.version}-${customer.orderReminderEnabled}`} customerId={customer.id} version={customer.version} enabled={customer.orderReminderEnabled} />
+              ) : (
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Reminder 6 bulanan</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {customer.archivedAt ? "Customer diarsipkan, pengaturan tidak tersedia." : "Hanya Owner / Admin Customer yang dapat mengubah."} Status saat ini: {customer.orderReminderEnabled ? "aktif" : "nonaktif"}.
+                    </p>
+                  </div>
+                  <Switch checked={customer.orderReminderEnabled} disabled aria-label="Status reminder order 6 bulanan" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {canOperate && !customer.archivedAt ? (
-            <Card id="repeat-order">
+            <Card>
               <CardHeader>
-                <CardTitle>Repeat order / peluang baru</CardTitle>
-                <CardDescription>
-                  {repeatDraft
-                    ? `Terisi dari ${repeatDraft.salesOrderNo}. Periksa kembali sebelum membuat peluang.`
-                    : "Lead baru akan langsung terhubung ke customer ini."}
-                </CardDescription>
+                <CardTitle>Peluang baru</CardTitle>
+                <CardDescription>Order baru dimulai dari tahap Lead Baru dengan memakai profil customer ini.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form action={createOpportunityAction}>
@@ -389,15 +407,15 @@ export default async function CustomerDetailPage({
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="title" required>Kebutuhan</FieldLabel>
-                      <Input id="title" name="title" required minLength={3} maxLength={180} placeholder="Contoh: Repeat kaos event" defaultValue={repeatDraft?.title ?? ""} />
+                      <Input id="title" name="title" required minLength={3} maxLength={180} placeholder="Contoh: Kaos event perusahaan" />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="productName">Produk</FieldLabel>
-                      <Input id="productName" name="productName" maxLength={120} defaultValue={repeatDraft?.productName ?? ""} />
+                      <Input id="productName" name="productName" maxLength={120} />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="nextAction" required>Tindakan berikutnya</FieldLabel>
-                      <Input id="nextAction" name="nextAction" required minLength={2} maxLength={500} placeholder="Contoh: Follow-up repeat order" />
+                      <Input id="nextAction" name="nextAction" required minLength={2} maxLength={500} placeholder="Contoh: Konfirmasi kebutuhan produksi" />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="nextActionAt" required>Jadwal follow-up</FieldLabel>

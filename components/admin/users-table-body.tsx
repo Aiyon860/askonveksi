@@ -16,7 +16,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 
-const USER_ROLES = ["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
+const USER_ROLES = ["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
 
 export type EditableUserRow = {
   id: string;

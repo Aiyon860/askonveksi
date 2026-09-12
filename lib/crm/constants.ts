@@ -24,8 +24,11 @@ export const OPEN_STAGES: OpportunityStage[] = [
 
 export const ROLE_LABEL = {
   OWNER: "Owner",
+  ADMIN_CUSTOMER: "Admin Customer",
+  ADMIN_PRODUCTION: "Admin Produksi",
   ADMIN: "Admin",
   SALES: "Sales",
+  DESIGNER: "Desainer",
   PRODUCTION: "Produksi",
   QC: "QC",
 } as const;

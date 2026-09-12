@@ -244,6 +244,7 @@ export const purchaseOrderDraftSchema = z.object({
   designNotes: optionalText(4000),
   notes: optionalText(4000),
   deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
+  designDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline desain wajib dipilih."),
   sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
   roster: z.array(purchaseOrderRosterSchema).max(5_000),
 }).superRefine((value, context) => {
@@ -385,7 +386,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
+  role: z.enum(["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
   password: strongPasswordSchema,
 });
 
@@ -394,7 +395,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN", "SALES", "PRODUCTION", "QC"]),
+  role: z.enum(["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
   password: z.preprocess(
     (value) => (typeof value === "string" && value === "" ? undefined : value),
     strongPasswordSchema.optional(),

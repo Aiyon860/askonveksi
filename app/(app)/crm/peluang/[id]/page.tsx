@@ -54,17 +54,19 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
   const initialTab = parseOpportunityDetailTab(resolvedSearchParams.tab);
 
   return (
-    <>
-      <Button variant="ghost" size="sm" render={<Link href="/crm" />} nativeButton={false} className="w-fit">
-        <ArrowLeft data-icon="inline-start" aria-hidden="true" />
-        Kembali ke pipeline
-      </Button>
-      <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-        <OpportunityHeader id={id} />
-      </Suspense>
+    <div className="flex min-w-0 max-w-full flex-col gap-6 overflow-x-clip">
+      <div className="flex flex-col gap-3">
+        <Button variant="ghost" size="sm" render={<Link href="/crm" />} nativeButton={false} className="w-fit">
+          <ArrowLeft data-icon="inline-start" aria-hidden="true" />
+          Kembali ke pipeline
+        </Button>
+        <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+          <OpportunityHeader id={id} />
+        </Suspense>
+      </div>
       <PageMessage />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>
           <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} />
         </Suspense>
@@ -72,7 +74,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
           <OpportunitySidebar id={id} />
         </Suspense>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -121,7 +123,9 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const invoiceTabStatus = invoiceDraft ? "Draft" : issuedInvoice ? "Terbit" : opportunity.invoices.length ? `${opportunity.invoices.length} revisi` : "Belum ada";
   const dealTabStatus = opportunity.stage === "DEAL" ? "Selesai" : opportunity.stage === "LOST" ? "Lost" : readyForDeal ? "Siap" : "Belum siap";
   const canShowPurchaseOrderAgreement = canOperate && inNegotiation && (Boolean(poDraft) || opportunity.purchaseOrders.length === 0);
-  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length);
+  const designRevisionStatus = poDraft?.designTask?.revisions[0]?.status;
+  const designMessage = !poDraft?.designTask ? "Tugas desain belum tersedia." : designRevisionStatus === "APPROVED" ? null : designRevisionStatus === "PENDING_REVIEW" ? "Desain sedang menunggu persetujuan Owner atau Admin." : designRevisionStatus === "REJECTED" ? "Desain ditolak. Unggah revisi baru sebelum menyepakati PO." : "Unggah desain lalu minta persetujuan Owner atau Admin.";
+  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && designRevisionStatus === "APPROVED");
 
   return (
     <OpportunityProcessTabs
@@ -175,6 +179,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   version={poDraft.version}
                   revisionLabel={documentRevisionLabel(poDraft.revision)}
                   canAgree={canAgreePurchaseOrderDraft}
+                  designMessage={designMessage}
                 />
               ) : (
                 <Button variant="outline" className="w-full sm:w-auto" disabled>
@@ -185,7 +190,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             </CardAction>
           ) : null}
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 max-w-full">
           {!inNegotiation && opportunity.purchaseOrders.length === 0 ? (
             <Empty className="p-8">
               <EmptyHeader>
@@ -195,9 +200,9 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex min-w-0 max-w-full flex-col gap-6">
               {opportunity.purchaseOrders.map((purchaseOrder) => (
-                <section key={purchaseOrder.id} aria-labelledby={`po-${purchaseOrder.id}`} className="rounded-lg border p-4">
+                <section key={purchaseOrder.id} aria-labelledby={`po-${purchaseOrder.id}`} className="min-w-0 rounded-lg border p-4">
                   <PurchaseOrderWorkflowSection
                     opportunityId={opportunity.id}
                     purchaseOrderId={purchaseOrder.id}
@@ -208,7 +213,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     description={`Dibuat ${formatDate(purchaseOrder.createdAt, true)} oleh ${purchaseOrder.createdBy.name}`}
                     canOperate={canOperate}
                     inNegotiation={inNegotiation}
-                    hasActiveDraft={Boolean(poDraft)}
                     sizeOptions={sizeOptions}
                     draftValues={{
                       customerReference: purchaseOrder.customerReference ?? "",
@@ -223,7 +227,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       designNotes: purchaseOrder.designNotes ?? "",
                       notes: purchaseOrder.notes ?? "",
                       deadline: dateInputValue(purchaseOrder.deadline),
-                      attachmentCount: purchaseOrder.attachments.length,
+                      designDeadline: dateInputValue(purchaseOrder.designTask?.deadline ?? null),
                       sizes: purchaseOrder.sizes,
                       roster: purchaseOrder.rosterEntries,
                     }}
@@ -264,7 +268,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
               </EmptyHeader>
             </Empty>
            ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex min-w-0 max-w-full flex-col gap-6">
               {canOperate && inNegotiation && agreedPo && !invoiceDraft && !issuedInvoice ? (
                 <InvoiceForm
                   opportunityId={opportunity.id}
@@ -286,7 +290,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   })),
                 };
                 return (
-                  <section key={invoice.id} aria-labelledby={`invoice-${invoice.id}`} className="rounded-lg border p-4">
+                  <section key={invoice.id} aria-labelledby={`invoice-${invoice.id}`} className="min-w-0 rounded-lg border p-4">
                     <InvoiceWorkflowSection
                       opportunityId={opportunity.id}
                       invoiceId={invoice.id}
@@ -297,8 +301,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       description={`Berdasarkan ${invoicePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
                       canOperate={canOperate}
                       inNegotiation={inNegotiation}
-                      hasActiveDraft={Boolean(invoiceDraft)}
-                      canCreateRevision={invoice.status === "ISSUED" && invoice.purchaseOrderId === agreedPo?.id}
                       purchaseOrder={editableInvoicePo}
                       draftValues={invoiceDraftValues}
                       salesOrderHref={invoice.salesOrder ? `/sales-orders/${invoice.salesOrder.id}` : undefined}
@@ -321,7 +323,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             <CardTitle>Deal dan Sales Order</CardTitle>
             <CardDescription>Periksa kesiapan dokumen sebelum Admin mengonfirmasi pembayaran dan membentuk Sales Order.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-6">
+          <CardContent className="flex min-w-0 max-w-full flex-col gap-6">
             {inNegotiation && canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
               <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} />
             ) : opportunity.stage === "DEAL" ? (
@@ -400,7 +402,7 @@ async function OpportunitySidebar({ id }: { id: string }) {
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
 
   return (
-    <aside className="flex flex-col self-start gap-5 xl:mt-[4.75rem]">
+    <aside className="flex flex-col self-start gap-5 2xl:mt-[4.75rem]">
       {canOperate ? (
         <Card>
           <CardHeader><CardTitle>Status pipeline</CardTitle><CardDescription>Tentukan langkah kerja berikutnya.</CardDescription></CardHeader>

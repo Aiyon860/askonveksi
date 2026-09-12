@@ -102,7 +102,7 @@ export async function getProductionDetail(id: string) {
   if (!workOrder) return null;
 
   const users = await getPrismaClient().appUser.findMany({
-    where: { isActive: true, role: { in: ["PRODUCTION", "QC"] } },
+    where: { isActive: true, role: "ADMIN_PRODUCTION" },
     select: { id: true, name: true, role: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });

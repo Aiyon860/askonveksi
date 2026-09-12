@@ -49,7 +49,7 @@ try {
   const result = await prisma.$transaction(
     async (tx) => {
       const actor = await tx.appUser.findFirst({
-        where: { isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+        where: { isActive: true, role: { in: ["OWNER", "ADMIN_PRODUCTION"] } },
         orderBy: [{ role: "asc" }, { createdAt: "asc" }],
         select: { id: true },
       });

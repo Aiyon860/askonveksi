@@ -37,7 +37,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   const result = await getProductionDetail(id);
   if (!result) notFound();
   const { workOrder, users, actor } = result;
-  const manager = actor.role === "OWNER" || actor.role === "ADMIN";
+  const manager = actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
 
   return (
     <>
@@ -58,8 +58,8 @@ export default async function ProductionDetailPage({ params }: { params: Promise
             <CardContent>
               <ol className="flex flex-col gap-2">
                 {workOrder.steps.map((step) => {
-                  const candidates = users.filter((user) => step.stage === "QC" ? user.role === "QC" : user.role === "PRODUCTION");
-                  const canClaim = !manager && !step.assignee && isStageRole(actor.role, step.stage);
+                  const candidates = users.filter((user) => user.role === "ADMIN_PRODUCTION");
+                  const canClaim = !manager && !step.assignee && isStageRole(actor.role);
                   return (
                     <li key={step.id} className={cn("grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center", step.status === "ACTIVE" && "border-primary/25 bg-primary/5")}>
                       <div className="flex min-w-0 items-start gap-3">

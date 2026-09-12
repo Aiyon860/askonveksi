@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction, updatePurchaseOrderDraftAction } from "@/app/actions/crm";
 import { SubmitButton } from "@/components/submit-button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { initialFormActionState } from "@/lib/actions/form-state";
 import { Button } from "@/components/ui/button";
 import { FilePicker } from "@/components/ui/file-picker";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
@@ -33,16 +35,11 @@ type PurchaseOrderFormValues = {
   designNotes: string;
   notes: string;
   deadline: string;
-  attachmentCount: number;
+  designDeadline: string;
   sizes: MatrixRow[];
   roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string }>;
 };
 type Draft = PurchaseOrderFormValues & { id: string; version: number };
-
-const ATTACHMENT_KINDS = [
-  ["MAIN_DESIGN", "Desain utama"], ["FRONT", "Tampak depan"], ["BACK", "Tampak belakang"],
-  ["LOGO_RIGHT", "Logo kanan"], ["LOGO_BACK", "Logo belakang"], ["LOGO_FRONT", "Logo depan"], ["OTHER", "Lainnya"],
-] as const;
 
 function jakartaToday() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
@@ -82,10 +79,10 @@ export function PurchaseOrderForm({
     name: item.name,
     sizeId: item.sizeId ?? sizeOptions.find((size) => size.name.toLocaleLowerCase("id-ID") === item.size.toLocaleLowerCase("id-ID"))?.id ?? "",
   })) ?? []);
-  const [attachmentRows, setAttachmentRows] = useState(() => [{ key: "attachment-0", kind: "MAIN_DESIGN" }]);
   const [garmentType, setGarmentType] = useState(values?.garmentType ?? "");
   const deadlineOptions = useMemo(() => productionDeadlineOptions(new Date(), values?.deadline), [values?.deadline]);
-  const action = draft ? updatePurchaseOrderDraftAction : sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
+  const serverAction = draft ? updatePurchaseOrderDraftAction : sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
+  const [formState, formAction] = useActionState(serverAction, initialFormActionState);
   const legacyDecoration = values?.decorationMethod
     && !DECORATION_METHODS.includes(values.decorationMethod as DecorationMethod)
     ? values.decorationMethod
@@ -104,7 +101,7 @@ export function PurchaseOrderForm({
   }
 
   return (
-    <form action={action} data-po-draft-id={draft?.id}>
+    <form action={formAction} data-po-draft-id={draft?.id} className="min-w-0 max-w-full">
       <input type="hidden" name="opportunityId" value={opportunityId} />
       {sourcePurchaseOrderId ? <input type="hidden" name="sourcePurchaseOrderId" value={sourcePurchaseOrderId} /> : null}
       {draft ? <input type="hidden" name="purchaseOrderId" value={draft.id} /> : null}
@@ -145,6 +142,7 @@ export function PurchaseOrderForm({
                 ))}
               </NativeSelect>
             </Field>
+            <Field><FieldLabel htmlFor={`po-design-deadline-${fieldKey}`} required>Deadline upload desain</FieldLabel><Input id={`po-design-deadline-${fieldKey}`} name="designDeadline" type="date" required min={jakartaToday()} defaultValue={values?.designDeadline ?? ""} /></Field>
             {garmentType === "JERSEY" ? (
               <Field><FieldLabel htmlFor={`po-sample-size-${fieldKey}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${fieldKey}`} name="sampleSize" defaultValue={values?.sampleSize ?? ""}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
             ) : null}
@@ -154,14 +152,14 @@ export function PurchaseOrderForm({
         <FieldSet>
           <FieldLegend>Matriks ukuran dan jumlah</FieldLegend>
           <FieldDescription>Isi nol untuk kombinasi yang tidak dipesan. Total roster, jika ada, harus sama per ukuran.</FieldDescription>
-          <Table containerClassName="rounded-lg border">
-            <TableHeader><TableRow><TableHead>Model</TableHead>{sizeOptions.map((size) => <TableHead key={size.id} className="min-w-24 text-center">{size.name}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
+          <Table containerClassName="max-w-full rounded-lg border">
+            <TableHeader><TableRow><TableHead>Model</TableHead>{sizeOptions.map((size) => <TableHead key={size.id} className="min-w-[4.5rem] text-center">{size.name}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
             <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeveLength) => (
               <TableRow key={sleeveLength}>
                 <TableCell className="font-medium">{sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>
                 {sizeOptions.map((size) => {
                   const key = `${sleeveLength}:${size.id}`;
-                  return <TableCell key={size.id} className="p-2"><input type="hidden" name="sizeId" value={size.id} /><input type="hidden" name="sleeveLength" value={sleeveLength} /><Input name="sizeQuantity" type="number" min={0} max={10_000_000} step={1} inputMode="numeric" required value={matrix[key] ?? 0} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }} onChange={(event) => updateMatrixValue(key, event.currentTarget.value)} aria-label={`${sleeveLength === "PENDEK" ? "Pendek" : "Panjang"} ukuran ${size.name}`} className="min-w-16 text-center font-mono tabular-nums" /></TableCell>;
+                  return <TableCell key={size.id} className="p-2"><input type="hidden" name="sizeId" value={size.id} /><input type="hidden" name="sleeveLength" value={sleeveLength} /><Input name="sizeQuantity" type="number" min={0} max={10_000_000} step={1} inputMode="numeric" required value={matrix[key] ?? 0} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }} onChange={(event) => updateMatrixValue(key, event.currentTarget.value)} aria-label={`${sleeveLength === "PENDEK" ? "Pendek" : "Panjang"} ukuran ${size.name}`} className="w-full min-w-0 text-center font-mono tabular-nums" /></TableCell>;
                 })}
                 <TableCell className="text-right font-mono font-medium tabular-nums">{rowTotal(sleeveLength)}</TableCell>
               </TableRow>
@@ -170,11 +168,11 @@ export function PurchaseOrderForm({
         </FieldSet>
 
         <FieldSet>
-          <div className="flex items-start justify-between gap-4">
-            <div><FieldLegend>Roster pemakai</FieldLegend><FieldDescription>Opsional. Masukkan manual atau unggah XLSX/CSV dengan header ID, Nama, Size.</FieldDescription></div>
-            <Button type="button" variant="outline" size="sm" disabled={roster.length >= 5000} onClick={() => setRoster((current) => [...current, { key: `roster-${Date.now()}-${current.length}`, memberId: "", name: "", sizeId: "" }])}><Plus data-icon="inline-start" aria-hidden="true" />Tambah baris</Button>
+          <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0"><FieldLegend>Roster pemakai</FieldLegend><FieldDescription>Opsional. Masukkan manual atau unggah XLSX/CSV dengan header ID, Nama, Size.</FieldDescription></div>
+            <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={roster.length >= 5000} onClick={() => setRoster((current) => [...current, { key: `roster-${Date.now()}-${current.length}`, memberId: "", name: "", sizeId: "" }])}><Plus data-icon="inline-start" aria-hidden="true" />Tambah baris</Button>
           </div>
-          {roster.length ? <div className="flex flex-col gap-2">{roster.map((row, index) => (
+          {roster.length ? <div className="flex min-w-0 max-w-full flex-col gap-2">{roster.map((row, index) => (
             <div key={row.key} className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[10rem_minmax(0,1fr)_8rem_auto] sm:items-end">
               <Field><FieldLabel htmlFor={`roster-id-${row.key}`} required>ID</FieldLabel><Input id={`roster-id-${row.key}`} name="rosterMemberId" required maxLength={80} value={row.memberId} onChange={(event) => setRoster((current) => current.map((item) => item.key === row.key ? { ...item, memberId: event.target.value } : item))} /></Field>
               <Field><FieldLabel htmlFor={`roster-name-${row.key}`} required>Nama</FieldLabel><Input id={`roster-name-${row.key}`} name="rosterName" required minLength={2} maxLength={160} value={row.name} onChange={(event) => setRoster((current) => current.map((item) => item.key === row.key ? { ...item, name: event.target.value } : item))} /></Field>
@@ -185,16 +183,16 @@ export function PurchaseOrderForm({
           <Field><FieldLabel htmlFor={`po-roster-file-${fieldKey}`}>Impor roster</FieldLabel><FilePicker id={`po-roster-file-${fieldKey}`} name="rosterFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Sheet pertama saja; formula ditolak. File yang dipilih menggantikan roster manual saat disimpan.</FieldDescription></Field>
         </FieldSet>
 
-        <FieldSet>
-          <div className="flex items-start justify-between gap-4"><div><FieldLegend>Referensi desain</FieldLegend><FieldDescription>Format PNG/PSD. Maksimal lima file per revisi, masing-masing 5 MB.</FieldDescription></div><Button type="button" variant="outline" size="sm" disabled={attachmentRows.length >= 5} onClick={() => setAttachmentRows((current) => [...current, { key: `attachment-${Date.now()}-${current.length}`, kind: "OTHER" }])}><Plus data-icon="inline-start" aria-hidden="true" />Tambah file</Button></div>
-          {attachmentRows.map((row, index) => <div key={row.key} className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end"><Field><FieldLabel htmlFor={`attachment-kind-${row.key}`}>Kategori</FieldLabel><NativeSelect id={`attachment-kind-${row.key}`} name="designAttachmentKind" value={row.kind} onChange={(event) => setAttachmentRows((current) => current.map((item) => item.key === row.key ? { ...item, kind: event.target.value } : item))}>{ATTACHMENT_KINDS.map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor={`attachment-file-${row.key}`}>File {index + 1}</FieldLabel><FilePicker id={`attachment-file-${row.key}`} name="designAttachments" accept=".png,.psd,image/png,image/vnd.adobe.photoshop,application/x-photoshop" /></Field><Button type="button" variant="ghost" size="icon" disabled={attachmentRows.length === 1} aria-label={`Hapus slot file ${index + 1}`} onClick={() => setAttachmentRows((current) => current.filter((item) => item.key !== row.key))}><Trash2 aria-hidden="true" /></Button></div>)}
-          {values?.attachmentCount ? <p className="text-xs text-muted-foreground">Dokumen ini sudah memiliki {values.attachmentCount} lampiran.</p> : null}
-        </FieldSet>
-
         <div className="grid gap-4 sm:grid-cols-2">
           <Field><FieldLabel htmlFor={`po-design-${fieldKey}`}>Catatan desain</FieldLabel><Textarea id={`po-design-${fieldKey}`} name="designNotes" maxLength={4000} rows={4} defaultValue={values?.designNotes ?? ""} /></Field>
           <Field><FieldLabel htmlFor={`po-notes-${fieldKey}`}>Catatan lain</FieldLabel><Textarea id={`po-notes-${fieldKey}`} name="notes" maxLength={4000} rows={4} defaultValue={values?.notes ?? ""} /></Field>
         </div>
+        {formState.ok === false && formState.message ? (
+          <Alert variant="destructive">
+            <AlertTitle>PO belum tersimpan</AlertTitle>
+            <AlertDescription>{formState.message} Periksa matriks ukuran dan roster, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
+          </Alert>
+        ) : null}
         <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? (draft ? "Perbarui draft PO" : "Buat draft PO")}</SubmitButton>
       </FieldGroup>
     </form>

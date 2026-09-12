@@ -10,7 +10,7 @@ function defaultDirection(sort: CustomerSort): SortDirection {
 }
 
 function parseSegment(value: string | null): CustomerSegment {
-  return value === "repeat" || value === "inactive" || value === "archived" ? value : "all";
+  return value === "archived" ? value : "all";
 }
 
 function parseSort(value: string | null): CustomerSort {

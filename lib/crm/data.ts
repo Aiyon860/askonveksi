@@ -167,7 +167,7 @@ const getCachedCustomerOptions = unstable_cache(
   async () => {
     return getPrismaClient().customer.findMany({
       where: { archivedAt: null },
-      select: { id: true, customerNo: true, name: true, companyName: true },
+      select: { id: true, customerNo: true, name: true, companyName: true, whatsapp: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 500,
     });
@@ -183,7 +183,7 @@ export async function getCustomerOptions() {
 
 export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt";
 export type SortDirection = "asc" | "desc";
-export type CustomerSegment = "all" | "repeat" | "inactive" | "archived";
+export type CustomerSegment = "all" | "archived";
 
 type CustomerListQuery = {
   query: string;
@@ -194,33 +194,9 @@ type CustomerListQuery = {
 
 function customerWhere(actor: { id: string; role: AppRole }, query: string, segment: CustomerSegment) {
   const normalizedQuery = query.trim().slice(0, 80);
-  const reference = new Date();
   const segmentWhere = segment === "archived"
     ? { archivedAt: { not: null } }
-    : segment === "repeat"
-      ? {
-          archivedAt: null,
-          opportunities: { none: { stage: { in: OPEN_STAGES } } },
-          reminders: {
-            some: { type: "REPEAT_ORDER" as const, resolvedAt: null, dueAt: { lte: reference } },
-          },
-          AND: [{
-            reminders: {
-              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { gt: reference } },
-            },
-          }],
-          ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
-        }
-      : segment === "inactive"
-        ? {
-            archivedAt: null,
-            opportunities: { none: { stage: { in: OPEN_STAGES } } },
-            reminders: {
-              some: { type: "REACTIVATION" as const, resolvedAt: null, dueAt: { lte: reference } },
-            },
-            ...(actor.role === "SALES" ? { salesPicId: actor.id } : {}),
-          }
-        : { archivedAt: null };
+    : { archivedAt: null };
 
   return {
     ...segmentWhere,
@@ -301,7 +277,7 @@ export async function getCustomers({
           take: 1,
         },
         reminders: {
-          where: { resolvedAt: null },
+          where: { resolvedAt: null, type: "REACTIVATION" },
           select: {
             type: true,
             dueAt: true,
@@ -422,7 +398,7 @@ export async function getCustomerPopupDetail(customerId: string) {
         take: 6,
       },
       reminders: {
-        where: { resolvedAt: null },
+        where: { resolvedAt: null, type: "REACTIVATION" },
         select: {
           id: true,
           type: true,
@@ -452,6 +428,7 @@ export async function getCustomerDetail(customerId: string) {
       address: true,
       city: true,
       notes: true,
+      orderReminderEnabled: true,
       customerTypeId: true,
       leadSourceId: true,
       salesPicId: true,
@@ -461,6 +438,11 @@ export async function getCustomerDetail(customerId: string) {
       archivedAt: true,
       version: true,
       updatedAt: true,
+      whatsappConversations: {
+        select: { id: true, unreadCount: true, lastMessageAt: true, lastMessagePreview: true, account: { select: { status: true } } },
+        orderBy: { lastMessageAt: "desc" },
+        take: 1,
+      },
       opportunities: {
         select: {
           id: true,
@@ -486,7 +468,7 @@ export async function getCustomerDetail(customerId: string) {
         orderBy: { updatedAt: "desc" },
       },
       reminders: {
-        where: { resolvedAt: null },
+        where: { resolvedAt: null, type: "REACTIVATION" },
         select: {
           id: true,
           type: true,
@@ -565,6 +547,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
+          designTask: { select: { deadline: true, revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
         },
         orderBy: { revision: "desc" },
       },
@@ -690,7 +673,7 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
       : bucket === "tomorrow"
         ? { gte: tomorrow, lt: dayAfterTomorrow }
         : { gte: dayAfterTomorrow };
-  const selectedPicId = picId === "all" ? undefined : picId || (actor.role === "SALES" ? actor.id : undefined);
+  const selectedPicId = picId === "all" ? undefined : picId || (actor.role === "ADMIN_CUSTOMER" ? actor.id : undefined);
   const baseWhere = {
     stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] as OpportunityStage[] },
     nextActionAt: { not: null },
@@ -711,7 +694,7 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
         nextActionAt: true,
         lastContactedAt: true,
         cancelReason: true,
-        customer: { select: { name: true, companyName: true, whatsapp: true } },
+        customer: { select: { id: true, name: true, companyName: true, whatsapp: true } },
         salesPic: { select: { id: true, name: true } },
       },
       orderBy: [{ nextActionAt: "asc" }, { id: "asc" }],
@@ -721,7 +704,7 @@ export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucke
     prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: start, lt: tomorrow } } }),
     prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: tomorrow, lt: dayAfterTomorrow } } }),
     prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: dayAfterTomorrow } } }),
-    prisma.appUser.findMany({ where: { role: "SALES", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.appUser.findMany({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   return { items, counts: { overdue, today, tomorrow: tomorrowCount, upcoming }, salesUsers, selectedPicId };
 }
@@ -733,7 +716,7 @@ async function countFollowUpBadge(actorId: string, actorRole: string) {
       stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
       nextActionAt: { lt: tomorrow },
       customer: { archivedAt: null },
-      ...(actorRole === "SALES" ? { salesPicId: actorId } : {}),
+      ...(actorRole === "ADMIN_CUSTOMER" ? { salesPicId: actorId } : {}),
     },
   });
 }

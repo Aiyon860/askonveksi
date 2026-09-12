@@ -8,9 +8,7 @@ import {
   ChevronDown,
   Download,
   ListFilter,
-  RotateCcw,
   Upload,
-  UserRoundX,
   UsersRound,
 } from "lucide-react";
 
@@ -210,7 +208,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
   const rawQuery = firstParam(params.q) ?? "";
   const query = rawQuery.trim().slice(0, 80);
   const rawSegment = firstParam(params.segment);
-  const segment: CustomerSegment = rawSegment === "repeat" || rawSegment === "inactive" || rawSegment === "archived"
+  const segment: CustomerSegment = rawSegment === "archived"
     ? rawSegment
     : firstParam(params.archived) === "true"
       ? "archived"
@@ -246,7 +244,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
   return (
     <section
         className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
-        aria-label={segment === "repeat" ? "Customer berpotensi repeat order" : segment === "inactive" ? "Customer tidak aktif" : archived ? "Customer terarsip" : "Semua customer aktif"}
+        aria-label={archived ? "Customer terarsip" : "Semua customer aktif"}
       >
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
@@ -263,7 +261,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="outline" />}>
                 <ListFilter data-icon="inline-start" aria-hidden="true" />
-                {segment === "repeat" ? "Potensi repeat" : segment === "inactive" ? "Tidak aktif" : archived ? "Arsip" : "Semua customer"}
+                {archived ? "Arsip" : "Semua customer"}
                 <ChevronDown data-icon="inline-end" aria-hidden="true" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
@@ -272,14 +270,6 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                   <DropdownMenuItem render={<Link href={tableHref(state, { segment: "all", page: 1 })} />}>
                     <Check className={cn(segment !== "all" && "opacity-0")} aria-hidden="true" />
                     Semua customer
-                  </DropdownMenuItem>
-                  <DropdownMenuItem render={<Link href={tableHref(state, { segment: "repeat", page: 1 })} />}>
-                    <RotateCcw className={cn(segment !== "repeat" && "opacity-50")} aria-hidden="true" />
-                    Potensi repeat order
-                  </DropdownMenuItem>
-                  <DropdownMenuItem render={<Link href={tableHref(state, { segment: "inactive", page: 1 })} />}>
-                    <UserRoundX className={cn(segment !== "inactive" && "opacity-50")} aria-hidden="true" />
-                    Customer tidak aktif
                   </DropdownMenuItem>
                   <DropdownMenuItem render={<Link href={tableHref(state, { segment: "archived", page: 1 })} />}>
                     <Check className={cn(segment !== "archived" && "opacity-0")} aria-hidden="true" />
@@ -292,7 +282,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
 
           <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
             <p className="text-xs text-muted-foreground">
-              <strong className="font-medium text-foreground">{total}</strong> {segment === "repeat" ? "potensi repeat" : segment === "inactive" ? "customer tidak aktif" : archived ? "customer diarsipkan" : "customer aktif"}
+              <strong className="font-medium text-foreground">{total}</strong> {archived ? "customer diarsipkan" : "customer aktif"}
             </p>
             {canImportExport ? <CustomerExcelActions href={exportHref(state)} /> : null}
             {canOperate ? <NewCustomerForm key={`new-${segment}-${query}-${total}`} {...formOptions} /> : null}
@@ -423,8 +413,8 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon"><UsersRound aria-hidden="true" /></EmptyMedia>
-              <EmptyTitle>{query ? "Customer tidak ditemukan" : archived ? "Arsip masih kosong" : segment === "repeat" ? "Belum ada potensi repeat order" : segment === "inactive" ? "Belum ada customer tidak aktif" : "Belum ada customer"}</EmptyTitle>
-              <EmptyDescription>{query ? "Coba kata kunci lain atau hapus filter pencarian." : segment === "repeat" ? "Customer tanpa peluang terbuka akan muncul 3 bulan setelah order terakhir." : segment === "inactive" ? "Customer tanpa peluang terbuka akan muncul 6 bulan setelah order terakhir." : "Tambahkan customer atau buat lead baru dari pipeline."}</EmptyDescription>
+              <EmptyTitle>{query ? "Customer tidak ditemukan" : archived ? "Arsip masih kosong" : "Belum ada customer"}</EmptyTitle>
+              <EmptyDescription>{query ? "Coba kata kunci lain atau hapus filter pencarian." : "Tambahkan customer atau buat lead baru dari pipeline."}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -437,7 +427,7 @@ export default function CustomersPage({ searchParams }: { searchParams: Customer
     <>
       <PageHeader
         title="Data customer"
-        description="Cari, urutkan, dan kelola satu profil customer untuk seluruh peluang dan repeat order."
+        description="Cari, urutkan, dan kelola satu profil customer untuk seluruh peluang dan order."
       />
       <PageMessage />
 

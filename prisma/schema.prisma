@@ -9,10 +9,19 @@ datasource db {
 
 enum AppRole {
   OWNER
+  ADMIN_CUSTOMER
+  ADMIN_PRODUCTION
   ADMIN
   SALES
+  DESIGNER
   PRODUCTION
   QC
+}
+
+enum DesignRevisionStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
 }
 
 enum ProductionRoute {
@@ -161,6 +170,59 @@ enum CommunicationSystemEvent {
   SALES_ORDER_CANCELLED
 }
 
+enum WhatsAppAccountStatus {
+  DISCONNECTED
+  PAIRING
+  CONNECTED
+  LOGGED_OUT
+  ERROR
+}
+
+enum WhatsAppConsentStatus {
+  UNKNOWN
+  OPTED_IN
+  OPTED_OUT
+}
+
+enum WhatsAppMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsAppMessageKind {
+  TEXT
+  IMAGE
+  DOCUMENT
+}
+
+enum WhatsAppMessageStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELLED
+}
+
+enum WhatsAppJobType {
+  MANUAL
+  NEXT_ACTION
+  REPEAT_ORDER
+  REACTIVATION
+  INVOICE_ISSUED
+  INVOICE_DUE
+}
+
+enum WhatsAppJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  RETRY
+  FAILED
+  CANCELLED
+}
+
 model AppUser {
   id                        String                    @id @default(cuid())
   authUserId                String                    @unique @db.Uuid
@@ -171,6 +233,8 @@ model AppUser {
   communicationActivities   CommunicationActivity[]
   customerReminderReceipts  CustomerReminderReceipt[]
   purchaseOrders            PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
+  designRevisions           DesignRevision[]          @relation("DesignRevisionCreatedBy")
+  reviewedDesignRevisions   DesignRevision[]          @relation("DesignRevisionReviewedBy")
   invoices                  Invoice[]                 @relation("InvoiceCreatedBy")
   dealPayments              DealPayment[]             @relation("DealPaymentCreatedBy")
   paymentTransactions       PaymentTransaction[]      @relation("PaymentTransactionCreatedBy")
@@ -182,6 +246,9 @@ model AppUser {
   assignedOpportunities     Opportunity[]             @relation("OpportunitySalesPic")
   assignedProductionSteps   ProductionStep[]          @relation("ProductionStepAssignee")
   productionActivities      ProductionActivity[]
+  createdWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateCreatedBy")
+  updatedWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateUpdatedBy")
+  sentWhatsAppMessages      WhatsAppMessage[]         @relation("WhatsAppMessageSentBy")
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -244,15 +311,16 @@ model PaymentMethod {
 }
 
 model BusinessProfile {
-  id        String   @id @default("default") @db.VarChar(32)
-  name      String   @db.VarChar(160)
-  phone     String?  @db.VarChar(32)
-  email     String?  @db.VarChar(320)
-  address   String?  @db.Text
-  logoPath  String?  @db.VarChar(500)
-  version   Int      @default(1)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id                     String   @id @default("default") @db.VarChar(32)
+  name                   String   @db.VarChar(160)
+  phone                  String?  @db.VarChar(32)
+  email                  String?  @db.VarChar(320)
+  address                String?  @db.Text
+  logoPath               String?  @db.VarChar(500)
+  invoiceReminderOffsets Int[]    @default([-3, 0, 3])
+  version                Int      @default(1)
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model Customer {
@@ -271,12 +339,20 @@ model Customer {
   salesPicId              String?
   archivedAt              DateTime?               @db.Timestamptz(3)
   version                 Int                     @default(1)
+  whatsappConsentStatus   WhatsAppConsentStatus   @default(UNKNOWN)
+  whatsappOptedInAt       DateTime?               @db.Timestamptz(3)
+  whatsappOptInSource     String?                 @db.VarChar(120)
+  whatsappOptedOutAt      DateTime?               @db.Timestamptz(3)
+  whatsappOptOutReason    String?                 @db.VarChar(500)
+  orderReminderEnabled    Boolean                 @default(true)
   customerType            CustomerType            @relation(fields: [customerTypeId], references: [id], onDelete: Restrict)
   leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
   salesPic                AppUser?                @relation("CustomerSalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
   opportunities           Opportunity[]
   communicationActivities CommunicationActivity[]
   reminders               CustomerReminder[]
+  whatsappConversations   WhatsAppConversation[]
+  whatsappJobs            WhatsAppAutomationJob[]
   createdAt               DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
 
@@ -314,6 +390,7 @@ model Opportunity {
   purchaseOrders          PurchaseOrder[]
   invoices                Invoice[]
   salesOrders             SalesOrder[]
+  whatsappJobs            WhatsAppAutomationJob[]
   createdAt               DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
 
@@ -347,10 +424,12 @@ model CommunicationActivity {
   metadata           Json?
   occurredAt         DateTime                  @db.Timestamptz(3)
   sourceAuditEventId String?                   @unique
+  whatsappMessageId  String?                   @unique
   customer           Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
   opportunity        Opportunity?              @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   author             AppUser                   @relation(fields: [authorId], references: [id], onDelete: Restrict)
   sourceAuditEvent   AuditEvent?               @relation("CommunicationActivityAuditEvent", fields: [sourceAuditEventId], references: [id], onDelete: Restrict)
+  whatsappMessage    WhatsAppMessage?          @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
   createdAt          DateTime                  @default(now()) @db.Timestamptz(3)
 
   @@index([customerId, occurredAt, id])
@@ -390,6 +469,7 @@ model PurchaseOrder {
   sizes                    PurchaseOrderSize[]
   rosterEntries            PurchaseOrderRosterEntry[]
   attachments              PurchaseOrderAttachment[]
+  designTask               DesignTask?
   invoices                 Invoice[]
   salesOrder               SalesOrder?
   createdAt                DateTime                   @default(now()) @db.Timestamptz(3)
@@ -398,6 +478,54 @@ model PurchaseOrder {
   @@unique([opportunityId, revision])
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
+}
+
+model DesignTask {
+  id              String           @id @default(cuid())
+  purchaseOrderId String           @unique
+  deadline        DateTime         @db.Date
+  purchaseOrder   PurchaseOrder    @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  revisions       DesignRevision[]
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([deadline])
+}
+
+model DesignRevision {
+  id           String               @id @default(cuid())
+  designTaskId String
+  revision     Int
+  status       DesignRevisionStatus @default(PENDING_REVIEW)
+  notes        String?              @db.Text
+  reviewNotes  String?              @db.Text
+  createdById  String
+  reviewedById String?
+  reviewedAt   DateTime?            @db.Timestamptz(3)
+  designTask   DesignTask           @relation(fields: [designTaskId], references: [id], onDelete: Restrict)
+  createdBy    AppUser              @relation("DesignRevisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy   AppUser?             @relation("DesignRevisionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  attachments  DesignAttachment[]
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+
+  @@unique([designTaskId, revision])
+  @@index([createdById, createdAt])
+  @@index([designTaskId, status, revision])
+  @@index([reviewedById, reviewedAt])
+}
+
+model DesignAttachment {
+  id               String                      @id @default(cuid())
+  designRevisionId String
+  path             String                      @db.VarChar(500)
+  originalName     String                      @db.VarChar(255)
+  contentType      String                      @db.VarChar(64)
+  sizeBytes        Int
+  kind             PurchaseOrderAttachmentKind @default(OTHER)
+  designRevision   DesignRevision              @relation(fields: [designRevisionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime                    @default(now()) @db.Timestamptz(3)
+
+  @@index([designRevisionId, createdAt])
 }
 
 model PurchaseOrderSize {
@@ -450,42 +578,43 @@ model PurchaseOrderAttachment {
 }
 
 model Invoice {
-  id                       String        @id @default(cuid())
-  invoiceNo                String        @unique @db.VarChar(28)
+  id                       String                  @id @default(cuid())
+  invoiceNo                String                  @unique @db.VarChar(28)
   opportunityId            String
   purchaseOrderId          String
   revision                 Int
-  status                   InvoiceStatus @default(DRAFT)
-  snapshotCustomerName     String        @db.VarChar(160)
-  snapshotCompanyName      String?       @db.VarChar(160)
-  snapshotWhatsapp         String?       @db.VarChar(32)
-  snapshotEmail            String?       @db.VarChar(320)
-  snapshotInstagram        String?       @db.VarChar(80)
-  snapshotAddress          String?       @db.Text
-  snapshotBusinessName     String?       @db.VarChar(160)
-  snapshotBusinessPhone    String?       @db.VarChar(32)
-  snapshotBusinessEmail    String?       @db.VarChar(320)
-  snapshotBusinessAddress  String?       @db.Text
-  snapshotBusinessLogoPath String?       @db.VarChar(500)
-  discountType             DiscountType  @default(NONE)
-  discountValue            Decimal       @default(0) @db.Decimal(18, 2)
-  subtotal                 Decimal       @db.Decimal(18, 2)
-  totalDiscount            Decimal       @default(0) @db.Decimal(18, 2)
-  totalTax                 Decimal       @default(0) @db.Decimal(18, 2)
-  total                    Decimal       @db.Decimal(18, 2)
-  issuedAt                 DateTime?     @db.Timestamptz(3)
-  dueAt                    DateTime?     @db.Date
-  notes                    String?       @db.Text
-  version                  Int           @default(1)
+  status                   InvoiceStatus           @default(DRAFT)
+  snapshotCustomerName     String                  @db.VarChar(160)
+  snapshotCompanyName      String?                 @db.VarChar(160)
+  snapshotWhatsapp         String?                 @db.VarChar(32)
+  snapshotEmail            String?                 @db.VarChar(320)
+  snapshotInstagram        String?                 @db.VarChar(80)
+  snapshotAddress          String?                 @db.Text
+  snapshotBusinessName     String?                 @db.VarChar(160)
+  snapshotBusinessPhone    String?                 @db.VarChar(32)
+  snapshotBusinessEmail    String?                 @db.VarChar(320)
+  snapshotBusinessAddress  String?                 @db.Text
+  snapshotBusinessLogoPath String?                 @db.VarChar(500)
+  discountType             DiscountType            @default(NONE)
+  discountValue            Decimal                 @default(0) @db.Decimal(18, 2)
+  subtotal                 Decimal                 @db.Decimal(18, 2)
+  totalDiscount            Decimal                 @default(0) @db.Decimal(18, 2)
+  totalTax                 Decimal                 @default(0) @db.Decimal(18, 2)
+  total                    Decimal                 @db.Decimal(18, 2)
+  issuedAt                 DateTime?               @db.Timestamptz(3)
+  dueAt                    DateTime?               @db.Date
+  notes                    String?                 @db.Text
+  version                  Int                     @default(1)
   createdById              String
-  opportunity              Opportunity   @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  purchaseOrder            PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  createdBy                AppUser       @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  opportunity              Opportunity             @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  purchaseOrder            PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  createdBy                AppUser                 @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   items                    InvoiceItem[]
   salesOrder               SalesOrder?
   pendingPayment           PendingDealPayment?
-  createdAt                DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt                DateTime      @updatedAt @db.Timestamptz(3)
+  whatsappJobs             WhatsAppAutomationJob[]
+  createdAt                DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                @updatedAt @db.Timestamptz(3)
 
   @@unique([opportunityId, revision])
   @@index([opportunityId, status])
@@ -647,18 +776,18 @@ model DealPayment {
 }
 
 model PendingDealPayment {
-  id               String             @id @default(cuid())
-  invoiceId        String             @unique
+  id               String               @id @default(cuid())
+  invoiceId        String               @unique
   kind             PaymentKind
   initialValueType PaymentValueType
-  initialValue     Decimal            @db.Decimal(18, 2)
-  initialAmount    Decimal            @db.Decimal(18, 2)
-  initialDueAt     DateTime           @db.Date
+  initialValue     Decimal              @db.Decimal(18, 2)
+  initialAmount    Decimal              @db.Decimal(18, 2)
+  initialDueAt     DateTime             @db.Date
   createdById      String
-  invoice          Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  invoice          Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   terms            PendingPaymentTerm[]
-  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
 
   @@index([initialDueAt])
 }
@@ -694,26 +823,26 @@ model PaymentTerm {
 }
 
 model PaymentTransaction {
-  id            String                   @id @default(cuid())
-  paymentId     String
-  paymentTermId String?
+  id              String                   @id @default(cuid())
+  paymentId       String
+  paymentTermId   String?
   paymentMethodId String?
-  amount        Decimal                  @db.Decimal(18, 2)
-  paidAt        DateTime                 @db.Timestamptz(3)
-  reference     String?                  @db.VarChar(120)
-  note          String?                  @db.VarChar(1000)
-  status        PaymentTransactionStatus @default(ACTIVE)
-  createdById   String
-  voidedAt      DateTime?                @db.Timestamptz(3)
-  voidReason    String?                  @db.VarChar(1000)
-  voidedById    String?
-  version       Int                      @default(1)
-  payment       DealPayment              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  paymentTerm   PaymentTerm?             @relation("PaymentTermTransactions", fields: [paymentTermId, paymentId], references: [id, paymentId], onDelete: Restrict)
-  paymentMethod PaymentMethod?           @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
-  createdBy     AppUser                  @relation("PaymentTransactionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  voidedBy      AppUser?                 @relation("PaymentTransactionVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
-  createdAt     DateTime                 @default(now()) @db.Timestamptz(3)
+  amount          Decimal                  @db.Decimal(18, 2)
+  paidAt          DateTime                 @db.Timestamptz(3)
+  reference       String?                  @db.VarChar(120)
+  note            String?                  @db.VarChar(1000)
+  status          PaymentTransactionStatus @default(ACTIVE)
+  createdById     String
+  voidedAt        DateTime?                @db.Timestamptz(3)
+  voidReason      String?                  @db.VarChar(1000)
+  voidedById      String?
+  version         Int                      @default(1)
+  payment         DealPayment              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  paymentTerm     PaymentTerm?             @relation("PaymentTermTransactions", fields: [paymentTermId, paymentId], references: [id, paymentId], onDelete: Restrict)
+  paymentMethod   PaymentMethod?           @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  createdBy       AppUser                  @relation("PaymentTransactionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  voidedBy        AppUser?                 @relation("PaymentTransactionVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime                 @default(now()) @db.Timestamptz(3)
 
   @@index([paymentId, status, paidAt])
   @@index([paymentTermId, status])
@@ -756,6 +885,7 @@ model CustomerReminder {
   customer           Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
   sourceSalesOrder   SalesOrder                @relation("CustomerReminderSourceOrder", fields: [sourceSalesOrderId], references: [id], onDelete: Restrict)
   receipts           CustomerReminderReceipt[]
+  whatsappJobs       WhatsAppAutomationJob[]
   createdAt          DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -792,6 +922,140 @@ model AuditEvent {
   @@index([entityType, entityId, createdAt])
   @@index([actorId, createdAt])
   @@index([createdAt])
+}
+
+model WhatsAppAccount {
+  id                    String                  @id @default(cuid())
+  label                 String                  @db.VarChar(80)
+  phoneNumber           String                  @unique @db.VarChar(20)
+  status                WhatsAppAccountStatus   @default(DISCONNECTED)
+  sendEnabled           Boolean                 @default(false)
+  connectRequestedAt    DateTime?               @db.Timestamptz(3)
+  disconnectRequestedAt DateTime?               @db.Timestamptz(3)
+  pairingCode           String?                 @db.VarChar(32)
+  pairingCodeExpiresAt  DateTime?               @db.Timestamptz(3)
+  connectedAt           DateTime?               @db.Timestamptz(3)
+  disconnectedAt        DateTime?               @db.Timestamptz(3)
+  heartbeatAt           DateTime?               @db.Timestamptz(3)
+  lastError             String?                 @db.VarChar(500)
+  conversations         WhatsAppConversation[]
+  messages              WhatsAppMessage[]
+  jobs                  WhatsAppAutomationJob[]
+  createdAt             DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                @updatedAt @db.Timestamptz(3)
+
+  @@index([sendEnabled, status])
+  @@index([heartbeatAt])
+}
+
+model WhatsAppTemplate {
+  id          String                  @id @default(cuid())
+  name        String                  @unique @db.VarChar(80)
+  triggerType WhatsAppJobType
+  body        String                  @db.Text
+  isActive    Boolean                 @default(true)
+  version     Int                     @default(1)
+  createdById String?
+  updatedById String?
+  createdBy   AppUser?                @relation("WhatsAppTemplateCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy   AppUser?                @relation("WhatsAppTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  jobs        WhatsAppAutomationJob[]
+  createdAt   DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime                @updatedAt @db.Timestamptz(3)
+
+  @@index([triggerType, isActive])
+}
+
+model WhatsAppConversation {
+  id                 String            @id @default(cuid())
+  accountId          String
+  remoteJid          String            @db.VarChar(80)
+  customerId         String?
+  unreadCount        Int               @default(0)
+  isResolved         Boolean           @default(false)
+  lastMessageAt      DateTime?         @db.Timestamptz(3)
+  lastMessagePreview String?           @db.VarChar(240)
+  account            WhatsAppAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  customer           Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  messages           WhatsAppMessage[]
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@unique([accountId, remoteJid])
+  @@index([customerId, lastMessageAt])
+  @@index([lastMessageAt])
+  @@index([isResolved, unreadCount, lastMessageAt])
+}
+
+model WhatsAppMessage {
+  id                    String                   @id @default(cuid())
+  accountId             String
+  conversationId        String
+  whatsappMessageId     String?                  @db.VarChar(160)
+  direction             WhatsAppMessageDirection
+  kind                  WhatsAppMessageKind      @default(TEXT)
+  status                WhatsAppMessageStatus    @default(QUEUED)
+  text                  String?                  @db.Text
+  mediaPath             String?                  @db.VarChar(500)
+  mediaMimeType         String?                  @db.VarChar(120)
+  mediaFileName         String?                  @db.VarChar(255)
+  mediaSizeBytes        Int?
+  sentById              String?
+  automationJobId       String?                  @unique
+  errorMessage          String?                  @db.VarChar(500)
+  sentAt                DateTime?                @db.Timestamptz(3)
+  deliveredAt           DateTime?                @db.Timestamptz(3)
+  readAt                DateTime?                @db.Timestamptz(3)
+  failedAt              DateTime?                @db.Timestamptz(3)
+  occurredAt            DateTime                 @default(now()) @db.Timestamptz(3)
+  account               WhatsAppAccount          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  conversation          WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sentBy                AppUser?                 @relation("WhatsAppMessageSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+  automationJob         WhatsAppAutomationJob?   @relation(fields: [automationJobId], references: [id], onDelete: SetNull)
+  communicationActivity CommunicationActivity?
+  createdAt             DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                 @updatedAt @db.Timestamptz(3)
+
+  @@unique([accountId, whatsappMessageId])
+  @@index([conversationId, occurredAt, id])
+  @@index([status, createdAt])
+  @@index([sentById, createdAt])
+}
+
+model WhatsAppAutomationJob {
+  id             String            @id @default(cuid())
+  idempotencyKey String            @unique @db.VarChar(240)
+  type           WhatsAppJobType
+  status         WhatsAppJobStatus @default(QUEUED)
+  accountId      String?
+  templateId     String?
+  customerId     String
+  opportunityId  String?
+  invoiceId      String?
+  reminderId     String?
+  payload        Json
+  scheduledAt    DateTime          @db.Timestamptz(3)
+  leaseOwner     String?           @db.VarChar(120)
+  leaseExpiresAt DateTime?         @db.Timestamptz(3)
+  attempts       Int               @default(0)
+  nextAttemptAt  DateTime?         @db.Timestamptz(3)
+  lastError      String?           @db.VarChar(500)
+  completedAt    DateTime?         @db.Timestamptz(3)
+  account        WhatsAppAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  template       WhatsAppTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  customer       Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  opportunity    Opportunity?      @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  invoice        Invoice?          @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  reminder       CustomerReminder? @relation(fields: [reminderId], references: [id], onDelete: Restrict)
+  message        WhatsAppMessage?
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@index([status, scheduledAt])
+  @@index([status, leaseExpiresAt])
+  @@index([customerId, status, scheduledAt])
+  @@index([invoiceId, type, scheduledAt])
+  @@index([opportunityId, type, scheduledAt])
 }
 
 model SequenceCounter {

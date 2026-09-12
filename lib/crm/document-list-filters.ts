@@ -40,3 +40,19 @@ export function parseDocumentDateRange(
     today,
   };
 }
+
+export function parseOpenDateRange(
+  fromValue: string | string[] | undefined,
+  toValue: string | string[] | undefined,
+) {
+  const from = first(fromValue)?.trim() ?? "";
+  const to = first(toValue)?.trim() ?? "";
+  const start = from ? jakartaDayStart(from) : null;
+  const endStart = to ? jakartaDayStart(to) : null;
+
+  if ((from && !start) || (to && !endStart) || (start && endStart && start > endStart)) {
+    return { from: "", to: "", start: null, end: null };
+  }
+
+  return { from, to, start, end: endStart ? new Date(endStart.getTime() + 24 * 60 * 60 * 1000) : null };
+}

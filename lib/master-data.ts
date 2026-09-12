@@ -19,7 +19,7 @@ const getCachedCustomerFormOptions = unstable_cache(
         orderBy: [{ position: "asc" }, { name: "asc" }],
       }),
       prisma.appUser.findMany({
-        where: { role: "SALES", isActive: true },
+        where: { role: "ADMIN_CUSTOMER", isActive: true },
         select: { id: true, name: true },
         orderBy: [{ name: "asc" }, { id: "asc" }],
       }),

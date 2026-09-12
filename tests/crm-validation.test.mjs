@@ -194,8 +194,8 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
 test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", () => {
   assert.equal(strongPasswordSchema.safeParse("").success, false);
   assert.equal(strongPasswordSchema.safeParse("a").success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "SALES", password: "a" }).success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "SALES", temporaryPassword: "a" }).success, false);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", password: "a" }).success, true);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", temporaryPassword: "a" }).success, false);
 
   const invalidInvoice = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -214,6 +214,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     productName: "Jersey tim",
     material: "Dry fit",
     deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
     sizes: [
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
       { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 },
@@ -227,6 +228,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   const missingDeadline = purchaseOrderDraftSchema.safeParse({ ...valid, deadline: "" });
   assert.equal(missingDeadline.success, false);
   assert.equal(missingDeadline.error.issues[0]?.message, "Deadline produksi wajib dipilih.");
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, designDeadline: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
 });
@@ -257,6 +259,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     productName: "Kaos komunitas",
     material: "Cotton combed",
     deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
     roster: [],
   };
   const size = { sizeId: "garment-size-m", sleeveLength: "PENDEK" };
@@ -278,6 +281,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     productName: "Jersey tim",
     material: "Dry fit",
     deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     roster: [],
   };
@@ -291,11 +295,10 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
 
 test("owner menjadi role tertinggi pada permission aplikasi", () => {
   for (const roles of [CRM_OPERATOR_ROLES, DEAL_ROLES, ARCHIVE_ROLES, REVERSE_DEAL_ROLES]) {
-    assert.equal(roles.includes("OWNER"), true);
     assert.equal(hasRole("OWNER", roles), true);
   }
-  assert.equal(hasRole("OWNER", ["SALES"]), true);
-  assert.equal(hasRole("SALES", DEAL_ROLES), false);
+  assert.equal(hasRole("OWNER", ["ADMIN_CUSTOMER"]), true);
+  assert.equal(hasRole("ADMIN_CUSTOMER", DEAL_ROLES), true);
 });
 
 test("tab peluang dan label dekorasi memiliki fallback yang aman", () => {
@@ -309,6 +312,14 @@ test("tab peluang dan label dekorasi memiliki fallback yang aman", () => {
 
 test("lead baru dapat divalidasi untuk langsung masuk negosiasi", () => {
   assert.equal(moveOpportunitySchema.safeParse({ opportunityId: "cm123456789012", version: "1", stage: "NEGOSIASI", cancelReason: "" }).success, true);
+});
+
+test("aksi pindah status dari detail peluang tidak fallback ke board", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(actionSource, /function opportunityRedirectPath[\s\S]+const fallback = opportunityTabFallback\(formData, "peluang"\)/);
+  assert.match(actionSource, /export async function moveOpportunityStageAction[\s\S]+const redirectPath = opportunityRedirectPath\(formData\)/);
+  assert.match(detailPageSource, /redirectTo=\{`\/crm\/peluang\/\$\{opportunity\.id\}\?tab=peluang`\}/);
 });
 
 test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
@@ -349,7 +360,7 @@ test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", ()
     updatedAt: "2026-08-29T09:00:00.000Z",
     name: "Budi Santoso",
     email: "budi@example.com",
-    role: "ADMIN",
+    role: "ADMIN_CUSTOMER",
     password: "",
     confirmPassword: "",
   };
@@ -420,7 +431,7 @@ test("migration riwayat komunikasi menjaga catatan lama dan menutup Data API", a
   assert.match(sql, /REVOKE ALL ON TABLE "CommunicationActivity" FROM anon, authenticated/);
 });
 
-test("jadwal repeat order memakai bulan kalender Jakarta dan menangani akhir bulan", () => {
+test("jadwal reminder order memakai bulan kalender Jakarta dan menangani akhir bulan", () => {
   const acceptedAt = new Date("2026-08-30T20:00:00.000Z");
   assert.equal(addCalendarMonthsJakarta(acceptedAt, 3).toISOString(), "2026-11-29T20:00:00.000Z");
   assert.equal(addCalendarMonthsJakarta(acceptedAt, 6).toISOString(), "2027-02-27T20:00:00.000Z");
@@ -429,16 +440,31 @@ test("jadwal repeat order memakai bulan kalender Jakarta dan menangani akhir bul
   assert.equal(addCalendarMonthsJakarta(januaryEnd, 3).toISOString(), "2026-04-29T20:00:00.000Z");
 });
 
-test("status aktivitas berubah pada bulan ke-3 dan ke-6 serta ditahan oleh peluang terbuka", () => {
+test("status aktivitas berubah pada bulan ke-6 serta ditahan oleh peluang terbuka", () => {
   const schedule = [
-    { type: "REPEAT_ORDER", dueAt: new Date("2026-11-29T20:00:00.000Z") },
     { type: "REACTIVATION", dueAt: new Date("2027-02-27T20:00:00.000Z") },
   ];
   assert.equal(activityStatusFromSchedule([], new Date("2026-09-01T00:00:00.000Z")), "BELUM_ORDER");
   assert.equal(activityStatusFromSchedule(schedule, new Date("2026-11-01T00:00:00.000Z")), "AKTIF");
-  assert.equal(activityStatusFromSchedule(schedule, new Date("2026-12-01T00:00:00.000Z")), "POTENSI_REPEAT");
   assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z")), "TIDAK_AKTIF");
   assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z"), true), "AKTIF");
+});
+
+test("revisi dokumen hanya berasal dari draft sampai revisi keempat dan final tidak ditimpa", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /source\.status !== "DRAFT"[\s\S]+source\.revision >= 4/);
+  assert.match(actionSource, /revision: \{ lt: 4 \}/);
+  assert.doesNotMatch(actionSource, /where: \{ opportunityId: invoice\.opportunityId, status: "ISSUED"/);
+  assert.doesNotMatch(actionSource, /where: \{ opportunityId: purchaseOrder\.opportunityId, status: "AGREED"/);
+});
+
+test("migration follow up menyimpan tiga offset, switch customer, template bawaan, dan menutup job lama", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260911090000_revision_follow_up_settings/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /invoiceReminderOffsets/);
+  assert.match(sql, /orderReminderEnabled/);
+  assert.match(sql, /triggerType" <> 'MANUAL'/);
+  assert.match(sql, /Selamat datang customer baru/);
+  assert.match(sql, /Fitur repeat order telah dinonaktifkan/);
 });
 
 test("migration reminder membackfill order terakhir dan menutup Data API", async () => {
