@@ -399,7 +399,7 @@ export default async function CustomerDetailPage({
             <Card>
               <CardHeader>
                 <CardTitle>Peluang baru</CardTitle>
-                <CardDescription>Order baru dimulai dari tahap Lead Baru dengan memakai profil customer ini.</CardDescription>
+                <CardDescription>Order baru dimulai dari tahap Prospek dengan memakai profil customer ini.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form action={createOpportunityAction}>

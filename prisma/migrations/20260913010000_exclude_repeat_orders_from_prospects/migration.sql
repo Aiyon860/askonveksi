@@ -1,0 +1,1 @@
+ALTER TABLE "Opportunity" ADD COLUMN "isRepeatOrder" BOOLEAN NOT NULL DEFAULT false;

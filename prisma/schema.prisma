@@ -104,6 +104,11 @@ enum OpportunityStage {
   LOST
 }
 
+enum CustomerLifecycle {
+  PROSPEK
+  CUSTOMER
+}
+
 enum DiscountType {
   NONE
   NOMINAL
@@ -326,6 +331,7 @@ model BusinessProfile {
 model Customer {
   id                      String                  @id @default(cuid())
   customerNo              String                  @unique @db.VarChar(24)
+  poCustomerCode          String?                 @unique @db.VarChar(20)
   name                    String                  @db.VarChar(160)
   companyName             String?                 @db.VarChar(160)
   whatsapp                String?                 @db.VarChar(32)
@@ -337,6 +343,7 @@ model Customer {
   customerTypeId          String
   leadSourceId            String?
   salesPicId              String?
+  lifecycle               CustomerLifecycle        @default(CUSTOMER)
   archivedAt              DateTime?               @db.Timestamptz(3)
   version                 Int                     @default(1)
   whatsappConsentStatus   WhatsAppConsentStatus   @default(UNKNOWN)
@@ -363,6 +370,7 @@ model Customer {
   @@index([leadSourceId])
   @@index([salesPicId])
   @@index([city])
+  @@index([lifecycle, archivedAt, updatedAt])
 }
 
 model Opportunity {
@@ -371,6 +379,7 @@ model Opportunity {
   customerId              String
   title                   String                  @db.VarChar(180)
   stage                   OpportunityStage        @default(LEAD_BARU)
+  isRepeatOrder           Boolean                 @default(false)
   leadSourceId            String?
   salesPicId              String?
   productName             String?                 @db.VarChar(120)

@@ -23,7 +23,6 @@ type RosterRow = { key: string; memberId: string; name: string; sizeId: string }
 type SleeveLength = MatrixRow["sleeveLength"];
 
 type PurchaseOrderFormValues = {
-  customerReference: string;
   garmentType: "JERSEY" | "NON_JERSEY" | null;
   productName: string;
   material: string;
@@ -39,7 +38,7 @@ type PurchaseOrderFormValues = {
   sizes: MatrixRow[];
   roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string }>;
 };
-type Draft = PurchaseOrderFormValues & { id: string; version: number };
+type Draft = PurchaseOrderFormValues & { id: string; version: number; purchaseOrderNo: string };
 
 function jakartaToday() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
@@ -53,6 +52,7 @@ export function PurchaseOrderForm({
   initialValues,
   sourcePurchaseOrderId,
   submitLabel,
+  purchaseOrderNoPreview,
 }: {
   opportunityId: string;
   sizeOptions: SizeOption[];
@@ -60,6 +60,7 @@ export function PurchaseOrderForm({
   initialValues?: PurchaseOrderFormValues;
   sourcePurchaseOrderId?: string;
   submitLabel?: string;
+  purchaseOrderNoPreview?: string;
 }) {
   const values = draft ?? initialValues;
   const orderDate = values?.orderDate || jakartaToday();
@@ -110,7 +111,7 @@ export function PurchaseOrderForm({
         <FieldSet>
           <FieldLegend>Informasi pesanan</FieldLegend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO customer</FieldLabel><Input id={`po-reference-${fieldKey}`} name="customerReference" maxLength={120} defaultValue={values?.customerReference ?? ""} /></Field>
+            <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO</FieldLabel><Input id={`po-reference-${fieldKey}`} value={draft?.purchaseOrderNo ?? purchaseOrderNoPreview ?? "Akan dibuat saat disimpan"} readOnly /></Field>
             <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
             <Field><FieldLabel htmlFor={`po-product-${fieldKey}`} required>Nama produk atau pola</FieldLabel><Input id={`po-product-${fieldKey}`} name="productName" required minLength={2} maxLength={120} defaultValue={values?.productName ?? ""} placeholder="Contoh: Jaket komunitas" /></Field>
             <Field><FieldLabel htmlFor={`po-material-${fieldKey}`} required>Bahan</FieldLabel><Input id={`po-material-${fieldKey}`} name="material" required minLength={2} maxLength={120} defaultValue={values?.material ?? ""} /></Field>

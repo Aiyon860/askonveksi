@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 type SizeOption = { id: string; name: string };
 type PurchaseOrderDraftValues = {
-  customerReference: string;
+  purchaseOrderNo: string;
   garmentType: "JERSEY" | "NON_JERSEY" | null;
   productName: string;
   material: string;
@@ -39,6 +39,7 @@ type PurchaseOrderWorkflowSectionProps = {
   inNegotiation: boolean;
   sizeOptions: SizeOption[];
   draftValues: PurchaseOrderDraftValues;
+  purchaseOrderNoPreview: string;
   children: ReactNode;
 };
 
@@ -54,6 +55,7 @@ export function PurchaseOrderWorkflowSection({
   inNegotiation,
   sizeOptions,
   draftValues,
+  purchaseOrderNoPreview,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
@@ -61,10 +63,11 @@ export function PurchaseOrderWorkflowSection({
   const isEditing = isEditingPersistedDraft || isCreatingRevision;
   const canCreateRevision = purchaseOrderStatus === "DRAFT" && purchaseOrderRevision < 4 && canOperate && inNegotiation && !isCreatingRevision;
   const persistedDraft = isEditingPersistedDraft
-    ? {
+      ? {
+        ...draftValues,
         id: purchaseOrderId,
         version: purchaseOrderVersion,
-        ...draftValues,
+        purchaseOrderNo: draftValues.purchaseOrderNo,
       }
     : undefined;
 
@@ -99,6 +102,7 @@ export function PurchaseOrderWorkflowSection({
             initialValues={isCreatingRevision ? draftValues : undefined}
             sourcePurchaseOrderId={isCreatingRevision ? purchaseOrderId : undefined}
             submitLabel={isCreatingRevision ? "Buat versi revisi" : "Perbarui draft PO"}
+            purchaseOrderNoPreview={purchaseOrderNoPreview}
           />
           {isCreatingRevision ? (
             <Button

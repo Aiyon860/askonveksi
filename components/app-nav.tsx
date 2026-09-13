@@ -34,6 +34,10 @@ const customerItems = [
   { href: "/master-data/whatsapp/templates", label: "Template chat", icon: MessageCircle },
 ] as const;
 
+const prospectItems = [
+  { href: "/crm/prospek", label: "Prospek", icon: UsersRound },
+] as const;
+
 const masterItems = [
   { href: "/master-data/customer-types", label: "Jenis customer", icon: Tags },
   { href: "/master-data/lead-sources", label: "Sumber lead", icon: Waypoints },
@@ -139,6 +143,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           </CollapsibleContent>
         </Collapsible>
       ) : null}
+      {canViewCrm ? prospectItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} onNavigate={onNavigate} />) : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}

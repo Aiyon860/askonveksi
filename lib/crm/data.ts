@@ -18,6 +18,7 @@ import { ANALYTICS_ROLES, CRM_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLE
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
+import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "@/lib/crm/numbers";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type PipelineOpportunity = {
@@ -166,7 +167,7 @@ export async function getPipelineData() {
 const getCachedCustomerOptions = unstable_cache(
   async () => {
     return getPrismaClient().customer.findMany({
-      where: { archivedAt: null },
+      where: { archivedAt: null, lifecycle: "CUSTOMER" },
       select: { id: true, customerNo: true, name: true, companyName: true, whatsapp: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 500,
@@ -200,6 +201,7 @@ function customerWhere(actor: { id: string; role: AppRole }, query: string, segm
 
   return {
     ...segmentWhere,
+    lifecycle: "CUSTOMER" as const,
     ...(normalizedQuery
       ? {
           OR: [
@@ -352,6 +354,72 @@ export async function getCustomersForExport({
     notes: item.notes ?? "",
     archivedAt: item.archivedAt,
   }));
+}
+
+export type ProspectSort = "opportunityNo" | "customer" | "city" | "createdAt";
+
+function prospectOrderBy(sort: ProspectSort, direction: SortDirection) {
+  return (
+    sort === "customer"
+      ? [{ customer: { name: direction } }, { id: "asc" as const }]
+      : sort === "city"
+        ? [{ customer: { city: { sort: direction, nulls: "last" } } }, { id: "asc" as const }]
+        : [{ [sort]: direction }, { id: "asc" as const }]
+  ) satisfies Prisma.OpportunityOrderByWithRelationInput[];
+}
+
+export async function getProspects({
+  query,
+  start,
+  end,
+  page,
+  pageSize,
+  sort,
+  direction,
+}: {
+  query: string;
+  start: Date | null;
+  end: Date | null;
+  page: number;
+  pageSize: number;
+  sort: ProspectSort;
+  direction: SortDirection;
+}) {
+  await requireActor(CRM_ROLES);
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    stage: { not: "DEAL" as const },
+    isRepeatOrder: false,
+    customer: {
+      archivedAt: null,
+      ...(normalizedQuery ? {
+        OR: [
+          { name: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { companyName: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { customerNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { whatsapp: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { city: { contains: normalizedQuery, mode: "insensitive" as const } },
+        ],
+      } : {}),
+    },
+    ...(start || end ? { createdAt: { ...(start ? { gte: start } : {}), ...(end ? { lt: end } : {}) } } : {}),
+  } satisfies Prisma.OpportunityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.opportunity.findMany({
+      where,
+      select: {
+        id: true, opportunityNo: true, stage: true, createdAt: true,
+        customer: { select: { name: true, companyName: true, whatsapp: true, email: true, instagram: true, city: true, address: true } },
+        salesPic: { select: { name: true } },
+      },
+      orderBy: prospectOrderBy(sort, direction),
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.opportunity.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export async function getCustomerPopupDetail(customerId: string) {
@@ -510,6 +578,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
         select: {
           id: true,
           customerNo: true,
+          poCustomerCode: true,
           name: true,
           companyName: true,
           whatsapp: true,
@@ -596,6 +665,20 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
     },
   });
 });
+
+export async function getPurchaseOrderNoPreview(customer: { id: string; name: string; poCustomerCode: string | null }) {
+  const prisma = getPrismaClient();
+  const base = customer.poCustomerCode ?? purchaseOrderCustomerCodeBase(customer.name);
+  let code = base;
+  for (let suffix = 0; ; suffix += 1) {
+    const used = await prisma.customer.findUnique({ where: { poCustomerCode: code }, select: { id: true } });
+    if (!used || used.id === customer.id) break;
+    code = `${base}${suffix + 1}`;
+  }
+  const prefix = formatPurchaseOrderNo(code, 0).slice(0, -1);
+  const ordinal = await prisma.purchaseOrder.count({ where: { opportunity: { customerId: customer.id }, purchaseOrderNo: { startsWith: prefix } } }) + 1;
+  return formatPurchaseOrderNo(code, ordinal);
+}
 
 export const COMMUNICATION_PAGE_SIZE = 25;
 

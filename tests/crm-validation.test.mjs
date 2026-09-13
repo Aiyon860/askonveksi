@@ -6,6 +6,7 @@ import {
   addCommunicationActivitySchema,
   bulkUpdateMasterDataSchema,
   createCustomerSchema,
+  createProspectCustomerSchema,
   createOpportunitySchema,
   createUserSchema,
   sortableMasterDataFieldsSchema,
@@ -55,6 +56,15 @@ import {
   REVERSE_DEAL_ROLES,
   hasRole,
 } from "../lib/auth/permissions.ts";
+import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "../lib/crm/numbers.ts";
+
+test("kode PO customer mengikuti nama dan format Jakarta", () => {
+  assert.equal(purchaseOrderCustomerCodeBase("Abyan"), "ABY");
+  assert.equal(purchaseOrderCustomerCodeBase("PT Abdul Khamid"), "ABK");
+  assert.equal(purchaseOrderCustomerCodeBase("Berkah Jaya Mandiri"), "BJM");
+  assert.equal(purchaseOrderCustomerCodeBase("Sumber Rejeki Makmur Abadi"), "SRM");
+  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z")), "PO-BJM130926-2");
+});
 
 test("opportunity hanya menerima field peluang yang masih digunakan", () => {
   const inlineCustomer = createOpportunitySchema.safeParse({
@@ -97,6 +107,13 @@ test("customer membutuhkan nama dan minimal satu kontak", () => {
 test("customer wajib memiliki jenis customer yang valid secara bentuk", () => {
   const withoutType = createCustomerSchema.safeParse({ name: "Budi", whatsapp: "08123456789" });
   assert.equal(withoutType.success, false);
+});
+
+test("prospek baru mewajibkan kota dan asal", () => {
+  const base = { name: "Budi", whatsapp: "08123456789", customerTypeId: "master-ct-personal", city: "Bandung", address: "Cimahi" };
+  assert.equal(createProspectCustomerSchema.safeParse(base).success, true);
+  assert.equal(createProspectCustomerSchema.safeParse({ ...base, city: "" }).success, false);
+  assert.equal(createProspectCustomerSchema.safeParse({ ...base, address: "" }).success, false);
 });
 
 test("master data membatasi nama, deskripsi, dan urutan", () => {

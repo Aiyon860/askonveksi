@@ -6,11 +6,6 @@ const optionalText = (max: number) =>
     z.string().trim().max(max).optional(),
   );
 
-const optionalMoney = (label: string) => optionalText(20).refine(
-  (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
-  `${label} tidak valid.`,
-);
-
 const requiredVersion = z.preprocess(
   (value) => Number(value),
   z.number().int().positive(),
@@ -45,6 +40,11 @@ export const customerFieldsSchema = z
   });
 
 export const createCustomerSchema = customerFieldsSchema;
+
+export const createProspectCustomerSchema = customerFieldsSchema.refine(
+  (value) => Boolean(value.city && value.address),
+  { message: "Kota dan asal wajib diisi." },
+);
 
 export const updateCustomerSchema = customerFieldsSchema.and(
   z.object({
@@ -230,7 +230,6 @@ export const purchaseOrderDraftSchema = z.object({
   opportunityId: entityIdSchema,
   purchaseOrderId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
-  customerReference: optionalText(120),
   garmentType: z.enum(["JERSEY", "NON_JERSEY"], { message: "Jenis pakaian wajib dipilih." }),
   productName: z.string().trim().min(2, "Nama produk atau pola wajib diisi.").max(120),
   material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),

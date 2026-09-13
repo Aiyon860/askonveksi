@@ -25,11 +25,11 @@ import {
   addCommunicationActivitySchema,
   archiveCustomerSchema,
   createCustomerSchema,
+  createProspectCustomerSchema,
   createOpportunitySchema,
   entityIdSchema,
   firstValidationMessage,
   moveOpportunitySchema,
-  opportunityFieldsSchema,
   invoiceDraftSchema,
   invoiceIdSchema,
   purchaseOrderDraftSchema,
@@ -54,7 +54,7 @@ type CrmActionState = { error: string | null; success: boolean };
 
 const DOCUMENT_DRAFT_TRANSACTION_OPTIONS = {
   maxWait: 20_000,
-  timeout: 10_000,
+  timeout: 60_000,
 } as const;
 const CUSTOMER_IMPORT_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -255,7 +255,6 @@ function purchaseOrderInput(formData: FormData) {
     opportunityId: formValue(formData, "opportunityId"),
     purchaseOrderId: formValue(formData, "purchaseOrderId") || undefined,
     version: formValue(formData, "version") || undefined,
-    customerReference: formValue(formData, "customerReference"),
     garmentType: formValue(formData, "garmentType"),
     productName: formValue(formData, "productName"),
     material: formValue(formData, "material"),
@@ -837,86 +836,105 @@ export async function createOpportunityAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath("/customers");
     revalidateCustomerReminders();
-    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Lead baru berhasil dibuat.");
+    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Prospek berhasil dibuat.");
   });
 }
 
-export async function createLeadAction(formData: FormData) {
+export async function createProspectAction(formData: FormData) {
   return runRedirectingAction("/crm", async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
-    const customerMode = formValue(formData, "customerMode");
-    if (customerMode !== "existing" && customerMode !== "new") throw new UserFacingError("Pilih jenis customer untuk lead.");
-    const opportunityParsed = opportunityFieldsSchema.safeParse(opportunityInput(formData));
-    if (!opportunityParsed.success) throw new UserFacingError(firstValidationMessage(opportunityParsed.error));
-    const scheduleError = validateOpenOpportunitySchedule(opportunityParsed.data);
-    if (scheduleError) throw new UserFacingError(scheduleError);
-    const customerIdParsed = entityIdSchema.safeParse(formValue(formData, "customerId"));
-    const customerParsed = customerMode === "new" ? createCustomerSchema.safeParse(customerFields(formData)) : null;
-    if (customerMode === "existing" && !customerIdParsed.success) throw new UserFacingError("Pilih customer tersimpan.");
-    if (customerParsed && !customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
+    const customerParsed = createProspectCustomerSchema.safeParse(customerFields(formData));
+    if (!customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
 
-    const opportunity = await getPrismaClient().$transaction(async (tx) => {
-      let customer: { id: string; leadSourceId: string | null; salesPicId: string | null };
-      if (customerMode === "new" && customerParsed?.success) {
-        const [customerType, customerLeadSource, customerSalesPic] = await Promise.all([
-          tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
-          customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
-          customerParsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: customerParsed.data.salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
-        ]);
-        if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
-        if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
-        if (customerParsed.data.salesPicId && !customerSalesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
-        customer = await tx.customer.create({
-          data: { ...customerParsed.data, email: customerParsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
-          select: { id: true, leadSourceId: true, salesPicId: true },
-        });
-        await audit(tx, actor, "Customer", customer.id, "CUSTOMER_CREATED", [
-          "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
-        ]);
-      } else {
-        customer = await tx.customer.findFirstOrThrow({
-          where: { id: customerIdParsed.success ? customerIdParsed.data : "", archivedAt: null },
-          select: { id: true, leadSourceId: true, salesPicId: true },
-        }).catch(() => { throw new UserFacingError("Customer aktif tidak ditemukan."); });
-      }
-
-      const leadSourceId = opportunityParsed.data.leadSourceId ?? customer.leadSourceId;
-      const salesPicId = opportunityParsed.data.salesPicId ?? customer.salesPicId;
-      const [leadSource, salesPic] = await Promise.all([
-        leadSourceId ? tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null,
-        salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
+    await getPrismaClient().$transaction(async (tx) => {
+      const salesPicId = actor.role === "ADMIN_CUSTOMER"
+        ? actor.id
+        : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id;
+      if (!salesPicId) throw new UserFacingError("Admin Customer aktif tidak ditemukan.");
+      const [customerType, customerLeadSource] = await Promise.all([
+        tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
+        customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
       ]);
+      if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
+      if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+      const customer = await tx.customer.create({
+        data: { ...customerParsed.data, salesPicId, lifecycle: "PROSPEK", email: customerParsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+        select: { id: true, name: true, leadSourceId: true },
+      });
+      await audit(tx, actor, "Customer", customer.id, "CUSTOMER_CREATED", [
+        "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId", "lifecycle",
+      ]);
+
+      const leadSourceId = customer.leadSourceId;
+      const leadSource = leadSourceId ? await tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null;
       if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
-      if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
 
       const created = await tx.opportunity.create({
         data: {
           opportunityNo: await nextOpportunityNo(tx),
           customerId: customer.id,
-          title: opportunityParsed.data.title,
+          title: `Prospek: ${customer.name}`,
           leadSourceId,
           salesPicId,
-          productName: opportunityParsed.data.productName,
-          garmentType: opportunityParsed.data.garmentType,
-          needPurpose: opportunityParsed.data.needPurpose,
-          specification: opportunityParsed.data.specification,
-          nextAction: opportunityParsed.data.nextAction,
-          nextActionAt: jakartaDateTime(opportunityParsed.data.nextActionAt),
         },
         select: { id: true },
       });
       await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-        "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose",
-        "specification", "nextAction", "nextActionAt", "stage",
+        "customerId", "title", "leadSourceId", "salesPicId", "stage",
       ], { stage: "LEAD_BARU" });
       return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/crm");
+    revalidatePath("/crm/prospek");
     revalidatePath("/customers");
     revalidatePath("/dashboard");
     revalidateCustomerReminders();
-    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Lead baru berhasil dibuat.");
+    return flashMessagePath("/crm/prospek", "notice", "Prospek berhasil dibuat.");
+  });
+}
+
+export async function createRepeatOrderAction(formData: FormData) {
+  return runRedirectingAction("/customers", async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const customerId = entityIdSchema.safeParse(formValue(formData, "customerId"));
+    if (!customerId.success) throw new UserFacingError("Pilih customer lama.");
+
+    const opportunity = await getPrismaClient().$transaction(async (tx) => {
+      const salesPicId = actor.role === "ADMIN_CUSTOMER"
+        ? actor.id
+        : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id;
+      if (!salesPicId) throw new UserFacingError("Admin Customer aktif tidak ditemukan.");
+      const customer = await tx.customer.findFirst({
+        where: { id: customerId.data, archivedAt: null, lifecycle: "CUSTOMER" },
+        select: { id: true, name: true, leadSourceId: true },
+      });
+      if (!customer) throw new UserFacingError("Customer aktif tidak ditemukan.");
+      if (customer.leadSourceId && !await tx.leadSource.findFirst({ where: { id: customer.leadSourceId, isActive: true }, select: { id: true } })) {
+        throw new UserFacingError("Sumber lead customer tidak aktif atau tidak ditemukan.");
+      }
+      const created = await tx.opportunity.create({
+        data: {
+          opportunityNo: await nextOpportunityNo(tx),
+          customerId: customer.id,
+          title: `Repeat Order: ${customer.name}`,
+          stage: "NEGOSIASI",
+          isRepeatOrder: true,
+          leadSourceId: customer.leadSourceId,
+          salesPicId,
+        },
+        select: { id: true },
+      });
+      await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", ["customerId", "title", "stage", "leadSourceId", "salesPicId"], { stage: "NEGOSIASI", repeatOrder: true });
+      return created;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/prospek");
+    revalidatePath("/customers");
+    revalidatePath(`/customers/${customerId.data}`);
+    revalidatePath("/dashboard");
+    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Repeat Order berhasil dibuat.");
   });
 }
 
@@ -1227,7 +1245,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
           where: { id: parsed.data.opportunityId },
           select: {
             stage: true,
-            customer: { select: { archivedAt: true } },
+            customer: { select: { id: true, name: true, poCustomerCode: true, archivedAt: true } },
             purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
             _count: { select: { purchaseOrders: true } },
           },
@@ -1240,10 +1258,9 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
-            purchaseOrderNo: await nextPurchaseOrderNo(tx),
+            purchaseOrderNo: await nextPurchaseOrderNo(tx, opportunity.customer),
             opportunityId: parsed.data.opportunityId,
             revision: 1,
-            customerReference: parsed.data.customerReference,
             garmentType: parsed.data.garmentType,
             productName: parsed.data.productName,
             material: parsed.data.material,
@@ -1298,7 +1315,6 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
         const updated = await tx.purchaseOrder.updateMany({
           where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { purchaseOrders: { none: { status: "AGREED" } }, invoices: { none: { status: "ISSUED" } } } },
           data: {
-            customerReference: parsed.data.customerReference,
             garmentType: parsed.data.garmentType,
             productName: parsed.data.productName,
             material: parsed.data.material,
@@ -1441,6 +1457,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             opportunity: {
               select: {
                 stage: true,
+                customer: { select: { id: true, name: true, poCustomerCode: true } },
                 invoices: { where: { status: { in: ["DRAFT", "ISSUED"] } }, select: { id: true, status: true } },
                 purchaseOrders: { where: { status: "AGREED" }, select: { id: true }, take: 1 },
               },
@@ -1461,10 +1478,9 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
-            purchaseOrderNo: await nextPurchaseOrderNo(tx),
+            purchaseOrderNo: await nextPurchaseOrderNo(tx, source.opportunity.customer),
             opportunityId: source.opportunityId,
             revision: source.revision + 1,
-            customerReference: parsed.data.customerReference,
             garmentType: parsed.data.garmentType,
             productName: parsed.data.productName,
             material: parsed.data.material,
@@ -1597,20 +1613,22 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
     }
     timer.mark("parse");
     const invoiceId = parsed.data.invoiceId;
+    const prisma = getPrismaClient();
+    const purchaseOrder = await prisma.purchaseOrder.findFirst({
+      where: { id: parsed.data.purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "AGREED" },
+      select: {
+        productName: true,
+        sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+      },
+    });
+    if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
+    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.taxRate);
+    timer.mark("calculate");
 
-    await getPrismaClient().$transaction(
+    await prisma.$transaction(
       async (tx) => {
-        const purchaseOrder = await tx.purchaseOrder.findFirst({
-          where: { id: parsed.data.purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "AGREED" },
-          select: {
-            productName: true,
-            sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          },
-        });
-        if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.taxRate);
         const updated = await tx.invoice.updateMany({
-          where: { id: invoiceId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { invoices: { none: { status: "ISSUED" } } } },
+          where: { id: invoiceId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, purchaseOrder: { is: { id: parsed.data.purchaseOrderId, status: "AGREED" } }, opportunity: { invoices: { none: { status: "ISSUED" } } } },
           data: {
             purchaseOrderId: parsed.data.purchaseOrderId,
             discountType: "NONE",
@@ -1909,6 +1927,7 @@ function crmActionFailure(error: unknown): CrmActionState {
 function revalidatePaymentMutationPaths(salesOrderId?: string) {
   if (salesOrderId) revalidatePath(`/sales-orders/${salesOrderId}`);
   revalidatePath("/crm");
+  revalidatePath("/crm/prospek");
   revalidatePath("/dashboard");
   revalidatePath("/keuangan");
   revalidatePath("/produksi");
@@ -1969,6 +1988,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
           select: {
             stage: true,
             customerId: true,
+            customer: { select: { lifecycle: true } },
             purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
             invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
           },
@@ -1996,6 +2016,9 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
       data: { stage: "DEAL", nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } },
     });
     if (opportunityUpdated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
+    if (invoice.opportunity.customer.lifecycle === "PROSPEK") {
+      await tx.customer.update({ where: { id: invoice.opportunity.customerId }, data: { lifecycle: "CUSTOMER" } });
+    }
 
     const created = await tx.salesOrder.create({
       data: {

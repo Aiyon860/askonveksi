@@ -28,7 +28,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
-import { getCommunicationTimeline, getOpportunityDetail } from "@/lib/crm/data";
+import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodLabel, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
 import { getActiveGarmentSizes, getCustomerFormOptions } from "@/lib/master-data";
@@ -108,6 +108,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
     getActiveGarmentSizes(),
   ]);
   if (!opportunity || !actor) notFound();
+  const purchaseOrderNoPreview = await getPurchaseOrderNoPreview(opportunity.customer);
   if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?tab=aktivitas&historyPage=${communicationHistory.pageCount}#communication-history`);
 
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
@@ -215,7 +216,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     inNegotiation={inNegotiation}
                     sizeOptions={sizeOptions}
                     draftValues={{
-                      customerReference: purchaseOrder.customerReference ?? "",
+                      purchaseOrderNo: purchaseOrder.purchaseOrderNo,
                       garmentType: purchaseOrder.garmentType,
                       productName: purchaseOrder.productName,
                       material: purchaseOrder.material,
@@ -231,12 +232,13 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       sizes: purchaseOrder.sizes,
                       roster: purchaseOrder.rosterEntries,
                     }}
+                    purchaseOrderNoPreview={purchaseOrderNoPreview}
                   >
                     <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
                   </PurchaseOrderWorkflowSection>
                 </section>
               ))}
-              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} /> : null}
+              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} purchaseOrderNoPreview={purchaseOrderNoPreview} /> : null}
             </div>
           )}
         </CardContent>
@@ -439,7 +441,6 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
     <div className="flex flex-col gap-4">
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
         <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1">{PURCHASE_ORDER_STATUS_LABEL[purchaseOrder.status]}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Referensi customer</dt><dd className="mt-1">{purchaseOrder.customerReference ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Jenis pakaian</dt><dd className="mt-1">{purchaseOrder.garmentType === "JERSEY" ? "Jersey" : purchaseOrder.garmentType === "NON_JERSEY" ? "Non-jersey" : "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Produk atau pola</dt><dd className="mt-1">{purchaseOrder.productName}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Bahan</dt><dd className="mt-1">{purchaseOrder.material}</dd></div>
