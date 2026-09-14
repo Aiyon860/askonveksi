@@ -13,7 +13,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
-import { createUserAction } from "@/app/actions/users";
+import { createUserAction, resetTestingDataAction } from "@/app/actions/users";
 import { UsersTableBody } from "@/components/admin/users-table-body";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
@@ -55,7 +55,7 @@ import {
 } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
-const USER_ROLES = ["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
+const USER_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
 const USER_STATUSES = ["all", "active", "inactive"] as const satisfies readonly UserStatusFilter[];
 const USER_SORTS = ["createdAt", "email", "isActive", "name", "role"] as const satisfies readonly UserSort[];
 const SORT_DIRECTIONS = ["asc", "desc"] as const satisfies readonly SortDirection[];
@@ -388,7 +388,17 @@ function NewUserCard() {
   );
 }
 
-export default function UsersPage({ searchParams }: { searchParams: UserSearchParams }) {
+function DeveloperResetCard() {
+  return (
+    <Card className="border-destructive/30">
+      <CardHeader><CardTitle>Reset data uji</CardTitle><CardDescription>Hapus data operasional untuk pengujian. Customer, akun, dan data master tetap aman.</CardDescription></CardHeader>
+      <CardContent><form action={resetTestingDataAction}><FieldGroup><Field><FieldLabel htmlFor="reset-confirmation" required>Konfirmasi</FieldLabel><Input id="reset-confirmation" name="confirmation" required placeholder="RESET DATA UJI" autoComplete="off" /></Field><ConfirmSubmitButton variant="destructive" pendingLabel="Mereset..." confirmTitle="Reset semua data uji?" confirmDescription="Peluang, dokumen, produksi, aktivitas, dan data WhatsApp akan dihapus. Customer tidak dihapus." confirmLabel="Ya, reset data">Reset data uji</ConfirmSubmitButton></FieldGroup></form></CardContent>
+    </Card>
+  );
+}
+
+export default async function UsersPage({ searchParams }: { searchParams: UserSearchParams }) {
+  const actor = await getCurrentActor();
   return (
     <>
       <PageHeader
@@ -401,7 +411,7 @@ export default function UsersPage({ searchParams }: { searchParams: UserSearchPa
         <Suspense fallback={<UsersTableFallback />}>
           <UsersTableSection searchParams={searchParams} />
         </Suspense>
-        <NewUserCard />
+        <div className="flex flex-col gap-6"><NewUserCard />{actor?.role === "DEVELOPER" ? <DeveloperResetCard /> : null}</div>
       </div>
     </>
   );

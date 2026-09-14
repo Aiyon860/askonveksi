@@ -10,21 +10,22 @@ export type InvoicePricingInput = {
   description: string;
   quantity: number;
   unitPrice: string;
-  discountPercent: string;
 };
 
-export function calculateInvoiceLines(items: InvoicePricingInput[], taxRate: string) {
-  const orderTaxRate = new Prisma.Decimal(taxRate);
-  if (orderTaxRate.gt(100)) throw new UserFacingError("Pajak maksimal 100%.");
+export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercent: string, discountPercent: string) {
+  const orderProfitPercent = new Prisma.Decimal(profitPercent);
+  if (orderProfitPercent.gt(100)) throw new UserFacingError("Keuntungan maksimal 100%.");
+  const orderDiscountPercent = new Prisma.Decimal(discountPercent);
+  if (orderDiscountPercent.gt(100)) throw new UserFacingError("Diskon maksimal 100%.");
 
   const calculatedItems = items.map((item, position) => {
     const unitPrice = new Prisma.Decimal(item.unitPrice);
-    const discountPercent = new Prisma.Decimal(item.discountPercent);
-    if (discountPercent.gt(100)) throw new UserFacingError("Diskon per item maksimal 100%.");
 
     const grossAmount = unitPrice.mul(item.quantity).toDecimalPlaces(2);
-    const discountAmount = grossAmount.mul(discountPercent).div(100).toDecimalPlaces(2);
-    const taxableAmount = grossAmount.sub(discountAmount);
+    const profitAmount = grossAmount.mul(orderProfitPercent).div(100).toDecimalPlaces(2);
+    const amountBeforeDiscount = grossAmount.add(profitAmount);
+    const discountAmount = amountBeforeDiscount.mul(orderDiscountPercent).div(100).toDecimalPlaces(2);
+    const total = amountBeforeDiscount.sub(discountAmount);
 
     return {
       position,
@@ -35,13 +36,13 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], taxRate: str
       quantity: item.quantity,
       unitPrice,
       grossAmount,
-      discountPercent,
+      discountPercent: orderDiscountPercent,
       discountCapAmount: null,
       discountAmount,
-      taxRate: orderTaxRate,
-      taxAmount: new Prisma.Decimal(0),
-      total: taxableAmount,
-      subtotal: taxableAmount,
+      profitPercent: orderProfitPercent,
+      profitAmount,
+      total,
+      subtotal: total,
       purchaseOrderSizeId: item.purchaseOrderSizeId,
     };
   });
@@ -50,28 +51,23 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], taxRate: str
     (acc, item) => ({
       subtotal: acc.subtotal.add(item.grossAmount),
       totalDiscount: acc.totalDiscount.add(item.discountAmount),
-      taxableAmount: acc.taxableAmount.add(item.total),
+      totalProfit: acc.totalProfit.add(item.profitAmount),
+      total: acc.total.add(item.total),
     }),
     {
       subtotal: new Prisma.Decimal(0),
       totalDiscount: new Prisma.Decimal(0),
-      taxableAmount: new Prisma.Decimal(0),
+      totalProfit: new Prisma.Decimal(0),
+      total: new Prisma.Decimal(0),
     },
   );
 
-  const totalTax = summary.taxableAmount.mul(orderTaxRate).div(100).toDecimalPlaces(2);
-  const total = summary.taxableAmount.add(totalTax).toDecimalPlaces(2);
-
   return {
-    // DB CHECK InvoiceItem_charges_valid requires item subtotal = total (line total incl. tax).
-    items: calculatedItems.map((item) => {
-      const taxAmount = item.total.mul(orderTaxRate).div(100).toDecimalPlaces(2);
-      const total = item.total.add(item.total.mul(orderTaxRate).div(100)).toDecimalPlaces(2);
-      return { ...item, taxAmount, total, subtotal: total };
-    }),
+    items: calculatedItems,
     subtotal: summary.subtotal,
     totalDiscount: summary.totalDiscount,
-    totalTax,
-    total,
+    totalProfit: summary.totalProfit,
+    discountPercent: orderDiscountPercent,
+    total: summary.total,
   };
 }

@@ -313,6 +313,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
 test("owner menjadi role tertinggi pada permission aplikasi", () => {
   for (const roles of [CRM_OPERATOR_ROLES, DEAL_ROLES, ARCHIVE_ROLES, REVERSE_DEAL_ROLES]) {
     assert.equal(hasRole("OWNER", roles), true);
+    assert.equal(hasRole("DEVELOPER", roles), true);
   }
   assert.equal(hasRole("OWNER", ["ADMIN_CUSTOMER"]), true);
   assert.equal(hasRole("ADMIN_CUSTOMER", DEAL_ROLES), true);
@@ -346,14 +347,12 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
     purchaseOrderId: "cm123456789013",
     invoiceId: "cm123456789014",
     invoiceVersion: "1",
-    initialDueAt: "2026-09-03",
-    initialValueType: "NOMINAL",
-    initialValue: "500000",
+    initialValue: "50",
   };
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
-  assert.equal(completeDealSchema.safeParse({ ...base, initialDueAt: "" }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
+  assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", initialValue: "100", terms: [] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);
 });
 

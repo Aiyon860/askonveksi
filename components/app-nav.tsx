@@ -16,7 +16,9 @@ const mainItems = [
 ] as const;
 
 const financeItems = [
-  { href: "/keuangan", label: "Keuangan", icon: CircleDollarSign },
+  { href: "/keuangan/pemasukan", label: "Pemasukan", icon: Receipt },
+  { href: "/keuangan/pengeluaran", label: "Pengeluaran", icon: CircleDollarSign },
+  { href: "/keuangan/laporan", label: "Laporan", icon: FileText },
 ] as const;
 
 const crmItems = [
@@ -96,6 +98,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
   const [followUpCount, setFollowUpCount] = useState(0);
   const [whatsAppCount, setWhatsAppCount] = useState(0);
 
@@ -109,20 +112,33 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       .catch(() => {});
   }, []);
 
-  const canManageMasterData = role === "OWNER";
-  const canViewAnalytics = role === "OWNER";
-  const canViewCrm = role === "OWNER" || role === "ADMIN_CUSTOMER";
-  const canViewProduction = role === "OWNER" || role === "ADMIN_PRODUCTION";
-  const canViewFinance = role === "OWNER";
-  const canViewDesign = role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
+  const isDeveloper = role === "DEVELOPER";
+  const canManageMasterData = isDeveloper || role === "OWNER";
+  const canViewAnalytics = isDeveloper || role === "OWNER";
+  const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
+  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
+  const canViewFinance = true;
+  const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
   const masterDataActive = (isPathWithin(pathname, "/master-data") && pathname !== "/master-data/whatsapp/templates") || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
+  const financeActive = isPathWithin(pathname, "/keuangan");
 
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewCrm ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
-      {canViewFinance ? financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
+      {canViewFinance ? (
+        <Collapsible open={financeActive || financeOpen} onOpenChange={setFinanceOpen} className="group/collapsible flex flex-col gap-1">
+          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+            <CircleDollarSign aria-hidden="true" className="size-4" />
+            <span>Keuangan</span>
+            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-1">
+            {financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
       {canViewCrm ? (
         <Collapsible open={crmActive || crmOpen} onOpenChange={setCrmOpen} className="group/collapsible flex flex-col gap-1">
           <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -168,7 +184,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           </CollapsibleTrigger>
           <CollapsibleContent className="flex flex-col gap-1">
             {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
-            {role === "OWNER" ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />) : null}
+            {canManageMasterData ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />) : null}
           </CollapsibleContent>
         </Collapsible>
       ) : null}

@@ -23,7 +23,6 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   total: string;
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
-  const [initialValueType, setInitialValueType] = useState<"NOMINAL" | "PERCENTAGE">("NOMINAL");
   const [initialValue, setInitialValue] = useState("");
   const [terms, setTerms] = useState<Term[]>([{ key: "term-0", valueType: "NOMINAL", value: "" }]);
   const totalAmount = Number(total);
@@ -32,11 +31,12 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
     if (!Number.isFinite(amount) || amount < 0) return 0;
     return valueType === "PERCENTAGE" ? Math.round(totalAmount * amount) / 100 : amount;
   };
-  const initialAmount = amountFor(initialValueType, initialValue);
+  const isLunas = kind === "LUNAS" || Number(initialValue) === 100;
+  const initialAmount = amountFor("PERCENTAGE", isLunas ? "100" : initialValue);
   const outstandingAmount = totalAmount - initialAmount;
   const scheduledTermAmount = terms.reduce((sum, term) => sum + amountFor(term.valueType, term.value), 0);
   const scheduleDifference = outstandingAmount - scheduledTermAmount;
-  const scheduleReady = kind === "LUNAS" || Math.abs(scheduleDifference) < 0.005;
+  const scheduleReady = isLunas || Math.abs(scheduleDifference) < 0.005;
 
   return (
     <form action={completeDealAction}>
@@ -51,7 +51,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
           <p className="text-xs text-muted-foreground">Total invoice</p>
           <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(total)}</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4">
           <Field>
             <FieldLabel htmlFor={`payment-kind-${invoiceId}`} required>Jenis pembayaran</FieldLabel>
             <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} className="w-full">
@@ -59,31 +59,25 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
               <NativeSelectOption value="DP">DP</NativeSelectOption>
             </NativeSelect>
           </Field>
-          <Field><FieldLabel htmlFor={`payment-deadline-${invoiceId}`} required>{kind === "DP" ? "Deadline DP" : "Deadline Lunas"}</FieldLabel><Input id={`payment-deadline-${invoiceId}`} name="initialDueAt" type="date" required /></Field>
         </div>
 
-        {kind === "LUNAS" ? (
+        {isLunas ? (
           <>
-            <input type="hidden" name="initialValueType" value="NOMINAL" />
-            <input type="hidden" name="initialValue" value={total} />
-            <FieldDescription>Seluruh total invoice dicatat sebagai pembayaran awal.</FieldDescription>
+            <input type="hidden" name="initialValueType" value="PERCENTAGE" />
+            <input type="hidden" name="initialValue" value="100" />
+            <FieldDescription>Deadline pembayaran awal otomatis 7 hari setelah invoice diterbitkan. Seluruh total invoice dicatat sebagai pembayaran awal.</FieldDescription>
           </>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <input type="hidden" name="initialValueType" value="PERCENTAGE" />
+            <div className="grid gap-4">
               <Field>
-                <FieldLabel htmlFor={`initial-type-${invoiceId}`} required>Format DP</FieldLabel>
-                <NativeSelect id={`initial-type-${invoiceId}`} name="initialValueType" required value={initialValueType} onChange={(event) => setInitialValueType(event.target.value as typeof initialValueType)} className="w-full">
-                  <NativeSelectOption value="NOMINAL">Nominal</NativeSelectOption>
-                  <NativeSelectOption value="PERCENTAGE">Persentase</NativeSelectOption>
-                </NativeSelect>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor={`initial-value-${invoiceId}`} required>Nilai DP</FieldLabel>
-                <Input id={`initial-value-${invoiceId}`} name="initialValue" type="number" required min="0.01" max={initialValueType === "PERCENTAGE" ? 100 : undefined} step="0.01" value={initialValue} onChange={(event) => setInitialValue(event.target.value)} />
+                <FieldLabel htmlFor={`initial-value-${invoiceId}`} required>DP (%)</FieldLabel>
+                <Input id={`initial-value-${invoiceId}`} name="initialValue" type="number" required min="50" max="100" step="0.01" value={initialValue} onChange={(event) => setInitialValue(event.target.value)} />
               </Field>
             </div>
 
+            <FieldDescription>Deadline DP otomatis 7 hari setelah invoice diterbitkan. DP minimal 50%; nilai 100% diproses sebagai Lunas.</FieldDescription>
             {initialAmount > 0 && initialAmount < totalAmount ? <p className="text-sm text-muted-foreground">Sisa setelah DP: <span className="font-mono text-foreground">{formatCurrency(outstandingAmount)}</span></p> : null}
 
             <div className="flex items-center justify-between gap-4">

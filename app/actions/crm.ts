@@ -132,6 +132,12 @@ function jakartaDateTime(value?: string) {
   return date;
 }
 
+function addJakartaDays(date: Date, days: number) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value);
+  return new Date(Date.UTC(value("year"), value("month") - 1, value("day") + days));
+}
+
 
 async function audit(
   tx: Tx,
@@ -219,7 +225,6 @@ function invoiceInput(formData: FormData) {
   const descriptions = formData.getAll("itemDescription");
   const quantities = formData.getAll("itemQuantity");
   const unitPrices = formData.getAll("itemUnitPrice");
-  const discountPercents = formData.getAll("itemDiscountPercent");
   const length = Math.max(purchaseOrderSizeIds.length, sizes.length, unitPrices.length);
   const items = Array.from({ length }, (_, index) => ({
     purchaseOrderSizeId: purchaseOrderSizeIds[index],
@@ -229,7 +234,6 @@ function invoiceInput(formData: FormData) {
     description: descriptions[index],
     quantity: quantities[index],
     unitPrice: unitPrices[index],
-    discountPercent: discountPercents[index] || "0",
   }));
 
   return {
@@ -238,7 +242,8 @@ function invoiceInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId") || undefined,
     version: formValue(formData, "version") || undefined,
     dueAt: formValue(formData, "dueAt"),
-    taxRate: formValue(formData, "taxRate"),
+    profitPercent: formValue(formData, "profitPercent"),
+    discountPercent: formValue(formData, "discountPercent"),
     notes: formValue(formData, "notes"),
     items,
   };
@@ -291,8 +296,6 @@ function completeDealInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId"),
     invoiceVersion: formValue(formData, "invoiceVersion"),
     kind: formValue(formData, "kind"),
-    initialDueAt: formValue(formData, "initialDueAt"),
-    initialValueType: formValue(formData, "initialValueType"),
     initialValue: formValue(formData, "initialValue"),
     terms: Array.from({ length: Math.max(valueTypes.length, values.length, dueDates.length) }, (_, index) => ({
       valueType: valueTypes[index],
@@ -410,7 +413,8 @@ function calculateInvoiceForPurchaseOrder(
     sizes: Array<{ id: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
   submittedItems: InvoicePricingInput[],
-  taxRate: string,
+  profitPercent: string,
+  discountPercent: string,
 ) {
   const submittedById = new Map(submittedItems.map((item) => [String(item.purchaseOrderSizeId), item]));
   if (submittedById.size !== purchaseOrder.sizes.length || submittedItems.length !== purchaseOrder.sizes.length) {
@@ -427,9 +431,8 @@ function calculateInvoiceForPurchaseOrder(
       description: `${purchaseOrder.productName} ${poRow.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poRow.size}`,
       quantity: poRow.quantity,
       unitPrice: String(submitted.unitPrice),
-      discountPercent: String(submitted.discountPercent),
     };
-  }), taxRate);
+  }), profitPercent, discountPercent);
   return {
     ...calculated,
     items: calculated.items.map(({ purchaseOrderSizeId, ...item }) => ({
@@ -1552,7 +1555,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           },
         });
         if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.taxRate);
+        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
         const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
         const aggregate = await tx.invoice.aggregate({ where: { opportunityId: opportunity.id }, _max: { revision: true } });
@@ -1573,11 +1576,11 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
             snapshotBusinessEmail: business?.email,
             snapshotBusinessAddress: business?.address,
             snapshotBusinessLogoPath: business?.logoPath,
-            discountType: "NONE",
-            discountValue: 0,
+            discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
+            discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalTax: calculated.totalTax,
+            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1587,7 +1590,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_DRAFT_CREATED", [
-          "purchaseOrderId", "items", "subtotal", "totalDiscount", "totalTax", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
         ], { opportunityId: opportunity.id });
         return created;
       },
@@ -1622,7 +1625,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
       },
     });
     if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.taxRate);
+    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
     timer.mark("calculate");
 
     await prisma.$transaction(
@@ -1631,11 +1634,11 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
           where: { id: invoiceId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, purchaseOrder: { is: { id: parsed.data.purchaseOrderId, status: "AGREED" } }, opportunity: { invoices: { none: { status: "ISSUED" } } } },
           data: {
             purchaseOrderId: parsed.data.purchaseOrderId,
-            discountType: "NONE",
-            discountValue: 0,
+            discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
+            discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalTax: calculated.totalTax,
+            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1648,7 +1651,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
           data: calculated.items.map((item) => ({ ...item, invoiceId })),
         });
         await audit(tx, actor, "Invoice", invoiceId, "INVOICE_DRAFT_UPDATED", [
-          "purchaseOrderId", "items", "subtotal", "totalDiscount", "totalTax", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
         ]);
       },
       DOCUMENT_DRAFT_TRANSACTION_OPTIONS,
@@ -1730,7 +1733,7 @@ export async function issueInvoiceAction(formData: FormData) {
         },
         sourceAuditEventId: auditEvent.id,
       });
-      await enqueueIssuedInvoiceWhatsAppJob(tx, parsed.data.invoiceId);
+      if (actor.role !== "DEVELOPER") await enqueueIssuedInvoiceWhatsAppJob(tx, parsed.data.invoiceId);
       return { opportunityId: invoice.opportunityId, customerId: invoice.opportunity.customerId };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
@@ -1775,7 +1778,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             discountValue: true,
             subtotal: true,
             totalDiscount: true,
-            totalTax: true,
+            totalProfit: true,
             total: true,
             dueAt: true,
             notes: true,
@@ -1807,7 +1810,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           throw new UserFacingError("Revisi invoice hanya dapat dibuat dari PO aktif saat Negosiasi.");
         }
         if (source.opportunity.purchaseOrders.length) throw new UserFacingError("Sepakati atau selesaikan draft PO sebelum merevisi invoice.");
-        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.taxRate);
+        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
         const locked = await tx.invoice.updateMany({
           where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
@@ -1830,11 +1833,11 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             snapshotBusinessEmail: source.snapshotBusinessEmail,
             snapshotBusinessAddress: source.snapshotBusinessAddress,
             snapshotBusinessLogoPath: source.snapshotBusinessLogoPath,
-            discountType: "NONE",
-            discountValue: 0,
+            discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
+            discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalTax: calculated.totalTax,
+            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1844,7 +1847,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_REVISION_CREATED", [
-          "revision", "purchaseOrderId", "items", "subtotal", "totalDiscount", "totalTax", "total", "dueAt", "notes",
+          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
         ], { sourceInvoiceId: source.id });
         return source.opportunityId;
       },
@@ -1864,13 +1867,11 @@ export async function completeDealAction(formData: FormData) {
     const actor = await requireActor(DEAL_ROLES);
     const parsed = completeDealSchema.safeParse(completeDealInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-    const initialDueAt = optionalDate(parsed.data.initialDueAt);
-    if (!initialDueAt) throw new UserFacingError("Deadline pembayaran awal wajib diisi.");
     const invoice = await runDealTransaction(async (tx) => {
       const invoice = await tx.invoice.findUnique({
         where: { id: parsed.data.invoiceId },
         select: {
-          id: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true,
+          id: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true,
           salesOrder: { select: { id: true } }, pendingPayment: { select: { id: true } },
           purchaseOrder: { select: { status: true, garmentType: true, deadline: true } },
           opportunity: { select: { stage: true, version: true, purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 }, invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 } } },
@@ -1881,16 +1882,25 @@ export async function completeDealAction(formData: FormData) {
       if (invoice.opportunity.stage !== "NEGOSIASI" || invoice.opportunity.purchaseOrders.length || invoice.opportunity.invoices.length) throw new UserFacingError("Peluang belum siap untuk dijadwalkan.");
       if (invoice.opportunity.version !== parsed.data.opportunityVersion || invoice.version !== parsed.data.invoiceVersion) throw new UserFacingError("Peluang atau invoice sudah berubah. Muat ulang halaman.");
       if (invoice.salesOrder || invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran invoice ini sudah tersedia.");
+      if (!invoice.issuedAt) throw new UserFacingError("Tanggal terbit invoice tidak tersedia.");
+
+      const requestedInitialPercent = new Prisma.Decimal(parsed.data.initialValue);
+      if (parsed.data.kind === "DP" && requestedInitialPercent.lt(50)) throw new UserFacingError("DP minimal 50%.");
+      if (requestedInitialPercent.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
+      const kind = parsed.data.kind === "LUNAS" || requestedInitialPercent.eq(100) ? "LUNAS" as const : "DP" as const;
+      if (kind === "DP" && parsed.data.terms.length === 0) throw new UserFacingError("DP wajib memiliki minimal satu termin.");
+      if (kind === "LUNAS" && parsed.data.terms.length) throw new UserFacingError("Pembayaran Lunas tidak memakai termin.");
+      const initialDueAt = addJakartaDays(invoice.issuedAt, 7);
 
       const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
         const decimal = new Prisma.Decimal(value);
         if (valueType === "PERCENTAGE" && decimal.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
         return valueType === "PERCENTAGE" ? invoice.total.mul(decimal).div(100).toDecimalPlaces(2) : decimal;
       };
-      const initialValueType = parsed.data.kind === "LUNAS" ? "NOMINAL" as const : parsed.data.initialValueType;
-      const initialValue = parsed.data.kind === "LUNAS" ? invoice.total : new Prisma.Decimal(parsed.data.initialValue);
-      const initialAmount = parsed.data.kind === "LUNAS" ? invoice.total : amountFor(parsed.data.initialValueType, parsed.data.initialValue);
-      if (initialAmount.lte(0) || initialAmount.gt(invoice.total) || (parsed.data.kind === "DP" && initialAmount.eq(invoice.total))) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
+      const initialValueType = "PERCENTAGE" as const;
+      const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitialPercent;
+      const initialAmount = amountFor("PERCENTAGE", initialValue.toString());
+      if (initialAmount.lte(0) || initialAmount.gt(invoice.total)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
 
       let previousDueAt: Date | null = initialDueAt;
       const terms = parsed.data.terms.map((term, position) => {
@@ -1904,8 +1914,8 @@ export async function completeDealAction(formData: FormData) {
       const termTotal = terms.reduce((sum, term) => sum.add(term.amount), new Prisma.Decimal(0));
       if (!termTotal.eq(outstandingAmount)) throw new UserFacingError("Total seluruh termin harus sama dengan sisa setelah pembayaran awal.");
 
-      await tx.pendingDealPayment.create({ data: { invoiceId: invoice.id, kind: parsed.data.kind, initialValueType, initialValue, initialAmount, initialDueAt, createdById: actor.id, terms: { create: terms } } });
-      await audit(tx, actor, "Invoice", invoice.id, "PAYMENT_SCHEDULED", ["paymentSchedule"], { kind: parsed.data.kind, initialDueAt, terms: terms.length });
+      await tx.pendingDealPayment.create({ data: { invoiceId: invoice.id, kind, initialValueType, initialValue, initialAmount, initialDueAt, createdById: actor.id, terms: { create: terms } } });
+      await audit(tx, actor, "Invoice", invoice.id, "PAYMENT_SCHEDULED", ["paymentSchedule"], { kind, initialDueAt, terms: terms.length });
       return invoice;
     });
 
@@ -1970,7 +1980,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
           select: {
             position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
             unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
-            discountAmount: true, taxRate: true, taxAmount: true, total: true, subtotal: true,
+            discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
           },
           orderBy: { position: "asc" },
         },

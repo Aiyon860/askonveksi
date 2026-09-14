@@ -52,7 +52,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       discountValue: true,
       subtotal: true,
       totalDiscount: true,
-      totalTax: true,
+      totalProfit: true,
       total: true,
       createdAt: true,
       issuedAt: true,
@@ -62,7 +62,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       items: {
         select: {
           productName: true, size: true, description: true, quantity: true, unitPrice: true, grossAmount: true,
-          discountPercent: true, discountAmount: true, taxRate: true, taxAmount: true, total: true, subtotal: true,
+          discountPercent: true, discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
         },
         orderBy: { position: "asc" },
       },

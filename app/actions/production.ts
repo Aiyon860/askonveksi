@@ -64,7 +64,7 @@ async function moveProduction(formData: FormData) {
 
     const currentStep = order.steps.find((step) => step.stage === order.currentStage && step.status === "ACTIVE");
     if (!currentStep) throw new UserFacingError("Tahap aktif tidak valid. Muat ulang halaman.");
-    const manager = actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+    const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
     if (!isStageRole(actor.role)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
     if (!manager && currentStep.assigneeId !== actor.id) throw new UserFacingError("Ambil penugasan PIC tahap ini sebelum memperbarui progres.");
 
@@ -171,7 +171,7 @@ export async function assignProductionStepAction(formData: FormData) {
         select: { id: true, stage: true, assigneeId: true, workOrder: { select: { status: true } } },
       });
       if (!step || step.workOrder.status !== "ACTIVE") throw new UserFacingError("Tahap produksi tidak aktif atau tidak ditemukan.");
-      const manager = actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+      const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
       if (!manager && (parsed.data.assigneeId !== actor.id || step.assigneeId)) throw new UserFacingError("Anda hanya dapat mengambil tahap yang belum memiliki PIC.");
 
       const assignee = await tx.appUser.findFirst({ where: { id: parsed.data.assigneeId, isActive: true }, select: { id: true, role: true, name: true } });

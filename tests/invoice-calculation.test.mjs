@@ -7,16 +7,16 @@ import { calculateInvoiceLines } from "../lib/crm/invoice-calculation.ts";
 
 const D = (value) => new Prisma.Decimal(value);
 
-function checkItem(item, { quantity, unitPrice, discountPercent, taxRate }) {
+function checkItem(item, { quantity, unitPrice, discountPercent, profitPercent }) {
   const gross = D(unitPrice).mul(quantity).toDecimalPlaces(2);
-  const discountAmount = gross.mul(D(discountPercent)).div(100).toDecimalPlaces(2);
-  const taxable = gross.sub(discountAmount);
-  const taxAmount = taxable.mul(D(taxRate)).div(100).toDecimalPlaces(2);
-  const total = taxable.add(taxAmount).toDecimalPlaces(2);
+  const profitAmount = gross.mul(D(profitPercent)).div(100).toDecimalPlaces(2);
+  const beforeDiscount = gross.add(profitAmount);
+  const discountAmount = beforeDiscount.mul(D(discountPercent)).div(100).toDecimalPlaces(2);
+  const total = beforeDiscount.sub(discountAmount).toDecimalPlaces(2);
   assert.equal(item.grossAmount.toString(), gross.toString(), "grossAmount = ROUND(qty * price, 2)");
   assert.equal(item.discountAmount.toString(), discountAmount.toString(), "discountAmount matches CHECK formula");
-  assert.equal(item.taxAmount.toString(), taxAmount.toString(), "taxAmount matches CHECK formula");
-  assert.equal(item.total.toString(), total.toString(), "total = gross - discount + tax");
+  assert.equal(item.profitAmount.toString(), profitAmount.toString(), "profitAmount matches CHECK formula");
+  assert.equal(item.total.toString(), total.toString(), "total = (gross + profit) - discount");
   assert.equal(item.subtotal.toString(), total.toString(), "subtotal = total (InvoiceItem_charges_valid)");
   assert.equal(
     item.subtotal.gte(0) && item.quantity > 0,
@@ -25,7 +25,7 @@ function checkItem(item, { quantity, unitPrice, discountPercent, taxRate }) {
   );
 }
 
-function runCase(items, taxRate) {
+function runCase(items, profitPercent, discountPercent = "0") {
   return calculateInvoiceLines(
     items.map((item, index) => ({
       purchaseOrderSizeId: `po-size-${index}`,
@@ -35,54 +35,55 @@ function runCase(items, taxRate) {
       description: `PDL lengan pendek ukuran L`,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      discountPercent: item.discountPercent,
     })),
-    taxRate,
+    profitPercent,
+    discountPercent,
   );
 }
 
-test("invoice tanpa diskon dan pajak memenuhi CHECK", () => {
-  const result = runCase([{ quantity: 1, unitPrice: "120000", discountPercent: "0" }], "0");
-  checkItem(result.items[0], { quantity: 1, unitPrice: "120000", discountPercent: "0", taxRate: "0" });
+test("invoice tanpa diskon dan keuntungan memenuhi CHECK", () => {
+  const result = runCase([{ quantity: 1, unitPrice: "120000" }], "0");
+  checkItem(result.items[0], { quantity: 1, unitPrice: "120000", discountPercent: "0", profitPercent: "0" });
   assert.equal(result.subtotal.toString(), "120000");
   assert.equal(result.total.toString(), "120000");
 });
 
 test("invoice dengan diskon memenuhi CHECK", () => {
-  const result = runCase([{ quantity: 2, unitPrice: "75000", discountPercent: "10" }], "0");
-  checkItem(result.items[0], { quantity: 2, unitPrice: "75000", discountPercent: "10", taxRate: "0" });
+  const result = runCase([{ quantity: 2, unitPrice: "75000" }], "0", "10");
+  checkItem(result.items[0], { quantity: 2, unitPrice: "75000", discountPercent: "10", profitPercent: "0" });
 });
 
-test("invoice dengan pajak memenuhi CHECK", () => {
-  const result = runCase([{ quantity: 1, unitPrice: "120000", discountPercent: "0" }], "11");
-  checkItem(result.items[0], { quantity: 1, unitPrice: "120000", discountPercent: "0", taxRate: "11" });
+test("keuntungan dihitung sebelum diskon", () => {
+  const result = runCase([{ quantity: 1, unitPrice: "120000" }], "11");
+  checkItem(result.items[0], { quantity: 1, unitPrice: "120000", discountPercent: "0", profitPercent: "11" });
 });
 
-test("diskon + pajak multi-baris dengan pecahan memenuhi CHECK", () => {
+test("diskon + keuntungan multi-baris dengan pecahan memenuhi CHECK", () => {
   const inputs = [
-    { quantity: 3, unitPrice: "99999", discountPercent: "7.5" },
-    { quantity: 1, unitPrice: "120000", discountPercent: "0" },
+    { quantity: 3, unitPrice: "99999" },
+    { quantity: 1, unitPrice: "120000" },
   ];
-  const result = runCase(inputs, "11");
-  checkItem(result.items[0], { ...inputs[0], taxRate: "11" });
-  checkItem(result.items[1], { ...inputs[1], taxRate: "11" });
+  const result = runCase(inputs, "11", "7.5");
+  checkItem(result.items[0], { ...inputs[0], discountPercent: "7.5", profitPercent: "11" });
+  checkItem(result.items[1], { ...inputs[1], discountPercent: "7.5", profitPercent: "11" });
+  assert.equal(result.items[0].discountPercent.toString(), result.items[1].discountPercent.toString(), "satu diskon berlaku untuk semua ukuran");
   const expectedSubtotal = D("99999").mul(3).add(D("120000")).toString();
   assert.equal(result.subtotal.toString(), expectedSubtotal, "header subtotal = jumlah gross");
 });
 
 test("diskon 100% menghasilkan total nol yang valid", () => {
-  const result = runCase([{ quantity: 1, unitPrice: "50000", discountPercent: "100" }], "10");
+  const result = runCase([{ quantity: 1, unitPrice: "50000" }], "10", "100");
   assert.equal(result.items[0].total.toString(), "0");
   assert.equal(result.items[0].subtotal.toString(), "0");
 });
 
-test("pajak dan diskon di atas 100% ditolak dengan pesan jelas", () => {
+test("keuntungan dan diskon di atas 100% ditolak dengan pesan jelas", () => {
   assert.throws(
-    () => runCase([{ quantity: 1, unitPrice: "10000", discountPercent: "0" }], "101"),
-    /Pajak maksimal 100%/,
+    () => runCase([{ quantity: 1, unitPrice: "10000" }], "101"),
+    /Keuntungan maksimal 100%/,
   );
   assert.throws(
-    () => runCase([{ quantity: 1, unitPrice: "10000", discountPercent: "101" }], "0"),
-    /Diskon per item maksimal 100%/,
+    () => runCase([{ quantity: 1, unitPrice: "10000" }], "0", "101"),
+    /Diskon maksimal 100%/,
   );
 });

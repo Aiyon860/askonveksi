@@ -1,6 +1,7 @@
 "use server";
 
 import { Prisma } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 
 import { flashMessagePath, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
 import { USER_ADMIN_ROLES } from "@/lib/auth/permissions";
@@ -225,5 +226,23 @@ export async function toggleUserActiveAction(formData: FormData) {
     );
 
     return flashMessagePath(returnTo, "notice", parsed.data.isActive ? "Pengguna diaktifkan." : "Pengguna dinonaktifkan.");
+  });
+}
+
+export async function resetTestingDataAction(formData: FormData) {
+  return runRedirectingAction("/admin/users", async () => {
+    const actor = await requireActor(["DEVELOPER"]);
+    if (actor.role !== "DEVELOPER") throw new UserFacingError("Reset data hanya tersedia untuk role Developer.");
+    if (formData.get("confirmation") !== "RESET DATA UJI") throw new UserFacingError("Ketik RESET DATA UJI untuk melanjutkan.");
+
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`TRUNCATE TABLE "Opportunity", "WhatsAppConversation", "AuditEvent", "PublicRateLimitBucket" RESTART IDENTITY CASCADE`);
+      await tx.auditEvent.create({
+        data: { actorId: actor.id, entityType: "System", entityId: "testing-data", action: "TESTING_DATA_RESET", changedFields: ["operationalData"], metadata: { preserved: ["Customer", "AppUser", "MasterData"] } },
+      });
+    });
+
+    ["/dashboard", "/crm", "/customers", "/produksi", "/whatsapp", "/keuangan", "/analytics"].forEach((path) => revalidatePath(path));
+    return flashMessagePath("/admin/users", "notice", "Data uji telah direset. Customer, akun, dan data master tetap tersimpan.");
   });
 }

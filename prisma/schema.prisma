@@ -8,6 +8,7 @@ datasource db {
 }
 
 enum AppRole {
+  DEVELOPER
   OWNER
   ADMIN_CUSTOMER
   ADMIN_PRODUCTION
@@ -132,6 +133,14 @@ enum PaymentKind {
   DP
 }
 
+enum ExpensePaymentMethod {
+  QRIS
+  TUNAI
+  BANK_A
+  BANK_B
+  PRIBADI
+}
+
 enum PaymentValueType {
   NOMINAL
   PERCENTAGE
@@ -254,10 +263,27 @@ model AppUser {
   createdWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateCreatedBy")
   updatedWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateUpdatedBy")
   sentWhatsAppMessages      WhatsAppMessage[]         @relation("WhatsAppMessageSentBy")
+  expenses                  Expense[]
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
   @@index([role, isActive])
+}
+
+model Expense {
+  id              String               @id @default(cuid())
+  purpose         String               @db.VarChar(500)
+  spentAt         DateTime             @db.Date
+  amount          Decimal              @db.Decimal(18, 2)
+  paymentMethod   ExpensePaymentMethod
+  createdById     String
+  reimbursedAt    DateTime?            @db.Timestamptz(3)
+  createdBy       AppUser              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
+
+  @@index([createdById, spentAt])
+  @@index([paymentMethod, spentAt])
 }
 
 model CustomerType {
@@ -605,10 +631,10 @@ model Invoice {
   snapshotBusinessAddress  String?                 @db.Text
   snapshotBusinessLogoPath String?                 @db.VarChar(500)
   discountType             DiscountType            @default(NONE)
-  discountValue            Decimal                 @default(0) @db.Decimal(18, 2)
+  discountValue            Decimal                 @default(0) @db.Decimal(7, 4)
   subtotal                 Decimal                 @db.Decimal(18, 2)
   totalDiscount            Decimal                 @default(0) @db.Decimal(18, 2)
-  totalTax                 Decimal                 @default(0) @db.Decimal(18, 2)
+  totalProfit              Decimal                 @default(0) @db.Decimal(18, 2)
   total                    Decimal                 @db.Decimal(18, 2)
   issuedAt                 DateTime?               @db.Timestamptz(3)
   dueAt                    DateTime?               @db.Date
@@ -646,8 +672,8 @@ model InvoiceItem {
   discountPercent   Decimal       @default(0) @db.Decimal(7, 4)
   discountCapAmount Decimal?      @db.Decimal(18, 2)
   discountAmount    Decimal       @default(0) @db.Decimal(18, 2)
-  taxRate           Decimal       @default(0) @db.Decimal(7, 4)
-  taxAmount         Decimal       @default(0) @db.Decimal(18, 2)
+  profitPercent     Decimal       @default(0) @db.Decimal(7, 4)
+  profitAmount      Decimal       @default(0) @db.Decimal(18, 2)
   total             Decimal       @default(0) @db.Decimal(18, 2)
   subtotal          Decimal       @db.Decimal(18, 2)
   invoice           Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -675,7 +701,7 @@ model SalesOrder {
   snapshotInstagram    String?              @db.VarChar(80)
   snapshotAddress      String?              @db.Text
   discountType         DiscountType
-  discountValue        Decimal              @db.Decimal(18, 2)
+  discountValue        Decimal              @db.Decimal(7, 4)
   subtotal             Decimal              @db.Decimal(18, 2)
   total                Decimal              @db.Decimal(18, 2)
   acceptedAt           DateTime             @db.Timestamptz(3)
@@ -873,8 +899,8 @@ model SalesOrderItem {
   discountPercent   Decimal       @default(0) @db.Decimal(7, 4)
   discountCapAmount Decimal?      @db.Decimal(18, 2)
   discountAmount    Decimal       @default(0) @db.Decimal(18, 2)
-  taxRate           Decimal       @default(0) @db.Decimal(7, 4)
-  taxAmount         Decimal       @default(0) @db.Decimal(18, 2)
+  profitPercent     Decimal       @default(0) @db.Decimal(7, 4)
+  profitAmount      Decimal       @default(0) @db.Decimal(18, 2)
   total             Decimal       @default(0) @db.Decimal(18, 2)
   subtotal          Decimal       @db.Decimal(18, 2)
   salesOrder        SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
