@@ -16,6 +16,8 @@ export function DebouncedSearchInput({
   className,
   delay = 300,
   maxLength = 80,
+  queryParam = "q",
+  pageParam = "page",
 }: {
   initialValue: string;
   pathname: string;
@@ -25,6 +27,8 @@ export function DebouncedSearchInput({
   className?: string;
   delay?: number;
   maxLength?: number;
+  queryParam?: string;
+  pageParam?: string;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(initialValue);
@@ -36,18 +40,18 @@ export function DebouncedSearchInput({
     const timeout = window.setTimeout(() => {
       const searchParams = new URLSearchParams();
       Object.entries(params).forEach(([key, paramValue]) => {
-        if (paramValue && key !== "page") searchParams.set(key, paramValue);
+        if (paramValue && key !== pageParam) searchParams.set(key, paramValue);
       });
 
-      if (normalizedValue) searchParams.set("q", normalizedValue);
-      else searchParams.delete("q");
+      if (normalizedValue) searchParams.set(queryParam, normalizedValue);
+      else searchParams.delete(queryParam);
 
       const query = searchParams.toString();
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     }, delay);
 
     return () => window.clearTimeout(timeout);
-  }, [delay, initialValue, maxLength, params, pathname, router, value]);
+  }, [delay, initialValue, maxLength, pageParam, params, pathname, queryParam, router, value]);
 
   return (
     <div className={cn("w-full", className)}>

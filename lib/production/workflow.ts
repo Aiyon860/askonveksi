@@ -36,5 +36,5 @@ export function nextProductionStage(sequence: readonly ProductionStage[], curren
 }
 
 export function isStageRole(role: AppRole) {
-  return role === "OWNER" || role === "ADMIN_PRODUCTION";
+  return role === "DEVELOPER" || role === "OWNER" || role === "ADMIN_PRODUCTION";
 }

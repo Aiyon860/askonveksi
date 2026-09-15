@@ -7,23 +7,27 @@ export function PageSizeSelect({
   value,
   options,
   params,
+  pageSizeParam = "pageSize",
+  pageParam = "page",
 }: {
   pathname: string;
   value: number;
   options: readonly number[];
   params: Record<string, string | undefined>;
+  pageSizeParam?: string;
+  pageParam?: string;
 }) {
   return (
     <form action={pathname} method="get" className="flex items-center gap-2">
       {Object.entries(params).map(([key, paramValue]) =>
-        paramValue ? <input key={key} type="hidden" name={key} value={paramValue} /> : null,
+        paramValue && key !== pageSizeParam && key !== pageParam ? <input key={key} type="hidden" name={key} value={paramValue} /> : null,
       )}
-      <label htmlFor="page-size" className="whitespace-nowrap text-xs text-muted-foreground">
+      <label htmlFor={pageSizeParam} className="whitespace-nowrap text-xs text-muted-foreground">
         Baris per halaman
       </label>
       <NativeSelect
-        id="page-size"
-        name="pageSize"
+        id={pageSizeParam}
+        name={pageSizeParam}
         size="sm"
         defaultValue={String(value)}
         onChange={(event) => event.currentTarget.form?.requestSubmit()}

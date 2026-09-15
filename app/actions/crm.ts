@@ -7,13 +7,13 @@ import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
 import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, MASTER_DATA_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
-import { requireActor, type Actor } from "@/lib/auth/session";
+import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/session";
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
-import { calculateInvoiceLines, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
-import { nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
-import { parseRosterFile } from "@/lib/crm/roster-import";
+import { calculateInvoiceLines, roundInvoiceTotal, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
+import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
+import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
 import {
   rearmCustomerRemindersAfterLost,
   restoreCustomerRemindersAfterCancellation,
@@ -25,11 +25,11 @@ import {
   addCommunicationActivitySchema,
   archiveCustomerSchema,
   createCustomerSchema,
+  createProspectCustomerSchema,
   createOpportunitySchema,
   entityIdSchema,
   firstValidationMessage,
   moveOpportunitySchema,
-  opportunityFieldsSchema,
   invoiceDraftSchema,
   invoiceIdSchema,
   purchaseOrderDraftSchema,
@@ -47,14 +47,15 @@ import {
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureProductionWorkOrder } from "@/lib/production/service";
-import { enqueueIssuedInvoiceWhatsAppJob } from "@/lib/whatsapp/jobs";
+import { enqueueIssuedInvoiceWhatsAppJob, enqueueManualWhatsAppMessage } from "@/lib/whatsapp/jobs";
+import { DEFAULT_ORDER_REMINDER_TEMPLATE, renderWhatsAppTemplate } from "@/lib/whatsapp/core";
 
 type Tx = Prisma.TransactionClient;
 type CrmActionState = { error: string | null; success: boolean };
 
 const DOCUMENT_DRAFT_TRANSACTION_OPTIONS = {
   maxWait: 20_000,
-  timeout: 10_000,
+  timeout: 60_000,
 } as const;
 const CUSTOMER_IMPORT_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -130,6 +131,12 @@ function jakartaDateTime(value?: string) {
   const date = new Date(zoned);
   if (Number.isNaN(date.getTime())) throw new UserFacingError("Tanggal dan waktu tidak valid.");
   return date;
+}
+
+function addJakartaDays(date: Date, days: number) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value);
+  return new Date(Date.UTC(value("year"), value("month") - 1, value("day") + days));
 }
 
 
@@ -219,7 +226,6 @@ function invoiceInput(formData: FormData) {
   const descriptions = formData.getAll("itemDescription");
   const quantities = formData.getAll("itemQuantity");
   const unitPrices = formData.getAll("itemUnitPrice");
-  const discountPercents = formData.getAll("itemDiscountPercent");
   const length = Math.max(purchaseOrderSizeIds.length, sizes.length, unitPrices.length);
   const items = Array.from({ length }, (_, index) => ({
     purchaseOrderSizeId: purchaseOrderSizeIds[index],
@@ -229,7 +235,6 @@ function invoiceInput(formData: FormData) {
     description: descriptions[index],
     quantity: quantities[index],
     unitPrice: unitPrices[index],
-    discountPercent: discountPercents[index] || "0",
   }));
 
   return {
@@ -238,7 +243,8 @@ function invoiceInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId") || undefined,
     version: formValue(formData, "version") || undefined,
     dueAt: formValue(formData, "dueAt"),
-    taxRate: formValue(formData, "taxRate"),
+    profitPercent: formValue(formData, "profitPercent") || "0",
+    discountPercent: formValue(formData, "discountPercent") || "0",
     notes: formValue(formData, "notes"),
     items,
   };
@@ -251,11 +257,11 @@ function purchaseOrderInput(formData: FormData) {
   const rosterMemberIds = formData.getAll("rosterMemberId");
   const rosterNames = formData.getAll("rosterName");
   const rosterSizeIds = formData.getAll("rosterSizeId");
+  const rosterSleeveLengths = formData.getAll("rosterSleeveLength");
   return {
     opportunityId: formValue(formData, "opportunityId"),
     purchaseOrderId: formValue(formData, "purchaseOrderId") || undefined,
     version: formValue(formData, "version") || undefined,
-    customerReference: formValue(formData, "customerReference"),
     garmentType: formValue(formData, "garmentType"),
     productName: formValue(formData, "productName"),
     material: formValue(formData, "material"),
@@ -268,17 +274,31 @@ function purchaseOrderInput(formData: FormData) {
     notes: formValue(formData, "notes"),
     deadline: formValue(formData, "deadline"),
     designDeadline: formValue(formData, "designDeadline"),
+    rosterMode: formValue(formData, "rosterMode"),
     sizes: Array.from({ length: Math.max(sizeIds.length, quantities.length) }, (_, index) => ({
       sizeId: sizeIds[index],
       sleeveLength: sleeveLengths[index],
       quantity: quantities[index],
     })),
-    roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length) }, (_, index) => ({
+    roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
       memberId: rosterMemberIds[index],
       name: rosterNames[index],
       sizeId: rosterSizeIds[index],
-    })).filter((item) => item.memberId || item.name || item.sizeId),
+      sleeveLength: rosterSleeveLengths[index],
+    })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
   };
+}
+
+async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "manual" | "excel") {
+  const file = formData.get("rosterFile");
+  if (mode !== "excel") {
+    if (file instanceof File && file.size) throw new UserFacingError("File roster hanya boleh diunggah pada mode Impor Excel.");
+    return [];
+  }
+  if (!(file instanceof File) || !file.size) throw new UserFacingError("Pilih file Excel roster.");
+  const rows = await parseRosterFile(file);
+  if (!rows.length) throw new UserFacingError("File Excel roster belum berisi pemakai.");
+  return rows;
 }
 
 function completeDealInput(formData: FormData) {
@@ -292,8 +312,6 @@ function completeDealInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId"),
     invoiceVersion: formValue(formData, "invoiceVersion"),
     kind: formValue(formData, "kind"),
-    initialDueAt: formValue(formData, "initialDueAt"),
-    initialValueType: formValue(formData, "initialValueType"),
     initialValue: formValue(formData, "initialValue"),
     terms: Array.from({ length: Math.max(valueTypes.length, values.length, dueDates.length) }, (_, index) => ({
       valueType: valueTypes[index],
@@ -344,10 +362,10 @@ async function preparePurchaseOrderRows(
   db: PurchaseOrderRowReader,
   data: {
     sizes: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-    roster: Array<{ memberId: string; name: string; sizeId: string }>;
+    rosterMode: "none" | "manual" | "excel";
+    roster: Array<{ memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
   },
-  importedRoster: Array<{ memberId: string; name: string; size: string }>,
-  replaceRosterFromFile: boolean,
+  importedRoster: ImportedRosterRow[],
 ) {
   const requestedIds = new Set([
     ...data.sizes.map((item) => item.sizeId),
@@ -379,22 +397,29 @@ async function preparePurchaseOrderRows(
   const fileRoster = importedRoster.map((item, index) => {
     const master = byName.get(item.size.toLocaleLowerCase("id-ID"));
     if (!master) throw new UserFacingError(`Ukuran ${item.size} pada baris roster ${index + 2} belum tersedia di Data Master.`);
-    return { memberId: item.memberId, name: item.name, sizeId: master.id, size: master.name };
+    return { memberId: item.memberId, name: item.name, sizeId: master.id, size: master.name, sleeveLength: item.sleeveLength };
   });
-  const roster = replaceRosterFromFile ? fileRoster : manualRoster;
+  const roster = data.rosterMode === "excel" ? fileRoster : data.rosterMode === "manual" ? manualRoster : [];
   const normalizedIds = roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
   if (new Set(normalizedIds).size !== normalizedIds.length) throw new UserFacingError("ID anggota roster tidak boleh duplikat.");
 
   if (roster.length) {
     const matrixTotals = new Map<string, number>();
-    for (const item of sizes) matrixTotals.set(item.sizeId, (matrixTotals.get(item.sizeId) ?? 0) + item.quantity);
+    for (const item of sizes) {
+      const key = `${item.sizeId}:${item.sleeveLength}`;
+      matrixTotals.set(key, (matrixTotals.get(key) ?? 0) + item.quantity);
+    }
     const rosterTotals = new Map<string, number>();
-    for (const item of roster) rosterTotals.set(item.sizeId, (rosterTotals.get(item.sizeId) ?? 0) + 1);
-    const allSizeIds = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
-    for (const sizeId of allSizeIds) {
-      if ((matrixTotals.get(sizeId) ?? 0) !== (rosterTotals.get(sizeId) ?? 0)) {
+    for (const item of roster) {
+      const key = `${item.sizeId}:${item.sleeveLength}`;
+      rosterTotals.set(key, (rosterTotals.get(key) ?? 0) + 1);
+    }
+    const allKeys = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
+    for (const key of allKeys) {
+      if ((matrixTotals.get(key) ?? 0) !== (rosterTotals.get(key) ?? 0)) {
+        const [sizeId, sleeveLength] = key.split(":");
         const sizeName = byId.get(sizeId)?.name ?? "tidak dikenal";
-        throw new UserFacingError(`Total roster ukuran ${sizeName} harus sama dengan total Pendek dan Panjang pada matriks.`);
+        throw new UserFacingError(`Total roster ukuran ${sizeName} lengan ${sleeveLength.toLocaleLowerCase("id-ID")} harus sama dengan jumlah pada matriks.`);
       }
     }
   }
@@ -411,7 +436,8 @@ function calculateInvoiceForPurchaseOrder(
     sizes: Array<{ id: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
   submittedItems: InvoicePricingInput[],
-  taxRate: string,
+  profitPercent: string,
+  discountPercent: string,
 ) {
   const submittedById = new Map(submittedItems.map((item) => [String(item.purchaseOrderSizeId), item]));
   if (submittedById.size !== purchaseOrder.sizes.length || submittedItems.length !== purchaseOrder.sizes.length) {
@@ -428,9 +454,8 @@ function calculateInvoiceForPurchaseOrder(
       description: `${purchaseOrder.productName} ${poRow.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poRow.size}`,
       quantity: poRow.quantity,
       unitPrice: String(submitted.unitPrice),
-      discountPercent: String(submitted.discountPercent),
     };
-  }), taxRate);
+  }), profitPercent, discountPercent);
   return {
     ...calculated,
     items: calculated.items.map(({ purchaseOrderSizeId, ...item }) => ({
@@ -621,6 +646,29 @@ export async function importCustomersAction(formData: FormData) {
   });
 }
 
+async function resetCustomerOrderReminderDelivery(tx: Tx, customerId: string, enabled: boolean) {
+  const reminders = await tx.customerReminder.findMany({
+    where: { customerId, type: "REACTIVATION", resolvedAt: null },
+    select: { id: true },
+  });
+  if (reminders.length) {
+    const reminderIds = reminders.map((reminder) => reminder.id);
+    await tx.customerReminder.updateMany({ where: { id: { in: reminderIds } }, data: { generation: { increment: 1 } } });
+    if (enabled) await tx.customerReminderReceipt.deleteMany({ where: { reminderId: { in: reminderIds } } });
+  }
+  if (!enabled) {
+    const jobs = await tx.whatsAppAutomationJob.findMany({
+      where: { customerId, type: "REACTIVATION", status: { in: ["QUEUED", "RETRY"] } },
+      select: { id: true },
+    });
+    if (jobs.length) {
+      const ids = jobs.map((job) => job.id);
+      await tx.whatsAppAutomationJob.updateMany({ where: { id: { in: ids } }, data: { status: "CANCELLED", lastError: "Reminder order dinonaktifkan." } });
+      await tx.whatsAppMessage.updateMany({ where: { automationJobId: { in: ids }, status: { in: ["QUEUED", "FAILED"] } }, data: { status: "CANCELLED", errorMessage: "Reminder order dinonaktifkan." } });
+    }
+  }
+}
+
 export async function updateCustomerAction(formData: FormData) {
   return runRedirectingAction("/customers", async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
@@ -628,26 +676,31 @@ export async function updateCustomerAction(formData: FormData) {
       ...customerFields(formData),
       customerId: formValue(formData, "customerId"),
       version: formValue(formData, "version"),
+      orderReminderEnabled: formData.has("orderReminderEnabled") ? formValue(formData, "orderReminderEnabled") : undefined,
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
-    const { customerId, version, ...fields } = parsed.data;
+    const { customerId, version, orderReminderEnabled, ...fields } = parsed.data;
     const result = await getPrismaClient().$transaction(async (tx) => {
-      const current = await tx.customer.findUnique({ where: { id: customerId }, select: { customerTypeId: true, leadSourceId: true, salesPicId: true } });
+      const current = await tx.customer.findUnique({ where: { id: customerId }, select: { customerTypeId: true, leadSourceId: true, salesPicId: true, orderReminderEnabled: true } });
       if (!current) throw new UserFacingError("Customer tidak ditemukan.");
       const [customerType, leadSource, salesPic] = await Promise.all([
         tx.customerType.findUnique({ where: { id: fields.customerTypeId }, select: { id: true } }),
         fields.leadSourceId ? tx.leadSource.findUnique({ where: { id: fields.leadSourceId }, select: { id: true } }) : null,
-        fields.salesPicId ? tx.appUser.findFirst({ where: { id: fields.salesPicId, role: "ADMIN_CUSTOMER", OR: [{ isActive: true }, { id: current.salesPicId ?? "" }] }, select: { id: true } }) : null,
+        fields.salesPicId ? tx.appUser.findFirst({ where: { id: fields.salesPicId, OR: [{ role: "ADMIN_CUSTOMER", isActive: true }, { id: current.salesPicId ?? "" }] }, select: { id: true } }) : null,
       ]);
       if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
       if (fields.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
       if (fields.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
       const updated = await tx.customer.updateMany({
         where: { id: customerId, version, archivedAt: null },
-        data: { ...fields, email: fields.email?.toLowerCase(), version: { increment: 1 } },
+        data: { ...fields, email: fields.email?.toLowerCase(), ...(orderReminderEnabled === undefined ? {} : { orderReminderEnabled }), version: { increment: 1 } },
       });
       if (updated.count !== 1) throw new UserFacingError("Customer sudah berubah atau telah diarsipkan. Muat ulang halaman.");
+      if (orderReminderEnabled !== undefined && orderReminderEnabled !== current.orderReminderEnabled) {
+        await resetCustomerOrderReminderDelivery(tx, customerId, orderReminderEnabled);
+        await audit(tx, actor, "Customer", customerId, "ORDER_REMINDER_SETTING_UPDATED", ["orderReminderEnabled"]);
+      }
       await audit(tx, actor, "Customer", customerId, "CUSTOMER_UPDATED", [
         "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
       ]);
@@ -679,17 +732,7 @@ export async function updateCustomerOrderReminderAction(formData: FormData) {
         data: { orderReminderEnabled: parsed.data.enabled, version: { increment: 1 } },
       });
       if (!updated.count) throw new UserFacingError("Pengaturan customer sudah berubah. Muat ulang halaman.");
-      if (!parsed.data.enabled) {
-        const jobs = await tx.whatsAppAutomationJob.findMany({
-          where: { customerId: parsed.data.customerId, type: "REACTIVATION", status: { in: ["QUEUED", "RETRY"] } },
-          select: { id: true },
-        });
-        if (jobs.length) {
-          const ids = jobs.map((job) => job.id);
-          await tx.whatsAppAutomationJob.updateMany({ where: { id: { in: ids } }, data: { status: "CANCELLED", lastError: "Reminder order dinonaktifkan." } });
-          await tx.whatsAppMessage.updateMany({ where: { automationJobId: { in: ids }, status: { in: ["QUEUED", "FAILED"] } }, data: { status: "CANCELLED", errorMessage: "Reminder order dinonaktifkan." } });
-        }
-      }
+      await resetCustomerOrderReminderDelivery(tx, parsed.data.customerId, parsed.data.enabled);
       await audit(tx, actor, "Customer", parsed.data.customerId, "ORDER_REMINDER_SETTING_UPDATED", ["orderReminderEnabled"]);
     });
     revalidatePath(`/customers/${parsed.data.customerId}`);
@@ -837,86 +880,105 @@ export async function createOpportunityAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath("/customers");
     revalidateCustomerReminders();
-    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Lead baru berhasil dibuat.");
+    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Prospek berhasil dibuat.");
   });
 }
 
-export async function createLeadAction(formData: FormData) {
+export async function createProspectAction(formData: FormData) {
   return runRedirectingAction("/crm", async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
-    const customerMode = formValue(formData, "customerMode");
-    if (customerMode !== "existing" && customerMode !== "new") throw new UserFacingError("Pilih jenis customer untuk lead.");
-    const opportunityParsed = opportunityFieldsSchema.safeParse(opportunityInput(formData));
-    if (!opportunityParsed.success) throw new UserFacingError(firstValidationMessage(opportunityParsed.error));
-    const scheduleError = validateOpenOpportunitySchedule(opportunityParsed.data);
-    if (scheduleError) throw new UserFacingError(scheduleError);
-    const customerIdParsed = entityIdSchema.safeParse(formValue(formData, "customerId"));
-    const customerParsed = customerMode === "new" ? createCustomerSchema.safeParse(customerFields(formData)) : null;
-    if (customerMode === "existing" && !customerIdParsed.success) throw new UserFacingError("Pilih customer tersimpan.");
-    if (customerParsed && !customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
+    const customerParsed = createProspectCustomerSchema.safeParse(customerFields(formData));
+    if (!customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
 
-    const opportunity = await getPrismaClient().$transaction(async (tx) => {
-      let customer: { id: string; leadSourceId: string | null; salesPicId: string | null };
-      if (customerMode === "new" && customerParsed?.success) {
-        const [customerType, customerLeadSource, customerSalesPic] = await Promise.all([
-          tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
-          customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
-          customerParsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: customerParsed.data.salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
-        ]);
-        if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
-        if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
-        if (customerParsed.data.salesPicId && !customerSalesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
-        customer = await tx.customer.create({
-          data: { ...customerParsed.data, email: customerParsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
-          select: { id: true, leadSourceId: true, salesPicId: true },
-        });
-        await audit(tx, actor, "Customer", customer.id, "CUSTOMER_CREATED", [
-          "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
-        ]);
-      } else {
-        customer = await tx.customer.findFirstOrThrow({
-          where: { id: customerIdParsed.success ? customerIdParsed.data : "", archivedAt: null },
-          select: { id: true, leadSourceId: true, salesPicId: true },
-        }).catch(() => { throw new UserFacingError("Customer aktif tidak ditemukan."); });
-      }
-
-      const leadSourceId = opportunityParsed.data.leadSourceId ?? customer.leadSourceId;
-      const salesPicId = opportunityParsed.data.salesPicId ?? customer.salesPicId;
-      const [leadSource, salesPic] = await Promise.all([
-        leadSourceId ? tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null,
-        salesPicId ? tx.appUser.findFirst({ where: { id: salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
+    await getPrismaClient().$transaction(async (tx) => {
+      const salesPicId = actor.role === "ADMIN_CUSTOMER"
+        ? actor.id
+        : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id;
+      if (!salesPicId) throw new UserFacingError("Admin Customer aktif tidak ditemukan.");
+      const [customerType, customerLeadSource] = await Promise.all([
+        tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
+        customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
       ]);
+      if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
+      if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+      const customer = await tx.customer.create({
+        data: { ...customerParsed.data, salesPicId, lifecycle: "PROSPEK", email: customerParsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+        select: { id: true, name: true, leadSourceId: true },
+      });
+      await audit(tx, actor, "Customer", customer.id, "CUSTOMER_CREATED", [
+        "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId", "lifecycle",
+      ]);
+
+      const leadSourceId = customer.leadSourceId;
+      const leadSource = leadSourceId ? await tx.leadSource.findFirst({ where: { id: leadSourceId, isActive: true }, select: { id: true } }) : null;
       if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
-      if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
 
       const created = await tx.opportunity.create({
         data: {
           opportunityNo: await nextOpportunityNo(tx),
           customerId: customer.id,
-          title: opportunityParsed.data.title,
+          title: `Prospek: ${customer.name}`,
           leadSourceId,
           salesPicId,
-          productName: opportunityParsed.data.productName,
-          garmentType: opportunityParsed.data.garmentType,
-          needPurpose: opportunityParsed.data.needPurpose,
-          specification: opportunityParsed.data.specification,
-          nextAction: opportunityParsed.data.nextAction,
-          nextActionAt: jakartaDateTime(opportunityParsed.data.nextActionAt),
         },
         select: { id: true },
       });
       await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-        "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose",
-        "specification", "nextAction", "nextActionAt", "stage",
+        "customerId", "title", "leadSourceId", "salesPicId", "stage",
       ], { stage: "LEAD_BARU" });
       return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/crm");
+    revalidatePath("/crm/prospek");
     revalidatePath("/customers");
     revalidatePath("/dashboard");
     revalidateCustomerReminders();
-    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Lead baru berhasil dibuat.");
+    return flashMessagePath("/crm/prospek", "notice", "Prospek berhasil dibuat.");
+  });
+}
+
+export async function createRepeatOrderAction(formData: FormData) {
+  return runRedirectingAction("/customers", async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const customerId = entityIdSchema.safeParse(formValue(formData, "customerId"));
+    if (!customerId.success) throw new UserFacingError("Pilih customer lama.");
+
+    const opportunity = await getPrismaClient().$transaction(async (tx) => {
+      const salesPicId = actor.role === "ADMIN_CUSTOMER"
+        ? actor.id
+        : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id;
+      if (!salesPicId) throw new UserFacingError("Admin Customer aktif tidak ditemukan.");
+      const customer = await tx.customer.findFirst({
+        where: { id: customerId.data, archivedAt: null, lifecycle: "CUSTOMER" },
+        select: { id: true, name: true, leadSourceId: true },
+      });
+      if (!customer) throw new UserFacingError("Customer aktif tidak ditemukan.");
+      if (customer.leadSourceId && !await tx.leadSource.findFirst({ where: { id: customer.leadSourceId, isActive: true }, select: { id: true } })) {
+        throw new UserFacingError("Sumber lead customer tidak aktif atau tidak ditemukan.");
+      }
+      const created = await tx.opportunity.create({
+        data: {
+          opportunityNo: await nextOpportunityNo(tx),
+          customerId: customer.id,
+          title: `Repeat Order: ${customer.name}`,
+          stage: "NEGOSIASI",
+          isRepeatOrder: true,
+          leadSourceId: customer.leadSourceId,
+          salesPicId,
+        },
+        select: { id: true },
+      });
+      await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", ["customerId", "title", "stage", "leadSourceId", "salesPicId"], { stage: "NEGOSIASI", repeatOrder: true });
+      return created;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/prospek");
+    revalidatePath("/customers");
+    revalidatePath(`/customers/${customerId.data}`);
+    revalidatePath("/dashboard");
+    return flashMessagePath(`/crm/peluang/${opportunity.id}`, "notice", "Repeat Order berhasil dibuat.");
   });
 }
 
@@ -1213,21 +1275,19 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const rosterFile = formData.get("rosterFile");
-    const replaceRosterFromFile = rosterFile instanceof File && rosterFile.size > 0;
-    const importedRoster = replaceRosterFromFile ? await parseRosterFile(rosterFile) : [];
+    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
     timer.mark("roster");
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
     timer.mark("rows");
     await prisma.$transaction(async (tx) => {
         const opportunity = await tx.opportunity.findUnique({
           where: { id: parsed.data.opportunityId },
           select: {
             stage: true,
-            customer: { select: { archivedAt: true } },
+            customer: { select: { id: true, name: true, poCustomerCode: true, archivedAt: true } },
             purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
             _count: { select: { purchaseOrders: true } },
           },
@@ -1240,10 +1300,9 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
-            purchaseOrderNo: await nextPurchaseOrderNo(tx),
+            purchaseOrderNo: await nextPurchaseOrderNo(tx, opportunity.customer),
             opportunityId: parsed.data.opportunityId,
             revision: 1,
-            customerReference: parsed.data.customerReference,
             garmentType: parsed.data.garmentType,
             productName: parsed.data.productName,
             material: parsed.data.material,
@@ -1286,19 +1345,16 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
       throw new UserFacingError(parsed.success ? "Identitas PO tidak lengkap." : firstValidationMessage(parsed.error));
     }
     timer.mark("parse");
-    const rosterFile = formData.get("rosterFile");
-    const replaceRosterFromFile = rosterFile instanceof File && rosterFile.size > 0;
-    const importedRoster = replaceRosterFromFile ? await parseRosterFile(rosterFile) : [];
+    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
     timer.mark("roster");
     const prisma = getPrismaClient();
     const purchaseOrderId = parsed.data.purchaseOrderId;
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
     timer.mark("rows");
     await prisma.$transaction(async (tx) => {
         const updated = await tx.purchaseOrder.updateMany({
           where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { purchaseOrders: { none: { status: "AGREED" } }, invoices: { none: { status: "ISSUED" } } } },
           data: {
-            customerReference: parsed.data.customerReference,
             garmentType: parsed.data.garmentType,
             productName: parsed.data.productName,
             material: parsed.data.material,
@@ -1420,14 +1476,12 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const rosterFile = formData.get("rosterFile");
-    const replaceRosterFromFile = rosterFile instanceof File && rosterFile.size > 0;
-    const importedRoster = replaceRosterFromFile ? await parseRosterFile(rosterFile) : [];
+    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
     timer.mark("roster");
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
     timer.mark("rows");
     const opportunityId = await prisma.$transaction(async (tx) => {
         const source = await tx.purchaseOrder.findUnique({
@@ -1435,12 +1489,14 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           select: {
             id: true,
             opportunityId: true,
+            purchaseOrderNo: true,
             status: true,
             revision: true,
             version: true,
             opportunity: {
               select: {
                 stage: true,
+                customer: { select: { id: true, name: true, poCustomerCode: true } },
                 invoices: { where: { status: { in: ["DRAFT", "ISSUED"] } }, select: { id: true, status: true } },
                 purchaseOrders: { where: { status: "AGREED" }, select: { id: true }, take: 1 },
               },
@@ -1461,10 +1517,9 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
-            purchaseOrderNo: await nextPurchaseOrderNo(tx),
+            purchaseOrderNo: formatPurchaseOrderRevisionNo(source.purchaseOrderNo, source.revision + 1),
             opportunityId: source.opportunityId,
             revision: source.revision + 1,
-            customerReference: parsed.data.customerReference,
             garmentType: parsed.data.garmentType,
             productName: parsed.data.productName,
             material: parsed.data.material,
@@ -1536,7 +1591,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           },
         });
         if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.taxRate);
+        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
         const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
         const aggregate = await tx.invoice.aggregate({ where: { opportunityId: opportunity.id }, _max: { revision: true } });
@@ -1557,11 +1612,11 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
             snapshotBusinessEmail: business?.email,
             snapshotBusinessAddress: business?.address,
             snapshotBusinessLogoPath: business?.logoPath,
-            discountType: "NONE",
-            discountValue: 0,
+            discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
+            discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalTax: calculated.totalTax,
+            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1571,7 +1626,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_DRAFT_CREATED", [
-          "purchaseOrderId", "items", "subtotal", "totalDiscount", "totalTax", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
         ], { opportunityId: opportunity.id });
         return created;
       },
@@ -1597,27 +1652,29 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
     }
     timer.mark("parse");
     const invoiceId = parsed.data.invoiceId;
+    const prisma = getPrismaClient();
+    const purchaseOrder = await prisma.purchaseOrder.findFirst({
+      where: { id: parsed.data.purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "AGREED" },
+      select: {
+        productName: true,
+        sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+      },
+    });
+    if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
+    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
+    timer.mark("calculate");
 
-    await getPrismaClient().$transaction(
+    await prisma.$transaction(
       async (tx) => {
-        const purchaseOrder = await tx.purchaseOrder.findFirst({
-          where: { id: parsed.data.purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "AGREED" },
-          select: {
-            productName: true,
-            sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          },
-        });
-        if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.taxRate);
         const updated = await tx.invoice.updateMany({
-          where: { id: invoiceId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { invoices: { none: { status: "ISSUED" } } } },
+          where: { id: invoiceId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, purchaseOrder: { is: { id: parsed.data.purchaseOrderId, status: "AGREED" } }, opportunity: { invoices: { none: { status: "ISSUED" } } } },
           data: {
             purchaseOrderId: parsed.data.purchaseOrderId,
-            discountType: "NONE",
-            discountValue: 0,
+            discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
+            discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalTax: calculated.totalTax,
+            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1630,7 +1687,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
           data: calculated.items.map((item) => ({ ...item, invoiceId })),
         });
         await audit(tx, actor, "Invoice", invoiceId, "INVOICE_DRAFT_UPDATED", [
-          "purchaseOrderId", "items", "subtotal", "totalDiscount", "totalTax", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
         ]);
       },
       DOCUMENT_DRAFT_TRANSACTION_OPTIONS,
@@ -1677,12 +1734,14 @@ export async function issueInvoiceAction(formData: FormData) {
       if (!invoice.items.length) throw new UserFacingError("Invoice belum memiliki item.");
 
       const issuedAt = new Date();
+      const dueAt = addJakartaDays(issuedAt, 7);
       const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
       const updated = await tx.invoice.updateMany({
         where: { id: parsed.data.invoiceId, status: "DRAFT", version: parsed.data.version },
         data: {
           status: "ISSUED",
           issuedAt,
+          dueAt,
           snapshotCustomerName: invoice.opportunity.customer.name,
           snapshotCompanyName: invoice.opportunity.customer.companyName,
           snapshotWhatsapp: invoice.opportunity.customer.whatsapp,
@@ -1698,7 +1757,7 @@ export async function issueInvoiceAction(formData: FormData) {
         },
       });
       if (updated.count !== 1) throw new UserFacingError("Invoice sudah berubah. Muat ulang halaman.");
-      const auditEvent = await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_ISSUED", ["status", "issuedAt", "snapshot"]);
+      const auditEvent = await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_ISSUED", ["status", "issuedAt", "dueAt", "snapshot"]);
       await addSystemActivity(tx, actor, {
         customerId: invoice.opportunity.customerId,
         opportunityId: invoice.opportunityId,
@@ -1712,7 +1771,7 @@ export async function issueInvoiceAction(formData: FormData) {
         },
         sourceAuditEventId: auditEvent.id,
       });
-      await enqueueIssuedInvoiceWhatsAppJob(tx, parsed.data.invoiceId);
+      if (actor.role !== "DEVELOPER") await enqueueIssuedInvoiceWhatsAppJob(tx, parsed.data.invoiceId);
       return { opportunityId: invoice.opportunityId, customerId: invoice.opportunity.customerId };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
@@ -1757,7 +1816,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             discountValue: true,
             subtotal: true,
             totalDiscount: true,
-            totalTax: true,
+            totalProfit: true,
             total: true,
             dueAt: true,
             notes: true,
@@ -1789,7 +1848,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           throw new UserFacingError("Revisi invoice hanya dapat dibuat dari PO aktif saat Negosiasi.");
         }
         if (source.opportunity.purchaseOrders.length) throw new UserFacingError("Sepakati atau selesaikan draft PO sebelum merevisi invoice.");
-        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.taxRate);
+        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
         const locked = await tx.invoice.updateMany({
           where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
@@ -1812,11 +1871,11 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             snapshotBusinessEmail: source.snapshotBusinessEmail,
             snapshotBusinessAddress: source.snapshotBusinessAddress,
             snapshotBusinessLogoPath: source.snapshotBusinessLogoPath,
-            discountType: "NONE",
-            discountValue: 0,
+            discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
+            discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalTax: calculated.totalTax,
+            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1826,7 +1885,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_REVISION_CREATED", [
-          "revision", "purchaseOrderId", "items", "subtotal", "totalDiscount", "totalTax", "total", "dueAt", "notes",
+          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
         ], { sourceInvoiceId: source.id });
         return source.opportunityId;
       },
@@ -1846,13 +1905,11 @@ export async function completeDealAction(formData: FormData) {
     const actor = await requireActor(DEAL_ROLES);
     const parsed = completeDealSchema.safeParse(completeDealInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
-    const initialDueAt = optionalDate(parsed.data.initialDueAt);
-    if (!initialDueAt) throw new UserFacingError("Deadline pembayaran awal wajib diisi.");
     const invoice = await runDealTransaction(async (tx) => {
       const invoice = await tx.invoice.findUnique({
         where: { id: parsed.data.invoiceId },
         select: {
-          id: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true,
+          id: true, totalDiscount: true, totalProfit: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true, dueAt: true,
           salesOrder: { select: { id: true } }, pendingPayment: { select: { id: true } },
           purchaseOrder: { select: { status: true, garmentType: true, deadline: true } },
           opportunity: { select: { stage: true, version: true, purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 }, invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 } } },
@@ -1863,31 +1920,54 @@ export async function completeDealAction(formData: FormData) {
       if (invoice.opportunity.stage !== "NEGOSIASI" || invoice.opportunity.purchaseOrders.length || invoice.opportunity.invoices.length) throw new UserFacingError("Peluang belum siap untuk dijadwalkan.");
       if (invoice.opportunity.version !== parsed.data.opportunityVersion || invoice.version !== parsed.data.invoiceVersion) throw new UserFacingError("Peluang atau invoice sudah berubah. Muat ulang halaman.");
       if (invoice.salesOrder || invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran invoice ini sudah tersedia.");
+      if (!invoice.issuedAt) throw new UserFacingError("Tanggal terbit invoice tidak tersedia.");
+
+      const roundedTotal = roundInvoiceTotal(invoice.total);
+      const roundingAdjustment = roundedTotal.sub(invoice.total);
+      if (!roundingAdjustment.isZero()) {
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            total: roundedTotal,
+            totalDiscount: roundingAdjustment.isNegative() ? invoice.totalDiscount.add(roundingAdjustment.abs()) : invoice.totalDiscount,
+            totalProfit: roundingAdjustment.isPositive() ? invoice.totalProfit.add(roundingAdjustment) : invoice.totalProfit,
+            version: { increment: 1 },
+          },
+        });
+      }
+
+      const requestedInitialPercent = new Prisma.Decimal(parsed.data.initialValue);
+      if (parsed.data.kind === "DP" && requestedInitialPercent.lt(50)) throw new UserFacingError("DP minimal 50%.");
+      if (requestedInitialPercent.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
+      const kind = parsed.data.kind === "LUNAS" || requestedInitialPercent.eq(100) ? "LUNAS" as const : "DP" as const;
+      if (kind === "DP" && parsed.data.terms.length === 0) throw new UserFacingError("DP wajib memiliki minimal satu termin.");
+      if (kind === "LUNAS" && parsed.data.terms.length) throw new UserFacingError("Pembayaran Lunas tidak memakai termin.");
+      const initialDueAt = invoice.dueAt ?? addJakartaDays(invoice.issuedAt, 7);
 
       const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
         const decimal = new Prisma.Decimal(value);
         if (valueType === "PERCENTAGE" && decimal.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-        return valueType === "PERCENTAGE" ? invoice.total.mul(decimal).div(100).toDecimalPlaces(2) : decimal;
+        return roundInvoiceTotal(valueType === "PERCENTAGE" ? roundedTotal.mul(decimal).div(100) : decimal);
       };
-      const initialValueType = parsed.data.kind === "LUNAS" ? "NOMINAL" as const : parsed.data.initialValueType;
-      const initialValue = parsed.data.kind === "LUNAS" ? invoice.total : new Prisma.Decimal(parsed.data.initialValue);
-      const initialAmount = parsed.data.kind === "LUNAS" ? invoice.total : amountFor(parsed.data.initialValueType, parsed.data.initialValue);
-      if (initialAmount.lte(0) || initialAmount.gt(invoice.total) || (parsed.data.kind === "DP" && initialAmount.eq(invoice.total))) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
+      const initialValueType = "PERCENTAGE" as const;
+      const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitialPercent;
+      const initialAmount = amountFor("PERCENTAGE", initialValue.toString());
+      if (initialAmount.lte(0) || initialAmount.gt(roundedTotal)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
 
       let previousDueAt: Date | null = initialDueAt;
       const terms = parsed.data.terms.map((term, position) => {
         const dueAt = optionalDate(term.dueAt);
         if (!dueAt) throw new UserFacingError("Deadline termin wajib diisi.");
-        if (previousDueAt && dueAt < previousDueAt) throw new UserFacingError("Deadline termin harus berurutan.");
+        if (previousDueAt && dueAt <= previousDueAt) throw new UserFacingError(`Deadline Termin ${position + 1} minimal satu hari setelah ${position ? `Deadline Termin ${position}.` : "deadline DP."}`);
         previousDueAt = dueAt;
         return { position, valueType: term.valueType, value: new Prisma.Decimal(term.value), amount: amountFor(term.valueType, term.value), dueAt };
       });
-      const outstandingAmount = invoice.total.sub(initialAmount);
+      const outstandingAmount = roundedTotal.sub(initialAmount);
       const termTotal = terms.reduce((sum, term) => sum.add(term.amount), new Prisma.Decimal(0));
       if (!termTotal.eq(outstandingAmount)) throw new UserFacingError("Total seluruh termin harus sama dengan sisa setelah pembayaran awal.");
 
-      await tx.pendingDealPayment.create({ data: { invoiceId: invoice.id, kind: parsed.data.kind, initialValueType, initialValue, initialAmount, initialDueAt, createdById: actor.id, terms: { create: terms } } });
-      await audit(tx, actor, "Invoice", invoice.id, "PAYMENT_SCHEDULED", ["paymentSchedule"], { kind: parsed.data.kind, initialDueAt, terms: terms.length });
+      await tx.pendingDealPayment.create({ data: { invoiceId: invoice.id, kind, initialValueType, initialValue, initialAmount, initialDueAt, createdById: actor.id, terms: { create: terms } } });
+      await audit(tx, actor, "Invoice", invoice.id, "PAYMENT_SCHEDULED", ["paymentSchedule"], { kind, initialDueAt, terms: terms.length });
       return invoice;
     });
 
@@ -1909,6 +1989,7 @@ function crmActionFailure(error: unknown): CrmActionState {
 function revalidatePaymentMutationPaths(salesOrderId?: string) {
   if (salesOrderId) revalidatePath(`/sales-orders/${salesOrderId}`);
   revalidatePath("/crm");
+  revalidatePath("/crm/prospek");
   revalidatePath("/dashboard");
   revalidatePath("/keuangan");
   revalidatePath("/produksi");
@@ -1951,7 +2032,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
           select: {
             position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
             unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
-            discountAmount: true, taxRate: true, taxAmount: true, total: true, subtotal: true,
+            discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
           },
           orderBy: { position: "asc" },
         },
@@ -1969,6 +2050,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
           select: {
             stage: true,
             customerId: true,
+            customer: { select: { lifecycle: true } },
             purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
             invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
           },
@@ -1996,6 +2078,9 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
       data: { stage: "DEAL", nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } },
     });
     if (opportunityUpdated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
+    if (invoice.opportunity.customer.lifecycle === "PROSPEK") {
+      await tx.customer.update({ where: { id: invoice.opportunity.customerId }, data: { lifecycle: "CUSTOMER" } });
+    }
 
     const created = await tx.salesOrder.create({
       data: {
@@ -2470,5 +2555,47 @@ export async function reverseSalesOrderAction(formData: FormData) {
     revalidatePath(`/customers/${cancelledOrder.customerId}`);
     revalidateCustomerReminders();
     return flashMessagePath(`/crm/peluang/${cancelledOrder.opportunityId}?tab=deal`, "notice", "Sales Order dibatalkan dan peluang dipindahkan ke Lost.");
+  });
+}
+
+export async function forceSendRepeatOrderReminderAction(formData: FormData) {
+  const parsedCustomerId = entityIdSchema.safeParse(formValue(formData, "customerId"));
+  const fallbackPath = parsedCustomerId.success ? `/customers/${parsedCustomerId.data}` : "/customers";
+
+  return runRedirectingAction(fallbackPath, async () => {
+    const actor = await requireDeveloperActor();
+    if (!parsedCustomerId.success) throw new UserFacingError("Customer tidak valid.");
+
+    const prisma = getPrismaClient();
+    const [customer, business, template] = await Promise.all([
+      prisma.customer.findUnique({
+        where: { id: parsedCustomerId.data },
+        select: { id: true, name: true, companyName: true, archivedAt: true, salesPic: { select: { name: true } } },
+      }),
+      prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
+      prisma.whatsAppTemplate.findFirst({ where: { triggerType: "REACTIVATION", isActive: true }, orderBy: { updatedAt: "desc" }, select: { body: true } }),
+    ]);
+    if (!customer || customer.archivedAt) throw new UserFacingError("Customer tidak tersedia.");
+
+    const text = renderWhatsAppTemplate(template?.body ?? DEFAULT_ORDER_REMINDER_TEMPLATE, {
+      business_name: business?.name ?? "AS Konveksi",
+      customer_name: customer.name,
+      company_name: customer.companyName ?? "",
+      sales_pic_name: customer.salesPic?.name ?? "",
+    });
+    await enqueueManualWhatsAppMessage({ actor, customerId: customer.id, text });
+    await prisma.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        entityType: "Customer",
+        entityId: customer.id,
+        action: "REPEAT_ORDER_TEST_FORCED",
+        changedFields: [],
+        metadata: { source: "developer-test" },
+      },
+    });
+    revalidatePath(`/customers/${customer.id}`);
+    revalidatePath("/whatsapp/jobs");
+    return flashMessagePath(`/customers/${customer.id}`, "notice", "Reminder repeat order test dijadwalkan untuk dikirim.");
   });
 }

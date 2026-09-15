@@ -101,6 +101,7 @@ export async function POST(request: Request) {
           city: parsed.data.city,
           customerTypeId: customerType.id,
           leadSourceId: leadSource.id,
+          lifecycle: "PROSPEK",
         },
         select: { id: true },
       });
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) {
-      return json("Lead belum dapat disimpan. Silakan coba lagi atau hubungi kami melalui WhatsApp.", 500);
+      return json("Prospek belum dapat disimpan. Silakan coba lagi atau hubungi kami melalui WhatsApp.", 500);
     }
   }
 

@@ -8,6 +8,6 @@ export async function getFollowUpSettings() {
   await requireActor(CRM_OPERATOR_ROLES);
   return getPrismaClient().businessProfile.findUniqueOrThrow({
     where: { id: "default" },
-    select: { invoiceReminderOffsets: true, version: true },
+    select: { invoiceReminderOffsets: true, repeatOrderIntervals: true, version: true },
   });
 }

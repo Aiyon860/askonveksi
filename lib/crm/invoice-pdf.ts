@@ -19,11 +19,6 @@ type PdfInvoice = {
   snapshotBusinessEmail: string | null;
   snapshotBusinessAddress: string | null;
   snapshotBusinessLogoPath: string | null;
-  discountType: string;
-  discountValue: { toString(): string };
-  subtotal: { toString(): string };
-  totalDiscount: { toString(): string };
-  totalTax: { toString(): string };
   total: { toString(): string };
   createdAt: Date;
   issuedAt: Date | null;
@@ -36,13 +31,7 @@ type PdfInvoice = {
     description: string;
     quantity: number;
     unitPrice: { toString(): string };
-    grossAmount: { toString(): string };
-    discountPercent: { toString(): string };
-    discountAmount: { toString(): string };
-    taxRate: { toString(): string };
-    taxAmount: { toString(): string };
     total: { toString(): string };
-    subtotal: { toString(): string };
   }>;
   salesOrder: { payment: { transactions: Array<{ amount: { toString(): string }; status: string }> } | null } | null;
 };
@@ -149,7 +138,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
   y -= 28;
 
   const tableRight = A4.width - margin;
-  const columns = { product: margin, description: 108, qtyRight: 330, priceRight: 402, discountRight: 452, taxRight: 492, totalRight: tableRight };
+  const columns = { product: margin, description: 138, qtyRight: 360, priceRight: 450, totalRight: tableRight };
   const headerHorizontalInset = 8;
   ensure(32);
   page.drawRectangle({
@@ -163,8 +152,6 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
   text("Deskripsi", columns.description, 8, bold);
   rightText("Qty", columns.qtyRight, 8, bold);
   rightText("Harga", columns.priceRight, 8, bold);
-  rightText("Diskon", columns.discountRight, 8, bold);
-  rightText("Pajak", columns.taxRight, 8, bold);
   rightText("Jumlah", columns.totalRight, 8, bold);
   y -= 28;
 
@@ -176,14 +163,10 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
     page.drawText(safeText(item.productName ?? "Produk"), { x: columns.product, y: rowTop, size: 8, font: regular });
     lines.forEach((line, index) => page.drawText(line, { x: columns.description, y: rowTop - index * 11, size: 8, font: regular }));
     const quantity = String(item.quantity);
-    const unitPrice = currency(item.unitPrice);
-    const discount = Number(item.discountAmount.toString()) ? `${item.discountPercent.toString()}%` : "-";
-    const tax = Number(item.taxAmount.toString()) ? `${item.taxRate.toString()}%` : "-";
+    const unitPrice = currency({ toString: () => (Number(item.total.toString()) / item.quantity).toFixed(2) });
     const lineTotal = currency(item.total);
     page.drawText(quantity, { x: columns.qtyRight - regular.widthOfTextAtSize(quantity, 8), y: rowTop, size: 8, font: regular });
     page.drawText(unitPrice, { x: columns.priceRight - regular.widthOfTextAtSize(unitPrice, 8), y: rowTop, size: 8, font: regular });
-    page.drawText(discount, { x: columns.discountRight - regular.widthOfTextAtSize(discount, 8), y: rowTop, size: 8, font: regular });
-    page.drawText(tax, { x: columns.taxRight - regular.widthOfTextAtSize(tax, 8), y: rowTop, size: 8, font: regular });
     page.drawText(lineTotal, { x: columns.totalRight - regular.widthOfTextAtSize(lineTotal, 8), y: rowTop, size: 8, font: regular });
     y -= rowHeight;
     page.drawLine({ start: { x: margin, y: y + 6 }, end: { x: A4.width - margin, y: y + 6 }, thickness: 0.5, color: rgb(0.86, 0.86, 0.86) });
@@ -191,20 +174,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
 
   ensure(100);
   y -= 8;
-  const storedDiscount = Number(invoice.totalDiscount.toString());
-  const legacyDiscount = invoice.discountType !== "NONE" && storedDiscount === 0
-    ? Math.max(0, Number(invoice.subtotal.toString()) + Number(invoice.totalTax.toString()) - Number(invoice.total.toString()))
-    : 0;
-  const displayedDiscount = storedDiscount || legacyDiscount;
   const summaryX = 340;
-  text("Subtotal", summaryX, 9);
-  rightText(currency(invoice.subtotal), columns.totalRight, 9);
-  y -= 18;
-  text("Diskon", summaryX, 9);
-  rightText(currency({ toString: () => String(displayedDiscount) }), columns.totalRight, 9);
-  y -= 18;
-  text("Pajak", summaryX, 9);
-  rightText(currency(invoice.totalTax), columns.totalRight, 9);
   y -= 22;
   page.drawLine({ start: { x: summaryX, y: y + 12 }, end: { x: A4.width - margin, y: y + 12 }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
   text("TOTAL", summaryX, 11, bold);

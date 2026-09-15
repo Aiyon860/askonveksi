@@ -80,9 +80,12 @@ export async function getWhatsAppTemplates() {
 }
 
 export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
-  await requireActor(CRM_OPERATOR_ROLES);
+  const actor = await requireActor(CRM_OPERATOR_ROLES);
   return getPrismaClient().whatsAppAutomationJob.findMany({
-    where: status ? { status } : undefined,
+    where: {
+      ...(status ? { status } : {}),
+      ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }),
+    },
     select: {
       id: true, type: true, status: true, scheduledAt: true, attempts: true, lastError: true, createdAt: true,
       customer: { select: { name: true, companyName: true } },

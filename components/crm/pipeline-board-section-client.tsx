@@ -7,6 +7,7 @@ import { fetcher } from "@/lib/fetcher";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewLeadForm } from "@/components/crm/new-lead-form";
+import { RepeatOrderForm } from "@/components/crm/repeat-order-form";
 import { PipelineSummary } from "@/components/crm/pipeline-summary";
 import { CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
 
@@ -24,7 +25,7 @@ type PipelineData = {
   actorRole: AppRole;
 };
 
-type CustomerOption = { id: string; customerNo: string; name: string; companyName: string | null };
+type CustomerOption = { id: string; customerNo: string; name: string; companyName: string | null; whatsapp: string | null };
 type FormOptions = { customerTypes: Array<{ id: string; name: string }>; leadSources: Array<{ id: string; name: string }>; salesUsers: Array<{ id: string; name: string }> };
 
 export function PipelineBoardSectionClient({
@@ -52,7 +53,7 @@ export function PipelineBoardSectionClient({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <PipelineSummary opportunities={pipeline.opportunities} total={pipeline.total} className="sm:flex-1" />
         {hasRole(pipeline.actorRole, CRM_OPERATOR_ROLES) ? (
-          <NewLeadForm customers={initialCustomers} {...initialFormOptions} />
+          <div className="flex flex-wrap gap-2"><NewLeadForm {...initialFormOptions} /><RepeatOrderForm customers={initialCustomers} /></div>
         ) : null}
       </div>
 

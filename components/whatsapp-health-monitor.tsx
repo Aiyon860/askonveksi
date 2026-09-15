@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/toast";
+import { MASTER_DATA_ROLES, hasRole } from "@/lib/auth/permissions";
 import { classifyWhatsAppHealthBanner, whatsappHealthChanged, type WhatsAppHealthState } from "@/lib/whatsapp/health";
 
 type Health = {
@@ -26,7 +27,7 @@ const stateCopy: Record<Exclude<WhatsAppHealthState, "HEALTHY">, string> = {
 
 export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
   const [health, setHealth] = useState<Health | null>(null);
-  const manager = ["OWNER", "ADMIN", "ADMIN_CUSTOMER"].includes(role);
+  const manager = hasRole(role, MASTER_DATA_ROLES);
 
   useEffect(() => {
     let controller: AbortController | null = null;

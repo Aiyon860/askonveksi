@@ -289,9 +289,9 @@ export async function createWhatsAppCustomerAction(formData: FormData) {
 
 export async function retryWhatsAppJobAction(formData: FormData) {
   return runRedirectingAction("/whatsapp/jobs", async () => {
-    await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
     const updated = await getPrismaClient().whatsAppAutomationJob.updateMany({
-      where: { id: String(formData.get("jobId") ?? ""), status: { in: ["FAILED", "CANCELLED"] } },
+      where: { id: String(formData.get("jobId") ?? ""), status: { in: ["FAILED", "CANCELLED"] }, ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }) },
       data: { status: "QUEUED", attempts: 0, scheduledAt: new Date(), nextAttemptAt: null, lastError: null, leaseOwner: null, leaseExpiresAt: null },
     });
     if (!updated.count) throw new UserFacingError("Job tidak dapat diulang.");
@@ -309,10 +309,10 @@ export async function getInvoiceWhatsAppMessageAction(invoiceId: string) {
 
 export async function cancelWhatsAppJobAction(formData: FormData) {
   return runRedirectingAction("/whatsapp/jobs", async () => {
-    await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
     const id = String(formData.get("jobId") ?? "");
     const updated = await getPrismaClient().whatsAppAutomationJob.updateMany({
-      where: { id, status: { in: ["QUEUED", "RETRY", "FAILED"] } },
+      where: { id, status: { in: ["QUEUED", "RETRY", "FAILED"] }, ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }) },
       data: { status: "CANCELLED", nextAttemptAt: null, lastError: "Dibatalkan manual.", leaseOwner: null, leaseExpiresAt: null },
     });
     if (!updated.count) throw new UserFacingError("Job tidak dapat dibatalkan.");

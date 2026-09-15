@@ -10,7 +10,8 @@ type ProductionDeadlineOption = ProductionDeadlineBaseOption & {
   isStoredValue?: boolean;
 };
 
-function jakartaDateKey(reference: Date) {
+function jakartaDateKey(reference: Date | string): string {
+  if (typeof reference === "string") return ISO_DATE_PATTERN.test(reference) ? reference : jakartaDateKey(new Date());
   return new Date(reference.getTime() + JAKARTA_OFFSET_MS).toISOString().slice(0, 10);
 }
 
@@ -46,7 +47,7 @@ export function formatProductionDeadlineDate(value: string) {
   }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
-export function productionDeadlineBaseOptions(reference = new Date()): ProductionDeadlineBaseOption[] {
+export function productionDeadlineBaseOptions(reference: Date | string = new Date()): ProductionDeadlineBaseOption[] {
   const today = jakartaDateKey(reference);
   return [
     { label: `1 minggu (${formatProductionDeadlineDate(addDaysToDateKey(today, 7))})`, value: addDaysToDateKey(today, 7) },
@@ -56,7 +57,7 @@ export function productionDeadlineBaseOptions(reference = new Date()): Productio
   ];
 }
 
-export function productionDeadlineOptions(reference = new Date(), storedValue?: string | null): ProductionDeadlineOption[] {
+export function productionDeadlineOptions(reference: Date | string = new Date(), storedValue?: string | null): ProductionDeadlineOption[] {
   const options = productionDeadlineBaseOptions(reference);
   if (storedValue && ISO_DATE_PATTERN.test(storedValue) && !options.some((option) => option.value === storedValue)) {
     return [

@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 import { UserFacingError } from "@/lib/actions/response";
 import { PURCHASE_ORDER_ROSTER_MAX_BYTES, PURCHASE_ORDER_ROSTER_MAX_ROWS } from "@/lib/crm/validation";
 
-export type ImportedRosterRow = { memberId: string; name: string; size: string };
+export type ImportedRosterRow = { memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" };
 
 const XLSX_MAX_ENTRIES = 100;
 const XLSX_MAX_UNCOMPRESSED_BYTES = 12 * 1024 * 1024;
@@ -77,48 +77,26 @@ function cellText(value: ExcelJS.CellValue): string {
   return String(value).trim();
 }
 
-function parseCsvLine(line: string) {
-  const values: string[] = [];
-  let current = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if (character === '"') {
-      if (quoted && line[index + 1] === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (character === "," && !quoted) {
-      values.push(current.trim());
-      current = "";
-    } else {
-      current += character;
-    }
-  }
-  if (quoted) throw new UserFacingError("Format CSV roster tidak valid.");
-  values.push(current.trim());
-  return values;
-}
-
 function rowsFromGrid(rows: string[][]) {
   if (!rows.length) return [];
   const normalizedHeaders = rows[0].map((value) => value.trim().toLocaleLowerCase("id-ID"));
   const idIndex = normalizedHeaders.findIndex((value) => value === "id");
   const nameIndex = normalizedHeaders.findIndex((value) => value === "nama" || value === "name");
   const sizeIndex = normalizedHeaders.findIndex((value) => value === "size" || value === "ukuran");
-  if (idIndex < 0 || nameIndex < 0 || sizeIndex < 0) {
-    throw new UserFacingError("Header roster harus memuat kolom ID, Nama, dan Size.");
+  const sleeveIndex = normalizedHeaders.findIndex((value) => value === "panjang lengan");
+  if (idIndex < 0 || nameIndex < 0 || sizeIndex < 0 || sleeveIndex < 0) {
+    throw new UserFacingError("Header roster harus memuat kolom ID, Nama, Ukuran, dan Panjang Lengan.");
   }
 
   const result = rows.slice(1).filter((row) => row.some((value) => value.trim())).map((row, index) => {
     const memberId = row[idIndex]?.trim() ?? "";
     const name = row[nameIndex]?.trim() ?? "";
     const size = row[sizeIndex]?.trim() ?? "";
-    if (!memberId || !name || !size) throw new UserFacingError(`Baris roster ${index + 2} belum lengkap.`);
+    const sleeveLength = row[sleeveIndex]?.trim().toLocaleUpperCase("id-ID") ?? "";
+    if (!memberId || !name || !size || !sleeveLength) throw new UserFacingError(`Baris roster ${index + 2} belum lengkap.`);
     if (memberId.length > 80 || name.length > 160 || size.length > 40) throw new UserFacingError(`Baris roster ${index + 2} terlalu panjang.`);
-    return { memberId, name, size };
+    if (sleeveLength !== "PENDEK" && sleeveLength !== "PANJANG") throw new UserFacingError(`Panjang lengan pada baris roster ${index + 2} harus Pendek atau Panjang.`);
+    return { memberId, name, size, sleeveLength: sleeveLength as ImportedRosterRow["sleeveLength"] };
   });
   if (result.length > PURCHASE_ORDER_ROSTER_MAX_ROWS) throw new UserFacingError(`Roster maksimal ${PURCHASE_ORDER_ROSTER_MAX_ROWS.toLocaleString("id-ID")} baris.`);
   return result;
@@ -130,17 +108,8 @@ export async function parseRosterFile(file: File): Promise<ImportedRosterRow[]> 
   const name = file.name.toLocaleLowerCase("id-ID");
   const bytes = Buffer.from(await file.arrayBuffer());
 
-  if (name.endsWith(".csv") || file.type === "text/csv") {
-    try {
-      const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^\uFEFF/, "");
-      return rowsFromGrid(source.split(/\r?\n/).filter(Boolean).map(parseCsvLine));
-    } catch (error) {
-      if (error instanceof UserFacingError) throw error;
-      throw new UserFacingError("CSV roster harus memakai encoding UTF-8 yang valid.");
-    }
-  }
   if (!name.endsWith(".xlsx") && file.type !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
-    throw new UserFacingError("Roster harus berformat XLSX atau CSV.");
+    throw new UserFacingError("Roster harus berformat XLSX.");
   }
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new UserFacingError("Isi file roster tidak sesuai format XLSX.");
   assertSafeXlsxArchive(bytes);

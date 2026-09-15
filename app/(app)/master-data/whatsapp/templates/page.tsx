@@ -13,7 +13,7 @@ import { getWhatsAppTemplates } from "@/lib/whatsapp/data";
 const triggerLabels = {
   MANUAL: "Chat manual",
   NEXT_ACTION: "Tindak lanjut peluang",
-  REACTIVATION: "Reminder order 6 bulanan",
+  REACTIVATION: "Reminder repeat order",
   INVOICE_ISSUED: "Invoice diterbitkan",
   INVOICE_DUE: "Pengingat pembayaran",
 } as const;

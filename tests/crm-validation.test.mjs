@@ -6,6 +6,7 @@ import {
   addCommunicationActivitySchema,
   bulkUpdateMasterDataSchema,
   createCustomerSchema,
+  createProspectCustomerSchema,
   createOpportunitySchema,
   createUserSchema,
   sortableMasterDataFieldsSchema,
@@ -22,6 +23,7 @@ import {
   recordFollowUpResultSchema,
   strongPasswordSchema,
   updateUserSchema,
+  updateCustomerSchema,
   validateOpenOpportunitySchedule,
 } from "../lib/crm/validation.ts";
 import { downloadFilename } from "../lib/download-filename.ts";
@@ -55,6 +57,30 @@ import {
   REVERSE_DEAL_ROLES,
   hasRole,
 } from "../lib/auth/permissions.ts";
+import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCustomerCodeBase } from "../lib/crm/numbers.ts";
+
+const userDataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+const userActionsSource = await readFile(new URL("../app/actions/users.ts", import.meta.url), "utf8");
+const crmActionsSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+
+test("akun Developer tersembunyi dan tidak dapat dikelola role lain", () => {
+  assert.match(userDataSource, /role: \{ not: "DEVELOPER" \}/);
+  assert.match(userActionsSource, /assertCanManageDeveloper/);
+  assert.match(userActionsSource, /actor\.role !== "DEVELOPER"/);
+});
+
+test("Sales/PIC lama tetap dapat dipertahankan saat customer diedit", () => {
+  assert.match(crmActionsSource, /OR: \[\{ role: "ADMIN_CUSTOMER", isActive: true \}, \{ id: current\.salesPicId \?\? "" \}\]/);
+});
+
+test("kode PO customer mengikuti nama dan format Jakarta", () => {
+  assert.equal(purchaseOrderCustomerCodeBase("Abyan"), "ABY");
+  assert.equal(purchaseOrderCustomerCodeBase("PT Abdul Khamid"), "ABK");
+  assert.equal(purchaseOrderCustomerCodeBase("Berkah Jaya Mandiri"), "BJM");
+  assert.equal(purchaseOrderCustomerCodeBase("Sumber Rejeki Makmur Abadi"), "SRM");
+  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z")), "PO-BJM130926-2");
+  assert.equal(formatPurchaseOrderRevisionNo("PO-BJM130926-1-R2", 3), "PO-BJM130926-1-R3");
+});
 
 test("opportunity hanya menerima field peluang yang masih digunakan", () => {
   const inlineCustomer = createOpportunitySchema.safeParse({
@@ -97,6 +123,34 @@ test("customer membutuhkan nama dan minimal satu kontak", () => {
 test("customer wajib memiliki jenis customer yang valid secara bentuk", () => {
   const withoutType = createCustomerSchema.safeParse({ name: "Budi", whatsapp: "08123456789" });
   assert.equal(withoutType.success, false);
+});
+
+test("edit customer menerima status reminder repeat order", () => {
+  const base = {
+    customerId: "cm123456789012",
+    version: "1",
+    name: "Budi",
+    companyName: "",
+    whatsapp: "08123456789",
+    email: "",
+    instagram: "",
+    address: "",
+    city: "Bandung",
+    notes: "",
+    customerTypeId: "master-ct-personal",
+    leadSourceId: "",
+    salesPicId: "",
+  };
+  assert.equal(updateCustomerSchema.safeParse({ ...base, orderReminderEnabled: "true" }).success, true);
+  assert.equal(updateCustomerSchema.safeParse({ ...base, orderReminderEnabled: "false" }).success, true);
+  assert.equal(updateCustomerSchema.safeParse({ ...base, orderReminderEnabled: "invalid" }).success, false);
+});
+
+test("prospek baru mewajibkan kota dan asal", () => {
+  const base = { name: "Budi", whatsapp: "08123456789", customerTypeId: "master-ct-personal", city: "Bandung", address: "Cimahi" };
+  assert.equal(createProspectCustomerSchema.safeParse(base).success, true);
+  assert.equal(createProspectCustomerSchema.safeParse({ ...base, city: "" }).success, false);
+  assert.equal(createProspectCustomerSchema.safeParse({ ...base, address: "" }).success, false);
 });
 
 test("master data membatasi nama, deskripsi, dan urutan", () => {
@@ -191,7 +245,7 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
   assert.match(actionSource, /function customerFields[\s\S]+leadSourceId: formValue\(formData, "leadSourceId"\),[\s\S]+salesPicId: formValue\(formData, "salesPicId"\),/);
 });
 
-test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", () => {
+test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", async () => {
   assert.equal(strongPasswordSchema.safeParse("").success, false);
   assert.equal(strongPasswordSchema.safeParse("a").success, true);
   assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", password: "a" }).success, true);
@@ -204,6 +258,13 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
     items: [{ description: "Kaos", quantity: 0, unitPrice: "50000" }],
   });
   assert.equal(invalidInvoice.success, false);
+
+  const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(invoiceFormSource, /profitPercent[^\n]*defaultValue=\{values\?\.profitPercent \?\? ""\}/);
+  assert.match(invoiceFormSource, /discountPercent[^\n]*defaultValue=\{values\?\.discountPercent \?\? ""\}/);
+  assert.match(actionSource, /profitPercent: formValue\(formData, "profitPercent"\) \|\| "0"/);
+  assert.match(actionSource, /discountPercent: formValue\(formData, "discountPercent"\) \|\| "0"/);
 });
 
 test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () => {
@@ -219,18 +280,24 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
       { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 },
     ],
+    rosterMode: "manual",
     roster: [
-      { memberId: "G-1", name: "Budi", sizeId: "garment-size-m" },
-      { memberId: "G-2", name: "Siti", sizeId: "garment-size-m" },
+      { memberId: "G-1", name: "Budi", sizeId: "garment-size-m", sleeveLength: "PANJANG" },
+      { memberId: "G-2", name: "Siti", sizeId: "garment-size-m", sleeveLength: "PANJANG" },
     ],
   };
   assert.equal(purchaseOrderDraftSchema.safeParse(valid).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, orderDate: "2026-03-15", designDeadline: "2026-03-15" }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, orderDate: "2026-03-15", designDeadline: "2026-03-14" }).success, false);
   const missingDeadline = purchaseOrderDraftSchema.safeParse({ ...valid, deadline: "" });
   assert.equal(missingDeadline.success, false);
   assert.equal(missingDeadline.error.issues[0]?.message, "Deadline produksi wajib dipilih.");
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, designDeadline: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "none", roster: [] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "excel", roster: [] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "excel" }).success, false);
 });
 
 test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan tanggal tersimpan", () => {
@@ -249,6 +316,12 @@ test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan ta
     value: "2026-10-01",
     isStoredValue: true,
   });
+  assert.deepEqual(productionDeadlineOptions("2026-03-15"), [
+    { label: "1 minggu (22 Maret 2026)", value: "2026-03-22" },
+    { label: "2 minggu (29 Maret 2026)", value: "2026-03-29" },
+    { label: "3 minggu (5 April 2026)", value: "2026-04-05" },
+    { label: "1 bulan (15 April 2026)", value: "2026-04-15" },
+  ]);
 });
 
 test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesanan", () => {
@@ -260,6 +333,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     material: "Cotton combed",
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
+    rosterMode: "none",
     roster: [],
   };
   const size = { sizeId: "garment-size-m", sleeveLength: "PENDEK" };
@@ -283,6 +357,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
+    rosterMode: "none",
     roster: [],
   };
 
@@ -296,6 +371,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
 test("owner menjadi role tertinggi pada permission aplikasi", () => {
   for (const roles of [CRM_OPERATOR_ROLES, DEAL_ROLES, ARCHIVE_ROLES, REVERSE_DEAL_ROLES]) {
     assert.equal(hasRole("OWNER", roles), true);
+    assert.equal(hasRole("DEVELOPER", roles), true);
   }
   assert.equal(hasRole("OWNER", ["ADMIN_CUSTOMER"]), true);
   assert.equal(hasRole("ADMIN_CUSTOMER", DEAL_ROLES), true);
@@ -329,15 +405,43 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
     purchaseOrderId: "cm123456789013",
     invoiceId: "cm123456789014",
     invoiceVersion: "1",
-    initialDueAt: "2026-09-03",
-    initialValueType: "NOMINAL",
-    initialValue: "500000",
+    initialValue: "50",
   };
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
-  assert.equal(completeDealSchema.safeParse({ ...base, initialDueAt: "" }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
+  assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", initialValue: "100", terms: [] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);
+});
+
+test("jadwal DP menampilkan nominal pecahan dan dapat mengisi sisa tepat", async () => {
+  const source = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
+  assert.match(source, /const totalAmount = roundToTens\(Number\(total\)\)/);
+  assert.match(source, /return roundToTens\(valueType === "PERCENTAGE"/);
+  assert.match(source, /function fillTermRemainder\(key: string\)/);
+  assert.match(source, /onClick=\{\(\) => fillTermRemainder\(terms\[terms\.length - 1\]\.key\)\}/);
+});
+
+test("deadline termin harus sehari setelah pembayaran awal atau termin sebelumnya", async () => {
+  const formSource = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(formSource, /min=\{addJakartaDays\(index \? terms\[index - 1\]\.dueAt \|\| initialDueAt : initialDueAt, 1\)\}/);
+  assert.match(actionSource, /dueAt <= previousDueAt/);
+});
+
+test("Invoice terbit menetapkan deadline awal H+7 dan Deal memakai deadline Invoice", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /const dueAt = addJakartaDays\(issuedAt, 7\)/);
+  assert.match(actionSource, /issuedAt,\s*dueAt,/);
+  assert.match(actionSource, /const initialDueAt = invoice\.dueAt \?\? addJakartaDays\(invoice\.issuedAt, 7\)/);
+});
+
+test("Deal mengganti form dengan notifikasi setelah jadwal pembayaran tersimpan", async () => {
+  const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(dataSource, /pendingPayment: \{ select: \{ kind: true, initialDueAt: true \} \}/);
+  assert.match(pageSource, /const scheduledPayment = issuedInvoice\?\.pendingPayment/);
+  assert.match(pageSource, /Jadwal pembayaran sudah tersimpan/);
 });
 
 test("pencatatan pembayaran memvalidasi waktu, referensi, dan identitas transaksi", () => {
@@ -572,14 +676,17 @@ test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async (
 
 test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", async () => {
   const dataSource = await readFile(new URL("../lib/finance/data.ts", import.meta.url), "utf8");
-  const pageSource = await readFile(new URL("../app/(app)/keuangan/page.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/keuangan/pemasukan/page.tsx", import.meta.url), "utf8");
 
   assert.match(dataSource, /requireActor\(FINANCE_ROLES\)/);
   assert.match(dataSource, /mode === "range"/);
   assert.match(dataSource, /outstandingAmount/);
-  assert.match(pageSource, /Rekapan semua order/);
+  assert.match(pageSource, /Laba Kotor/);
   assert.doesNotMatch(pageSource, /Status laporan/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
+  assert.match(pageSource, /getIncome/);
+  assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
+  assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /pajak/);
 });
 
 test("normalisasi performa sales mempertahankan sales aktif dan data historis", () => {
@@ -632,6 +739,7 @@ test("flash message tidak membocorkan isi notifikasi ke URL", async () => {
 test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", async () => {
   const sql = await readFile(new URL("../prisma/migrations/20260902000000_crm_purchase_order_invoice/migration.sql", import.meta.url), "utf8");
   const storageScript = await readFile(new URL("../scripts/reset-crm-storage.mjs", import.meta.url), "utf8");
+  const designPageSource = await readFile(new URL("../app/(app)/desain/page.tsx", import.meta.url), "utf8");
   assert.match(sql, /CREATE TYPE "OpportunityStage" AS ENUM \('LEAD_BARU', 'FOLLOW_UP', 'NEGOSIASI', 'DEAL', 'LOST'\)/);
   assert.match(sql, /CREATE TABLE "PurchaseOrder"/);
   assert.match(sql, /CREATE TABLE "Invoice"/);
@@ -649,6 +757,18 @@ test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", asy
   assert.match(storageScript, /public: false/);
   assert.match(storageScript, /fileSizeLimit: 5 \* 1024 \* 1024/);
   assert.match(sql, /REVOKE ALL ON TABLE "PurchaseOrder"[\s\S]+FROM anon, authenticated/);
+  assert.match(designPageSource, /hasRole\(actorRole, DESIGN_ROLES\)/);
+  assert.match(designPageSource, /hasRole\(actorRole, DESIGN_APPROVER_ROLES\)/);
+});
+
+test("upload desain menolak file lebih dari 5 MB sebelum dikirim", async () => {
+  const actionSource = await readFile(new URL("../app/actions/design.ts", import.meta.url), "utf8");
+  const componentSource = await readFile(new URL("../components/design/design-task-actions.tsx", import.meta.url), "utf8");
+  const configSource = await readFile(new URL("../next.config.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /MAX_BYTES = 5 \* 1024 \* 1024/);
+  assert.match(componentSource, /MAX_DESIGN_FILE_BYTES = 5 \* 1024 \* 1024/);
+  assert.match(componentSource, /File terlalu besar/);
+  assert.match(configSource, /bodySizeLimit: "28mb"/);
 });
 
 test("transaksi Deal memberi waktu cukup, retry konflik serializable, dan error yang dapat ditindaklanjuti", async () => {
@@ -673,9 +793,10 @@ test("migration dokumen CRM v2 menjaga nilai invoice dan relasi pembayaran", asy
   assert.doesNotMatch(sql, /(?:DELETE|INSERT|UPDATE)\s+(?:FROM\s+)?storage\./i);
   assert.doesNotMatch(actionSource, /productionRoute/);
   assert.match(actionSource, /salesOrder:\s*\{ status: "ACTIVE" \}/);
-  assert.match(actionSource, /const roster = replaceRosterFromFile \? fileRoster : manualRoster/);
+  assert.match(actionSource, /data\.rosterMode === "excel" \? fileRoster : data\.rosterMode === "manual" \? manualRoster : \[\]/);
   assert.match(rosterSource, /XLSX_MAX_UNCOMPRESSED_BYTES/);
-  assert.match(rosterSource, /TextDecoder\("utf-8", \{ fatal: true \}\)/);
+  assert.match(rosterSource, /Header roster harus memuat kolom ID, Nama, Ukuran, dan Panjang Lengan/);
+  assert.match(rosterSource, /sleeveLength !== "PENDEK" && sleeveLength !== "PANJANG"/);
 });
 
 test("parameter pagination dibatasi pada nilai aman", () => {

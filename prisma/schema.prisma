@@ -8,6 +8,7 @@ datasource db {
 }
 
 enum AppRole {
+  DEVELOPER
   OWNER
   ADMIN_CUSTOMER
   ADMIN_PRODUCTION
@@ -104,6 +105,11 @@ enum OpportunityStage {
   LOST
 }
 
+enum CustomerLifecycle {
+  PROSPEK
+  CUSTOMER
+}
+
 enum DiscountType {
   NONE
   NOMINAL
@@ -125,6 +131,35 @@ enum InvoiceStatus {
 enum PaymentKind {
   LUNAS
   DP
+}
+
+enum ExpensePaymentMethod {
+  QRIS
+  TUNAI
+  BANK_A
+  BANK_B
+  PRIBADI
+}
+
+enum ExpenseCategory {
+  WIFI
+  LINGKUNGAN
+  ADS
+  CICILAN_LAPTOP
+  FREE_PICK
+  ONGKIR_CUST
+  ONGKIR_ADMIN_PRODUKSI
+  LISTRIK_DEPAN
+  LISTRIK_BELAKANG
+  PERALATAN_KANTOR
+  SAMPEL
+  KONTEN
+  MEETING
+  EVENT_IFANA_SAGA
+  GOSEND_MOBIL_PRODUKSI
+  LEMBUR
+  LOKER
+  DLL
 }
 
 enum PaymentValueType {
@@ -207,11 +242,22 @@ enum WhatsAppMessageStatus {
 
 enum WhatsAppJobType {
   MANUAL
+  CAMPAIGN_TEST
   NEXT_ACTION
   REPEAT_ORDER
   REACTIVATION
   INVOICE_ISSUED
   INVOICE_DUE
+  CAMPAIGN
+}
+
+enum WhatsAppCampaignStatus {
+  SCHEDULED
+  PROCESSING
+  PAUSED
+  SKIPPED
+  COMPLETED
+  CANCELLED
 }
 
 enum WhatsAppJobStatus {
@@ -249,10 +295,31 @@ model AppUser {
   createdWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateCreatedBy")
   updatedWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateUpdatedBy")
   sentWhatsAppMessages      WhatsAppMessage[]         @relation("WhatsAppMessageSentBy")
+  createdWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignCreatedBy")
+  updatedWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignUpdatedBy")
+  expenses                  Expense[]
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
   @@index([role, isActive])
+}
+
+model Expense {
+  id              String               @id @default(cuid())
+  purpose         String               @db.VarChar(500)
+  spentAt         DateTime             @db.Date
+  amount          Decimal              @db.Decimal(18, 2)
+  category        ExpenseCategory
+  paymentMethod   ExpensePaymentMethod
+  createdById     String
+  reimbursedAt    DateTime?            @db.Timestamptz(3)
+  createdBy       AppUser              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
+
+  @@index([createdById, spentAt])
+  @@index([paymentMethod, spentAt])
+  @@index([category, spentAt])
 }
 
 model CustomerType {
@@ -318,6 +385,7 @@ model BusinessProfile {
   address                String?  @db.Text
   logoPath               String?  @db.VarChar(500)
   invoiceReminderOffsets Int[]    @default([-3, 0, 3])
+  repeatOrderIntervals   Int[]    @default([6, 5])
   version                Int      @default(1)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
@@ -326,6 +394,7 @@ model BusinessProfile {
 model Customer {
   id                      String                  @id @default(cuid())
   customerNo              String                  @unique @db.VarChar(24)
+  poCustomerCode          String?                 @unique @db.VarChar(20)
   name                    String                  @db.VarChar(160)
   companyName             String?                 @db.VarChar(160)
   whatsapp                String?                 @db.VarChar(32)
@@ -337,6 +406,7 @@ model Customer {
   customerTypeId          String
   leadSourceId            String?
   salesPicId              String?
+  lifecycle               CustomerLifecycle        @default(CUSTOMER)
   archivedAt              DateTime?               @db.Timestamptz(3)
   version                 Int                     @default(1)
   whatsappConsentStatus   WhatsAppConsentStatus   @default(UNKNOWN)
@@ -363,6 +433,7 @@ model Customer {
   @@index([leadSourceId])
   @@index([salesPicId])
   @@index([city])
+  @@index([lifecycle, archivedAt, updatedAt])
 }
 
 model Opportunity {
@@ -371,6 +442,7 @@ model Opportunity {
   customerId              String
   title                   String                  @db.VarChar(180)
   stage                   OpportunityStage        @default(LEAD_BARU)
+  isRepeatOrder           Boolean                 @default(false)
   leadSourceId            String?
   salesPicId              String?
   productName             String?                 @db.VarChar(120)
@@ -553,6 +625,7 @@ model PurchaseOrderRosterEntry {
   name            String        @db.VarChar(160)
   sizeId          String?
   size            String        @db.VarChar(40)
+  sleeveLength    SleeveLength
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   garmentSize     GarmentSize?  @relation(fields: [sizeId], references: [id], onDelete: Restrict)
 
@@ -596,10 +669,10 @@ model Invoice {
   snapshotBusinessAddress  String?                 @db.Text
   snapshotBusinessLogoPath String?                 @db.VarChar(500)
   discountType             DiscountType            @default(NONE)
-  discountValue            Decimal                 @default(0) @db.Decimal(18, 2)
+  discountValue            Decimal                 @default(0) @db.Decimal(7, 4)
   subtotal                 Decimal                 @db.Decimal(18, 2)
   totalDiscount            Decimal                 @default(0) @db.Decimal(18, 2)
-  totalTax                 Decimal                 @default(0) @db.Decimal(18, 2)
+  totalProfit              Decimal                 @default(0) @db.Decimal(18, 2)
   total                    Decimal                 @db.Decimal(18, 2)
   issuedAt                 DateTime?               @db.Timestamptz(3)
   dueAt                    DateTime?               @db.Date
@@ -637,8 +710,8 @@ model InvoiceItem {
   discountPercent   Decimal       @default(0) @db.Decimal(7, 4)
   discountCapAmount Decimal?      @db.Decimal(18, 2)
   discountAmount    Decimal       @default(0) @db.Decimal(18, 2)
-  taxRate           Decimal       @default(0) @db.Decimal(7, 4)
-  taxAmount         Decimal       @default(0) @db.Decimal(18, 2)
+  profitPercent     Decimal       @default(0) @db.Decimal(7, 4)
+  profitAmount      Decimal       @default(0) @db.Decimal(18, 2)
   total             Decimal       @default(0) @db.Decimal(18, 2)
   subtotal          Decimal       @db.Decimal(18, 2)
   invoice           Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -666,7 +739,7 @@ model SalesOrder {
   snapshotInstagram    String?              @db.VarChar(80)
   snapshotAddress      String?              @db.Text
   discountType         DiscountType
-  discountValue        Decimal              @db.Decimal(18, 2)
+  discountValue        Decimal              @db.Decimal(7, 4)
   subtotal             Decimal              @db.Decimal(18, 2)
   total                Decimal              @db.Decimal(18, 2)
   acceptedAt           DateTime             @db.Timestamptz(3)
@@ -864,8 +937,8 @@ model SalesOrderItem {
   discountPercent   Decimal       @default(0) @db.Decimal(7, 4)
   discountCapAmount Decimal?      @db.Decimal(18, 2)
   discountAmount    Decimal       @default(0) @db.Decimal(18, 2)
-  taxRate           Decimal       @default(0) @db.Decimal(7, 4)
-  taxAmount         Decimal       @default(0) @db.Decimal(18, 2)
+  profitPercent     Decimal       @default(0) @db.Decimal(7, 4)
+  profitAmount      Decimal       @default(0) @db.Decimal(18, 2)
   total             Decimal       @default(0) @db.Decimal(18, 2)
   subtotal          Decimal       @db.Decimal(18, 2)
   salesOrder        SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
@@ -882,6 +955,7 @@ model CustomerReminder {
   dueAt              DateTime                  @db.Timestamptz(3)
   resolvedAt         DateTime?                 @db.Timestamptz(3)
   generation         Int                       @default(1)
+  nextOccurrence     Int                       @default(1)
   customer           Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
   sourceSalesOrder   SalesOrder                @relation("CustomerReminderSourceOrder", fields: [sourceSalesOrderId], references: [id], onDelete: Restrict)
   receipts           CustomerReminderReceipt[]
@@ -1022,6 +1096,31 @@ model WhatsAppMessage {
   @@index([sentById, createdAt])
 }
 
+model WhatsAppCampaign {
+  id                  String                  @id @default(cuid())
+  name                String                  @db.VarChar(120)
+  body                String                  @db.Text
+  scheduledAt         DateTime                @db.Timestamptz(3)
+  status              WhatsAppCampaignStatus  @default(SCHEDULED)
+  version             Int                     @default(1)
+  recipientCursor     String?
+  startedAt           DateTime?               @db.Timestamptz(3)
+  snapshotCompletedAt DateTime?               @db.Timestamptz(3)
+  completedAt         DateTime?               @db.Timestamptz(3)
+  cancelledAt         DateTime?               @db.Timestamptz(3)
+  createdById         String
+  updatedById         String
+  createdBy           AppUser                 @relation("WhatsAppCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy           AppUser                 @relation("WhatsAppCampaignUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  jobs                WhatsAppAutomationJob[]
+  createdAt           DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                @updatedAt @db.Timestamptz(3)
+
+  @@index([status, scheduledAt])
+  @@index([createdById, createdAt])
+  @@index([updatedById, updatedAt])
+}
+
 model WhatsAppAutomationJob {
   id             String            @id @default(cuid())
   idempotencyKey String            @unique @db.VarChar(240)
@@ -1029,10 +1128,11 @@ model WhatsAppAutomationJob {
   status         WhatsAppJobStatus @default(QUEUED)
   accountId      String?
   templateId     String?
-  customerId     String
+  customerId     String?
   opportunityId  String?
   invoiceId      String?
   reminderId     String?
+  campaignId     String?
   payload        Json
   scheduledAt    DateTime          @db.Timestamptz(3)
   leaseOwner     String?           @db.VarChar(120)
@@ -1043,10 +1143,11 @@ model WhatsAppAutomationJob {
   completedAt    DateTime?         @db.Timestamptz(3)
   account        WhatsAppAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
   template       WhatsAppTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  customer       Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer       Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
   opportunity    Opportunity?      @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   invoice        Invoice?          @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   reminder       CustomerReminder? @relation(fields: [reminderId], references: [id], onDelete: Restrict)
+  campaign       WhatsAppCampaign? @relation(fields: [campaignId], references: [id], onDelete: Restrict)
   message        WhatsAppMessage?
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
@@ -1056,6 +1157,8 @@ model WhatsAppAutomationJob {
   @@index([customerId, status, scheduledAt])
   @@index([invoiceId, type, scheduledAt])
   @@index([opportunityId, type, scheduledAt])
+  @@index([campaignId, status, scheduledAt])
+  @@unique([campaignId, customerId])
 }
 
 model SequenceCounter {

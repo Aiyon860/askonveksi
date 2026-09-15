@@ -18,6 +18,7 @@ import { ANALYTICS_ROLES, CRM_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLE
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
+import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "@/lib/crm/numbers";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type PipelineOpportunity = {
@@ -54,6 +55,7 @@ export type PipelineOpportunity = {
     status: "DRAFT" | "ISSUED" | "SUPERSEDED";
     version: number;
     total: string;
+    issuedAt: string | null;
     pendingPayment: { kind: "LUNAS" | "DP"; initialDueAt: string } | null;
   } | null;
   salesOrder: {
@@ -96,7 +98,7 @@ const opportunitySummarySelect = {
     take: 1,
   },
   invoices: {
-    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true, pendingPayment: { select: { kind: true, initialDueAt: true } } },
+    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true, issuedAt: true, pendingPayment: { select: { kind: true, initialDueAt: true } } },
     orderBy: { revision: "desc" },
     take: 1,
   },
@@ -144,7 +146,7 @@ const getCachedPipelineData = unstable_cache(
       garmentType: row.purchaseOrders[0].garmentType,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
     } : null,
-    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt.toISOString() } : null } : null,
+    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), issuedAt: row.invoices[0].issuedAt?.toISOString() ?? null, pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt.toISOString() } : null } : null,
     salesOrder: row.salesOrders[0] ? {
       id: row.salesOrders[0].id,
       salesOrderNo: row.salesOrders[0].salesOrderNo,
@@ -166,7 +168,7 @@ export async function getPipelineData() {
 const getCachedCustomerOptions = unstable_cache(
   async () => {
     return getPrismaClient().customer.findMany({
-      where: { archivedAt: null },
+      where: { archivedAt: null, lifecycle: "CUSTOMER" },
       select: { id: true, customerNo: true, name: true, companyName: true, whatsapp: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 500,
@@ -200,6 +202,7 @@ function customerWhere(actor: { id: string; role: AppRole }, query: string, segm
 
   return {
     ...segmentWhere,
+    lifecycle: "CUSTOMER" as const,
     ...(normalizedQuery
       ? {
           OR: [
@@ -262,6 +265,7 @@ export async function getCustomers({
         address: true,
         city: true,
         notes: true,
+        orderReminderEnabled: true,
         customerTypeId: true,
         leadSourceId: true,
         salesPicId: true,
@@ -352,6 +356,72 @@ export async function getCustomersForExport({
     notes: item.notes ?? "",
     archivedAt: item.archivedAt,
   }));
+}
+
+export type ProspectSort = "opportunityNo" | "customer" | "city" | "createdAt";
+
+function prospectOrderBy(sort: ProspectSort, direction: SortDirection) {
+  return (
+    sort === "customer"
+      ? [{ customer: { name: direction } }, { id: "asc" as const }]
+      : sort === "city"
+        ? [{ customer: { city: { sort: direction, nulls: "last" } } }, { id: "asc" as const }]
+        : [{ [sort]: direction }, { id: "asc" as const }]
+  ) satisfies Prisma.OpportunityOrderByWithRelationInput[];
+}
+
+export async function getProspects({
+  query,
+  start,
+  end,
+  page,
+  pageSize,
+  sort,
+  direction,
+}: {
+  query: string;
+  start: Date | null;
+  end: Date | null;
+  page: number;
+  pageSize: number;
+  sort: ProspectSort;
+  direction: SortDirection;
+}) {
+  await requireActor(CRM_ROLES);
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    stage: { not: "DEAL" as const },
+    isRepeatOrder: false,
+    customer: {
+      archivedAt: null,
+      ...(normalizedQuery ? {
+        OR: [
+          { name: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { companyName: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { customerNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { whatsapp: { contains: normalizedQuery, mode: "insensitive" as const } },
+          { city: { contains: normalizedQuery, mode: "insensitive" as const } },
+        ],
+      } : {}),
+    },
+    ...(start || end ? { createdAt: { ...(start ? { gte: start } : {}), ...(end ? { lt: end } : {}) } } : {}),
+  } satisfies Prisma.OpportunityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.opportunity.findMany({
+      where,
+      select: {
+        id: true, opportunityNo: true, stage: true, createdAt: true,
+        customer: { select: { name: true, companyName: true, whatsapp: true, email: true, instagram: true, city: true, address: true } },
+        salesPic: { select: { name: true } },
+      },
+      orderBy: prospectOrderBy(sort, direction),
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.opportunity.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export async function getCustomerPopupDetail(customerId: string) {
@@ -449,21 +519,6 @@ export async function getCustomerDetail(customerId: string) {
           opportunityNo: true,
           title: true,
           stage: true,
-          updatedAt: true,
-          salesOrders: {
-            select: {
-              id: true,
-              salesOrderNo: true,
-              total: true,
-              status: true,
-              acceptedAt: true,
-              items: {
-                select: { id: true, size: true, description: true, quantity: true, position: true },
-                orderBy: { position: "asc" },
-              },
-            },
-            orderBy: { acceptedAt: "desc" },
-          },
         },
         orderBy: { updatedAt: "desc" },
       },
@@ -481,6 +536,100 @@ export async function getCustomerDetail(customerId: string) {
       },
     },
   });
+}
+
+export type CustomerCommunicationFilter = "all" | "COMMUNICATION" | "INTERNAL_NOTE" | "SYSTEM" | "WHATSAPP" | "INSTAGRAM" | "PHONE" | "EMAIL" | "MEETING" | "OTHER";
+export type CustomerOrderStatus = "all" | "ACTIVE" | "CANCELLED";
+
+export async function getCustomerOrderSummary(customerId: string) {
+  await requireActor();
+  const where = { opportunity: { customerId }, status: { not: "CANCELLED" } } satisfies Prisma.SalesOrderWhereInput;
+  const prisma = getPrismaClient();
+  const [aggregate, activeOrderCount, latestOrder] = await Promise.all([
+    prisma.salesOrder.aggregate({ where, _count: true, _sum: { total: true } }),
+    prisma.salesOrder.count({ where: { ...where, status: "ACTIVE" } }),
+    prisma.salesOrder.findFirst({ where, select: { acceptedAt: true }, orderBy: { acceptedAt: "desc" } }),
+  ]);
+  return { totalOrderCount: aggregate._count, totalTransaction: aggregate._sum.total ?? 0, activeOrderCount, latestOrder };
+}
+
+export async function getCustomerCommunicationHistory({ customerId, query, filter, page, pageSize }: {
+  customerId: string; query: string; filter: CustomerCommunicationFilter; page: number; pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    customerId,
+    ...(filter === "all" ? {} : ["COMMUNICATION", "INTERNAL_NOTE", "SYSTEM"].includes(filter)
+      ? { kind: filter as "COMMUNICATION" | "INTERNAL_NOTE" | "SYSTEM" }
+      : { channel: filter as "WHATSAPP" | "INSTAGRAM" | "PHONE" | "EMAIL" | "MEETING" | "OTHER" }),
+    ...(normalizedQuery ? { OR: [
+      { content: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { author: { name: { contains: normalizedQuery, mode: "insensitive" as const } } },
+      { opportunity: { is: { OR: [
+        { opportunityNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { title: { contains: normalizedQuery, mode: "insensitive" as const } },
+      ] } } },
+    ] } : {}),
+  } satisfies Prisma.CommunicationActivityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.communicationActivity.findMany({ where, select: communicationActivitySelect, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.communicationActivity.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+export async function getCustomerSalesOrders({ customerId, query, status, start, end, page, pageSize }: {
+  customerId: string; query: string; status: CustomerOrderStatus; start: Date | null; end: Date | null; page: number; pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    opportunity: { customerId },
+    ...(status !== "all" ? { status } : {}),
+    ...(start && end ? { acceptedAt: { gte: start, lt: end } } : {}),
+    ...(normalizedQuery ? { OR: [
+      { salesOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { invoiceNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { opportunity: { is: { OR: [
+        { opportunityNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { title: { contains: normalizedQuery, mode: "insensitive" as const } },
+      ] } } },
+      { items: { some: { OR: [
+        { description: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { productName: { contains: normalizedQuery, mode: "insensitive" as const } },
+      ] } } },
+    ] } : {}),
+  } satisfies Prisma.SalesOrderWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, status: true, total: true, acceptedAt: true, opportunity: { select: { id: true, opportunityNo: true, title: true } }, items: { select: { id: true, description: true, quantity: true, position: true }, orderBy: { position: "asc" } } }, orderBy: { acceptedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.salesOrder.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+export async function getCustomerOpportunities({ customerId, query, stage, page, pageSize }: {
+  customerId: string; query: string; stage: OpportunityStage | "all"; page: number; pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    customerId,
+    ...(stage === "all" ? {} : { stage }),
+    ...(normalizedQuery ? { OR: [
+      { opportunityNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { title: { contains: normalizedQuery, mode: "insensitive" as const } },
+    ] } : {}),
+  } satisfies Prisma.OpportunityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.opportunity.findMany({ where, select: { id: true, opportunityNo: true, title: true, stage: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.opportunity.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export const getOpportunityDetail = cache(async function getOpportunityDetail(opportunityId: string) {
@@ -510,6 +659,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
         select: {
           id: true,
           customerNo: true,
+          poCustomerCode: true,
           name: true,
           companyName: true,
           whatsapp: true,
@@ -545,7 +695,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           createdAt: true,
           createdBy: { select: { name: true } },
           sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true }, orderBy: { position: "asc" } },
+          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
           designTask: { select: { deadline: true, revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
         },
@@ -561,7 +711,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           discountValue: true,
           subtotal: true,
           totalDiscount: true,
-          totalTax: true,
+          totalProfit: true,
           total: true,
           issuedAt: true,
           dueAt: true,
@@ -573,11 +723,12 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
             select: {
               id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
               unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
-              discountAmount: true, taxRate: true, taxAmount: true, total: true, subtotal: true,
+              discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
             },
             orderBy: { position: "asc" },
           },
           salesOrder: { select: { id: true, salesOrderNo: true, status: true } },
+          pendingPayment: { select: { kind: true, initialDueAt: true } },
         },
         orderBy: { revision: "desc" },
       },
@@ -596,6 +747,19 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
     },
   });
 });
+
+export async function getPurchaseOrderNoPreview(customer: { id: string; name: string; poCustomerCode: string | null }) {
+  const prisma = getPrismaClient();
+  const base = customer.poCustomerCode ?? purchaseOrderCustomerCodeBase(customer.name);
+  let code = base;
+  for (let suffix = 0; ; suffix += 1) {
+    const used = await prisma.customer.findUnique({ where: { poCustomerCode: code }, select: { id: true } });
+    if (!used || used.id === customer.id) break;
+    code = `${base}${suffix + 1}`;
+  }
+  const ordinal = await prisma.purchaseOrder.count({ where: { opportunity: { customerId: customer.id }, revision: 1 } }) + 1;
+  return formatPurchaseOrderNo(code, ordinal);
+}
 
 export const COMMUNICATION_PAGE_SIZE = 25;
 
@@ -1149,7 +1313,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
       items: {
         select: {
           id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
-          unitPrice: true, grossAmount: true, discountAmount: true, taxAmount: true, total: true, subtotal: true,
+          unitPrice: true, grossAmount: true, discountAmount: true, profitAmount: true, total: true, subtotal: true,
         },
         orderBy: { position: "asc" },
       },
@@ -1502,6 +1666,8 @@ export async function getInvoiceDetail(invoiceId: string) {
       discountType: true,
       discountValue: true,
       subtotal: true,
+      totalDiscount: true,
+      totalProfit: true,
       total: true,
       issuedAt: true,
       dueAt: true,
@@ -1552,6 +1718,8 @@ export async function getInvoiceDetail(invoiceId: string) {
     ...invoice,
     discountValue: invoice.discountValue.toString(),
     subtotal: invoice.subtotal.toString(),
+    totalDiscount: invoice.totalDiscount.toString(),
+    totalProfit: invoice.totalProfit.toString(),
     total: invoice.total.toString(),
     items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), subtotal: item.subtotal.toString() })),
     canRecordPayment: hasRole(actor.role, DEAL_ROLES),
@@ -1563,7 +1731,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       initialAmount: invoice.salesOrder.payment.initialAmount.toString(),
       outstandingAmount: invoice.salesOrder.payment.outstandingAmount.toString(),
       initialTransaction: invoice.salesOrder.payment.transactions[0] ? { ...invoice.salesOrder.payment.transactions[0], amount: invoice.salesOrder.payment.transactions[0].amount.toString() } : null,
-      terms: invoice.salesOrder.payment.terms.map((term) => ({ ...term, amount: term.amount.toString(), transaction: term.transactions[0] ? { ...term.transactions[0], amount: term.transactions[0].amount.toString() } : null })),
+      terms: invoice.salesOrder.payment.terms.map(({ transactions, amount, ...term }) => ({ ...term, amount: amount.toString(), transaction: transactions[0] ? { ...transactions[0], amount: transactions[0].amount.toString() } : null })),
     } : null,
     pendingPayment: invoice.pendingPayment ? { ...invoice.pendingPayment, initialAmount: invoice.pendingPayment.initialAmount.toString(), terms: invoice.pendingPayment.terms.map((term) => ({ ...term, amount: term.amount.toString() })) } : null,
   } : null;
@@ -1589,9 +1757,16 @@ export async function getUsers({
   sort: UserSort;
   direction: SortDirection;
 }) {
-  await requireActor(USER_ADMIN_ROLES);
+  const actor = await requireActor(USER_ADMIN_ROLES);
   const normalizedQuery = query.trim().slice(0, 120);
+  const canManageDevelopers = actor.role === "DEVELOPER";
+  const visibilityFilters: Prisma.AppUserWhereInput[] = canManageDevelopers ? [] : [{ role: { not: "DEVELOPER" } }];
+  const roleFilters: Prisma.AppUserWhereInput[] = role === "all" ? [] : [{ role }];
   const where = {
+    AND: [
+      ...visibilityFilters,
+      ...roleFilters,
+    ],
     ...(normalizedQuery
       ? {
           OR: [
@@ -1600,7 +1775,6 @@ export async function getUsers({
           ],
         }
       : {}),
-    ...(role === "all" ? {} : { role }),
     ...(status === "all" ? {} : { isActive: status === "active" }),
   } satisfies Prisma.AppUserWhereInput;
   const orderBy = [{ [sort]: direction }, { id: "asc" as const }] satisfies Prisma.AppUserOrderByWithRelationInput[];
@@ -1623,8 +1797,8 @@ export async function getUsers({
       take: pageSize,
     }),
     prisma.appUser.count({ where }),
-    prisma.appUser.count({ where: { isActive: true } }),
-    prisma.appUser.count(),
+    prisma.appUser.count({ where: { isActive: true, ...(canManageDevelopers ? {} : { role: { not: "DEVELOPER" as AppRole } }) } }),
+    prisma.appUser.count({ where: canManageDevelopers ? {} : { role: { not: "DEVELOPER" as AppRole } } }),
   ]);
   return { items, total, activeTotal, allTotal, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }

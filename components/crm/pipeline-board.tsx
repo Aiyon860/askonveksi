@@ -249,6 +249,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                   invoiceId={pendingMove.opportunity.invoice.id}
                   invoiceVersion={pendingMove.opportunity.invoice.version}
                   total={pendingMove.opportunity.invoice.total}
+                  issuedAt={pendingMove.opportunity.invoice.issuedAt!}
                 />
               )
             ) : (

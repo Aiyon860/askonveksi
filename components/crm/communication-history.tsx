@@ -1,11 +1,11 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { DataPagination } from "@/components/data-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   COMMUNICATION_CHANNEL_LABEL,
   COMMUNICATION_DIRECTION_LABEL,
@@ -35,6 +35,9 @@ export function CommunicationHistory({
   pageCount,
   pathname,
   paginationParams,
+  pageSize = COMMUNICATION_PAGE_SIZE,
+  pageSizeParam = "pageSize",
+  controls,
   form,
 }: {
   items: CommunicationTimelineItem[];
@@ -43,6 +46,9 @@ export function CommunicationHistory({
   pageCount: number;
   pathname: string;
   paginationParams?: Record<string, string | undefined>;
+  pageSize?: number;
+  pageSizeParam?: string;
+  controls?: ReactNode;
   form?: ReactNode;
 }) {
   return (
@@ -57,28 +63,36 @@ export function CommunicationHistory({
         {form ? (
           <>
             {form}
-            <Separator />
           </>
         ) : null}
+        {controls}
 
         {items.length ? (
-          <ol className="flex flex-col" aria-label="Kronologi komunikasi">
-            {items.map((activity, index) => {
+          <Table className="min-w-4xl">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Waktu</TableHead>
+                <TableHead>Aktivitas</TableHead>
+                <TableHead>Pesan</TableHead>
+                <TableHead>Penulis</TableHead>
+                <TableHead>Peluang</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+            {items.map((activity) => {
               const nextAction = metadataString(activity.metadata, "nextAction");
               const nextActionAt = metadataString(activity.metadata, "nextActionAt");
               const recordedLater = activity.createdAt.getTime() - activity.occurredAt.getTime() > 60_000;
 
               return (
-                <Fragment key={activity.id}>
-                  {index > 0 ? <Separator /> : null}
-                  <li className="grid gap-3 py-5 first:pt-0 last:pb-0 sm:grid-cols-[9rem_minmax(0,1fr)]">
-                    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  <TableRow key={activity.id}>
+                    <TableCell className="whitespace-normal">
+                    <div className="flex min-w-36 flex-col gap-1 text-xs text-muted-foreground">
                       <time dateTime={activity.occurredAt.toISOString()}>{formatDate(activity.occurredAt, true)}</time>
-                      <span>{activity.author.name}</span>
                       {recordedLater ? <span>Dicatat {formatDate(activity.createdAt, true)}</span> : null}
                     </div>
-
-                    <article className="min-w-0">
+                    </TableCell>
+                    <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant={activity.kind === "SYSTEM" ? "outline" : "secondary"}>
                           {activityLabel(activity)}
@@ -88,15 +102,9 @@ export function CommunicationHistory({
                             {COMMUNICATION_DIRECTION_LABEL[activity.direction]}
                           </span>
                         ) : null}
-                        {activity.opportunity ? (
-                          <Link
-                            href={`/crm/peluang/${activity.opportunity.id}`}
-                            className="text-xs font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {activity.opportunity.opportunityNo} · {activity.opportunity.title}
-                          </Link>
-                        ) : null}
                       </div>
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
                       <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-6">{activity.content}</p>
                       {nextAction ? (
                         <dl className="mt-3 grid gap-1 rounded-md bg-muted px-3 py-2 text-xs">
@@ -112,12 +120,20 @@ export function CommunicationHistory({
                           ) : null}
                         </dl>
                       ) : null}
-                    </article>
-                  </li>
-                </Fragment>
+                    </TableCell>
+                    <TableCell>{activity.author.name}</TableCell>
+                    <TableCell className="whitespace-normal">
+                      {activity.opportunity ? (
+                        <Link href={`/crm/peluang/${activity.opportunity.id}`} className="text-xs font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          {activity.opportunity.opportunityNo} · {activity.opportunity.title}
+                        </Link>
+                      ) : "-"}
+                    </TableCell>
+                  </TableRow>
               );
             })}
-          </ol>
+            </TableBody>
+          </Table>
         ) : (
           <Empty className="p-8">
             <EmptyHeader>
@@ -132,9 +148,11 @@ export function CommunicationHistory({
           page={page}
           pageCount={pageCount}
           total={total}
-          pageSize={COMMUNICATION_PAGE_SIZE}
+          pageSize={pageSize}
+          pageSizeOptions={pageSizeParam === "pageSize" ? undefined : [5, 10, 20]}
           params={paginationParams}
           pageParam="historyPage"
+          pageSizeParam={pageSizeParam}
           anchor="communication-history"
         />
       </CardContent>

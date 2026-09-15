@@ -23,10 +23,9 @@ type DraftItem = {
   sleeveLength: "PENDEK" | "PANJANG" | null;
   quantity: number;
   unitPrice: string;
-  discountPercent: string;
 };
 
-type InvoiceFormValues = { notes: string; taxRate: string; items: DraftItem[] };
+type InvoiceFormValues = { notes: string; profitPercent: string; discountPercent: string; items: DraftItem[] };
 type Draft = InvoiceFormValues & { id: string; version: number };
 
 export function InvoiceForm({
@@ -58,7 +57,7 @@ export function InvoiceForm({
       {draft ? <input type="hidden" name="version" value={draft.version} /> : null}
       <FieldGroup>
         <Table containerClassName="rounded-lg border">
-          <TableHeader><TableRow><TableHead>Produk / deskripsi</TableHead><TableHead>Model</TableHead><TableHead>Ukuran</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead><TableHead className="min-w-32">Diskon %</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Produk / deskripsi</TableHead><TableHead>Model</TableHead><TableHead>Ukuran</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead></TableRow></TableHeader>
           <TableBody>{purchaseOrder.sizes.map((poItem) => {
             const key = `${poItem.sleeveLength}:${poItem.size.toLocaleLowerCase("id-ID")}`;
             const item = byKey.get(key);
@@ -69,19 +68,19 @@ export function InvoiceForm({
               <TableCell>{poItem.size}<input type="hidden" name="itemSize" value={poItem.size} /></TableCell>
               <TableCell className="text-right font-mono tabular-nums">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
               <TableCell><Input name="itemUnitPrice" type="number" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${description}`} /></TableCell>
-              <TableCell><Input name="itemDiscountPercent" type="number" required min={0} max={100} step="0.0001" defaultValue={item?.discountPercent ?? "0"} aria-label={`Diskon persen ${description}`} /></TableCell>
             </TableRow>;
           })}</TableBody>
         </Table>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel htmlFor={`invoice-tax-${fieldKey}`}>Pajak %</FieldLabel><Input id={`invoice-tax-${fieldKey}`} name="taxRate" type="number" required min={0} max={100} step="0.0001" defaultValue={values?.taxRate ?? "0"} aria-label="Pajak persen" /></Field>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field><FieldLabel htmlFor={`invoice-profit-${fieldKey}`}>Keuntungan %</FieldLabel><Input id={`invoice-profit-${fieldKey}`} name="profitPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.profitPercent ?? ""} aria-label="Keuntungan persen" /></Field>
+          <Field><FieldLabel htmlFor={`invoice-discount-${fieldKey}`}>Diskon %</FieldLabel><Input id={`invoice-discount-${fieldKey}`} name="discountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.discountPercent ?? ""} aria-label="Diskon keseluruhan invoice" /></Field>
           <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
         </div>
-        <FieldDescription>Diskon dihitung dari harga kotor per baris. Pajak dikenakan pada keseluruhan order setelah diskon.</FieldDescription>
+        <FieldDescription>Harga akhir = harga satuan × qty × (1 + keuntungan%) × (1 − diskon%).</FieldDescription>
         {formState.ok === false && formState.message ? (
           <Alert variant="destructive">
             <AlertTitle>Invoice belum tersimpan</AlertTitle>
-            <AlertDescription>{formState.message} Periksa harga, diskon, dan pajak, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
+            <AlertDescription>{formState.message} Periksa harga, keuntungan, dan diskon, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
         <SubmitButton pendingLabel="Menyimpan draft...">{submitLabel ?? (draft ? "Perbarui draft invoice" : "Buat draft invoice")}</SubmitButton>
