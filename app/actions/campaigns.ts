@@ -6,7 +6,7 @@ import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/a
 import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { campaignTestSchema, campaignFieldsSchema, cancelCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema, updateCampaignSchema } from "@/lib/whatsapp/campaigns";
+import { campaignTestSchema, campaignFieldsSchema, deleteCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema, updateCampaignSchema } from "@/lib/whatsapp/campaigns";
 import { enqueueCampaignTestWhatsAppMessage } from "@/lib/whatsapp/jobs";
 
 function campaignInput(formData: FormData) {
@@ -124,29 +124,33 @@ export async function toggleCampaignAction(formData: FormData) {
   });
 }
 
-export async function cancelCampaignAction(formData: FormData) {
+export async function deleteCampaignAction(formData: FormData) {
   return runRedirectingAction("/campaigns", async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
-    const parsed = cancelCampaignSchema.safeParse({ campaignId: formData.get("campaignId"), version: formData.get("version") });
+    const parsed = deleteCampaignSchema.safeParse({ campaignId: formData.get("campaignId"), version: formData.get("version") });
     if (!parsed.success) throw new UserFacingError("Campaign tidak valid.");
+
     await getPrismaClient().$transaction(async (tx) => {
-      const updated = await tx.whatsAppCampaign.updateMany({
-        where: { id: parsed.data.campaignId, version: parsed.data.version, status: { in: ["SCHEDULED", "PROCESSING"] } },
-        data: { status: "CANCELLED", cancelledAt: new Date(), updatedById: actor.id, version: { increment: 1 } },
+      const locked = await tx.whatsAppCampaign.updateMany({
+        where: { id: parsed.data.campaignId, version: parsed.data.version },
+        data: { updatedById: actor.id, version: { increment: 1 } },
       });
-      if (!updated.count) throw new UserFacingError("Campaign sudah selesai atau berubah. Muat ulang halaman.");
+      if (!locked.count) throw new UserFacingError("Campaign sudah berubah. Muat ulang halaman.");
+
+      await tx.whatsAppMessage.updateMany({
+        where: { automationJob: { is: { campaignId: parsed.data.campaignId, status: { in: ["QUEUED", "RETRY"] } } }, status: "QUEUED" },
+        data: { status: "CANCELLED", errorMessage: "Campaign dihapus." },
+      });
       await tx.whatsAppAutomationJob.updateMany({
         where: { campaignId: parsed.data.campaignId, status: { in: ["QUEUED", "RETRY"] } },
-        data: { status: "CANCELLED", nextAttemptAt: null, lastError: "Campaign dibatalkan." },
+        data: { status: "CANCELLED", nextAttemptAt: null, lastError: "Campaign dihapus." },
       });
-      await tx.whatsAppMessage.updateMany({
-        where: { automationJob: { is: { campaignId: parsed.data.campaignId } }, status: { in: ["QUEUED", "FAILED"] } },
-        data: { status: "CANCELLED", errorMessage: "Campaign dibatalkan." },
-      });
-      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "WhatsAppCampaign", entityId: parsed.data.campaignId, action: "CAMPAIGN_CANCELLED", changedFields: ["status"] } });
+      await tx.whatsAppAutomationJob.updateMany({ where: { campaignId: parsed.data.campaignId }, data: { campaignId: null } });
+      await tx.whatsAppCampaign.delete({ where: { id: parsed.data.campaignId } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "WhatsAppCampaign", entityId: parsed.data.campaignId, action: "CAMPAIGN_DELETED", changedFields: ["campaign"] } });
     });
     revalidatePath("/campaigns");
     revalidatePath("/whatsapp/jobs");
-    return flashMessagePath("/campaigns", "notice", "Campaign dibatalkan; pesan yang sudah terkirim tetap tercatat.");
+    return flashMessagePath("/campaigns", "notice", "Campaign dihapus.");
   });
 }

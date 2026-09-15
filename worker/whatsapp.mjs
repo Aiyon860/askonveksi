@@ -19,6 +19,9 @@ const lockClient = new Client({ connectionString: lockConnectionString });
 const authRoot = path.resolve(process.env.WHATSAPP_AUTH_PATH || ".data/baileys-auth");
 const workerId = process.env.WHATSAPP_WORKER_ID || `worker-${process.pid}`;
 const mediaBucket = process.env.WHATSAPP_MEDIA_BUCKET || "whatsapp-media";
+const campaignRecipientAllowlist = process.env.BROADCAST_TEST_RECIPIENTS
+  ? new Set(process.env.BROADCAST_TEST_RECIPIENTS.split(",").map(normalizeNumber).filter(Boolean))
+  : null;
 const sessions = new Map();
 let stopping = false;
 let lastTickAt = 0;
@@ -370,7 +373,10 @@ async function scheduleCampaigns() {
         take: 200,
       });
       if (recipients.length) {
-        const jobs = recipients.filter((item) => normalizeNumber(item.whatsapp)).map((item) => ({
+        const jobs = recipients.filter((item) => {
+          const number = normalizeNumber(item.whatsapp);
+          return number && (!campaignRecipientAllowlist || campaignRecipientAllowlist.has(number));
+        }).map((item) => ({
           idempotencyKey: `campaign:${campaign.id}:${item.id}`,
           type: "CAMPAIGN",
           customerId: item.id,

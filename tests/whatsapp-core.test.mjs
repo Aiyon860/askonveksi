@@ -11,11 +11,13 @@ import {
   unknownTemplateVariables,
 } from "../lib/whatsapp/core.ts";
 import { repeatOrderDueAt, repeatOrderOccurrenceMonths } from "../lib/crm/reminder-types.ts";
-import { campaignFieldsSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema } from "../lib/whatsapp/campaigns.ts";
+import { campaignFieldsSchema, deleteCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema } from "../lib/whatsapp/campaigns.ts";
 
 const jobsSource = await readFile(new URL("../lib/whatsapp/jobs.ts", import.meta.url), "utf8");
 const workerSource = await readFile(new URL("../worker/whatsapp.mjs", import.meta.url), "utf8");
 const whatsappDataSource = await readFile(new URL("../lib/whatsapp/data.ts", import.meta.url), "utf8");
+const campaignActionsSource = await readFile(new URL("../app/actions/campaigns.ts", import.meta.url), "utf8");
+const campaignPageSource = await readFile(new URL("../app/(app)/campaigns/page.tsx", import.meta.url), "utf8");
 
 test("nomor WhatsApp Indonesia dinormalisasi ke kode negara", () => {
   assert.equal(normalizeWhatsAppNumber("0812-3456-7890"), "6281234567890");
@@ -65,6 +67,20 @@ test("switch campaign hanya menerima nilai boolean dan versi yang valid", () => 
   assert.equal(toggleCampaignSchema.safeParse({ campaignId: "cmu0wrmdz0002ulij36mpwbb3", version: 1, enabled: "false" }).success, true);
   assert.equal(toggleCampaignSchema.safeParse({ campaignId: "cmu0wrmdz0002ulij36mpwbb3", version: 0, enabled: "true" }).success, false);
   assert.equal(toggleCampaignSchema.safeParse({ campaignId: "cmu0wrmdz0002ulij36mpwbb3", version: 1, enabled: "yes" }).success, false);
+});
+
+test("campaign hanya dikendalikan oleh switch, tanpa pembatalan permanen", () => {
+  assert.doesNotMatch(campaignActionsSource, /cancelCampaignAction|CAMPAIGN_CANCELLED/);
+  assert.doesNotMatch(campaignPageSource, /Batalkan|cancelCampaignAction/);
+});
+
+test("penghapusan campaign memerlukan versi valid dan menjaga riwayat job", () => {
+  assert.equal(deleteCampaignSchema.safeParse({ campaignId: "cmu0wrmdz0002ulij36mpwbb3", version: 1 }).success, true);
+  assert.equal(deleteCampaignSchema.safeParse({ campaignId: "cmu0wrmdz0002ulij36mpwbb3", version: 0 }).success, false);
+  assert.match(campaignActionsSource, /export async function deleteCampaignAction/);
+  assert.match(campaignActionsSource, /campaignId: null/);
+  assert.match(campaignActionsSource, /CAMPAIGN_DELETED/);
+  assert.match(campaignPageSource, /Hapus campaign\?/);
 });
 
 test("template hanya menerima variabel yang diizinkan", () => {

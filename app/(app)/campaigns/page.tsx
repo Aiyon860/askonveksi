@@ -1,7 +1,8 @@
 import Link from "next/link";
 
-import { cancelCampaignAction, createCampaignAction, sendCampaignTestAction, updateCampaignAction } from "@/app/actions/campaigns";
+import { createCampaignAction, deleteCampaignAction, sendCampaignTestAction, updateCampaignAction } from "@/app/actions/campaigns";
 import { CampaignEnabledSwitch } from "@/components/campaigns/campaign-enabled-switch";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { SubmitButton } from "@/components/submit-button";
@@ -84,7 +85,11 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
                   <TableCell><CampaignEnabledSwitch campaignId={campaign.id} version={campaign.version} status={campaign.status} /></TableCell>
                   <TableCell><div className="flex justify-end gap-2">
                     {campaign.status === "SCHEDULED" || campaign.status === "PAUSED" ? <Button size="sm" variant="outline" render={<Link href={`/campaigns?edit=${campaign.id}`} />} nativeButton={false}>Edit</Button> : null}
-                    {campaign.status === "SCHEDULED" || campaign.status === "PROCESSING" ? <form action={cancelCampaignAction}><input type="hidden" name="campaignId" value={campaign.id} /><input type="hidden" name="version" value={campaign.version} /><SubmitButton size="sm" variant="outline">Batalkan</SubmitButton></form> : null}
+                    <form action={deleteCampaignAction}>
+                      <input type="hidden" name="campaignId" value={campaign.id} />
+                      <input type="hidden" name="version" value={campaign.version} />
+                      <ConfirmSubmitButton size="sm" variant="destructive" confirmTitle="Hapus campaign?" confirmDescription="Campaign akan dihapus dari daftar. Pengiriman yang belum mulai dihentikan, sedangkan pesan yang sudah dikirim tetap tersimpan." confirmLabel="Ya, hapus campaign" pendingLabel="Menghapus...">Hapus</ConfirmSubmitButton>
+                    </form>
                   </div></TableCell>
                 </TableRow>;
               }) : <TableRow><TableCell colSpan={6} className="py-10 text-center text-muted-foreground">Belum ada campaign.</TableCell></TableRow>}

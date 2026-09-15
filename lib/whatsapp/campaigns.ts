@@ -48,13 +48,13 @@ export const campaignTestSchema = z.object({
   phoneNumber: z.string().trim().min(1, "Nomor WhatsApp tujuan test wajib diisi.").max(32),
 });
 
-export const cancelCampaignSchema = z.object({
-  campaignId: z.string().trim().min(10).max(40),
-  version: z.coerce.number().int().positive(),
-});
-
 export const toggleCampaignSchema = z.object({
   campaignId: z.string().trim().min(10).max(40),
   version: z.coerce.number().int().positive(),
   enabled: z.enum(["true", "false"]).transform((value) => value === "true"),
+});
+
+export const deleteCampaignSchema = z.object({
+  campaignId: z.string().trim().min(10).max(40),
+  version: z.coerce.number().int().positive(),
 });
