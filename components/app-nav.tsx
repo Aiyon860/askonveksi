@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, ChartNoAxesCombined, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Megaphone, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -24,7 +24,6 @@ const financeItems = [
 const crmItems = [
   { href: "/crm", label: "Pipeline", icon: KanbanSquare },
   { href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock },
-  { href: "/crm/follow-up/settings", label: "Pengaturan follow up", icon: Settings2 },
   { href: "/crm/purchase-orders", label: "Purchase Order", icon: FileText },
   { href: "/crm/invoices", label: "Invoice", icon: Receipt },
   { href: "/crm/sales-orders", label: "Sales Order", icon: ScrollText },
@@ -68,6 +67,10 @@ function isNavItemActive(pathname: string, href: string) {
   return isPathWithin(pathname, href);
 }
 
+function navCountLabel(count: number) {
+  return count > 99 ? "99+" : String(count);
+}
+
 function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: string; item: { href: string; label: string; icon: LucideIcon; count?: number }; nested?: boolean; onNavigate?: () => void }) {
   const active = isNavItemActive(pathname, item.href);
   const Icon = item.icon;
@@ -85,8 +88,8 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
       <Icon aria-hidden="true" className="size-4" />
       {item.label}
       {typeof item.count === "number" ? (
-        <Badge variant={active ? "secondary" : "default"} className="ml-auto size-6 px-0 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
-          {item.count}
+        <Badge variant={active ? "secondary" : "default"} className="ml-auto min-w-6 px-1.5 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
+          {navCountLabel(item.count)}
         </Badge>
       ) : null}
     </Link>
@@ -161,6 +164,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewCrm ? prospectItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} onNavigate={onNavigate} />) : null}
+      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/campaigns", label: "Campaign promo", icon: Megaphone }} onNavigate={onNavigate} /> : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (
@@ -188,6 +192,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           </CollapsibleContent>
         </Collapsible>
       ) : null}
+      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: Settings2 }} onNavigate={onNavigate} /> : null}
     </nav>
   );
 });

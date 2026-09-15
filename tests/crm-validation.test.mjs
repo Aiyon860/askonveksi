@@ -58,6 +58,15 @@ import {
 } from "../lib/auth/permissions.ts";
 import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCustomerCodeBase } from "../lib/crm/numbers.ts";
 
+const userDataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+const userActionsSource = await readFile(new URL("../app/actions/users.ts", import.meta.url), "utf8");
+
+test("akun Developer tersembunyi dan tidak dapat dikelola role lain", () => {
+  assert.match(userDataSource, /role: \{ not: "DEVELOPER" \}/);
+  assert.match(userActionsSource, /assertCanManageDeveloper/);
+  assert.match(userActionsSource, /actor\.role !== "DEVELOPER"/);
+});
+
 test("kode PO customer mengikuti nama dan format Jakarta", () => {
   assert.equal(purchaseOrderCustomerCodeBase("Abyan"), "ABY");
   assert.equal(purchaseOrderCustomerCodeBase("PT Abdul Khamid"), "ABK");
@@ -244,18 +253,24 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
       { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 },
     ],
+    rosterMode: "manual",
     roster: [
-      { memberId: "G-1", name: "Budi", sizeId: "garment-size-m" },
-      { memberId: "G-2", name: "Siti", sizeId: "garment-size-m" },
+      { memberId: "G-1", name: "Budi", sizeId: "garment-size-m", sleeveLength: "PANJANG" },
+      { memberId: "G-2", name: "Siti", sizeId: "garment-size-m", sleeveLength: "PANJANG" },
     ],
   };
   assert.equal(purchaseOrderDraftSchema.safeParse(valid).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, orderDate: "2026-03-15", designDeadline: "2026-03-15" }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, orderDate: "2026-03-15", designDeadline: "2026-03-14" }).success, false);
   const missingDeadline = purchaseOrderDraftSchema.safeParse({ ...valid, deadline: "" });
   assert.equal(missingDeadline.success, false);
   assert.equal(missingDeadline.error.issues[0]?.message, "Deadline produksi wajib dipilih.");
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, designDeadline: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "none", roster: [] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "excel", roster: [] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "excel" }).success, false);
 });
 
 test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan tanggal tersimpan", () => {
@@ -291,6 +306,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     material: "Cotton combed",
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
+    rosterMode: "none",
     roster: [],
   };
   const size = { sizeId: "garment-size-m", sleeveLength: "PENDEK" };
@@ -314,6 +330,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
+    rosterMode: "none",
     roster: [],
   };
 
@@ -640,6 +657,9 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.match(pageSource, /Laba Kotor/);
   assert.doesNotMatch(pageSource, /Status laporan/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
+  assert.match(pageSource, /getIncome/);
+  assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
+  assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /pajak/);
 });
 
 test("normalisasi performa sales mempertahankan sales aktif dan data historis", () => {
@@ -746,9 +766,10 @@ test("migration dokumen CRM v2 menjaga nilai invoice dan relasi pembayaran", asy
   assert.doesNotMatch(sql, /(?:DELETE|INSERT|UPDATE)\s+(?:FROM\s+)?storage\./i);
   assert.doesNotMatch(actionSource, /productionRoute/);
   assert.match(actionSource, /salesOrder:\s*\{ status: "ACTIVE" \}/);
-  assert.match(actionSource, /const roster = replaceRosterFromFile \? fileRoster : manualRoster/);
+  assert.match(actionSource, /data\.rosterMode === "excel" \? fileRoster : data\.rosterMode === "manual" \? manualRoster : \[\]/);
   assert.match(rosterSource, /XLSX_MAX_UNCOMPRESSED_BYTES/);
-  assert.match(rosterSource, /TextDecoder\("utf-8", \{ fatal: true \}\)/);
+  assert.match(rosterSource, /Header roster harus memuat kolom ID, Nama, Ukuran, dan Panjang Lengan/);
+  assert.match(rosterSource, /sleeveLength !== "PENDEK" && sleeveLength !== "PANJANG"/);
 });
 
 test("parameter pagination dibatasi pada nilai aman", () => {

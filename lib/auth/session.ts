@@ -61,3 +61,13 @@ export async function requireActor(
 
   return actor;
 }
+
+export async function requireDeveloperActor() {
+  const actor = await getCurrentActor();
+
+  if (!actor || actor.role !== "DEVELOPER") {
+    throw new Error("UNAUTHORIZED");
+  }
+
+  return actor;
+}

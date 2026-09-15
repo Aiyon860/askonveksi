@@ -27,7 +27,7 @@ let ticking = false;
 
 const DEFAULT_INVOICE_ISSUED_TEMPLATE = "Halo {{customer_name}}, invoice {{invoice_no}} dari {{business_name}} sebesar {{invoice_total}} telah diterbitkan. Batas pembayaran: {{invoice_due_date}}. Dokumen invoice terlampir. Mohon konfirmasi setelah pembayaran. Terima kasih.";
 const DEFAULT_INVOICE_DUE_TEMPLATE = "Halo {{customer_name}}, pengingat pembayaran {{payment_label}} untuk invoice {{invoice_no}} sebesar {{payment_amount}} jatuh tempo pada {{payment_due_date}}. Mohon konfirmasi setelah pembayaran. Terima kasih.";
-const DEFAULT_ORDER_REMINDER_TEMPLATE = "Halo {{customer_name}}, sudah enam bulan sejak order terakhir di {{business_name}}. Jika ada kebutuhan produksi baru, balas pesan ini dan kami akan membuat order baru dari awal.";
+const DEFAULT_ORDER_REMINDER_TEMPLATE = "Halo {{customer_name}}, sudah waktunya meninjau kebutuhan order berikutnya di {{business_name}}. Jika ada kebutuhan produksi baru, balas pesan ini dan kami akan membuat order baru dari awal.";
 
 const silentLogger = {
   level: "silent",
@@ -76,9 +76,13 @@ function render(body, values) {
   return body.replace(/{{\s*([a-z_]+)\s*}}/g, (_, name) => values[name] || "").trim();
 }
 
-function addSixCalendarMonthsJakarta(value) {
+function repeatOrderDueAt(value, intervals, occurrence) {
+  const cycles = Math.floor((occurrence - 1) / intervals.length);
+  const remainder = occurrence % intervals.length || intervals.length;
+  const months = cycles * intervals.reduce((sum, item) => sum + item, 0)
+    + intervals.slice(0, remainder).reduce((sum, item) => sum + item, 0);
   const local = new Date(value.getTime() + 7 * 60 * 60 * 1000);
-  const start = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 6, 1));
+  const start = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + months, 1));
   const lastDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
   return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), Math.min(local.getUTCDate(), lastDay), 2));
 }
@@ -330,6 +334,76 @@ async function scheduleAutomations() {
   }
 }
 
+async function scheduleCampaigns() {
+  const now = new Date();
+  await prisma.whatsAppCampaign.updateMany({
+    where: { status: "PAUSED", scheduledAt: { lte: now } },
+    data: { status: "SKIPPED" },
+  });
+  const campaigns = await prisma.whatsAppCampaign.findMany({
+    where: { OR: [{ status: "SCHEDULED", scheduledAt: { lte: now } }, { status: "PROCESSING", snapshotCompletedAt: null }] },
+    orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+    take: 10,
+  });
+  const business = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } });
+  for (const campaign of campaigns) {
+    const startedAt = campaign.startedAt || now;
+    if (campaign.status === "SCHEDULED") {
+      const started = await prisma.whatsAppCampaign.updateMany({
+        where: { id: campaign.id, status: "SCHEDULED" },
+        data: { status: "PROCESSING", startedAt },
+      });
+      if (!started.count) continue;
+    }
+    let cursor = campaign.recipientCursor;
+    for (let batch = 0; batch < 10; batch += 1) {
+      const recipients = await prisma.customer.findMany({
+        where: {
+          ...(cursor ? { id: { gt: cursor } } : {}),
+          createdAt: { lte: startedAt },
+          archivedAt: null,
+          whatsapp: { not: null },
+          whatsappConsentStatus: { not: "OPTED_OUT" },
+        },
+        select: { id: true, name: true, companyName: true, whatsapp: true },
+        orderBy: { id: "asc" },
+        take: 200,
+      });
+      if (recipients.length) {
+        const jobs = recipients.filter((item) => normalizeNumber(item.whatsapp)).map((item) => ({
+          idempotencyKey: `campaign:${campaign.id}:${item.id}`,
+          type: "CAMPAIGN",
+          customerId: item.id,
+          campaignId: campaign.id,
+          scheduledAt: campaign.scheduledAt,
+          payload: { text: render(campaign.body, { customer_name: item.name, company_name: item.companyName || "", business_name: business?.name || "AS Konveksi" }).replace(/\s{2,}/g, " ") },
+        }));
+        if (jobs.length) await prisma.whatsAppAutomationJob.createMany({ data: jobs, skipDuplicates: true });
+        cursor = recipients.at(-1).id;
+      }
+      await prisma.whatsAppCampaign.updateMany({
+        where: { id: campaign.id, status: "PROCESSING" },
+        data: { recipientCursor: cursor, ...(recipients.length < 200 ? { snapshotCompletedAt: new Date() } : {}) },
+      });
+      if (recipients.length < 200) break;
+    }
+  }
+  const running = await prisma.whatsAppCampaign.findMany({
+    where: { status: "PROCESSING", snapshotCompletedAt: { not: null } },
+    select: { id: true },
+    take: 50,
+  });
+  for (const campaign of running) {
+    const pending = await prisma.whatsAppAutomationJob.count({
+      where: { campaignId: campaign.id, status: { in: ["QUEUED", "PROCESSING", "RETRY"] } },
+    });
+    if (!pending) await prisma.whatsAppCampaign.updateMany({
+      where: { id: campaign.id, status: "PROCESSING" },
+      data: { status: "COMPLETED", completedAt: new Date() },
+    });
+  }
+}
+
 async function createScheduledJob({ template, values, attachment, metadata, ...data }) {
   const body = data.type === "INVOICE_ISSUED" && !values.invoice_due_date
     ? template.body.replace(/\s*Batas pembayaran:\s*{{\s*invoice_due_date\s*}}\s*\.\s*/i, " ")
@@ -365,7 +439,11 @@ async function claimJob() {
 }
 
 async function automationSourceIsValid(job) {
-  if (job.type === "MANUAL") return true;
+  if (job.type === "MANUAL" || job.type === "CAMPAIGN_TEST") return true;
+  if (job.type === "CAMPAIGN") {
+    const campaign = await prisma.whatsAppCampaign.findUnique({ where: { id: job.campaignId || "" }, select: { status: true } });
+    return Boolean(campaign?.status === "PROCESSING" && !job.customer.archivedAt && job.customer.whatsappConsentStatus !== "OPTED_OUT" && normalizeNumber(job.customer.whatsapp));
+  }
   if (job.type === "NEXT_ACTION") {
     const opportunity = await prisma.opportunity.findUnique({ where: { id: job.opportunityId || "" }, select: { stage: true, nextActionAt: true, customer: { select: { archivedAt: true, whatsappConsentStatus: true } } } });
     return Boolean(opportunity?.nextActionAt && !opportunity.customer.archivedAt && opportunity.customer.whatsappConsentStatus !== "OPTED_OUT" && ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"].includes(opportunity.stage) && job.idempotencyKey === `next:${job.opportunityId}:${opportunity.nextActionAt.toISOString()}`);
@@ -420,15 +498,15 @@ async function processOneJob() {
   }
   let sendStarted = false;
   try {
-    if (job.customer.archivedAt) throw new Error("Customer tidak tersedia.");
+    if (job.customer?.archivedAt) throw new Error("Customer tidak tersedia.");
     const account = job.accountId
       ? await prisma.whatsAppAccount.findUnique({ where: { id: job.accountId } })
       : await prisma.whatsAppAccount.findFirst({ where: { sendEnabled: true, status: "CONNECTED" } });
     const socket = account && sessions.get(account.id);
     if (!account || account.status !== "CONNECTED" || !account.sendEnabled || !socket) throw new Error("Nomor WhatsApp aktif sedang offline.");
     const payload = job.payload;
-    const customerNumber = normalizeNumber(job.customer.whatsapp);
-    const remoteJid = (job.type === "MANUAL" ? directJid(job.message?.conversation.remoteJid) || directJid(payload.remoteJid) : null)
+    const customerNumber = normalizeNumber(job.customer?.whatsapp);
+    const remoteJid = (job.type === "MANUAL" || job.type === "CAMPAIGN_TEST" ? directJid(job.message?.conversation.remoteJid) || directJid(payload.remoteJid) : null)
       || (customerNumber ? `${customerNumber}@s.whatsapp.net` : null);
     if (!remoteJid) throw new Error("Nomor WhatsApp customer tidak valid.");
     const text = String(payload.text || "").trim();
@@ -452,10 +530,10 @@ async function processOneJob() {
         : { document: buffer, mimetype: payload.attachment.mimeType, fileName: payload.attachment.fileName, caption: text };
     }
     const preparedAt = new Date();
-    const conversation = await prisma.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, customerId: job.customerId }, update: { customerId: job.customerId } });
+    const conversation = await prisma.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, ...(job.customerId ? { customerId: job.customerId } : {}) }, update: job.customerId ? { customerId: job.customerId } : {} });
     const preparedMessage = job.message
       ? await prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { accountId: account.id, conversationId: conversation.id, status: "SENDING", errorMessage: null, failedAt: null } })
-      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? "DOCUMENT" : "TEXT", text, mediaFileName: payload.attachment?.type === "invoice" ? `invoice-${job.invoiceId}.pdf` : payload.attachment?.fileName ?? null, mediaMimeType: payload.attachment?.type === "invoice" ? "application/pdf" : payload.attachment?.mimeType ?? null, automationJobId: job.id, occurredAt: preparedAt } });
+      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? "DOCUMENT" : "TEXT", text, mediaFileName: payload.attachment?.type === "invoice" ? `invoice-${job.invoiceId}.pdf` : payload.attachment?.fileName ?? null, mediaMimeType: payload.attachment?.type === "invoice" ? "application/pdf" : payload.attachment?.mimeType ?? null, sentById: typeof payload.sentById === "string" ? payload.sentById : null, automationJobId: job.id, occurredAt: preparedAt } });
     await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { accountId: account.id } });
     sendStarted = true;
     const sent = await socket.sendMessage(remoteJid, content);
@@ -464,15 +542,18 @@ async function processOneJob() {
     await prisma.$transaction(async (tx) => {
       await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { isResolved: false, lastMessageAt: occurredAt, lastMessagePreview: activityContent.slice(0, 240) } });
       const message = await tx.whatsAppMessage.update({ where: { id: preparedMessage.id }, data: { whatsappMessageId: sent.key.id, status: "SENT", sentAt: occurredAt, occurredAt } });
-      const authorId = message.sentById || job.customer.salesPicId || (await tx.appUser.findFirst({ where: { role: "OWNER", isActive: true }, select: { id: true } }))?.id;
-      if (authorId) await tx.communicationActivity.upsert({ where: { whatsappMessageId: message.id }, create: { customerId: job.customerId, opportunityId: job.opportunityId, authorId, kind: "COMMUNICATION", channel: "WHATSAPP", direction: "OUTBOUND", content: activityContent, occurredAt, whatsappMessageId: message.id }, update: {} });
+      const authorId = message.sentById || job.customer?.salesPicId || (await tx.appUser.findFirst({ where: { role: "OWNER", isActive: true }, select: { id: true } }))?.id;
+      if (authorId && job.customerId) await tx.communicationActivity.upsert({ where: { whatsappMessageId: message.id }, create: { customerId: job.customerId, opportunityId: job.opportunityId, authorId, kind: "COMMUNICATION", channel: "WHATSAPP", direction: "OUTBOUND", content: activityContent, occurredAt, whatsappMessageId: message.id }, update: {} });
       await tx.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: "COMPLETED", accountId: account.id, completedAt: occurredAt, leaseOwner: null, leaseExpiresAt: null, lastError: null } });
       if (job.type === "REACTIVATION" && job.reminderId) {
-        const reminder = await tx.customerReminder.findUnique({ where: { id: job.reminderId }, select: { dueAt: true, generation: true } });
+        const reminder = await tx.customerReminder.findUnique({ where: { id: job.reminderId }, select: { generation: true, nextOccurrence: true, sourceSalesOrder: { select: { acceptedAt: true } } } });
         if (reminder) {
-          let dueAt = reminder.dueAt;
-          do dueAt = addSixCalendarMonthsJakarta(dueAt); while (dueAt <= occurredAt);
-          await tx.customerReminder.updateMany({ where: { id: job.reminderId, generation: reminder.generation, resolvedAt: null }, data: { dueAt, generation: { increment: 1 } } });
+          const settings = await tx.businessProfile.findUnique({ where: { id: "default" }, select: { repeatOrderIntervals: true } });
+          const intervals = settings?.repeatOrderIntervals || [6, 5];
+          let occurrence = reminder.nextOccurrence + 1;
+          let dueAt = repeatOrderDueAt(reminder.sourceSalesOrder.acceptedAt, intervals, occurrence);
+          while (dueAt <= occurredAt) dueAt = repeatOrderDueAt(reminder.sourceSalesOrder.acceptedAt, intervals, ++occurrence);
+          await tx.customerReminder.updateMany({ where: { id: job.reminderId, generation: reminder.generation, resolvedAt: null }, data: { dueAt, nextOccurrence: occurrence, generation: { increment: 1 } } });
         }
       }
     });
@@ -496,6 +577,7 @@ async function tick() {
     await reloadAccounts();
     if (Date.now() - lastAutomationAt >= 60_000) {
       await scheduleAutomations();
+      await scheduleCampaigns();
       lastAutomationAt = Date.now();
     }
     for (let index = 0; index < 10; index += 1) {

@@ -22,6 +22,12 @@ function usersReturnPath(value: FormDataEntryValue | null) {
   }
 }
 
+function assertCanManageDeveloper(actor: { role: string }, role: string) {
+  if (role === "DEVELOPER" && actor.role !== "DEVELOPER") {
+    throw new UserFacingError("Akun Developer tidak tersedia untuk role Anda.");
+  }
+}
+
 export async function createUserAction(formData: FormData) {
   return runRedirectingAction("/admin/users", async () => {
     const actor = await requireActor(USER_ADMIN_ROLES);
@@ -33,6 +39,7 @@ export async function createUserAction(formData: FormData) {
     });
 
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    assertCanManageDeveloper(actor, parsed.data.role);
 
     const admin = createAdminClient();
     const email = parsed.data.email.toLowerCase();
@@ -111,6 +118,8 @@ export async function updateUserAction(formData: FormData) {
       },
     });
     if (!target) throw new UserFacingError("Pengguna tidak ditemukan.");
+    assertCanManageDeveloper(actor, target.role);
+    assertCanManageDeveloper(actor, parsed.data.role);
     if (target.updatedAt.toISOString() !== parsed.data.updatedAt) {
       throw new UserFacingError("Data pengguna sudah berubah. Muat ulang lalu coba lagi.");
     }
@@ -201,6 +210,7 @@ export async function toggleUserActiveAction(formData: FormData) {
           select: { id: true, role: true, isActive: true },
         });
         if (!target) throw new UserFacingError("Pengguna tidak ditemukan.");
+        assertCanManageDeveloper(actor, target.role);
 
         if (target.role === "OWNER" && target.isActive && !parsed.data.isActive) {
           const activeOwners = await tx.appUser.count({ where: { role: "OWNER", isActive: true } });

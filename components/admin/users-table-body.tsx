@@ -46,11 +46,13 @@ function UserEditActions({ name, onCancel }: { name: string; onCancel: () => voi
 export function UsersTableBody({
   users,
   actorId,
+  canManageDevelopers,
   numberOffset,
   returnTo,
 }: {
   users: EditableUserRow[];
   actorId?: string;
+  canManageDevelopers: boolean;
   numberOffset: number;
   returnTo: string;
 }) {
@@ -119,7 +121,7 @@ export function UsersTableBody({
                     defaultValue={user.role}
                     className="w-full min-w-28"
                   >
-                    {USER_ROLES.map((role) => (
+                    {USER_ROLES.filter((role) => canManageDevelopers || role !== "DEVELOPER").map((role) => (
                       <NativeSelectOption key={role} value={role}>{ROLE_LABEL[role]}</NativeSelectOption>
                     ))}
                   </NativeSelect>

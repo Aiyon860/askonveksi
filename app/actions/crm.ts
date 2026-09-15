@@ -7,13 +7,13 @@ import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
 import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, MASTER_DATA_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
-import { requireActor, type Actor } from "@/lib/auth/session";
+import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/session";
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
 import { calculateInvoiceLines, roundInvoiceTotal, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
-import { parseRosterFile } from "@/lib/crm/roster-import";
+import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
 import {
   rearmCustomerRemindersAfterLost,
   restoreCustomerRemindersAfterCancellation,
@@ -47,7 +47,8 @@ import {
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureProductionWorkOrder } from "@/lib/production/service";
-import { enqueueIssuedInvoiceWhatsAppJob } from "@/lib/whatsapp/jobs";
+import { enqueueIssuedInvoiceWhatsAppJob, enqueueManualWhatsAppMessage } from "@/lib/whatsapp/jobs";
+import { DEFAULT_ORDER_REMINDER_TEMPLATE, renderWhatsAppTemplate } from "@/lib/whatsapp/core";
 
 type Tx = Prisma.TransactionClient;
 type CrmActionState = { error: string | null; success: boolean };
@@ -256,6 +257,7 @@ function purchaseOrderInput(formData: FormData) {
   const rosterMemberIds = formData.getAll("rosterMemberId");
   const rosterNames = formData.getAll("rosterName");
   const rosterSizeIds = formData.getAll("rosterSizeId");
+  const rosterSleeveLengths = formData.getAll("rosterSleeveLength");
   return {
     opportunityId: formValue(formData, "opportunityId"),
     purchaseOrderId: formValue(formData, "purchaseOrderId") || undefined,
@@ -272,17 +274,31 @@ function purchaseOrderInput(formData: FormData) {
     notes: formValue(formData, "notes"),
     deadline: formValue(formData, "deadline"),
     designDeadline: formValue(formData, "designDeadline"),
+    rosterMode: formValue(formData, "rosterMode"),
     sizes: Array.from({ length: Math.max(sizeIds.length, quantities.length) }, (_, index) => ({
       sizeId: sizeIds[index],
       sleeveLength: sleeveLengths[index],
       quantity: quantities[index],
     })),
-    roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length) }, (_, index) => ({
+    roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
       memberId: rosterMemberIds[index],
       name: rosterNames[index],
       sizeId: rosterSizeIds[index],
-    })).filter((item) => item.memberId || item.name || item.sizeId),
+      sleeveLength: rosterSleeveLengths[index],
+    })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
   };
+}
+
+async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "manual" | "excel") {
+  const file = formData.get("rosterFile");
+  if (mode !== "excel") {
+    if (file instanceof File && file.size) throw new UserFacingError("File roster hanya boleh diunggah pada mode Impor Excel.");
+    return [];
+  }
+  if (!(file instanceof File) || !file.size) throw new UserFacingError("Pilih file Excel roster.");
+  const rows = await parseRosterFile(file);
+  if (!rows.length) throw new UserFacingError("File Excel roster belum berisi pemakai.");
+  return rows;
 }
 
 function completeDealInput(formData: FormData) {
@@ -346,10 +362,10 @@ async function preparePurchaseOrderRows(
   db: PurchaseOrderRowReader,
   data: {
     sizes: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-    roster: Array<{ memberId: string; name: string; sizeId: string }>;
+    rosterMode: "none" | "manual" | "excel";
+    roster: Array<{ memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
   },
-  importedRoster: Array<{ memberId: string; name: string; size: string }>,
-  replaceRosterFromFile: boolean,
+  importedRoster: ImportedRosterRow[],
 ) {
   const requestedIds = new Set([
     ...data.sizes.map((item) => item.sizeId),
@@ -381,22 +397,29 @@ async function preparePurchaseOrderRows(
   const fileRoster = importedRoster.map((item, index) => {
     const master = byName.get(item.size.toLocaleLowerCase("id-ID"));
     if (!master) throw new UserFacingError(`Ukuran ${item.size} pada baris roster ${index + 2} belum tersedia di Data Master.`);
-    return { memberId: item.memberId, name: item.name, sizeId: master.id, size: master.name };
+    return { memberId: item.memberId, name: item.name, sizeId: master.id, size: master.name, sleeveLength: item.sleeveLength };
   });
-  const roster = replaceRosterFromFile ? fileRoster : manualRoster;
+  const roster = data.rosterMode === "excel" ? fileRoster : data.rosterMode === "manual" ? manualRoster : [];
   const normalizedIds = roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
   if (new Set(normalizedIds).size !== normalizedIds.length) throw new UserFacingError("ID anggota roster tidak boleh duplikat.");
 
   if (roster.length) {
     const matrixTotals = new Map<string, number>();
-    for (const item of sizes) matrixTotals.set(item.sizeId, (matrixTotals.get(item.sizeId) ?? 0) + item.quantity);
+    for (const item of sizes) {
+      const key = `${item.sizeId}:${item.sleeveLength}`;
+      matrixTotals.set(key, (matrixTotals.get(key) ?? 0) + item.quantity);
+    }
     const rosterTotals = new Map<string, number>();
-    for (const item of roster) rosterTotals.set(item.sizeId, (rosterTotals.get(item.sizeId) ?? 0) + 1);
-    const allSizeIds = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
-    for (const sizeId of allSizeIds) {
-      if ((matrixTotals.get(sizeId) ?? 0) !== (rosterTotals.get(sizeId) ?? 0)) {
+    for (const item of roster) {
+      const key = `${item.sizeId}:${item.sleeveLength}`;
+      rosterTotals.set(key, (rosterTotals.get(key) ?? 0) + 1);
+    }
+    const allKeys = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
+    for (const key of allKeys) {
+      if ((matrixTotals.get(key) ?? 0) !== (rosterTotals.get(key) ?? 0)) {
+        const [sizeId, sleeveLength] = key.split(":");
         const sizeName = byId.get(sizeId)?.name ?? "tidak dikenal";
-        throw new UserFacingError(`Total roster ukuran ${sizeName} harus sama dengan total Pendek dan Panjang pada matriks.`);
+        throw new UserFacingError(`Total roster ukuran ${sizeName} lengan ${sleeveLength.toLocaleLowerCase("id-ID")} harus sama dengan jumlah pada matriks.`);
       }
     }
   }
@@ -681,6 +704,15 @@ export async function updateCustomerOrderReminderAction(formData: FormData) {
         data: { orderReminderEnabled: parsed.data.enabled, version: { increment: 1 } },
       });
       if (!updated.count) throw new UserFacingError("Pengaturan customer sudah berubah. Muat ulang halaman.");
+      const reminders = await tx.customerReminder.findMany({
+        where: { customerId: parsed.data.customerId, type: "REACTIVATION", resolvedAt: null },
+        select: { id: true },
+      });
+      if (reminders.length) {
+        const reminderIds = reminders.map((reminder) => reminder.id);
+        await tx.customerReminder.updateMany({ where: { id: { in: reminderIds } }, data: { generation: { increment: 1 } } });
+        if (parsed.data.enabled) await tx.customerReminderReceipt.deleteMany({ where: { reminderId: { in: reminderIds } } });
+      }
       if (!parsed.data.enabled) {
         const jobs = await tx.whatsAppAutomationJob.findMany({
           where: { customerId: parsed.data.customerId, type: "REACTIVATION", status: { in: ["QUEUED", "RETRY"] } },
@@ -1234,14 +1266,12 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const rosterFile = formData.get("rosterFile");
-    const replaceRosterFromFile = rosterFile instanceof File && rosterFile.size > 0;
-    const importedRoster = replaceRosterFromFile ? await parseRosterFile(rosterFile) : [];
+    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
     timer.mark("roster");
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
     timer.mark("rows");
     await prisma.$transaction(async (tx) => {
         const opportunity = await tx.opportunity.findUnique({
@@ -1306,13 +1336,11 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
       throw new UserFacingError(parsed.success ? "Identitas PO tidak lengkap." : firstValidationMessage(parsed.error));
     }
     timer.mark("parse");
-    const rosterFile = formData.get("rosterFile");
-    const replaceRosterFromFile = rosterFile instanceof File && rosterFile.size > 0;
-    const importedRoster = replaceRosterFromFile ? await parseRosterFile(rosterFile) : [];
+    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
     timer.mark("roster");
     const prisma = getPrismaClient();
     const purchaseOrderId = parsed.data.purchaseOrderId;
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
     timer.mark("rows");
     await prisma.$transaction(async (tx) => {
         const updated = await tx.purchaseOrder.updateMany({
@@ -1439,14 +1467,12 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const rosterFile = formData.get("rosterFile");
-    const replaceRosterFromFile = rosterFile instanceof File && rosterFile.size > 0;
-    const importedRoster = replaceRosterFromFile ? await parseRosterFile(rosterFile) : [];
+    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
     timer.mark("roster");
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster, replaceRosterFromFile);
+    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
     timer.mark("rows");
     const opportunityId = await prisma.$transaction(async (tx) => {
         const source = await tx.purchaseOrder.findUnique({
@@ -2520,5 +2546,47 @@ export async function reverseSalesOrderAction(formData: FormData) {
     revalidatePath(`/customers/${cancelledOrder.customerId}`);
     revalidateCustomerReminders();
     return flashMessagePath(`/crm/peluang/${cancelledOrder.opportunityId}?tab=deal`, "notice", "Sales Order dibatalkan dan peluang dipindahkan ke Lost.");
+  });
+}
+
+export async function forceSendRepeatOrderReminderAction(formData: FormData) {
+  const parsedCustomerId = entityIdSchema.safeParse(formValue(formData, "customerId"));
+  const fallbackPath = parsedCustomerId.success ? `/customers/${parsedCustomerId.data}` : "/customers";
+
+  return runRedirectingAction(fallbackPath, async () => {
+    const actor = await requireDeveloperActor();
+    if (!parsedCustomerId.success) throw new UserFacingError("Customer tidak valid.");
+
+    const prisma = getPrismaClient();
+    const [customer, business, template] = await Promise.all([
+      prisma.customer.findUnique({
+        where: { id: parsedCustomerId.data },
+        select: { id: true, name: true, companyName: true, archivedAt: true, salesPic: { select: { name: true } } },
+      }),
+      prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
+      prisma.whatsAppTemplate.findFirst({ where: { triggerType: "REACTIVATION", isActive: true }, orderBy: { updatedAt: "desc" }, select: { body: true } }),
+    ]);
+    if (!customer || customer.archivedAt) throw new UserFacingError("Customer tidak tersedia.");
+
+    const text = renderWhatsAppTemplate(template?.body ?? DEFAULT_ORDER_REMINDER_TEMPLATE, {
+      business_name: business?.name ?? "AS Konveksi",
+      customer_name: customer.name,
+      company_name: customer.companyName ?? "",
+      sales_pic_name: customer.salesPic?.name ?? "",
+    });
+    await enqueueManualWhatsAppMessage({ actor, customerId: customer.id, text });
+    await prisma.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        entityType: "Customer",
+        entityId: customer.id,
+        action: "REPEAT_ORDER_TEST_FORCED",
+        changedFields: [],
+        metadata: { source: "developer-test" },
+      },
+    });
+    revalidatePath(`/customers/${customer.id}`);
+    revalidatePath("/whatsapp/jobs");
+    return flashMessagePath(`/customers/${customer.id}`, "notice", "Reminder repeat order test dijadwalkan untuk dikirim.");
   });
 }

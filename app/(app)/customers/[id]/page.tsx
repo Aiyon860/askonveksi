@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Archive, ExternalLink, MessageCircle } from "lucide-react";
 
-import { archiveCustomerAction, createOpportunityAction, updateCustomerAction } from "@/app/actions/crm";
+import { archiveCustomerAction, createOpportunityAction, forceSendRepeatOrderReminderAction, updateCustomerAction } from "@/app/actions/crm";
 import { openCustomerWhatsAppAction } from "@/app/actions/whatsapp";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
@@ -77,6 +77,7 @@ export default async function CustomerDetailPage({
   }
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
   const canManageReminder = hasRole(actor.role, CUSTOMER_REMINDER_SETTING_ROLES);
+  const canForceReminderTest = actor.role === "DEVELOPER";
   const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
   const canArchive = canOperate && !customer.archivedAt;
   const salesOrders = customer.opportunities
@@ -384,14 +385,15 @@ export default async function CustomerDetailPage({
               ) : (
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">Reminder 6 bulanan</p>
+                    <p className="text-sm font-medium">Reminder repeat order</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {customer.archivedAt ? "Customer diarsipkan, pengaturan tidak tersedia." : "Hanya Owner / Admin Customer yang dapat mengubah."} Status saat ini: {customer.orderReminderEnabled ? "aktif" : "nonaktif"}.
                     </p>
                   </div>
-                  <Switch checked={customer.orderReminderEnabled} disabled aria-label="Status reminder order 6 bulanan" />
+                  <Switch checked={customer.orderReminderEnabled} disabled aria-label="Status reminder repeat order" />
                 </div>
               )}
+              {canForceReminderTest && !customer.archivedAt ? <form action={forceSendRepeatOrderReminderAction}><input type="hidden" name="customerId" value={customer.id} /><ConfirmSubmitButton className="w-full" variant="outline" pendingLabel="Menjadwalkan test..." confirmTitle="Kirim reminder repeat order test?" confirmDescription="Pesan akan dikirim ke nomor WhatsApp customer ini, meski syarat otomatisasi belum terpenuhi." confirmLabel="Ya, kirim test">Kirim reminder test</ConfirmSubmitButton></form> : null}
             </CardContent>
           </Card>
 

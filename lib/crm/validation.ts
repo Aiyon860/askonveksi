@@ -224,6 +224,7 @@ const purchaseOrderRosterSchema = z.object({
   memberId: z.string().trim().min(1, "ID anggota wajib diisi.").max(80),
   name: z.string().trim().min(2, "Nama anggota minimal 2 karakter.").max(160),
   sizeId: entityIdSchema,
+  sleeveLength: z.enum(["PENDEK", "PANJANG"], { message: "Panjang lengan roster wajib dipilih." }),
 });
 
 export const purchaseOrderDraftSchema = z.object({
@@ -245,8 +246,12 @@ export const purchaseOrderDraftSchema = z.object({
   deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
   designDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline desain wajib dipilih."),
   sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
+  rosterMode: z.enum(["none", "manual", "excel"], { message: "Pilih cara mengisi roster." }),
   roster: z.array(purchaseOrderRosterSchema).max(5_000),
 }).superRefine((value, context) => {
+  if (value.orderDate && value.designDeadline < value.orderDate) {
+    context.addIssue({ code: "custom", path: ["designDeadline"], message: "Deadline desain tidak boleh lebih awal dari tanggal order." });
+  }
   const positiveSizes = value.sizes.filter((item) => item.quantity > 0);
   if (!positiveSizes.length) {
     context.addIssue({ code: "custom", path: ["sizes"], message: "Isi minimal satu jumlah pada matriks ukuran." });
@@ -258,6 +263,12 @@ export const purchaseOrderDraftSchema = z.object({
   const rosterIds = value.roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
   if (new Set(rosterIds).size !== rosterIds.length) {
     context.addIssue({ code: "custom", path: ["roster"], message: "ID anggota roster tidak boleh duplikat." });
+  }
+  if (value.rosterMode === "manual" && !value.roster.length) {
+    context.addIssue({ code: "custom", path: ["roster"], message: "Tambahkan minimal satu pemakai atau pilih Tanpa roster." });
+  }
+  if (value.rosterMode !== "manual" && value.roster.length) {
+    context.addIssue({ code: "custom", path: ["roster"], message: "Roster manual hanya boleh diisi pada mode Ketik manual." });
   }
 });
 

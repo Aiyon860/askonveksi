@@ -242,11 +242,22 @@ enum WhatsAppMessageStatus {
 
 enum WhatsAppJobType {
   MANUAL
+  CAMPAIGN_TEST
   NEXT_ACTION
   REPEAT_ORDER
   REACTIVATION
   INVOICE_ISSUED
   INVOICE_DUE
+  CAMPAIGN
+}
+
+enum WhatsAppCampaignStatus {
+  SCHEDULED
+  PROCESSING
+  PAUSED
+  SKIPPED
+  COMPLETED
+  CANCELLED
 }
 
 enum WhatsAppJobStatus {
@@ -284,6 +295,8 @@ model AppUser {
   createdWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateCreatedBy")
   updatedWhatsAppTemplates  WhatsAppTemplate[]        @relation("WhatsAppTemplateUpdatedBy")
   sentWhatsAppMessages      WhatsAppMessage[]         @relation("WhatsAppMessageSentBy")
+  createdWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignCreatedBy")
+  updatedWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignUpdatedBy")
   expenses                  Expense[]
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
@@ -372,6 +385,7 @@ model BusinessProfile {
   address                String?  @db.Text
   logoPath               String?  @db.VarChar(500)
   invoiceReminderOffsets Int[]    @default([-3, 0, 3])
+  repeatOrderIntervals   Int[]    @default([6, 5])
   version                Int      @default(1)
   createdAt              DateTime @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime @updatedAt @db.Timestamptz(3)
@@ -611,6 +625,7 @@ model PurchaseOrderRosterEntry {
   name            String        @db.VarChar(160)
   sizeId          String?
   size            String        @db.VarChar(40)
+  sleeveLength    SleeveLength
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   garmentSize     GarmentSize?  @relation(fields: [sizeId], references: [id], onDelete: Restrict)
 
@@ -940,6 +955,7 @@ model CustomerReminder {
   dueAt              DateTime                  @db.Timestamptz(3)
   resolvedAt         DateTime?                 @db.Timestamptz(3)
   generation         Int                       @default(1)
+  nextOccurrence     Int                       @default(1)
   customer           Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
   sourceSalesOrder   SalesOrder                @relation("CustomerReminderSourceOrder", fields: [sourceSalesOrderId], references: [id], onDelete: Restrict)
   receipts           CustomerReminderReceipt[]
@@ -1080,6 +1096,31 @@ model WhatsAppMessage {
   @@index([sentById, createdAt])
 }
 
+model WhatsAppCampaign {
+  id                  String                  @id @default(cuid())
+  name                String                  @db.VarChar(120)
+  body                String                  @db.Text
+  scheduledAt         DateTime                @db.Timestamptz(3)
+  status              WhatsAppCampaignStatus  @default(SCHEDULED)
+  version             Int                     @default(1)
+  recipientCursor     String?
+  startedAt           DateTime?               @db.Timestamptz(3)
+  snapshotCompletedAt DateTime?               @db.Timestamptz(3)
+  completedAt         DateTime?               @db.Timestamptz(3)
+  cancelledAt         DateTime?               @db.Timestamptz(3)
+  createdById         String
+  updatedById         String
+  createdBy           AppUser                 @relation("WhatsAppCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy           AppUser                 @relation("WhatsAppCampaignUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  jobs                WhatsAppAutomationJob[]
+  createdAt           DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                @updatedAt @db.Timestamptz(3)
+
+  @@index([status, scheduledAt])
+  @@index([createdById, createdAt])
+  @@index([updatedById, updatedAt])
+}
+
 model WhatsAppAutomationJob {
   id             String            @id @default(cuid())
   idempotencyKey String            @unique @db.VarChar(240)
@@ -1087,10 +1128,11 @@ model WhatsAppAutomationJob {
   status         WhatsAppJobStatus @default(QUEUED)
   accountId      String?
   templateId     String?
-  customerId     String
+  customerId     String?
   opportunityId  String?
   invoiceId      String?
   reminderId     String?
+  campaignId     String?
   payload        Json
   scheduledAt    DateTime          @db.Timestamptz(3)
   leaseOwner     String?           @db.VarChar(120)
@@ -1101,10 +1143,11 @@ model WhatsAppAutomationJob {
   completedAt    DateTime?         @db.Timestamptz(3)
   account        WhatsAppAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
   template       WhatsAppTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  customer       Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer       Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
   opportunity    Opportunity?      @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   invoice        Invoice?          @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   reminder       CustomerReminder? @relation(fields: [reminderId], references: [id], onDelete: Restrict)
+  campaign       WhatsAppCampaign? @relation(fields: [campaignId], references: [id], onDelete: Restrict)
   message        WhatsAppMessage?
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
@@ -1114,6 +1157,8 @@ model WhatsAppAutomationJob {
   @@index([customerId, status, scheduledAt])
   @@index([invoiceId, type, scheduledAt])
   @@index([opportunityId, type, scheduledAt])
+  @@index([campaignId, status, scheduledAt])
+  @@unique([campaignId, customerId])
 }
 
 model SequenceCounter {

@@ -33,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       include: {
         opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
         sizes: { select: { size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-        rosterEntries: { select: { memberId: true, name: true, size: true }, orderBy: { position: "asc" } },
+        rosterEntries: { select: { memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
         attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
       },
     }),

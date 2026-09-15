@@ -186,7 +186,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
               ) : (
                 <Button variant="outline" className="w-full sm:w-auto" disabled>
                   <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
-                  Sepakati PO
+                  Sepakati PO terbaru
                 </Button>
               )}
             </CardAction>
@@ -462,7 +462,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <TableHeader><TableRow><TableHead>Model</TableHead>{sizeNames.map((size) => <TableHead key={size} className="text-center">{size}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
         <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = purchaseOrder.sizes.filter((item) => item.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{sizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((item) => item.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className="text-right font-mono">{rows.reduce((sum, item) => sum + item.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
       </Table>
-      {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead><TableHead>Ukuran</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell><TableCell>{entry.size}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
+      {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead><TableHead>Ukuran</TableHead><TableHead>Lengan</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell><TableCell>{entry.size}</TableCell><TableCell>{entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
       {purchaseOrder.attachments.length ? (
         <div className="grid gap-2 sm:grid-cols-2">
           {purchaseOrder.attachments.map((attachment) => (

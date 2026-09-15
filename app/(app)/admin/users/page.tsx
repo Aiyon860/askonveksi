@@ -195,10 +195,10 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
   const sort = parseSort(params.sort);
   const direction = parseDirection(params.order, sort);
   const state = { query, role, status, page, pageSize, sort, direction } satisfies UserTableState;
-  const [{ items: users, total, activeTotal, allTotal, pageCount }, actor] = await Promise.all([
-    getUsers(state),
-    getCurrentActor(),
-  ]);
+  const actor = await getCurrentActor();
+  const canManageDevelopers = actor?.role === "DEVELOPER";
+  const { items: users, total, activeTotal, allTotal, pageCount } = await getUsers(state);
+  const userRoles = USER_ROLES.filter((item) => canManageDevelopers || item !== "DEVELOPER");
 
   if (page > pageCount) redirect(usersHref(state, { page: pageCount }));
 
@@ -253,7 +253,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                       <Check className={cn(role !== "all" && "opacity-0")} aria-hidden="true" />
                       Semua role
                     </DropdownMenuItem>
-                    {USER_ROLES.map((item) => (
+                    {userRoles.map((item) => (
                       <DropdownMenuItem
                         key={item}
                         render={<Link href={usersHref(state, { role: item, page: 1 })} />}
@@ -299,6 +299,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     updatedAt: user.updatedAt.toISOString(),
                   }))}
                   actorId={actor?.id}
+                  canManageDevelopers={canManageDevelopers}
                   numberOffset={(page - 1) * pageSize}
                   returnTo={usersHref(state, {})}
                 />
@@ -327,7 +328,8 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
   );
 }
 
-function NewUserCard() {
+function NewUserCard({ canManageDevelopers }: { canManageDevelopers: boolean }) {
+  const userRoles = USER_ROLES.filter((role) => canManageDevelopers || role !== "DEVELOPER");
   return (
     <Card>
           <CardHeader>
@@ -356,7 +358,7 @@ function NewUserCard() {
                 <Field>
                   <FieldLabel htmlFor="role" required>Role</FieldLabel>
                   <NativeSelect id="role" name="role" required defaultValue="ADMIN_CUSTOMER" className="w-full">
-                    {USER_ROLES.map((role) => (
+                    {userRoles.map((role) => (
                       <NativeSelectOption key={role} value={role}>{ROLE_LABEL[role]}</NativeSelectOption>
                     ))}
                   </NativeSelect>
@@ -411,7 +413,7 @@ export default async function UsersPage({ searchParams }: { searchParams: UserSe
         <Suspense fallback={<UsersTableFallback />}>
           <UsersTableSection searchParams={searchParams} />
         </Suspense>
-        <div className="flex flex-col gap-6"><NewUserCard />{actor?.role === "DEVELOPER" ? <DeveloperResetCard /> : null}</div>
+        <div className="flex flex-col gap-6"><NewUserCard canManageDevelopers={actor?.role === "DEVELOPER"} />{actor?.role === "DEVELOPER" ? <DeveloperResetCard /> : null}</div>
       </div>
     </>
   );

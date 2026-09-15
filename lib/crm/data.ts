@@ -615,7 +615,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           createdAt: true,
           createdBy: { select: { name: true } },
           sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true }, orderBy: { position: "asc" } },
+          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
           designTask: { select: { deadline: true, revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
         },
@@ -1677,9 +1677,16 @@ export async function getUsers({
   sort: UserSort;
   direction: SortDirection;
 }) {
-  await requireActor(USER_ADMIN_ROLES);
+  const actor = await requireActor(USER_ADMIN_ROLES);
   const normalizedQuery = query.trim().slice(0, 120);
+  const canManageDevelopers = actor.role === "DEVELOPER";
+  const visibilityFilters: Prisma.AppUserWhereInput[] = canManageDevelopers ? [] : [{ role: { not: "DEVELOPER" } }];
+  const roleFilters: Prisma.AppUserWhereInput[] = role === "all" ? [] : [{ role }];
   const where = {
+    AND: [
+      ...visibilityFilters,
+      ...roleFilters,
+    ],
     ...(normalizedQuery
       ? {
           OR: [
@@ -1688,7 +1695,6 @@ export async function getUsers({
           ],
         }
       : {}),
-    ...(role === "all" ? {} : { role }),
     ...(status === "all" ? {} : { isActive: status === "active" }),
   } satisfies Prisma.AppUserWhereInput;
   const orderBy = [{ [sort]: direction }, { id: "asc" as const }] satisfies Prisma.AppUserOrderByWithRelationInput[];
@@ -1711,8 +1717,8 @@ export async function getUsers({
       take: pageSize,
     }),
     prisma.appUser.count({ where }),
-    prisma.appUser.count({ where: { isActive: true } }),
-    prisma.appUser.count(),
+    prisma.appUser.count({ where: { isActive: true, ...(canManageDevelopers ? {} : { role: { not: "DEVELOPER" as AppRole } }) } }),
+    prisma.appUser.count({ where: canManageDevelopers ? {} : { role: { not: "DEVELOPER" as AppRole } } }),
   ]);
   return { items, total, activeTotal, allTotal, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }

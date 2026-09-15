@@ -105,6 +105,47 @@ export async function enqueueInvoiceWhatsAppMessage(actor: Actor, invoiceId: str
   });
 }
 
+export async function enqueueCampaignTestWhatsAppMessage(actor: Actor, phoneNumber: string, text: string) {
+  const remoteJid = remoteJidForNumber(phoneNumber);
+  if (!remoteJid) throw new UserFacingError("Nomor WhatsApp tujuan test tidak valid.");
+
+  return getPrismaClient().$transaction(async (tx) => {
+    const account = await tx.whatsAppAccount.findFirst({
+      where: { sendEnabled: true, status: "CONNECTED" },
+      select: { id: true },
+    });
+    if (!account) throw new UserFacingError("Belum ada nomor WhatsApp aktif yang terhubung.");
+
+    const linkedConversation = await tx.whatsAppConversation.findFirst({
+      where: { remoteJid, customerId: { not: null } },
+      select: { id: true },
+    });
+    if (linkedConversation) throw new UserFacingError("Nomor tujuan test sudah terhubung ke customer. Gunakan nomor test lain.");
+
+    const job = await tx.whatsAppAutomationJob.create({
+      data: {
+        idempotencyKey: `campaign-test:${crypto.randomUUID()}`,
+        type: "CAMPAIGN_TEST",
+        accountId: account.id,
+        payload: { text, remoteJid, sentById: actor.id },
+        scheduledAt: new Date(),
+      },
+      select: { id: true },
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        entityType: "WhatsAppCampaignTest",
+        entityId: job.id,
+        action: "CAMPAIGN_TEST_QUEUED",
+        changedFields: ["text"],
+        metadata: { phoneSuffix: remoteJid.split("@")[0].slice(-4) },
+      },
+    });
+    return job.id;
+  });
+}
+
 export async function enqueueManualWhatsAppMessage({
   actor,
   customerId,

@@ -13,9 +13,9 @@ export function CustomerOrderReminderSetting({ customerId, version, enabled }: {
       <input type="hidden" name="customerId" value={customerId} />
       <input type="hidden" name="version" value={version} />
       <input type="hidden" name="enabled" value={String(checked)} />
-      <label htmlFor="order-reminder-enabled" className="text-sm font-medium">Reminder 6 bulanan</label>
+      <label htmlFor="order-reminder-enabled" className="text-sm font-medium">Reminder repeat order</label>
       <div className="flex items-center gap-3">
-        <Switch id="order-reminder-enabled" checked={checked} onCheckedChange={setChecked} aria-label="Aktifkan reminder order 6 bulanan" />
+        <Switch id="order-reminder-enabled" checked={checked} onCheckedChange={setChecked} aria-label="Aktifkan reminder repeat order" />
         <SubmitButton size="sm" variant="outline" pendingLabel="Menyimpan..." disabled={checked === enabled}>Simpan</SubmitButton>
       </div>
     </form>
