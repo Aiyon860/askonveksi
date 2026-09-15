@@ -118,6 +118,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const agreedPo = opportunity.purchaseOrders.find((item) => item.status === "AGREED");
   const invoiceDraft = opportunity.invoices.find((item) => item.status === "DRAFT");
   const issuedInvoice = opportunity.invoices.find((item) => item.status === "ISSUED" && item.purchaseOrderId === agreedPo?.id);
+  const scheduledPayment = issuedInvoice?.pendingPayment;
   const readyForDeal = Boolean(agreedPo && issuedInvoice && !poDraft && !invoiceDraft);
   const poRevisionCount = Math.max(0, opportunity.purchaseOrders.length - 1);
   const poTabStatus = poDraft ? "Draft" : agreedPo ? "Disepakati" : poRevisionCount ? `${poRevisionCount} revisi` : opportunity.purchaseOrders.length ? "Dokumen awal" : "Belum ada";
@@ -326,9 +327,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             <CardDescription>Periksa kesiapan dokumen sebelum Admin mengonfirmasi pembayaran dan membentuk Sales Order.</CardDescription>
           </CardHeader>
           <CardContent className="flex min-w-0 max-w-full flex-col gap-6">
-            {inNegotiation && canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
-              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} />
-            ) : opportunity.stage === "DEAL" ? (
+            {opportunity.stage === "DEAL" ? (
               <Alert>
                 <AlertTitle>Peluang sudah Deal</AlertTitle>
                 <AlertDescription>Sales Order yang terbentuk tersedia pada ringkasan di bawah.</AlertDescription>
@@ -343,10 +342,17 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                 <AlertTitle>Negosiasi belum dimulai</AlertTitle>
                 <AlertDescription>Pindahkan peluang ke Negosiasi sebelum menyusun PO, invoice, dan pembayaran.</AlertDescription>
               </Alert>
+            ) : scheduledPayment ? (
+              <Alert variant="success">
+                <AlertTitle>Jadwal pembayaran sudah tersimpan</AlertTitle>
+                <AlertDescription>Pembayaran awal {scheduledPayment.kind === "LUNAS" ? "Lunas" : "DP"} sudah dijadwalkan. Catat pembayaran awal dari Detail Invoice untuk membentuk Sales Order dan Work Order.</AlertDescription>
+              </Alert>
+            ) : canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
+              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} issuedAt={issuedInvoice.issuedAt!.toISOString()} />
             ) : readyForDeal ? (
               <Alert>
                 <AlertTitle>Menunggu konfirmasi Admin</AlertTitle>
-                <AlertDescription>PO dan invoice sudah siap. Hanya Admin yang dapat mengonfirmasi pembayaran dan membentuk Sales Order.</AlertDescription>
+                <AlertDescription>PO dan invoice sudah siap. Hanya akun berwenang yang dapat mengonfirmasi pembayaran dan membentuk Sales Order.</AlertDescription>
               </Alert>
             ) : (
               <Alert>

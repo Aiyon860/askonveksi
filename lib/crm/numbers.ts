@@ -47,6 +47,10 @@ export function formatPurchaseOrderNo(customerCode: string, ordinal: number, dat
   return `PO-${customerCode}${jakartaDateCode(date)}-${ordinal}`;
 }
 
+export function formatPurchaseOrderRevisionNo(purchaseOrderNo: string, revision: number) {
+  return `${purchaseOrderNo.replace(/-R\d+$/, "")}-R${revision}`;
+}
+
 async function purchaseOrderCustomerCode(tx: TransactionClient, customer: { id: string; name: string; poCustomerCode: string | null }) {
   if (customer.poCustomerCode) return customer.poCustomerCode;
   const base = purchaseOrderCustomerCodeBase(customer.name);
@@ -62,7 +66,17 @@ async function purchaseOrderCustomerCode(tx: TransactionClient, customer: { id: 
 
 export async function nextPurchaseOrderNo(tx: TransactionClient, customer: { id: string; name: string; poCustomerCode: string | null }, date = new Date()) {
   const code = await purchaseOrderCustomerCode(tx, customer);
-  const value = await nextValue(tx, `purchase-order:${customer.id}:${jakartaDateCode(date)}`);
+  const key = `purchase-order:${customer.id}`;
+  const existingOrderCount = await tx.purchaseOrder.count({
+    where: { opportunity: { customerId: customer.id }, revision: 1 },
+  });
+  const counter = await tx.sequenceCounter.upsert({
+    where: { key },
+    create: { key, value: existingOrderCount + 1 },
+    update: { value: { increment: 1 } },
+    select: { value: true },
+  });
+  const value = counter.value;
   return formatPurchaseOrderNo(code, value, date);
 }
 

@@ -55,6 +55,7 @@ export type PipelineOpportunity = {
     status: "DRAFT" | "ISSUED" | "SUPERSEDED";
     version: number;
     total: string;
+    issuedAt: string | null;
     pendingPayment: { kind: "LUNAS" | "DP"; initialDueAt: string } | null;
   } | null;
   salesOrder: {
@@ -97,7 +98,7 @@ const opportunitySummarySelect = {
     take: 1,
   },
   invoices: {
-    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true, pendingPayment: { select: { kind: true, initialDueAt: true } } },
+    select: { id: true, invoiceNo: true, purchaseOrderId: true, status: true, version: true, total: true, issuedAt: true, pendingPayment: { select: { kind: true, initialDueAt: true } } },
     orderBy: { revision: "desc" },
     take: 1,
   },
@@ -145,7 +146,7 @@ const getCachedPipelineData = unstable_cache(
       garmentType: row.purchaseOrders[0].garmentType,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
     } : null,
-    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt.toISOString() } : null } : null,
+    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), issuedAt: row.invoices[0].issuedAt?.toISOString() ?? null, pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt.toISOString() } : null } : null,
     salesOrder: row.salesOrders[0] ? {
       id: row.salesOrders[0].id,
       salesOrderNo: row.salesOrders[0].salesOrderNo,
@@ -647,6 +648,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
             orderBy: { position: "asc" },
           },
           salesOrder: { select: { id: true, salesOrderNo: true, status: true } },
+          pendingPayment: { select: { kind: true, initialDueAt: true } },
         },
         orderBy: { revision: "desc" },
       },
@@ -675,8 +677,7 @@ export async function getPurchaseOrderNoPreview(customer: { id: string; name: st
     if (!used || used.id === customer.id) break;
     code = `${base}${suffix + 1}`;
   }
-  const prefix = formatPurchaseOrderNo(code, 0).slice(0, -1);
-  const ordinal = await prisma.purchaseOrder.count({ where: { opportunity: { customerId: customer.id }, purchaseOrderNo: { startsWith: prefix } } }) + 1;
+  const ordinal = await prisma.purchaseOrder.count({ where: { opportunity: { customerId: customer.id }, revision: 1 } }) + 1;
   return formatPurchaseOrderNo(code, ordinal);
 }
 
@@ -1650,7 +1651,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       initialAmount: invoice.salesOrder.payment.initialAmount.toString(),
       outstandingAmount: invoice.salesOrder.payment.outstandingAmount.toString(),
       initialTransaction: invoice.salesOrder.payment.transactions[0] ? { ...invoice.salesOrder.payment.transactions[0], amount: invoice.salesOrder.payment.transactions[0].amount.toString() } : null,
-      terms: invoice.salesOrder.payment.terms.map((term) => ({ ...term, amount: term.amount.toString(), transaction: term.transactions[0] ? { ...term.transactions[0], amount: term.transactions[0].amount.toString() } : null })),
+      terms: invoice.salesOrder.payment.terms.map(({ transactions, amount, ...term }) => ({ ...term, amount: amount.toString(), transaction: transactions[0] ? { ...transactions[0], amount: transactions[0].amount.toString() } : null })),
     } : null,
     pendingPayment: invoice.pendingPayment ? { ...invoice.pendingPayment, initialAmount: invoice.pendingPayment.initialAmount.toString(), terms: invoice.pendingPayment.terms.map((term) => ({ ...term, amount: term.amount.toString() })) } : null,
   } : null;

@@ -12,6 +12,15 @@ export type FinanceDateRange = {
 
 export type FinanceReportMode = "range" | "all";
 
+export function parseOptionalFinanceDateRange(fromValue: string | string[] | undefined, toValue: string | string[] | undefined) {
+  const rawFrom = Array.isArray(fromValue) ? fromValue[0] : fromValue;
+  const rawTo = Array.isArray(toValue) ? toValue[0] : toValue;
+  const from = rawFrom ? dateKeyToJakartaStart(rawFrom) : null;
+  const to = rawTo ? dateKeyToJakartaStart(rawTo) : null;
+  if (!rawFrom || !rawTo || !from || !to || from > to) return { from: "", to: "", start: null, end: null };
+  return { from: rawFrom, to: rawTo, start: from, end: new Date(to.getTime() + 24 * 60 * 60 * 1000) };
+}
+
 function jakartaDateKey(date: Date) {
   return new Date(date.getTime() + JAKARTA_OFFSET_MS).toISOString().slice(0, 10);
 }

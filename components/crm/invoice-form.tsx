@@ -72,8 +72,8 @@ export function InvoiceForm({
           })}</TableBody>
         </Table>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field><FieldLabel htmlFor={`invoice-profit-${fieldKey}`}>Keuntungan %</FieldLabel><Input id={`invoice-profit-${fieldKey}`} name="profitPercent" type="number" required min={0} max={100} step="0.0001" defaultValue={values?.profitPercent ?? "0"} aria-label="Keuntungan persen" /></Field>
-          <Field><FieldLabel htmlFor={`invoice-discount-${fieldKey}`}>Diskon %</FieldLabel><Input id={`invoice-discount-${fieldKey}`} name="discountPercent" type="number" required min={0} max={100} step="0.0001" defaultValue={values?.discountPercent ?? "0"} aria-label="Diskon keseluruhan invoice" /></Field>
+          <Field><FieldLabel htmlFor={`invoice-profit-${fieldKey}`}>Keuntungan %</FieldLabel><Input id={`invoice-profit-${fieldKey}`} name="profitPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.profitPercent ?? ""} aria-label="Keuntungan persen" /></Field>
+          <Field><FieldLabel htmlFor={`invoice-discount-${fieldKey}`}>Diskon %</FieldLabel><Input id={`invoice-discount-${fieldKey}`} name="discountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.discountPercent ?? ""} aria-label="Diskon keseluruhan invoice" /></Field>
           <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
         </div>
         <FieldDescription>Harga akhir = harga satuan × qty × (1 + keuntungan%) × (1 − diskon%).</FieldDescription>

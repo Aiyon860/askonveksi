@@ -11,8 +11,8 @@ import { requireActor, type Actor } from "@/lib/auth/session";
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
-import { calculateInvoiceLines, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
-import { nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
+import { calculateInvoiceLines, roundInvoiceTotal, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
+import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { parseRosterFile } from "@/lib/crm/roster-import";
 import {
   rearmCustomerRemindersAfterLost,
@@ -242,8 +242,8 @@ function invoiceInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId") || undefined,
     version: formValue(formData, "version") || undefined,
     dueAt: formValue(formData, "dueAt"),
-    profitPercent: formValue(formData, "profitPercent"),
-    discountPercent: formValue(formData, "discountPercent"),
+    profitPercent: formValue(formData, "profitPercent") || "0",
+    discountPercent: formValue(formData, "discountPercent") || "0",
     notes: formValue(formData, "notes"),
     items,
   };
@@ -1454,6 +1454,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           select: {
             id: true,
             opportunityId: true,
+            purchaseOrderNo: true,
             status: true,
             revision: true,
             version: true,
@@ -1481,7 +1482,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
-            purchaseOrderNo: await nextPurchaseOrderNo(tx, source.opportunity.customer),
+            purchaseOrderNo: formatPurchaseOrderRevisionNo(source.purchaseOrderNo, source.revision + 1),
             opportunityId: source.opportunityId,
             revision: source.revision + 1,
             garmentType: parsed.data.garmentType,
@@ -1698,12 +1699,14 @@ export async function issueInvoiceAction(formData: FormData) {
       if (!invoice.items.length) throw new UserFacingError("Invoice belum memiliki item.");
 
       const issuedAt = new Date();
+      const dueAt = addJakartaDays(issuedAt, 7);
       const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
       const updated = await tx.invoice.updateMany({
         where: { id: parsed.data.invoiceId, status: "DRAFT", version: parsed.data.version },
         data: {
           status: "ISSUED",
           issuedAt,
+          dueAt,
           snapshotCustomerName: invoice.opportunity.customer.name,
           snapshotCompanyName: invoice.opportunity.customer.companyName,
           snapshotWhatsapp: invoice.opportunity.customer.whatsapp,
@@ -1719,7 +1722,7 @@ export async function issueInvoiceAction(formData: FormData) {
         },
       });
       if (updated.count !== 1) throw new UserFacingError("Invoice sudah berubah. Muat ulang halaman.");
-      const auditEvent = await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_ISSUED", ["status", "issuedAt", "snapshot"]);
+      const auditEvent = await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_ISSUED", ["status", "issuedAt", "dueAt", "snapshot"]);
       await addSystemActivity(tx, actor, {
         customerId: invoice.opportunity.customerId,
         opportunityId: invoice.opportunityId,
@@ -1871,7 +1874,7 @@ export async function completeDealAction(formData: FormData) {
       const invoice = await tx.invoice.findUnique({
         where: { id: parsed.data.invoiceId },
         select: {
-          id: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true,
+          id: true, totalDiscount: true, totalProfit: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true, dueAt: true,
           salesOrder: { select: { id: true } }, pendingPayment: { select: { id: true } },
           purchaseOrder: { select: { status: true, garmentType: true, deadline: true } },
           opportunity: { select: { stage: true, version: true, purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 }, invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 } } },
@@ -1884,33 +1887,47 @@ export async function completeDealAction(formData: FormData) {
       if (invoice.salesOrder || invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran invoice ini sudah tersedia.");
       if (!invoice.issuedAt) throw new UserFacingError("Tanggal terbit invoice tidak tersedia.");
 
+      const roundedTotal = roundInvoiceTotal(invoice.total);
+      const roundingAdjustment = roundedTotal.sub(invoice.total);
+      if (!roundingAdjustment.isZero()) {
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            total: roundedTotal,
+            totalDiscount: roundingAdjustment.isNegative() ? invoice.totalDiscount.add(roundingAdjustment.abs()) : invoice.totalDiscount,
+            totalProfit: roundingAdjustment.isPositive() ? invoice.totalProfit.add(roundingAdjustment) : invoice.totalProfit,
+            version: { increment: 1 },
+          },
+        });
+      }
+
       const requestedInitialPercent = new Prisma.Decimal(parsed.data.initialValue);
       if (parsed.data.kind === "DP" && requestedInitialPercent.lt(50)) throw new UserFacingError("DP minimal 50%.");
       if (requestedInitialPercent.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
       const kind = parsed.data.kind === "LUNAS" || requestedInitialPercent.eq(100) ? "LUNAS" as const : "DP" as const;
       if (kind === "DP" && parsed.data.terms.length === 0) throw new UserFacingError("DP wajib memiliki minimal satu termin.");
       if (kind === "LUNAS" && parsed.data.terms.length) throw new UserFacingError("Pembayaran Lunas tidak memakai termin.");
-      const initialDueAt = addJakartaDays(invoice.issuedAt, 7);
+      const initialDueAt = invoice.dueAt ?? addJakartaDays(invoice.issuedAt, 7);
 
       const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
         const decimal = new Prisma.Decimal(value);
         if (valueType === "PERCENTAGE" && decimal.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-        return valueType === "PERCENTAGE" ? invoice.total.mul(decimal).div(100).toDecimalPlaces(2) : decimal;
+        return roundInvoiceTotal(valueType === "PERCENTAGE" ? roundedTotal.mul(decimal).div(100) : decimal);
       };
       const initialValueType = "PERCENTAGE" as const;
       const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitialPercent;
       const initialAmount = amountFor("PERCENTAGE", initialValue.toString());
-      if (initialAmount.lte(0) || initialAmount.gt(invoice.total)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
+      if (initialAmount.lte(0) || initialAmount.gt(roundedTotal)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
 
       let previousDueAt: Date | null = initialDueAt;
       const terms = parsed.data.terms.map((term, position) => {
         const dueAt = optionalDate(term.dueAt);
         if (!dueAt) throw new UserFacingError("Deadline termin wajib diisi.");
-        if (previousDueAt && dueAt < previousDueAt) throw new UserFacingError("Deadline termin harus berurutan.");
+        if (previousDueAt && dueAt <= previousDueAt) throw new UserFacingError(`Deadline Termin ${position + 1} minimal satu hari setelah ${position ? `Deadline Termin ${position}.` : "deadline DP."}`);
         previousDueAt = dueAt;
         return { position, valueType: term.valueType, value: new Prisma.Decimal(term.value), amount: amountFor(term.valueType, term.value), dueAt };
       });
-      const outstandingAmount = invoice.total.sub(initialAmount);
+      const outstandingAmount = roundedTotal.sub(initialAmount);
       const termTotal = terms.reduce((sum, term) => sum.add(term.amount), new Prisma.Decimal(0));
       if (!termTotal.eq(outstandingAmount)) throw new UserFacingError("Total seluruh termin harus sama dengan sisa setelah pembayaran awal.");
 

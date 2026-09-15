@@ -141,6 +141,27 @@ enum ExpensePaymentMethod {
   PRIBADI
 }
 
+enum ExpenseCategory {
+  WIFI
+  LINGKUNGAN
+  ADS
+  CICILAN_LAPTOP
+  FREE_PICK
+  ONGKIR_CUST
+  ONGKIR_ADMIN_PRODUKSI
+  LISTRIK_DEPAN
+  LISTRIK_BELAKANG
+  PERALATAN_KANTOR
+  SAMPEL
+  KONTEN
+  MEETING
+  EVENT_IFANA_SAGA
+  GOSEND_MOBIL_PRODUKSI
+  LEMBUR
+  LOKER
+  DLL
+}
+
 enum PaymentValueType {
   NOMINAL
   PERCENTAGE
@@ -275,6 +296,7 @@ model Expense {
   purpose         String               @db.VarChar(500)
   spentAt         DateTime             @db.Date
   amount          Decimal              @db.Decimal(18, 2)
+  category        ExpenseCategory
   paymentMethod   ExpensePaymentMethod
   createdById     String
   reimbursedAt    DateTime?            @db.Timestamptz(3)
@@ -284,6 +306,7 @@ model Expense {
 
   @@index([createdById, spentAt])
   @@index([paymentMethod, spentAt])
+  @@index([category, spentAt])
 }
 
 model CustomerType {

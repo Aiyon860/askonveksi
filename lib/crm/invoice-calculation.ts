@@ -12,6 +12,12 @@ export type InvoicePricingInput = {
   unitPrice: string;
 };
 
+export function roundInvoiceTotal(value: Prisma.Decimal) {
+  const whole = value.toDecimalPlaces(0, Prisma.Decimal.ROUND_DOWN);
+  const units = whole.mod(10);
+  return units.gte(6) ? whole.add(10).sub(units) : whole.sub(units);
+}
+
 export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercent: string, discountPercent: string) {
   const orderProfitPercent = new Prisma.Decimal(profitPercent);
   if (orderProfitPercent.gt(100)) throw new UserFacingError("Keuntungan maksimal 100%.");
@@ -62,12 +68,14 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercen
     },
   );
 
+  const total = roundInvoiceTotal(summary.total);
+  const roundingAdjustment = total.sub(summary.total);
   return {
     items: calculatedItems,
     subtotal: summary.subtotal,
-    totalDiscount: summary.totalDiscount,
-    totalProfit: summary.totalProfit,
+    totalDiscount: roundingAdjustment.isNegative() ? summary.totalDiscount.add(roundingAdjustment.abs()) : summary.totalDiscount,
+    totalProfit: roundingAdjustment.isPositive() ? summary.totalProfit.add(roundingAdjustment) : summary.totalProfit,
     discountPercent: orderDiscountPercent,
-    total: summary.total,
+    total,
   };
 }

@@ -77,6 +77,13 @@ test("diskon 100% menghasilkan total nol yang valid", () => {
   assert.equal(result.items[0].subtotal.toString(), "0");
 });
 
+test("total invoice dibulatkan ke puluhan dengan digit satuan 1-5 turun", () => {
+  const down = runCase([{ quantity: 1, unitPrice: "215155.84" }], "0");
+  const up = runCase([{ quantity: 1, unitPrice: "215156" }], "0");
+  assert.equal(down.total.toString(), "215150");
+  assert.equal(up.total.toString(), "215160");
+});
+
 test("keuntungan dan diskon di atas 100% ditolak dengan pesan jelas", () => {
   assert.throws(
     () => runCase([{ quantity: 1, unitPrice: "10000" }], "101"),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { FileUp, History } from "lucide-react";
 
 import { reviewDesignRevisionAction, uploadDesignRevisionAction } from "@/app/actions/design";
@@ -10,11 +10,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { FilePicker } from "@/components/ui/file-picker";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/toast";
 
 type Revision = { id: string; revision: number; status: "PENDING_REVIEW" | "APPROVED" | "REJECTED"; notes: string | null; reviewNotes: string | null; createdAt: string; reviewedAt: string | null; createdBy: { name: string }; reviewedBy: { name: string } | null; attachments: Array<{ id: string; originalName: string }> };
 
 const REVIEW_LABEL = { PENDING_REVIEW: "Menunggu persetujuan", APPROVED: "Disetujui", REJECTED: "Ditolak" } as const;
 const REVIEW_VARIANT = { PENDING_REVIEW: "secondary", APPROVED: "success", REJECTED: "destructive" } as const;
+const MAX_DESIGN_FILE_BYTES = 5 * 1024 * 1024;
 
 export function DesignTaskActions({ taskId, purchaseOrderNo, revisions, canUpload, canReview }: { taskId: string; purchaseOrderNo: string; revisions: Revision[]; canUpload: boolean; canReview: boolean }) {
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -23,6 +25,12 @@ export function DesignTaskActions({ taskId, purchaseOrderNo, revisions, canUploa
   const nextRevision = (revisions[0]?.revision ?? 0) + 1;
   const latest = revisions[0];
   const canCreateRevision = canUpload && (!latest || latest.status === "REJECTED") && revisions.length < 4;
+
+  function validateDesignFiles(event: ChangeEvent<HTMLInputElement>) {
+    if (!Array.from(event.currentTarget.files ?? []).some((file) => file.size > MAX_DESIGN_FILE_BYTES)) return;
+    event.currentTarget.value = "";
+    toast.add({ title: "File terlalu besar", description: "Setiap file desain maksimal 5 MB.", type: "error" });
+  }
 
   return <div className="flex flex-wrap justify-end gap-2">
     {canUpload ? <Button size="sm" onClick={() => setUploadOpen(true)} disabled={!canCreateRevision}><FileUp data-icon="inline-start" aria-hidden="true" />{revisions.length ? "Revisi desain" : "Upload desain"}</Button> : null}
@@ -33,7 +41,7 @@ export function DesignTaskActions({ taskId, purchaseOrderNo, revisions, canUploa
         <form action={uploadDesignRevisionAction} onSubmit={() => setUploadOpen(false)}>
           <input type="hidden" name="designTaskId" value={taskId} />
           <FieldGroup>
-            <Field><FieldLabel htmlFor={`design-files-${taskId}`} required>File desain</FieldLabel><FilePicker id={`design-files-${taskId}`} name="designFiles" required multiple accept=".png,.psd,image/png,image/vnd.adobe.photoshop,application/x-photoshop" /><FieldDescription>PNG atau PSD, maksimal 5 file dan 5 MB per file.</FieldDescription></Field>
+            <Field><FieldLabel htmlFor={`design-files-${taskId}`} required>File desain</FieldLabel><FilePicker id={`design-files-${taskId}`} name="designFiles" required multiple accept=".png,.psd,image/png,image/vnd.adobe.photoshop,application/x-photoshop" onChange={validateDesignFiles} /><FieldDescription>PNG atau PSD, maksimal 5 file dan 5 MB per file.</FieldDescription></Field>
             <Field><FieldLabel htmlFor={`design-notes-${taskId}`}>Catatan revisi</FieldLabel><Textarea id={`design-notes-${taskId}`} name="notes" maxLength={4000} rows={3} placeholder="Contoh: Perubahan warna logo depan." /></Field>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setUploadOpen(false)}>Batal</Button><Button type="submit">Kirim versi {nextRevision} untuk persetujuan</Button></DialogFooter>
           </FieldGroup>

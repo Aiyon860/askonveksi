@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Palette } from "lucide-react";
+import { DESIGN_APPROVER_ROLES, DESIGN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getDesignTasks, type DesignTaskListSort, type DesignTaskStatus, type SortDirection } from "@/lib/design/data";
 import { parseOpenDateRange } from "@/lib/crm/document-list-filters";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
@@ -62,8 +63,8 @@ export default async function DesignPage({ searchParams }: { searchParams: Searc
   const direction = DIRECTIONS.find((item) => item === first(params.order)) ?? defaultDirection(sort);
   const state = { query, status, from: range.from, to: range.to, page, pageSize, sort, direction } satisfies TableState;
   const { items, total, pageCount, actorRole } = await getDesignTasks({ ...state, start: range.start, end: range.end });
-  const canUpload = actorRole === "OWNER" || actorRole === "DESIGNER";
-  const canReview = actorRole === "OWNER" || actorRole === "ADMIN_CUSTOMER";
+  const canUpload = hasRole(actorRole, DESIGN_ROLES);
+  const canReview = hasRole(actorRole, DESIGN_APPROVER_ROLES);
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
   const persistent = { q: query || undefined, status: status === "all" ? undefined : status, from: range.from || undefined, to: range.to || undefined, sort: sort === "deadline" ? undefined : sort, order: direction === defaultDirection(sort) ? undefined : direction, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   return <>

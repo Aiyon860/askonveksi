@@ -56,7 +56,7 @@ import {
   REVERSE_DEAL_ROLES,
   hasRole,
 } from "../lib/auth/permissions.ts";
-import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "../lib/crm/numbers.ts";
+import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCustomerCodeBase } from "../lib/crm/numbers.ts";
 
 test("kode PO customer mengikuti nama dan format Jakarta", () => {
   assert.equal(purchaseOrderCustomerCodeBase("Abyan"), "ABY");
@@ -64,6 +64,7 @@ test("kode PO customer mengikuti nama dan format Jakarta", () => {
   assert.equal(purchaseOrderCustomerCodeBase("Berkah Jaya Mandiri"), "BJM");
   assert.equal(purchaseOrderCustomerCodeBase("Sumber Rejeki Makmur Abadi"), "SRM");
   assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z")), "PO-BJM130926-2");
+  assert.equal(formatPurchaseOrderRevisionNo("PO-BJM130926-1-R2", 3), "PO-BJM130926-1-R3");
 });
 
 test("opportunity hanya menerima field peluang yang masih digunakan", () => {
@@ -208,7 +209,7 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
   assert.match(actionSource, /function customerFields[\s\S]+leadSourceId: formValue\(formData, "leadSourceId"\),[\s\S]+salesPicId: formValue\(formData, "salesPicId"\),/);
 });
 
-test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", () => {
+test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", async () => {
   assert.equal(strongPasswordSchema.safeParse("").success, false);
   assert.equal(strongPasswordSchema.safeParse("a").success, true);
   assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", password: "a" }).success, true);
@@ -221,6 +222,13 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
     items: [{ description: "Kaos", quantity: 0, unitPrice: "50000" }],
   });
   assert.equal(invalidInvoice.success, false);
+
+  const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(invoiceFormSource, /profitPercent[^\n]*defaultValue=\{values\?\.profitPercent \?\? ""\}/);
+  assert.match(invoiceFormSource, /discountPercent[^\n]*defaultValue=\{values\?\.discountPercent \?\? ""\}/);
+  assert.match(actionSource, /profitPercent: formValue\(formData, "profitPercent"\) \|\| "0"/);
+  assert.match(actionSource, /discountPercent: formValue\(formData, "discountPercent"\) \|\| "0"/);
 });
 
 test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () => {
@@ -354,6 +362,36 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", initialValue: "100", terms: [] }).success, true);
   assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);
+});
+
+test("jadwal DP menampilkan nominal pecahan dan dapat mengisi sisa tepat", async () => {
+  const source = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
+  assert.match(source, /const totalAmount = roundToTens\(Number\(total\)\)/);
+  assert.match(source, /return roundToTens\(valueType === "PERCENTAGE"/);
+  assert.match(source, /function fillTermRemainder\(key: string\)/);
+  assert.match(source, /onClick=\{\(\) => fillTermRemainder\(terms\[terms\.length - 1\]\.key\)\}/);
+});
+
+test("deadline termin harus sehari setelah pembayaran awal atau termin sebelumnya", async () => {
+  const formSource = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(formSource, /min=\{addJakartaDays\(index \? terms\[index - 1\]\.dueAt \|\| initialDueAt : initialDueAt, 1\)\}/);
+  assert.match(actionSource, /dueAt <= previousDueAt/);
+});
+
+test("Invoice terbit menetapkan deadline awal H+7 dan Deal memakai deadline Invoice", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /const dueAt = addJakartaDays\(issuedAt, 7\)/);
+  assert.match(actionSource, /issuedAt,\s*dueAt,/);
+  assert.match(actionSource, /const initialDueAt = invoice\.dueAt \?\? addJakartaDays\(invoice\.issuedAt, 7\)/);
+});
+
+test("Deal mengganti form dengan notifikasi setelah jadwal pembayaran tersimpan", async () => {
+  const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(dataSource, /pendingPayment: \{ select: \{ kind: true, initialDueAt: true \} \}/);
+  assert.match(pageSource, /const scheduledPayment = issuedInvoice\?\.pendingPayment/);
+  assert.match(pageSource, /Jadwal pembayaran sudah tersimpan/);
 });
 
 test("pencatatan pembayaran memvalidasi waktu, referensi, dan identitas transaksi", () => {
@@ -588,12 +626,12 @@ test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async (
 
 test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", async () => {
   const dataSource = await readFile(new URL("../lib/finance/data.ts", import.meta.url), "utf8");
-  const pageSource = await readFile(new URL("../app/(app)/keuangan/page.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/keuangan/pemasukan/page.tsx", import.meta.url), "utf8");
 
   assert.match(dataSource, /requireActor\(FINANCE_ROLES\)/);
   assert.match(dataSource, /mode === "range"/);
   assert.match(dataSource, /outstandingAmount/);
-  assert.match(pageSource, /Rekapan semua order/);
+  assert.match(pageSource, /Laba Kotor/);
   assert.doesNotMatch(pageSource, /Status laporan/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
 });
@@ -648,6 +686,7 @@ test("flash message tidak membocorkan isi notifikasi ke URL", async () => {
 test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", async () => {
   const sql = await readFile(new URL("../prisma/migrations/20260902000000_crm_purchase_order_invoice/migration.sql", import.meta.url), "utf8");
   const storageScript = await readFile(new URL("../scripts/reset-crm-storage.mjs", import.meta.url), "utf8");
+  const designPageSource = await readFile(new URL("../app/(app)/desain/page.tsx", import.meta.url), "utf8");
   assert.match(sql, /CREATE TYPE "OpportunityStage" AS ENUM \('LEAD_BARU', 'FOLLOW_UP', 'NEGOSIASI', 'DEAL', 'LOST'\)/);
   assert.match(sql, /CREATE TABLE "PurchaseOrder"/);
   assert.match(sql, /CREATE TABLE "Invoice"/);
@@ -665,6 +704,18 @@ test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", asy
   assert.match(storageScript, /public: false/);
   assert.match(storageScript, /fileSizeLimit: 5 \* 1024 \* 1024/);
   assert.match(sql, /REVOKE ALL ON TABLE "PurchaseOrder"[\s\S]+FROM anon, authenticated/);
+  assert.match(designPageSource, /hasRole\(actorRole, DESIGN_ROLES\)/);
+  assert.match(designPageSource, /hasRole\(actorRole, DESIGN_APPROVER_ROLES\)/);
+});
+
+test("upload desain menolak file lebih dari 5 MB sebelum dikirim", async () => {
+  const actionSource = await readFile(new URL("../app/actions/design.ts", import.meta.url), "utf8");
+  const componentSource = await readFile(new URL("../components/design/design-task-actions.tsx", import.meta.url), "utf8");
+  const configSource = await readFile(new URL("../next.config.ts", import.meta.url), "utf8");
+  assert.match(actionSource, /MAX_BYTES = 5 \* 1024 \* 1024/);
+  assert.match(componentSource, /MAX_DESIGN_FILE_BYTES = 5 \* 1024 \* 1024/);
+  assert.match(componentSource, /File terlalu besar/);
+  assert.match(configSource, /bodySizeLimit: "28mb"/);
 });
 
 test("transaksi Deal memberi waktu cukup, retry konflik serializable, dan error yang dapat ditindaklanjuti", async () => {

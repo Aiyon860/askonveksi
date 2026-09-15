@@ -12,31 +12,53 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatCurrency } from "@/lib/crm/format";
 
-type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE"; value: string };
+type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE"; value: string; dueAt: string };
 
-export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total }: {
+function roundToTens(value: number) {
+  const whole = Math.trunc(value);
+  const units = whole % 10;
+  return units >= 6 ? whole + 10 - units : whole - units;
+}
+
+function addJakartaDays(value: string, days: number) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+  return new Date(Date.UTC(part("year"), part("month") - 1, part("day") + days)).toISOString().slice(0, 10);
+}
+
+export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, issuedAt }: {
   opportunityId: string;
   opportunityVersion: number;
   purchaseOrderId: string;
   invoiceId: string;
   invoiceVersion: number;
   total: string;
+  issuedAt: string;
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
   const [initialValue, setInitialValue] = useState("");
-  const [terms, setTerms] = useState<Term[]>([{ key: "term-0", valueType: "NOMINAL", value: "" }]);
-  const totalAmount = Number(total);
+  const [terms, setTerms] = useState<Term[]>([{ key: "term-0", valueType: "NOMINAL", value: "", dueAt: "" }]);
+  const initialDueAt = addJakartaDays(issuedAt, 7);
+  const totalAmount = roundToTens(Number(total));
   const amountFor = (valueType: Term["valueType"], value: string) => {
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount < 0) return 0;
-    return valueType === "PERCENTAGE" ? Math.round(totalAmount * amount) / 100 : amount;
+    return roundToTens(valueType === "PERCENTAGE" ? Math.round(totalAmount * amount) / 100 : amount);
   };
   const isLunas = kind === "LUNAS" || Number(initialValue) === 100;
   const initialAmount = amountFor("PERCENTAGE", isLunas ? "100" : initialValue);
   const outstandingAmount = totalAmount - initialAmount;
   const scheduledTermAmount = terms.reduce((sum, term) => sum + amountFor(term.valueType, term.value), 0);
   const scheduleDifference = outstandingAmount - scheduledTermAmount;
-  const scheduleReady = isLunas || Math.abs(scheduleDifference) < 0.005;
+  const datesReady = terms.every((term, index) => term.dueAt >= addJakartaDays(index ? terms[index - 1].dueAt || initialDueAt : initialDueAt, 1));
+  const scheduleReady = isLunas || (Math.abs(scheduleDifference) < 0.005 && datesReady);
+
+  function fillTermRemainder(key: string) {
+    setTerms((current) => {
+      const remaining = Math.max(0, outstandingAmount - current.filter((term) => term.key !== key).reduce((sum, term) => sum + amountFor(term.valueType, term.value), 0));
+      return current.map((term) => term.key === key ? { ...term, value: String(remaining) } : term);
+    });
+  }
 
   return (
     <form action={completeDealAction}>
@@ -49,7 +71,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
         <FieldDescription>Sales Order dan Work Order dibuat otomatis setelah pembayaran awal dicatat di Detail Invoice.</FieldDescription>
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Total invoice</p>
-          <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(total)}</p>
+          <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(totalAmount)}</p>
         </div>
         <div className="grid gap-4">
           <Field>
@@ -85,10 +107,10 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
                 <p className="text-sm font-medium">Termin sisa pembayaran</p>
                 <p className="mt-1 text-xs text-muted-foreground">Total seluruh termin harus tepat sama dengan sisa setelah DP.</p>
               </div>
-              <Button type="button" variant="outline" size="sm" disabled={terms.length >= 12} onClick={() => setTerms((current) => [...current, { key: `term-${Date.now()}-${current.length}`, valueType: "NOMINAL", value: "" }])}>
+              <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={terms[terms.length - 1].valueType !== "NOMINAL"} onClick={() => fillTermRemainder(terms[terms.length - 1].key)}>Isi sisa</Button><Button type="button" variant="outline" size="sm" disabled={terms.length >= 12} onClick={() => setTerms((current) => [...current, { key: `term-${Date.now()}-${current.length}`, valueType: "NOMINAL", value: "", dueAt: "" }])}>
                 <Plus data-icon="inline-start" aria-hidden="true" />
                 Tambah termin
-              </Button>
+              </Button></div>
             </div>
             <div className="flex flex-col gap-3">
               {terms.map((term, index) => (
@@ -106,7 +128,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`term-date-${term.key}`} required>Deadline Termin {index + 1}</FieldLabel>
-                    <Input id={`term-date-${term.key}`} name="termDueAt" type="date" required />
+                    <Input id={`term-date-${term.key}`} name="termDueAt" type="date" required min={addJakartaDays(index ? terms[index - 1].dueAt || initialDueAt : initialDueAt, 1)} value={term.dueAt} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, dueAt: event.target.value } : item))} />
                   </Field>
                   <Button type="button" variant="ghost" size="icon" aria-label={`Hapus termin ${index + 1}`} disabled={terms.length === 1} onClick={() => setTerms((current) => current.filter((item) => item.key !== term.key))}>
                     <Trash2 aria-hidden="true" />
@@ -114,7 +136,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
                 </div>
               ))}
             </div>
-            {!scheduleReady ? <Alert variant={scheduleDifference < 0 ? "destructive" : "default"}><AlertTitle>{scheduleDifference < 0 ? "Total termin melebihi sisa tagihan" : "Total termin belum menutup sisa tagihan"}</AlertTitle><AlertDescription>{scheduleDifference < 0 ? `Kurangi termin sebesar ${formatCurrency(Math.abs(scheduleDifference))}.` : `Tambahkan termin sebesar ${formatCurrency(scheduleDifference)}.`}</AlertDescription></Alert> : null}
+            {!datesReady ? <Alert variant="destructive"><AlertTitle>Deadline termin belum berurutan</AlertTitle><AlertDescription>Termin 1 minimal satu hari setelah deadline DP ({initialDueAt}); termin berikutnya minimal satu hari setelah termin sebelumnya.</AlertDescription></Alert> : !scheduleReady ? <Alert variant={scheduleDifference < 0 ? "destructive" : "default"}><AlertTitle>{scheduleDifference < 0 ? "Total termin melebihi sisa tagihan" : "Total termin belum menutup sisa tagihan"}</AlertTitle><AlertDescription>{scheduleDifference < 0 ? `Kurangi termin sebesar ${formatCurrency(Math.abs(scheduleDifference))}.` : `Tambahkan termin sebesar ${formatCurrency(scheduleDifference)}.`}</AlertDescription></Alert> : null}
           </>
         )}
 

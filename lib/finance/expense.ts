@@ -5,28 +5,46 @@ import { Prisma } from "@prisma/client";
 import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
+import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory } from "@/lib/finance/expense-categories";
 import { EXPENSE_METHODS, EXPENSE_METHOD_LABEL, type ExpenseMethod } from "@/lib/finance/expense-methods";
 
-export { EXPENSE_METHODS, EXPENSE_METHOD_LABEL, type ExpenseMethod };
+export { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, EXPENSE_METHODS, EXPENSE_METHOD_LABEL, type ExpenseCategory, type ExpenseMethod };
 
-export type ExpenseListState = { query: string; from: Date | null; to: Date | null; method: ExpenseMethod | "all"; creatorId: string | "all"; page: number; pageSize: number };
+export type ExpenseListState = { query: string; from: Date | null; to: Date | null; category: ExpenseCategory | "all"; method: ExpenseMethod | "all"; creatorId: string | "all"; order: "asc" | "desc"; page: number; pageSize: number };
 
-export async function getExpenses(state: ExpenseListState) {
-  await requireActor(FINANCE_ROLES);
+function expenseWhere(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
   const query = state.query.trim().slice(0, 80);
-  const where = {
+  const dateOnly = (value: Date | null) => value && new Date(value.getTime() + 7 * 60 * 60 * 1000);
+  const from = dateOnly(state.from);
+  const to = dateOnly(state.to);
+  return {
     ...(query ? { purpose: { contains: query, mode: "insensitive" as const } } : {}),
-    ...(state.from && state.to ? { spentAt: { gte: state.from, lt: state.to } } : {}),
+    ...(from && to ? { spentAt: { gte: from, lt: to } } : {}),
+    ...(state.category === "all" ? {} : { category: state.category }),
     ...(state.method === "all" ? {} : { paymentMethod: state.method }),
     ...(state.creatorId === "all" ? {} : { createdById: state.creatorId }),
   } satisfies Prisma.ExpenseWhereInput;
+}
+
+export async function getExpenses(state: ExpenseListState) {
+  await requireActor(FINANCE_ROLES);
+  const where = expenseWhere(state);
   const prisma = getPrismaClient();
-  const [items, total, creators] = await Promise.all([
-    prisma.expense.findMany({ where, select: { id: true, purpose: true, spentAt: true, amount: true, paymentMethod: true, reimbursedAt: true, createdById: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], skip: (state.page - 1) * state.pageSize, take: state.pageSize }),
-    prisma.expense.count({ where }),
+  const [dates, creators] = await Promise.all([
+    prisma.expense.groupBy({ by: ["spentAt"], where, orderBy: { spentAt: state.order } }),
     prisma.appUser.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
-  return { items: items.map((item) => ({ ...item, amount: item.amount.toString(), paymentMethod: item.paymentMethod as ExpenseMethod })), total, creators, pageCount: Math.max(1, Math.ceil(total / state.pageSize)) };
+  const pageDates = dates.slice((state.page - 1) * state.pageSize, state.page * state.pageSize).map((item) => item.spentAt);
+  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethod: true, reimbursedAt: true, createdById: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: state.order }, { createdAt: "desc" }] }) : [];
+  const grouped = new Map(pageDates.map((spentAt) => [spentAt.getTime(), { spentAt, items: [] as typeof items }]));
+  items.forEach((item) => grouped.get(item.spentAt.getTime())?.items.push(item));
+  return { groups: [...grouped.values()].map((group) => ({ ...group, items: group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory, paymentMethod: item.paymentMethod as ExpenseMethod })) })), total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / state.pageSize)) };
+}
+
+export async function getExpensesForExport(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
+  await requireActor(FINANCE_ROLES);
+  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: true, amount: true, createdBy: { select: { name: true } }, reimbursedAt: true }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }] });
+  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory, paymentMethod: row.paymentMethod as ExpenseMethod }));
 }
 
 export type IncomeListState = { query: string; from: Date | null; to: Date | null; status: "all" | "DP" | "LUNAS"; page: number; pageSize: number };
@@ -53,10 +71,11 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   const dp = order.payment!.kind === "DP" ? transactions.filter((item) => !item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : null;
   const settled = order.payment!.kind === "LUNAS" ? transactions.filter((item) => !item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : transactions.filter((item) => item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
   const hpp = order.invoice.items.reduce((sum, item) => sum.add(item.grossAmount), new Prisma.Decimal(0));
-  const netProfit = order.invoice.totalProfit.sub(hpp);
-  const margin = order.invoice.total.isZero() ? 0 : netProfit.div(order.invoice.total).toNumber();
+  const grossProfit = hpp.add(Prisma.Decimal.max(order.invoice.totalProfit, 0));
+  const netProfit = grossProfit.sub(hpp);
+  const margin = grossProfit.isZero() ? 0 : netProfit.div(grossProfit).toNumber();
   const latest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt > date ? item.paidAt : date, null);
-  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), hpp: hpp.toString(), discount: order.invoice.totalDiscount.toString(), profit: order.invoice.totalProfit.toString(), netProfit: netProfit.toString(), margin, dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null };
+  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), hpp: hpp.toString(), discount: order.invoice.totalDiscount.toString(), grossProfit: grossProfit.toString(), netProfit: netProfit.toString(), margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null };
 }
 
 async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number, take?: number) {
