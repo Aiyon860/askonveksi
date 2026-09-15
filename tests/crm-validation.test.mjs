@@ -274,6 +274,12 @@ test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan ta
     value: "2026-10-01",
     isStoredValue: true,
   });
+  assert.deepEqual(productionDeadlineOptions("2026-03-15"), [
+    { label: "1 minggu (22 Maret 2026)", value: "2026-03-22" },
+    { label: "2 minggu (29 Maret 2026)", value: "2026-03-29" },
+    { label: "3 minggu (5 April 2026)", value: "2026-04-05" },
+    { label: "1 bulan (15 April 2026)", value: "2026-04-15" },
+  ]);
 });
 
 test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesanan", () => {
