@@ -12,6 +12,7 @@ import {
 } from "../lib/whatsapp/core.ts";
 import { repeatOrderDueAt, repeatOrderOccurrenceMonths } from "../lib/crm/reminder-types.ts";
 import { campaignFieldsSchema, deleteCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema } from "../lib/whatsapp/campaigns.ts";
+import { parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 
 const jobsSource = await readFile(new URL("../lib/whatsapp/jobs.ts", import.meta.url), "utf8");
 const workerSource = await readFile(new URL("../worker/whatsapp.mjs", import.meta.url), "utf8");
@@ -60,6 +61,15 @@ test("campaign memvalidasi tanggal WIB dan variabel penerima", () => {
   assert.match(workerSource, /scheduledAt: campaign\.scheduledAt/);
   assert.match(workerSource, /status: "PAUSED", scheduledAt: \{ lte: now \}/);
   assert.match(workerSource, /status: "SKIPPED"/);
+});
+
+test("pagination campaign membatasi parameter URL yang tidak valid", () => {
+  assert.equal(parsePageParam("3"), 3);
+  assert.equal(parsePageParam("invalid"), 1);
+  assert.equal(parsePageParam("999999"), 10_000);
+  assert.equal(parsePageSizeParam("10"), 10);
+  assert.equal(parsePageSizeParam("50"), 50);
+  assert.equal(parsePageSizeParam("25"), 20);
 });
 
 test("switch campaign hanya menerima nilai boolean dan versi yang valid", () => {
