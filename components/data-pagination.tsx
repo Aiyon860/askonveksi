@@ -20,6 +20,7 @@ function pageHref(
   Object.entries(params).forEach(([key, value]) => {
     if (value) search.set(key, value);
   });
+  search.delete(pageParam);
   if (page > 1) search.set(pageParam, String(page));
   const query = search.toString();
   return `${query ? `${pathname}?${query}` : pathname}${anchor ? `#${anchor}` : ""}`;
@@ -34,6 +35,7 @@ export function DataPagination({
   params = {},
   pageSizeOptions,
   pageParam = "page",
+  pageSizeParam = "pageSize",
   anchor,
   className,
 }: {
@@ -45,6 +47,7 @@ export function DataPagination({
   params?: Record<string, string | undefined>;
   pageSizeOptions?: readonly number[];
   pageParam?: string;
+  pageSizeParam?: string;
   anchor?: string;
   className?: string;
 }) {
@@ -52,7 +55,7 @@ export function DataPagination({
   const first = (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
   const pageSizeParams = Object.fromEntries(
-    Object.entries(params).filter(([key]) => key !== "pageSize"),
+    Object.entries(params).filter(([key]) => key !== pageSizeParam && key !== pageParam),
   );
 
   return (
@@ -62,7 +65,7 @@ export function DataPagination({
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 sm:justify-end">
         {pageSizeOptions ? (
-          <PageSizeSelect pathname={pathname} value={pageSize} options={pageSizeOptions} params={pageSizeParams} />
+          <PageSizeSelect pathname={pathname} value={pageSize} options={pageSizeOptions} params={pageSizeParams} pageSizeParam={pageSizeParam} pageParam={pageParam} />
         ) : null}
         <p className="whitespace-nowrap text-xs text-muted-foreground">
           Halaman <strong className="font-medium text-foreground">{page}</strong> / <strong className="font-medium text-foreground">{pageCount}</strong>

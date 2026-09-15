@@ -265,6 +265,7 @@ export async function getCustomers({
         address: true,
         city: true,
         notes: true,
+        orderReminderEnabled: true,
         customerTypeId: true,
         leadSourceId: true,
         salesPicId: true,
@@ -518,21 +519,6 @@ export async function getCustomerDetail(customerId: string) {
           opportunityNo: true,
           title: true,
           stage: true,
-          updatedAt: true,
-          salesOrders: {
-            select: {
-              id: true,
-              salesOrderNo: true,
-              total: true,
-              status: true,
-              acceptedAt: true,
-              items: {
-                select: { id: true, size: true, description: true, quantity: true, position: true },
-                orderBy: { position: "asc" },
-              },
-            },
-            orderBy: { acceptedAt: "desc" },
-          },
         },
         orderBy: { updatedAt: "desc" },
       },
@@ -550,6 +536,100 @@ export async function getCustomerDetail(customerId: string) {
       },
     },
   });
+}
+
+export type CustomerCommunicationFilter = "all" | "COMMUNICATION" | "INTERNAL_NOTE" | "SYSTEM" | "WHATSAPP" | "INSTAGRAM" | "PHONE" | "EMAIL" | "MEETING" | "OTHER";
+export type CustomerOrderStatus = "all" | "ACTIVE" | "CANCELLED";
+
+export async function getCustomerOrderSummary(customerId: string) {
+  await requireActor();
+  const where = { opportunity: { customerId }, status: { not: "CANCELLED" } } satisfies Prisma.SalesOrderWhereInput;
+  const prisma = getPrismaClient();
+  const [aggregate, activeOrderCount, latestOrder] = await Promise.all([
+    prisma.salesOrder.aggregate({ where, _count: true, _sum: { total: true } }),
+    prisma.salesOrder.count({ where: { ...where, status: "ACTIVE" } }),
+    prisma.salesOrder.findFirst({ where, select: { acceptedAt: true }, orderBy: { acceptedAt: "desc" } }),
+  ]);
+  return { totalOrderCount: aggregate._count, totalTransaction: aggregate._sum.total ?? 0, activeOrderCount, latestOrder };
+}
+
+export async function getCustomerCommunicationHistory({ customerId, query, filter, page, pageSize }: {
+  customerId: string; query: string; filter: CustomerCommunicationFilter; page: number; pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    customerId,
+    ...(filter === "all" ? {} : ["COMMUNICATION", "INTERNAL_NOTE", "SYSTEM"].includes(filter)
+      ? { kind: filter as "COMMUNICATION" | "INTERNAL_NOTE" | "SYSTEM" }
+      : { channel: filter as "WHATSAPP" | "INSTAGRAM" | "PHONE" | "EMAIL" | "MEETING" | "OTHER" }),
+    ...(normalizedQuery ? { OR: [
+      { content: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { author: { name: { contains: normalizedQuery, mode: "insensitive" as const } } },
+      { opportunity: { is: { OR: [
+        { opportunityNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { title: { contains: normalizedQuery, mode: "insensitive" as const } },
+      ] } } },
+    ] } : {}),
+  } satisfies Prisma.CommunicationActivityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.communicationActivity.findMany({ where, select: communicationActivitySelect, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.communicationActivity.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+export async function getCustomerSalesOrders({ customerId, query, status, start, end, page, pageSize }: {
+  customerId: string; query: string; status: CustomerOrderStatus; start: Date | null; end: Date | null; page: number; pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    opportunity: { customerId },
+    ...(status !== "all" ? { status } : {}),
+    ...(start && end ? { acceptedAt: { gte: start, lt: end } } : {}),
+    ...(normalizedQuery ? { OR: [
+      { salesOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { purchaseOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { invoiceNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { opportunity: { is: { OR: [
+        { opportunityNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { title: { contains: normalizedQuery, mode: "insensitive" as const } },
+      ] } } },
+      { items: { some: { OR: [
+        { description: { contains: normalizedQuery, mode: "insensitive" as const } },
+        { productName: { contains: normalizedQuery, mode: "insensitive" as const } },
+      ] } } },
+    ] } : {}),
+  } satisfies Prisma.SalesOrderWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, status: true, total: true, acceptedAt: true, opportunity: { select: { id: true, opportunityNo: true, title: true } }, items: { select: { id: true, description: true, quantity: true, position: true }, orderBy: { position: "asc" } } }, orderBy: { acceptedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.salesOrder.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+export async function getCustomerOpportunities({ customerId, query, stage, page, pageSize }: {
+  customerId: string; query: string; stage: OpportunityStage | "all"; page: number; pageSize: number;
+}) {
+  await requireActor();
+  const normalizedQuery = query.trim().slice(0, 80);
+  const where = {
+    customerId,
+    ...(stage === "all" ? {} : { stage }),
+    ...(normalizedQuery ? { OR: [
+      { opportunityNo: { contains: normalizedQuery, mode: "insensitive" as const } },
+      { title: { contains: normalizedQuery, mode: "insensitive" as const } },
+    ] } : {}),
+  } satisfies Prisma.OpportunityWhereInput;
+  const prisma = getPrismaClient();
+  const [items, total] = await Promise.all([
+    prisma.opportunity.findMany({ where, select: { id: true, opportunityNo: true, title: true, stage: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.opportunity.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export const getOpportunityDetail = cache(async function getOpportunityDetail(opportunityId: string) {

@@ -23,6 +23,7 @@ import {
   recordFollowUpResultSchema,
   strongPasswordSchema,
   updateUserSchema,
+  updateCustomerSchema,
   validateOpenOpportunitySchedule,
 } from "../lib/crm/validation.ts";
 import { downloadFilename } from "../lib/download-filename.ts";
@@ -60,11 +61,16 @@ import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCust
 
 const userDataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
 const userActionsSource = await readFile(new URL("../app/actions/users.ts", import.meta.url), "utf8");
+const crmActionsSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
 
 test("akun Developer tersembunyi dan tidak dapat dikelola role lain", () => {
   assert.match(userDataSource, /role: \{ not: "DEVELOPER" \}/);
   assert.match(userActionsSource, /assertCanManageDeveloper/);
   assert.match(userActionsSource, /actor\.role !== "DEVELOPER"/);
+});
+
+test("Sales/PIC lama tetap dapat dipertahankan saat customer diedit", () => {
+  assert.match(crmActionsSource, /OR: \[\{ role: "ADMIN_CUSTOMER", isActive: true \}, \{ id: current\.salesPicId \?\? "" \}\]/);
 });
 
 test("kode PO customer mengikuti nama dan format Jakarta", () => {
@@ -117,6 +123,27 @@ test("customer membutuhkan nama dan minimal satu kontak", () => {
 test("customer wajib memiliki jenis customer yang valid secara bentuk", () => {
   const withoutType = createCustomerSchema.safeParse({ name: "Budi", whatsapp: "08123456789" });
   assert.equal(withoutType.success, false);
+});
+
+test("edit customer menerima status reminder repeat order", () => {
+  const base = {
+    customerId: "cm123456789012",
+    version: "1",
+    name: "Budi",
+    companyName: "",
+    whatsapp: "08123456789",
+    email: "",
+    instagram: "",
+    address: "",
+    city: "Bandung",
+    notes: "",
+    customerTypeId: "master-ct-personal",
+    leadSourceId: "",
+    salesPicId: "",
+  };
+  assert.equal(updateCustomerSchema.safeParse({ ...base, orderReminderEnabled: "true" }).success, true);
+  assert.equal(updateCustomerSchema.safeParse({ ...base, orderReminderEnabled: "false" }).success, true);
+  assert.equal(updateCustomerSchema.safeParse({ ...base, orderReminderEnabled: "invalid" }).success, false);
 });
 
 test("prospek baru mewajibkan kota dan asal", () => {

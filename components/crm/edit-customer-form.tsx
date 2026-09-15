@@ -9,6 +9,8 @@ import {
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 
 export function EditCustomerForm({
   customer,
@@ -20,6 +22,7 @@ export function EditCustomerForm({
     id: string;
     customerNo: string;
     version: number;
+    orderReminderEnabled: boolean;
     salesPic: (CustomerFormOption & { isActive: boolean }) | null;
   };
   customerTypes: CustomerFormOption[];
@@ -50,6 +53,13 @@ export function EditCustomerForm({
             values={customer}
             currentSalesPic={customer.salesPic ?? undefined}
           />
+          <Field orientation="horizontal" className="mt-6 items-center justify-between rounded-md border p-3">
+            <div className="min-w-0">
+              <FieldLabel htmlFor={`edit-reminder-${customer.id}`}>Reminder repeat order</FieldLabel>
+              <FieldDescription>Aktifkan pengiriman reminder otomatis untuk customer ini.</FieldDescription>
+            </div>
+            <Switch id={`edit-reminder-${customer.id}`} name="orderReminderEnabled" value="true" uncheckedValue="false" defaultChecked={customer.orderReminderEnabled} aria-label="Aktifkan reminder repeat order" />
+          </Field>
           <SubmitButton className="mt-7" pendingLabel="Memperbarui customer...">
             Simpan perubahan
           </SubmitButton>

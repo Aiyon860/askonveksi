@@ -1,34 +1,42 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Archive, ExternalLink, MessageCircle } from "lucide-react";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Archive, MessageCircle } from "lucide-react";
 
 import { archiveCustomerAction, createOpportunityAction, forceSendRepeatOrderReminderAction, updateCustomerAction } from "@/app/actions/crm";
 import { openCustomerWhatsAppAction } from "@/app/actions/whatsapp";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
-import { CommunicationHistory } from "@/components/crm/communication-history";
+import { CustomerHistories } from "@/components/crm/customer-histories";
 import { CustomerOrderReminderSetting } from "@/components/crm/customer-order-reminder-setting";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
-import { CustomerActivityBadge, OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
+import { CustomerActivityBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
-import { getCommunicationTimeline, getCustomerDetail } from "@/lib/crm/data";
-import { OPEN_STAGES } from "@/lib/crm/constants";
+import { getCustomerCommunicationHistory, getCustomerDetail, getCustomerOpportunities, getCustomerOrderSummary, getCustomerSalesOrders, type CustomerCommunicationFilter, type CustomerOrderStatus } from "@/lib/crm/data";
+import { OPEN_STAGES, PIPELINE_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
 import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import { getCustomerFormOptions } from "@/lib/master-data";
-import { parsePageParam } from "@/lib/pagination";
+import { parseDocumentDateRange } from "@/lib/crm/document-list-filters";
+import { normalizeCustomerHistoryPageSize } from "@/lib/crm/customer-history";
+
+function parseCustomerHistoryPageSize(value: string | string[] | undefined) {
+  return normalizeCustomerHistoryPageSize(firstParam(value));
+}
+
+function parseCustomerHistoryPage(value: string | string[] | undefined) {
+  const raw = firstParam(value);
+  return raw && /^\d+$/.test(raw) ? Math.min(Number(raw), 10_000) : 1;
+}
 
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -55,52 +63,43 @@ export default async function CustomerDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ historyPage?: string | string[]; returnTo?: string | string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
   const query = await searchParams;
-  const historyPage = parsePageParam(query.historyPage);
+  const historyQuery = (firstParam(query.historyQ) ?? "").trim().slice(0, 80);
+  const historyFilter = (["COMMUNICATION", "INTERNAL_NOTE", "SYSTEM", "WHATSAPP", "INSTAGRAM", "PHONE", "EMAIL", "MEETING", "OTHER"] as const).includes(firstParam(query.historyFilter) as never) ? firstParam(query.historyFilter) as CustomerCommunicationFilter : "all";
+  const historyPage = parseCustomerHistoryPage(query.historyPage);
+  const historySize = parseCustomerHistoryPageSize(query.historySize);
+  const orderQuery = (firstParam(query.orderQ) ?? "").trim().slice(0, 80);
+  const orderStatus = (["ACTIVE", "CANCELLED"] as const).includes(firstParam(query.orderStatus) as never) ? firstParam(query.orderStatus) as CustomerOrderStatus : "all";
+  const orderRange = parseDocumentDateRange(query.orderFrom, query.orderTo);
+  const orderPage = parseCustomerHistoryPage(query.orderPage);
+  const orderSize = parseCustomerHistoryPageSize(query.orderSize);
+  const opportunityQuery = (firstParam(query.opportunityQ) ?? "").trim().slice(0, 80);
+  const opportunityStage = PIPELINE_STAGES.includes(firstParam(query.opportunityStage) as never) ? firstParam(query.opportunityStage) as (typeof PIPELINE_STAGES)[number] : "all";
+  const opportunityPage = parseCustomerHistoryPage(query.opportunityPage);
+  const opportunitySize = parseCustomerHistoryPageSize(query.opportunitySize);
   const listHref = customerListHref(query.returnTo);
-  const [customer, actor, formOptions, communicationHistory] = await Promise.all([
+  const [customer, actor, formOptions, summary, communicationHistory, salesOrderHistory, opportunityHistory] = await Promise.all([
     getCustomerDetail(id),
     getCurrentActor(),
     getCustomerFormOptions(),
-    getCommunicationTimeline({ customerId: id, page: historyPage }),
+    getCustomerOrderSummary(id),
+    getCustomerCommunicationHistory({ customerId: id, query: historyQuery, filter: historyFilter, page: historyPage, pageSize: historySize }),
+    getCustomerSalesOrders({ customerId: id, query: orderQuery, status: orderStatus, start: orderRange.start, end: orderRange.end, page: orderPage, pageSize: orderSize }),
+    getCustomerOpportunities({ customerId: id, query: opportunityQuery, stage: opportunityStage, page: opportunityPage, pageSize: opportunitySize }),
   ]);
   if (!customer || !actor) notFound();
-  if (historyPage > communicationHistory.pageCount) {
-    const nextParams = new URLSearchParams({
-      historyPage: String(communicationHistory.pageCount),
-      returnTo: listHref,
-    });
-    redirect(`/customers/${id}?${nextParams.toString()}#communication-history`);
-  }
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
   const canManageReminder = hasRole(actor.role, CUSTOMER_REMINDER_SETTING_ROLES);
   const canForceReminderTest = actor.role === "DEVELOPER";
   const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
   const canArchive = canOperate && !customer.archivedAt;
-  const salesOrders = customer.opportunities
-    .flatMap((opportunity) =>
-      opportunity.salesOrders.map((order) => ({
-        ...order,
-        opportunity: {
-          id: opportunity.id,
-          opportunityNo: opportunity.opportunityNo,
-          title: opportunity.title,
-        },
-      })),
-    )
-    .sort((first, second) => second.acceptedAt.getTime() - first.acceptedAt.getTime());
-  const validOrders = salesOrders.filter((order) => order.status !== "CANCELLED");
-  const totalTransaction = validOrders.reduce((total, order) => total + Number(order.total), 0);
-  const activeOrderCount = validOrders.filter((order) => order.status === "ACTIVE").length;
-  const latestOrder = validOrders[0];
   const hasOpenOpportunity = customer.opportunities.some((opportunity) => OPEN_STAGES.includes(opportunity.stage));
   const activityStatus = activityStatusFromSchedule(customer.reminders, new Date(), hasOpenOpportunity);
   const reactivationSchedule = customer.reminders.find((reminder) => reminder.type === "REACTIVATION");
   const recentConversation = customer.whatsappConversations[0];
-
   return (
     <>
       <Button variant="ghost" size="sm" render={<Link href={listHref} />} nativeButton={false} className="w-fit">
@@ -125,19 +124,19 @@ export default async function CustomerDetailPage({
               <dl className="grid grid-cols-2 gap-x-4 gap-y-5 md:grid-cols-5">
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Total order</dt>
-                  <dd className="font-mono text-xl font-semibold tabular-nums">{validOrders.length}</dd>
+                  <dd className="font-mono text-xl font-semibold tabular-nums">{summary.totalOrderCount}</dd>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Total transaksi</dt>
-                  <dd className="font-mono text-xl font-semibold tabular-nums wrap-break-word">{formatCurrency(totalTransaction)}</dd>
+                  <dd className="font-mono text-xl font-semibold tabular-nums wrap-break-word">{formatCurrency(summary.totalTransaction)}</dd>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Order aktif</dt>
-                  <dd className="font-mono text-xl font-semibold tabular-nums">{activeOrderCount}</dd>
+                  <dd className="font-mono text-xl font-semibold tabular-nums">{summary.activeOrderCount}</dd>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Order terakhir</dt>
-                  <dd className="text-sm font-semibold md:text-base">{latestOrder ? formatDate(latestOrder.acceptedAt) : "Belum ada order"}</dd>
+                  <dd className="text-sm font-semibold md:text-base">{summary.latestOrder ? formatDate(summary.latestOrder.acceptedAt) : "Belum ada order"}</dd>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-sm text-muted-foreground">Reminder berikutnya</dt>
@@ -153,120 +152,20 @@ export default async function CustomerDetailPage({
             </CardContent>
           </Card>
 
-          <CommunicationHistory
-            items={communicationHistory.items}
-            total={communicationHistory.total}
-            page={communicationHistory.page}
-            pageCount={communicationHistory.pageCount}
-            pathname={`/customers/${customer.id}`}
-            form={canOperate && !customer.archivedAt ? (
-              <CommunicationEntryForm
-                context="customer"
-                customerId={customer.id}
-                opportunities={customer.opportunities.map((opportunity) => ({
-                  id: opportunity.id,
-                  opportunityNo: opportunity.opportunityNo,
-                  title: opportunity.title,
-                }))}
-                initialOccurredAt={toDateTimeLocalValue(new Date())}
-              />
-            ) : undefined}
+          <CustomerHistories
+            customerId={customer.id}
+            initial={{
+              communication: JSON.parse(JSON.stringify(communicationHistory)),
+              order: JSON.parse(JSON.stringify(salesOrderHistory)),
+              opportunity: JSON.parse(JSON.stringify(opportunityHistory)),
+            }}
+            initialState={{
+              communication: { query: historyQuery, filter: historyFilter, page: historyPage, pageSize: historySize },
+              order: { query: orderQuery, status: orderStatus, from: orderRange.from, to: orderRange.to, page: orderPage, pageSize: orderSize },
+              opportunity: { query: opportunityQuery, stage: opportunityStage, page: opportunityPage, pageSize: opportunitySize },
+            }}
+            communicationForm={canOperate && !customer.archivedAt ? <CommunicationEntryForm context="customer" customerId={customer.id} opportunities={customer.opportunities.map((opportunity) => ({ id: opportunity.id, opportunityNo: opportunity.opportunityNo, title: opportunity.title }))} initialOccurredAt={toDateTimeLocalValue(new Date())} /> : undefined}
           />
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Riwayat order</CardTitle>
-              <CardDescription>Order terbaru ditampilkan lebih dahulu. Order yang dibatalkan tetap tercatat.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {salesOrders.length ? (
-                <div className="flex flex-col">
-                  {salesOrders.map((order) => (
-                    <article key={order.id} className="grid gap-4 border-b py-5 first:pt-0 last:border-b-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_auto]">
-                      <div className="flex min-w-0 flex-col gap-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link href={`/sales-orders/${order.id}`} className="inline-flex items-center gap-1 font-mono text-sm font-medium underline-offset-4 hover:underline">
-                            {order.salesOrderNo}<ExternalLink aria-hidden="true" className="size-3.5" />
-                          </Link>
-                          <SalesOrderStatusBadge status={order.status} />
-                        </div>
-                        <div>
-                          <Link href={`/crm/peluang/${order.opportunity.id}`} className="font-medium underline-offset-4 hover:underline">{order.opportunity.title}</Link>
-                          <p className="mt-1 font-mono text-xs text-muted-foreground">{order.opportunity.opportunityNo}</p>
-                        </div>
-                        {order.items.length ? (
-                          <ul className="flex flex-col gap-2" aria-label={`Item ${order.salesOrderNo}`}>
-                            {order.items.map((item) => (
-                              <li key={item.id} className="flex items-start justify-between gap-4 text-sm">
-                                <span className="min-w-0 wrap-break-word">{item.description} · {item.size}</span>
-                                <span className="shrink-0 font-mono tabular-nums">{item.quantity} pcs</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Rincian item tidak tersedia.</p>
-                        )}
-                      </div>
-                      <dl className="flex gap-6 md:flex-col md:items-end md:gap-2 md:text-right">
-                        <div>
-                          <dt className="sr-only">Tanggal order</dt>
-                          <dd className="text-sm text-muted-foreground">{formatDate(order.acceptedAt)}</dd>
-                        </div>
-                        <div>
-                          <dt className="sr-only">Total order</dt>
-                          <dd className="font-mono font-medium tabular-nums">{formatCurrency(order.total)}</dd>
-                        </div>
-                      </dl>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <Empty className="p-8">
-                  <EmptyHeader>
-                    <EmptyTitle>Belum ada order</EmptyTitle>
-                    <EmptyDescription>Riwayat akan muncul setelah pembayaran Deal dicatat dan Sales Order terbentuk.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Peluang CRM</CardTitle>
-              <CardDescription>Profil ini dipakai kembali setiap kali customer membuat order baru.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {customer.opportunities.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Peluang</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {customer.opportunities.map((opportunity) => (
-                      <TableRow key={opportunity.id}>
-                        <TableCell>
-                          <Link href={`/crm/peluang/${opportunity.id}`} className="font-medium underline-offset-4 hover:underline">{opportunity.title}</Link>
-                          <p className="mt-1 font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</p>
-                        </TableCell>
-                        <TableCell><OpportunityStatusBadge stage={opportunity.stage} /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <Empty className="p-8">
-                  <EmptyHeader>
-                    <EmptyTitle>Belum ada peluang</EmptyTitle>
-                    <EmptyDescription>Buat peluang pertama dari formulir di samping.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
-            </CardContent>
-          </Card>
 
           <Card>
             <CardHeader>

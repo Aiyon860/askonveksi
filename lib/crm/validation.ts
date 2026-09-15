@@ -50,6 +50,7 @@ export const updateCustomerSchema = customerFieldsSchema.and(
   z.object({
     customerId: entityIdSchema,
     version: requiredVersion,
+    orderReminderEnabled: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   }),
 );
 

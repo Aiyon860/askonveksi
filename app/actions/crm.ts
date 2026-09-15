@@ -646,6 +646,29 @@ export async function importCustomersAction(formData: FormData) {
   });
 }
 
+async function resetCustomerOrderReminderDelivery(tx: Tx, customerId: string, enabled: boolean) {
+  const reminders = await tx.customerReminder.findMany({
+    where: { customerId, type: "REACTIVATION", resolvedAt: null },
+    select: { id: true },
+  });
+  if (reminders.length) {
+    const reminderIds = reminders.map((reminder) => reminder.id);
+    await tx.customerReminder.updateMany({ where: { id: { in: reminderIds } }, data: { generation: { increment: 1 } } });
+    if (enabled) await tx.customerReminderReceipt.deleteMany({ where: { reminderId: { in: reminderIds } } });
+  }
+  if (!enabled) {
+    const jobs = await tx.whatsAppAutomationJob.findMany({
+      where: { customerId, type: "REACTIVATION", status: { in: ["QUEUED", "RETRY"] } },
+      select: { id: true },
+    });
+    if (jobs.length) {
+      const ids = jobs.map((job) => job.id);
+      await tx.whatsAppAutomationJob.updateMany({ where: { id: { in: ids } }, data: { status: "CANCELLED", lastError: "Reminder order dinonaktifkan." } });
+      await tx.whatsAppMessage.updateMany({ where: { automationJobId: { in: ids }, status: { in: ["QUEUED", "FAILED"] } }, data: { status: "CANCELLED", errorMessage: "Reminder order dinonaktifkan." } });
+    }
+  }
+}
+
 export async function updateCustomerAction(formData: FormData) {
   return runRedirectingAction("/customers", async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
@@ -653,26 +676,31 @@ export async function updateCustomerAction(formData: FormData) {
       ...customerFields(formData),
       customerId: formValue(formData, "customerId"),
       version: formValue(formData, "version"),
+      orderReminderEnabled: formData.has("orderReminderEnabled") ? formValue(formData, "orderReminderEnabled") : undefined,
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
-    const { customerId, version, ...fields } = parsed.data;
+    const { customerId, version, orderReminderEnabled, ...fields } = parsed.data;
     const result = await getPrismaClient().$transaction(async (tx) => {
-      const current = await tx.customer.findUnique({ where: { id: customerId }, select: { customerTypeId: true, leadSourceId: true, salesPicId: true } });
+      const current = await tx.customer.findUnique({ where: { id: customerId }, select: { customerTypeId: true, leadSourceId: true, salesPicId: true, orderReminderEnabled: true } });
       if (!current) throw new UserFacingError("Customer tidak ditemukan.");
       const [customerType, leadSource, salesPic] = await Promise.all([
         tx.customerType.findUnique({ where: { id: fields.customerTypeId }, select: { id: true } }),
         fields.leadSourceId ? tx.leadSource.findUnique({ where: { id: fields.leadSourceId }, select: { id: true } }) : null,
-        fields.salesPicId ? tx.appUser.findFirst({ where: { id: fields.salesPicId, role: "ADMIN_CUSTOMER", OR: [{ isActive: true }, { id: current.salesPicId ?? "" }] }, select: { id: true } }) : null,
+        fields.salesPicId ? tx.appUser.findFirst({ where: { id: fields.salesPicId, OR: [{ role: "ADMIN_CUSTOMER", isActive: true }, { id: current.salesPicId ?? "" }] }, select: { id: true } }) : null,
       ]);
       if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
       if (fields.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
       if (fields.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
       const updated = await tx.customer.updateMany({
         where: { id: customerId, version, archivedAt: null },
-        data: { ...fields, email: fields.email?.toLowerCase(), version: { increment: 1 } },
+        data: { ...fields, email: fields.email?.toLowerCase(), ...(orderReminderEnabled === undefined ? {} : { orderReminderEnabled }), version: { increment: 1 } },
       });
       if (updated.count !== 1) throw new UserFacingError("Customer sudah berubah atau telah diarsipkan. Muat ulang halaman.");
+      if (orderReminderEnabled !== undefined && orderReminderEnabled !== current.orderReminderEnabled) {
+        await resetCustomerOrderReminderDelivery(tx, customerId, orderReminderEnabled);
+        await audit(tx, actor, "Customer", customerId, "ORDER_REMINDER_SETTING_UPDATED", ["orderReminderEnabled"]);
+      }
       await audit(tx, actor, "Customer", customerId, "CUSTOMER_UPDATED", [
         "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
       ]);
@@ -704,26 +732,7 @@ export async function updateCustomerOrderReminderAction(formData: FormData) {
         data: { orderReminderEnabled: parsed.data.enabled, version: { increment: 1 } },
       });
       if (!updated.count) throw new UserFacingError("Pengaturan customer sudah berubah. Muat ulang halaman.");
-      const reminders = await tx.customerReminder.findMany({
-        where: { customerId: parsed.data.customerId, type: "REACTIVATION", resolvedAt: null },
-        select: { id: true },
-      });
-      if (reminders.length) {
-        const reminderIds = reminders.map((reminder) => reminder.id);
-        await tx.customerReminder.updateMany({ where: { id: { in: reminderIds } }, data: { generation: { increment: 1 } } });
-        if (parsed.data.enabled) await tx.customerReminderReceipt.deleteMany({ where: { reminderId: { in: reminderIds } } });
-      }
-      if (!parsed.data.enabled) {
-        const jobs = await tx.whatsAppAutomationJob.findMany({
-          where: { customerId: parsed.data.customerId, type: "REACTIVATION", status: { in: ["QUEUED", "RETRY"] } },
-          select: { id: true },
-        });
-        if (jobs.length) {
-          const ids = jobs.map((job) => job.id);
-          await tx.whatsAppAutomationJob.updateMany({ where: { id: { in: ids } }, data: { status: "CANCELLED", lastError: "Reminder order dinonaktifkan." } });
-          await tx.whatsAppMessage.updateMany({ where: { automationJobId: { in: ids }, status: { in: ["QUEUED", "FAILED"] } }, data: { status: "CANCELLED", errorMessage: "Reminder order dinonaktifkan." } });
-        }
-      }
+      await resetCustomerOrderReminderDelivery(tx, parsed.data.customerId, parsed.data.enabled);
       await audit(tx, actor, "Customer", parsed.data.customerId, "ORDER_REMINDER_SETTING_UPDATED", ["orderReminderEnabled"]);
     });
     revalidatePath(`/customers/${parsed.data.customerId}`);
