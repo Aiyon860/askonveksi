@@ -119,7 +119,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const canViewAnalytics = isDeveloper || role === "OWNER";
   const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
   const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
-  const canViewFinance = true;
+  const canViewFinance = isDeveloper || role === "OWNER";
   const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
   const masterDataActive = (isPathWithin(pathname, "/master-data") && pathname !== "/master-data/whatsapp/templates") || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
