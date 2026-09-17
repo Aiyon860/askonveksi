@@ -1,4 +1,4 @@
-import { MASTER_DATA_ROLES, hasRole } from "@/lib/auth/permissions";
+import { WHATSAPP_ACCOUNT_MANAGER_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { classifyWhatsAppHealth } from "@/lib/whatsapp/health";
@@ -13,7 +13,7 @@ export async function GET() {
   const actor = await getCurrentActor();
   if (!actor) return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
-  const manager = hasRole(actor.role, MASTER_DATA_ROLES);
+  const manager = hasRole(actor.role, WHATSAPP_ACCOUNT_MANAGER_ROLES);
   const prisma = getPrismaClient();
   const [account, ownJobs, failedCount] = await Promise.all([
     prisma.whatsAppAccount.findFirst({

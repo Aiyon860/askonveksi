@@ -9,6 +9,7 @@ export const ARCHIVE_ROLES = CRM_OPERATOR_ROLES;
 export const REVERSE_DEAL_ROLES = DEAL_ROLES;
 export const USER_ADMIN_ROLES = ["DEVELOPER"] as const satisfies readonly AppRole[];
 export const MASTER_DATA_ROLES = [] as const satisfies readonly AppRole[];
+export const WHATSAPP_ACCOUNT_MANAGER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const ANALYTICS_ROLES = [] as const satisfies readonly AppRole[];
 export const FINANCE_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "ADMIN", "SALES", "DESIGNER", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
 export const PRODUCTION_ROLES = ["ADMIN_PRODUCTION"] as const satisfies readonly AppRole[];

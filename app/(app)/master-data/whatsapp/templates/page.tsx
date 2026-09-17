@@ -48,7 +48,7 @@ export default async function WhatsAppTemplatesPage() {
   const templates = await getWhatsAppTemplates();
   return (
     <main className="flex flex-col gap-6">
-      <PageHeader title="Template chat" description="Kelola pesan cepat dan pesan otomatis WhatsApp." />
+      <PageHeader title="Template Pesan WhatsApp" description="Kelola pesan cepat dan pesan otomatis WhatsApp." />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card><CardHeader><CardTitle>Template baru</CardTitle><CardDescription>Template chat manual boleh aktif lebih dari satu.</CardDescription></CardHeader><CardContent><TemplateForm /></CardContent></Card>
         {templates.filter((template) => template.triggerType !== "REPEAT_ORDER").map((template) => (

@@ -31,8 +31,12 @@ const crmItems = [
 
 const customerItems = [
   { href: "/customers", label: "Customer", icon: UsersRound },
-  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { href: "/master-data/whatsapp/templates", label: "Template chat", icon: MessageCircle },
+] as const;
+
+const whatsAppItems = [
+  { href: "/whatsapp", label: "Kotak Masuk", icon: MessageCircle },
+  { href: "/master-data/whatsapp/templates", label: "Template Pesan", icon: MessageCircle },
+  { href: "/master-data/whatsapp/accounts", label: "Akun & Koneksi", icon: Settings2 },
 ] as const;
 
 const prospectItems = [
@@ -45,7 +49,6 @@ const masterItems = [
   { href: "/master-data/garment-sizes", label: "Ukuran pakaian", icon: Ruler },
   { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CircleDollarSign },
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
-  { href: "/master-data/whatsapp/accounts", label: "Account WhatsApp", icon: Settings2 },
 ] as const;
 
 const ownerMasterItems = [
@@ -101,6 +104,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
+  const [whatsAppOpen, setWhatsAppOpen] = useState(false);
   const [followUpCount, setFollowUpCount] = useState(0);
   const [whatsAppCount, setWhatsAppCount] = useState(0);
 
@@ -121,10 +125,11 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
   const canViewFinance = isDeveloper || role === "OWNER";
   const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
-  const masterDataActive = (isPathWithin(pathname, "/master-data") && pathname !== "/master-data/whatsapp/templates") || isPathWithin(pathname, "/admin/users");
+  const masterDataActive = (isPathWithin(pathname, "/master-data") && !isPathWithin(pathname, "/master-data/whatsapp")) || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
   const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
   const financeActive = isPathWithin(pathname, "/keuangan");
+  const whatsAppActive = isPathWithin(pathname, "/whatsapp") || isPathWithin(pathname, "/master-data/whatsapp");
 
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
@@ -162,7 +167,19 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
         </Collapsible>
       ) : null}
       {canViewCrm ? prospectItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
-      {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} onNavigate={onNavigate} />) : null}
+      {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
+      {canViewCrm ? (
+        <Collapsible open={whatsAppActive || whatsAppOpen} onOpenChange={setWhatsAppOpen} className="group/collapsible flex flex-col gap-1">
+          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+            <MessageCircle aria-hidden="true" className="size-4" />
+            <span>WhatsApp</span>
+            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-1">
+            {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested onNavigate={onNavigate} />)}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/campaigns", label: "Campaign promo", icon: Megaphone }} onNavigate={onNavigate} /> : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
