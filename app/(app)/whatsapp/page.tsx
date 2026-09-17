@@ -19,7 +19,7 @@ export default async function WhatsAppPage({ searchParams }: { searchParams: Pro
   return (
     <main className="flex w-full min-w-0 max-w-full flex-col gap-6 overflow-x-hidden">
       <WhatsAppAutoRefresh />
-      <PageHeader title="WhatsApp" description="Percakapan customer dan status pengiriman dari nomor bisnis ASKonveksi." action={<Button variant="outline" render={<Link href="/whatsapp/jobs" />} nativeButton={false}>Cek status pengiriman</Button>} />
+      <PageHeader title="Kotak Masuk WhatsApp" description="Percakapan customer dan status pengiriman dari nomor bisnis ASKonveksi." action={<Button variant="outline" render={<Link href="/whatsapp/jobs" />} nativeButton={false}>Cek status pengiriman</Button>} />
       <WhatsAppInbox
         conversations={data.conversations}
         templates={data.templates}
