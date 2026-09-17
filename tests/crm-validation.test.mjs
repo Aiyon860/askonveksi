@@ -33,7 +33,6 @@ import {
 } from "../lib/analytics/report-period.ts";
 import { parseFinanceDateRange, parseFinanceReportMode } from "../lib/finance/date-range.ts";
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
-import { finalizeSalesPerformanceRows } from "../lib/analytics/sales-performance.ts";
 import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
 import { formatPercentage } from "../lib/crm/format.ts";
 import {
@@ -687,44 +686,6 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.match(pageSource, /getIncome/);
   assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /pajak/);
-});
-
-test("normalisasi performa sales mempertahankan sales aktif dan data historis", () => {
-  const result = finalizeSalesPerformanceRows([
-    { salesId: "andi", salesName: "Andi", isActive: true, leadCount: 0, followUpCount: 0, invoiceCount: 0, dealCount: 0, revenue: "0" },
-    { salesId: "budi", salesName: "Budi", isActive: false, leadCount: 0, followUpCount: 0, invoiceCount: 0, dealCount: 0, revenue: "0" },
-    { salesId: "cici", salesName: "Cici", isActive: false, leadCount: 1, followUpCount: 2, invoiceCount: 1, dealCount: 1, revenue: "50.25" },
-    { salesId: "dodi", salesName: "Dodi", isActive: true, leadCount: 10, followUpCount: 3, invoiceCount: 2, dealCount: 0, revenue: "0" },
-    { salesId: null, salesName: "Belum ada PIC", isActive: null, leadCount: 2, followUpCount: 0, invoiceCount: 0, dealCount: 1, revenue: "100" },
-  ]);
-
-  assert.deepEqual(result.rows.map((row) => row.salesId), [null, "cici", "dodi", "andi"]);
-  assert.deepEqual(result.totals, {
-    leadCount: 13,
-    followUpCount: 5,
-    invoiceCount: 3,
-    dealCount: 2,
-    revenue: "150.25",
-  });
-});
-
-test("laporan performa sales memakai PIC opportunity dan tanggal aktivitas masing-masing", async () => {
-  const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
-  const pageSource = await readFile(new URL("../app/(app)/analytics/sales-performance/page.tsx", import.meta.url), "utf8");
-  assert.match(dataSource, /getSalesPerformanceData/);
-  assert.match(dataSource, /mode === "range"/);
-  assert.match(dataSource, /o\."salesPicId"/);
-  assert.match(dataSource, /ae\.action = 'FOLLOW_UP_RECORDED'/);
-  assert.match(dataSource, /COUNT\(DISTINCT q\."opportunityId"\)/);
-  assert.match(dataSource, /q\."issuedAt" IS NOT NULL/);
-  assert.match(dataSource, /COUNT\(DISTINCT so\."opportunityId"\)/);
-  assert.match(dataSource, /so\.status = 'ACTIVE'/);
-  assert.match(pageSource, /Dari tanggal/);
-  assert.match(pageSource, /Sampai tanggal/);
-  assert.match(pageSource, /Terapkan rentang/);
-  assert.match(pageSource, /Rekapan semua order/);
-  assert.doesNotMatch(pageSource, /Terapkan periode/);
-  assert.doesNotMatch(pageSource, /NativeSelect/);
 });
 
 test("flash message tidak membocorkan isi notifikasi ke URL", async () => {

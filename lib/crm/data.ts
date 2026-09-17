@@ -10,10 +10,6 @@ import {
   type AnalyticsReportMode,
 } from "@/lib/analytics/report-period";
 import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
-import {
-  finalizeSalesPerformanceRows,
-  type SalesPerformanceRow,
-} from "@/lib/analytics/sales-performance";
 import { ANALYTICS_ROLES, CRM_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
@@ -1131,115 +1127,6 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
       dealCount: totals.dealCount,
       revenue: totals.revenue.toString(),
     },
-  };
-}
-
-export async function getSalesPerformanceData(params: AnalyticsReportParams) {
-  await requireActor(ANALYTICS_ROLES);
-  const report = parseAnalyticsReportParams(params);
-  const leadDateCondition = report.start && report.end
-    ? Prisma.sql`WHERE o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end}`
-    : Prisma.empty;
-  const followUpDateCondition = report.start && report.end
-    ? Prisma.sql`AND ae."createdAt" >= ${report.start} AND ae."createdAt" < ${report.end}`
-    : Prisma.empty;
-  const invoiceDateCondition = report.start && report.end
-    ? Prisma.sql`AND q."issuedAt" >= ${report.start} AND q."issuedAt" < ${report.end}`
-    : Prisma.empty;
-  const orderDateCondition = report.start && report.end
-    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end}`
-    : Prisma.empty;
-
-  const rawRows = await getPrismaClient().$queryRaw<SalesPerformanceRow[]>(Prisma.sql`
-    WITH lead_totals AS (
-      SELECT
-        o."salesPicId",
-        COUNT(*)::int AS "leadCount"
-      FROM "Opportunity" o
-      ${leadDateCondition}
-      GROUP BY o."salesPicId"
-    ),
-    follow_up_totals AS (
-      SELECT
-        o."salesPicId",
-        COUNT(*)::int AS "followUpCount"
-      FROM "AuditEvent" ae
-      INNER JOIN "Opportunity" o
-        ON ae."entityType" = 'Opportunity'
-       AND ae."entityId" = o.id
-      WHERE ae.action = 'FOLLOW_UP_RECORDED'
-      ${followUpDateCondition}
-      GROUP BY o."salesPicId"
-    ),
-    invoice_totals AS (
-      SELECT
-        o."salesPicId",
-        COUNT(DISTINCT q."opportunityId")::int AS "invoiceCount"
-      FROM "Invoice" q
-      INNER JOIN "Opportunity" o ON o.id = q."opportunityId"
-      WHERE q."issuedAt" IS NOT NULL
-      ${invoiceDateCondition}
-      GROUP BY o."salesPicId"
-    ),
-    deal_totals AS (
-      SELECT
-        o."salesPicId",
-        COUNT(DISTINCT so."opportunityId")::int AS "dealCount",
-        COALESCE(SUM(so.total), 0) AS revenue
-      FROM "SalesOrder" so
-      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
-      WHERE so.status = 'ACTIVE'
-      ${orderDateCondition}
-      GROUP BY o."salesPicId"
-    ),
-    sales_rows AS (
-      SELECT
-        u.id AS "salesId",
-        u.name AS "salesName",
-        u."isActive"
-      FROM "AppUser" u
-      WHERE u.role = 'SALES'
-
-      UNION ALL
-
-      SELECT
-        NULL::text AS "salesId",
-        'Belum ada PIC' AS "salesName",
-        NULL::boolean AS "isActive"
-      WHERE EXISTS (SELECT 1 FROM lead_totals WHERE "salesPicId" IS NULL)
-         OR EXISTS (SELECT 1 FROM follow_up_totals WHERE "salesPicId" IS NULL)
-         OR EXISTS (SELECT 1 FROM invoice_totals WHERE "salesPicId" IS NULL)
-         OR EXISTS (SELECT 1 FROM deal_totals WHERE "salesPicId" IS NULL)
-    )
-    SELECT
-      sr."salesId",
-      sr."salesName",
-      sr."isActive",
-      COALESCE(lt."leadCount", 0)::int AS "leadCount",
-      COALESCE(ft."followUpCount", 0)::int AS "followUpCount",
-      COALESCE(qt."invoiceCount", 0)::int AS "invoiceCount",
-      COALESCE(dt."dealCount", 0)::int AS "dealCount",
-      COALESCE(dt.revenue, 0)::text AS revenue
-    FROM sales_rows sr
-    LEFT JOIN lead_totals lt
-      ON lt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
-    LEFT JOIN follow_up_totals ft
-      ON ft."salesPicId" IS NOT DISTINCT FROM sr."salesId"
-    LEFT JOIN invoice_totals qt
-      ON qt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
-    LEFT JOIN deal_totals dt
-      ON dt."salesPicId" IS NOT DISTINCT FROM sr."salesId"
-  `);
-
-  return {
-    mode: report.mode,
-    range: {
-      from: report.range.from,
-      to: report.range.to,
-      label: report.range.label,
-    },
-    periodLabel: analyticsReportLabel(report.mode, report.range.label),
-    ...finalizeSalesPerformanceRows(rawRows),
   };
 }
 
