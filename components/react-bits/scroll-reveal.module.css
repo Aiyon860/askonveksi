@@ -1,0 +1,29 @@
+.scrollReveal {
+  max-width: 68rem;
+  margin: clamp(1.75rem, 4vw, 3rem) auto 0;
+  transform-origin: 0 50%;
+}
+
+.text {
+  color: var(--landing-text);
+  font-size: clamp(1.125rem, 3vw, 32px);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.03em;
+  text-wrap: pretty;
+}
+
+.word {
+  display: inline-block;
+  opacity: var(--scroll-reveal-opacity, 0.1);
+  filter: blur(var(--scroll-reveal-blur, 4px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrollReveal,
+  .word {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
+}
