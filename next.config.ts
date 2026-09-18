@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   compress: true,
   productionBrowserSourceMaps: false,
   experimental: {
+    serverActions: {
+      bodySizeLimit: "28mb",
+    },
     useTypeScriptCli: false,
     serverSourceMaps: false,
     webpackMemoryOptimizations: true,

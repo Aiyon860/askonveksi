@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Prisma, WhatsAppJobStatus } from "@prisma/client";
 
-import { CRM_OPERATOR_ROLES, hasRole, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, hasRole, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
@@ -70,7 +70,7 @@ export async function getWhatsAppConversationMessages(actor: Actor, conversation
 }
 
 export async function getWhatsAppAccounts() {
-  await requireActor(MASTER_DATA_ROLES);
+  await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
   return getPrismaClient().whatsAppAccount.findMany({ orderBy: [{ sendEnabled: "desc" }, { label: "asc" }] });
 }
 
@@ -80,9 +80,12 @@ export async function getWhatsAppTemplates() {
 }
 
 export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
-  await requireActor(CRM_OPERATOR_ROLES);
+  const actor = await requireActor(CRM_OPERATOR_ROLES);
   return getPrismaClient().whatsAppAutomationJob.findMany({
-    where: status ? { status } : undefined,
+    where: {
+      ...(status ? { status } : {}),
+      ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }),
+    },
     select: {
       id: true, type: true, status: true, scheduledAt: true, attempts: true, lastError: true, createdAt: true,
       customer: { select: { name: true, companyName: true } },

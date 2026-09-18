@@ -36,8 +36,8 @@ export function FilePicker({
         disabled={disabled}
         className="sr-only"
         onChange={(event) => {
-          setFileName(event.currentTarget.files?.[0]?.name ?? null);
           onChange?.(event);
+          setFileName(event.currentTarget.files?.[0]?.name ?? null);
         }}
         {...props}
       />

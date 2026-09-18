@@ -2,15 +2,15 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import Link from "next/link";
-import { CopyPlus, FileDown, XCircle } from "lucide-react";
+import { CopyPlus, XCircle } from "lucide-react";
 
 import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
+import { PurchaseOrderPdfDownloadButton } from "@/components/crm/purchase-order-pdf-download-button";
 import { Button } from "@/components/ui/button";
 
 type SizeOption = { id: string; name: string };
 type PurchaseOrderDraftValues = {
-  customerReference: string;
+  purchaseOrderNo: string;
   garmentType: "JERSEY" | "NON_JERSEY" | null;
   productName: string;
   material: string;
@@ -24,7 +24,7 @@ type PurchaseOrderDraftValues = {
   deadline: string;
   designDeadline: string;
   sizes: Array<{ sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-  roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string }>;
+  roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
 
 type PurchaseOrderWorkflowSectionProps = {
@@ -39,6 +39,7 @@ type PurchaseOrderWorkflowSectionProps = {
   inNegotiation: boolean;
   sizeOptions: SizeOption[];
   draftValues: PurchaseOrderDraftValues;
+  purchaseOrderNoPreview: string;
   children: ReactNode;
 };
 
@@ -54,6 +55,7 @@ export function PurchaseOrderWorkflowSection({
   inNegotiation,
   sizeOptions,
   draftValues,
+  purchaseOrderNoPreview,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
@@ -61,10 +63,11 @@ export function PurchaseOrderWorkflowSection({
   const isEditing = isEditingPersistedDraft || isCreatingRevision;
   const canCreateRevision = purchaseOrderStatus === "DRAFT" && purchaseOrderRevision < 4 && canOperate && inNegotiation && !isCreatingRevision;
   const persistedDraft = isEditingPersistedDraft
-    ? {
+      ? {
+        ...draftValues,
         id: purchaseOrderId,
         version: purchaseOrderVersion,
-        ...draftValues,
+        purchaseOrderNo: draftValues.purchaseOrderNo,
       }
     : undefined;
 
@@ -77,10 +80,7 @@ export function PurchaseOrderWorkflowSection({
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
           {!isEditing ? (
-            <Button className="w-full sm:w-auto" render={<Link href={`/api/crm/purchase-order/${purchaseOrderId}/pdf`} />} nativeButton={false}>
-              <FileDown data-icon="inline-start" aria-hidden="true" />
-              Unduh PDF PO
-            </Button>
+            <PurchaseOrderPdfDownloadButton purchaseOrderId={purchaseOrderId} purchaseOrderNo={draftValues.purchaseOrderNo} />
           ) : null}
           {canCreateRevision ? (
             <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
@@ -99,6 +99,7 @@ export function PurchaseOrderWorkflowSection({
             initialValues={isCreatingRevision ? draftValues : undefined}
             sourcePurchaseOrderId={isCreatingRevision ? purchaseOrderId : undefined}
             submitLabel={isCreatingRevision ? "Buat versi revisi" : "Perbarui draft PO"}
+            purchaseOrderNoPreview={purchaseOrderNoPreview}
           />
           {isCreatingRevision ? (
             <Button

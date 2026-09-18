@@ -4,7 +4,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { randomUUID } from "node:crypto";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { CRM_OPERATOR_ROLES, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { nextCustomerNo } from "@/lib/crm/numbers";
 import { createCustomerSchema, entityIdSchema, firstValidationMessage } from "@/lib/crm/validation";
@@ -23,7 +23,7 @@ function refreshWhatsApp() {
 
 export async function createWhatsAppAccountAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/accounts", async () => {
-    await requireActor(MASTER_DATA_ROLES);
+    await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
     const parsed = whatsappAccountSchema.safeParse({ label: formData.get("label"), phoneNumber: formData.get("phoneNumber") });
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Data account tidak valid.");
     await getPrismaClient().whatsAppAccount.create({ data: parsed.data });
@@ -34,7 +34,7 @@ export async function createWhatsAppAccountAction(formData: FormData) {
 
 export async function requestWhatsAppPairingAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/accounts", async () => {
-    await requireActor(MASTER_DATA_ROLES);
+    await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
     const id = String(formData.get("accountId") ?? "");
     const updated = await getPrismaClient().whatsAppAccount.updateMany({
       where: { id },
@@ -56,7 +56,7 @@ export async function requestWhatsAppPairingAction(formData: FormData) {
 
 export async function enableWhatsAppAccountAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/accounts", async () => {
-    await requireActor(MASTER_DATA_ROLES);
+    await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
     const id = String(formData.get("accountId") ?? "");
     await getPrismaClient().$transaction(async (tx) => {
       const account = await tx.whatsAppAccount.findUnique({ where: { id }, select: { id: true, status: true } });
@@ -72,7 +72,7 @@ export async function enableWhatsAppAccountAction(formData: FormData) {
 
 export async function disconnectWhatsAppAccountAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/accounts", async () => {
-    await requireActor(MASTER_DATA_ROLES);
+    await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
     const id = String(formData.get("accountId") ?? "");
     await getPrismaClient().whatsAppAccount.update({ where: { id }, data: { sendEnabled: false, disconnectRequestedAt: new Date() } });
     refreshWhatsApp();
@@ -289,9 +289,9 @@ export async function createWhatsAppCustomerAction(formData: FormData) {
 
 export async function retryWhatsAppJobAction(formData: FormData) {
   return runRedirectingAction("/whatsapp/jobs", async () => {
-    await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
     const updated = await getPrismaClient().whatsAppAutomationJob.updateMany({
-      where: { id: String(formData.get("jobId") ?? ""), status: { in: ["FAILED", "CANCELLED"] } },
+      where: { id: String(formData.get("jobId") ?? ""), status: { in: ["FAILED", "CANCELLED"] }, ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }) },
       data: { status: "QUEUED", attempts: 0, scheduledAt: new Date(), nextAttemptAt: null, lastError: null, leaseOwner: null, leaseExpiresAt: null },
     });
     if (!updated.count) throw new UserFacingError("Job tidak dapat diulang.");
@@ -309,10 +309,10 @@ export async function getInvoiceWhatsAppMessageAction(invoiceId: string) {
 
 export async function cancelWhatsAppJobAction(formData: FormData) {
   return runRedirectingAction("/whatsapp/jobs", async () => {
-    await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
     const id = String(formData.get("jobId") ?? "");
     const updated = await getPrismaClient().whatsAppAutomationJob.updateMany({
-      where: { id, status: { in: ["QUEUED", "RETRY", "FAILED"] } },
+      where: { id, status: { in: ["QUEUED", "RETRY", "FAILED"] }, ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }) },
       data: { status: "CANCELLED", nextAttemptAt: null, lastError: "Dibatalkan manual.", leaseOwner: null, leaseExpiresAt: null },
     });
     if (!updated.count) throw new UserFacingError("Job tidak dapat dibatalkan.");

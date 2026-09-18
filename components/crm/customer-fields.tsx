@@ -27,6 +27,7 @@ export function CustomerFields({
   values,
   currentSalesPic,
   fixedWhatsapp,
+  prospect,
 }: {
   idPrefix: string;
   customerTypes: CustomerFormOption[];
@@ -35,6 +36,7 @@ export function CustomerFields({
   values?: CustomerFormValues;
   currentSalesPic?: CustomerFormOption & { isActive: boolean };
   fixedWhatsapp?: string;
+  prospect?: boolean;
 }) {
   const currentSalesPicIsMissing = Boolean(
     values?.salesPicId
@@ -80,25 +82,22 @@ export function CustomerFields({
         </Field>
         <Field>
           <FieldLabel htmlFor={`${idPrefix}-salesPicId`}>Sales/PIC</FieldLabel>
-          <NativeSelect
-            id={`${idPrefix}-salesPicId`}
-            name="salesPicId"
-            defaultValue={values?.salesPicId ?? ""}
-            className="w-full"
-          >
-            <NativeSelectOption value="">Belum ditugaskan</NativeSelectOption>
-            {currentSalesPicIsMissing && currentSalesPic ? (
-              <NativeSelectOption value={currentSalesPic.id}>
-                {currentSalesPic.name}{currentSalesPic.isActive ? "" : " (nonaktif)"}
-              </NativeSelectOption>
-            ) : null}
-            {salesUsers.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
-          </NativeSelect>
+          {prospect ? <Input id={`${idPrefix}-salesPicId`} value="Admin Customer" readOnly /> : (
+            <NativeSelect id={`${idPrefix}-salesPicId`} name="salesPicId" defaultValue={values?.salesPicId ?? ""} className="w-full">
+              <NativeSelectOption value="">Belum ditugaskan</NativeSelectOption>
+              {currentSalesPicIsMissing && currentSalesPic ? <NativeSelectOption value={currentSalesPic.id}>{currentSalesPic.name}{currentSalesPic.isActive ? "" : " (nonaktif)"}</NativeSelectOption> : null}
+              {salesUsers.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
+            </NativeSelect>
+          )}
         </Field>
         <Field>
-          <FieldLabel htmlFor={`${idPrefix}-city`}>Kota</FieldLabel>
-          <Input id={`${idPrefix}-city`} name="city" maxLength={120} defaultValue={values?.city ?? ""} />
+          <FieldLabel htmlFor={`${idPrefix}-city`} required={prospect}>Kota</FieldLabel>
+          <Input id={`${idPrefix}-city`} name="city" required={prospect} maxLength={120} defaultValue={values?.city ?? ""} />
         </Field>
+        {prospect ? <Field className="sm:col-span-2">
+          <FieldLabel htmlFor={`${idPrefix}-address`} required>Asal</FieldLabel>
+          <Textarea id={`${idPrefix}-address`} name="address" required maxLength={2000} rows={3} defaultValue={values?.address ?? ""} />
+        </Field> : null}
       </div>
       <FieldSet>
         <FieldLegend variant="label" required>Kontak customer</FieldLegend>
@@ -124,10 +123,10 @@ export function CustomerFields({
         </div>
         <FieldDescription>Isi minimal salah satu: WhatsApp, email, atau Instagram.</FieldDescription>
       </FieldSet>
-      <Field>
+      {!prospect ? <Field>
         <FieldLabel htmlFor={`${idPrefix}-address`}>Alamat</FieldLabel>
         <Textarea id={`${idPrefix}-address`} name="address" maxLength={2000} rows={3} defaultValue={values?.address ?? ""} />
-      </Field>
+      </Field> : null}
       <Field>
         <FieldLabel htmlFor={`${idPrefix}-notes`}>Catatan umum</FieldLabel>
         <Textarea id={`${idPrefix}-notes`} name="notes" maxLength={4000} rows={3} defaultValue={values?.notes ?? ""} />

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/toast";
+import { WHATSAPP_ACCOUNT_MANAGER_ROLES, hasRole } from "@/lib/auth/permissions";
 import { classifyWhatsAppHealthBanner, whatsappHealthChanged, type WhatsAppHealthState } from "@/lib/whatsapp/health";
 
 type Health = {
@@ -26,7 +27,7 @@ const stateCopy: Record<Exclude<WhatsAppHealthState, "HEALTHY">, string> = {
 
 export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
   const [health, setHealth] = useState<Health | null>(null);
-  const manager = ["OWNER", "ADMIN", "ADMIN_CUSTOMER"].includes(role);
+  const manager = hasRole(role, WHATSAPP_ACCOUNT_MANAGER_ROLES);
 
   useEffect(() => {
     let controller: AbortController | null = null;
@@ -90,7 +91,7 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
       <AlertTitle>WhatsApp perlu perhatian</AlertTitle>
       <AlertDescription>
         {description}{manager && health.account?.lastError ? ` ${health.account.lastError}` : ""}{" "}
-        {manager ? <Link href={banner === "FAILED_JOBS" ? "/whatsapp/jobs?status=FAILED" : "/master-data/whatsapp/accounts"}>{banner === "FAILED_JOBS" ? "Cek status pengiriman" : "Buka account WhatsApp"}</Link> : "Hubungi admin untuk pemeriksaan."}
+        {manager ? <Link href={banner === "FAILED_JOBS" ? "/whatsapp/jobs?status=FAILED" : "/master-data/whatsapp/accounts"}>{banner === "FAILED_JOBS" ? "Cek status pengiriman" : "Buka Akun & Koneksi"}</Link> : "Hubungi admin untuk pemeriksaan."}
       </AlertDescription>
     </Alert>
   );

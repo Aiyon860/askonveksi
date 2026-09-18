@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion: string | undefined;
 };
 
-const PRISMA_SCHEMA_VERSION = "four-operational-roles";
+const PRISMA_SCHEMA_VERSION = "developer-testing-controls";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -26,7 +26,7 @@ function createPrismaClient() {
 
 function hasCurrentModelDelegates(client: PrismaClient) {
   const delegates = client as unknown as Record<string, { findMany?: unknown } | undefined>;
-  return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction", "designTask", "designRevision"].every(
+  return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction", "designTask", "designRevision", "whatsAppCampaign", "expense"].every(
     (model) => typeof delegates[model]?.findMany === "function",
   );
 }

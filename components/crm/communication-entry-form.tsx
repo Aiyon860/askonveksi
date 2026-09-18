@@ -33,6 +33,7 @@ export function CommunicationEntryForm({
   initialOccurredAt: string;
 }) {
   const [channel, setChannel] = useState<(typeof CHANNEL_OPTIONS)[number][0]>("WHATSAPP");
+  const [occurredAt, setOccurredAt] = useState(initialOccurredAt);
   const isInternalNote = channel === "INTERNAL_NOTE";
   const idPrefix = `communication-${context}`;
 
@@ -77,7 +78,8 @@ export function CommunicationEntryForm({
               name="occurredAt"
               type="datetime-local"
               required
-              defaultValue={initialOccurredAt}
+              value={occurredAt}
+              onChange={(event) => setOccurredAt(event.target.value)}
               max={initialOccurredAt}
             />
           </Field>

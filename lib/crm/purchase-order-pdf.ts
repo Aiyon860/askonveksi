@@ -27,7 +27,7 @@ type PurchaseOrderPdfData = {
   snapshotBusinessAddress: string | null;
   opportunity: { customer: { name: string; companyName: string | null } };
   sizes: Array<{ size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-  rosterEntries: Array<{ memberId: string; name: string; size: string }>;
+  rosterEntries: Array<{ memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
 
 type PdfAsset = { kind: string; label: string; originalName: string; contentType: string; bytes: Uint8Array };
@@ -76,7 +76,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
 
   const rows = [
     ["Customer", data.opportunity.customer.name], ["Perusahaan", data.opportunity.customer.companyName ?? "-"],
-    ["Referensi customer", data.customerReference ?? "-"], ["Tanggal order", formatDate(data.orderDate)],
+    ["Tanggal order", formatDate(data.orderDate)],
     ["Deadline produksi", formatDate(data.deadline)], ["Jenis pakaian", data.garmentType === "JERSEY" ? "Jersey" : data.garmentType === "NON_JERSEY" ? "Non-jersey" : "-"],
     ["Bahan", data.material], ["Warna dasar", data.baseColor ?? data.color ?? "-"],
     ["Warna variasi", data.variationColor ?? "-"], ["Metode dekorasi", decorationMethodLabel(data.decorationMethod)],
@@ -165,15 +165,17 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
       page.drawText(safe(data.purchaseOrderNo), { x: 405, y, size: 9, font: regular });
       y -= 28;
       page.drawRectangle({ x: margin, y: y - 22, width: A4.width - margin * 2, height: 22, color: rgb(0.12, 0.16, 0.2) });
-      page.drawText("ID", { x: margin + 8, y: y - 14, size: 8, font: bold });
-      page.drawText("Nama", { x: 190, y: y - 14, size: 8, font: bold });
-      page.drawText("Size", { x: 500, y: y - 14, size: 8, font: bold });
+      page.drawText("ID", { x: margin + 8, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
+      page.drawText("Nama", { x: 160, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
+      page.drawText("Size", { x: 445, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
+      page.drawText("Lengan", { x: 495, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
       y -= 22;
       data.rosterEntries.slice(offset, offset + 25).forEach((entry) => {
         page.drawRectangle({ x: margin, y: y - 26, width: A4.width - margin * 2, height: 26, borderWidth: 0.5, borderColor: rgb(0.82, 0.82, 0.82) });
-        page.drawText(safe(entry.memberId), { x: margin + 8, y: y - 17, size: 8, font: regular });
-        page.drawText(safe(entry.name), { x: 190, y: y - 17, size: 8, font: regular });
-        page.drawText(safe(entry.size), { x: 500, y: y - 17, size: 8, font: regular });
+        page.drawText(safe(entry.memberId).slice(0, 24), { x: margin + 8, y: y - 17, size: 8, font: regular });
+        page.drawText(safe(entry.name).slice(0, 55), { x: 160, y: y - 17, size: 8, font: regular });
+        page.drawText(safe(entry.size).slice(0, 9), { x: 445, y: y - 17, size: 8, font: regular });
+        page.drawText(entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang", { x: 495, y: y - 17, size: 8, font: regular });
         y -= 26;
       });
     }

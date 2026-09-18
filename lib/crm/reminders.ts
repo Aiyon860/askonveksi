@@ -3,15 +3,9 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import {
-  addCalendarMonthsJakarta,
-  CUSTOMER_REMINDER_DELAYS,
+  DEFAULT_REPEAT_ORDER_INTERVALS,
+  repeatOrderDueAt,
 } from "@/lib/crm/reminder-types";
-
-function reminderDueAt(type: "REACTIVATION", acceptedAt: Date) {
-  const target = addCalendarMonthsJakarta(acceptedAt, CUSTOMER_REMINDER_DELAYS[type] ?? 6);
-  const jakarta = new Date(target.getTime() + 7 * 60 * 60 * 1000);
-  return new Date(Date.UTC(jakarta.getUTCFullYear(), jakarta.getUTCMonth(), jakarta.getUTCDate(), 2));
-}
 
 async function upsertReminderSchedule(
   tx: Prisma.TransactionClient,
@@ -20,6 +14,7 @@ async function upsertReminderSchedule(
     sourceSalesOrderId: string;
     acceptedAt: Date;
     type: "REACTIVATION";
+    intervals: readonly number[];
     rearm: boolean;
   },
 ) {
@@ -34,11 +29,13 @@ async function upsertReminderSchedule(
       customerId: data.customerId,
       sourceSalesOrderId: data.sourceSalesOrderId,
       type: data.type,
-      dueAt: reminderDueAt(data.type, data.acceptedAt),
+      dueAt: repeatOrderDueAt(data.acceptedAt, data.intervals, 1),
+      nextOccurrence: 1,
     },
     update: {
       customerId: data.customerId,
-      dueAt: reminderDueAt(data.type, data.acceptedAt),
+      dueAt: repeatOrderDueAt(data.acceptedAt, data.intervals, 1),
+      nextOccurrence: 1,
       resolvedAt: null,
       ...(data.rearm ? { generation: { increment: 1 } } : {}),
     },
@@ -50,6 +47,8 @@ export async function scheduleCustomerReminders(
   tx: Prisma.TransactionClient,
   data: { customerId: string; sourceSalesOrderId: string; acceptedAt: Date },
 ) {
+  const settings = await tx.businessProfile.findUnique({ where: { id: "default" }, select: { repeatOrderIntervals: true } });
+  const intervals = settings?.repeatOrderIntervals ?? [...DEFAULT_REPEAT_ORDER_INTERVALS];
   const resolvedAt = new Date();
   await tx.customerReminder.updateMany({
     where: {
@@ -60,13 +59,15 @@ export async function scheduleCustomerReminders(
     data: { resolvedAt },
   });
 
-  await upsertReminderSchedule(tx, { ...data, type: "REACTIVATION", rearm: false });
+  await upsertReminderSchedule(tx, { ...data, type: "REACTIVATION", intervals, rearm: false });
 }
 
 export async function restoreCustomerRemindersAfterCancellation(
   tx: Prisma.TransactionClient,
   customerId: string,
 ) {
+  const settings = await tx.businessProfile.findUnique({ where: { id: "default" }, select: { repeatOrderIntervals: true } });
+  const intervals = settings?.repeatOrderIntervals ?? [...DEFAULT_REPEAT_ORDER_INTERVALS];
   const resolvedAt = new Date();
   await tx.customerReminder.updateMany({
     where: { customerId, resolvedAt: null },
@@ -85,6 +86,7 @@ export async function restoreCustomerRemindersAfterCancellation(
     sourceSalesOrderId: previousOrder.id,
     acceptedAt: previousOrder.acceptedAt,
     type: "REACTIVATION",
+    intervals,
     rearm: true,
   })];
   await tx.customerReminderReceipt.deleteMany({

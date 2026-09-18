@@ -18,13 +18,13 @@ type PurchaseOrder = {
 
 type InvoiceDraftValues = {
   notes: string;
-  taxRate: string;
+  profitPercent: string;
+  discountPercent: string;
   items: Array<{
     size: string;
     sleeveLength: "PENDEK" | "PANJANG" | null;
     quantity: number;
     unitPrice: string;
-    discountPercent: string;
   }>;
 };
 

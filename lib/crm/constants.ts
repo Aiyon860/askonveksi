@@ -9,7 +9,7 @@ export const PIPELINE_STAGES = [
 ] as const satisfies readonly OpportunityStage[];
 
 export const STAGE_LABEL: Record<OpportunityStage, string> = {
-  LEAD_BARU: "Lead Baru",
+  LEAD_BARU: "Prospek",
   FOLLOW_UP: "Follow Up",
   NEGOSIASI: "Negosiasi",
   DEAL: "Deal",
@@ -23,6 +23,7 @@ export const OPEN_STAGES: OpportunityStage[] = [
 ];
 
 export const ROLE_LABEL = {
+  DEVELOPER: "Developer",
   OWNER: "Owner",
   ADMIN_CUSTOMER: "Admin Customer",
   ADMIN_PRODUCTION: "Admin Produksi",

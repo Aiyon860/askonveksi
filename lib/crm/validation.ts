@@ -6,11 +6,6 @@ const optionalText = (max: number) =>
     z.string().trim().max(max).optional(),
   );
 
-const optionalMoney = (label: string) => optionalText(20).refine(
-  (value) => !value || /^\d{1,16}(?:\.\d{1,2})?$/.test(value),
-  `${label} tidak valid.`,
-);
-
 const requiredVersion = z.preprocess(
   (value) => Number(value),
   z.number().int().positive(),
@@ -46,10 +41,16 @@ export const customerFieldsSchema = z
 
 export const createCustomerSchema = customerFieldsSchema;
 
+export const createProspectCustomerSchema = customerFieldsSchema.refine(
+  (value) => Boolean(value.city && value.address),
+  { message: "Kota dan asal wajib diisi." },
+);
+
 export const updateCustomerSchema = customerFieldsSchema.and(
   z.object({
     customerId: entityIdSchema,
     version: requiredVersion,
+    orderReminderEnabled: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   }),
 );
 
@@ -185,7 +186,6 @@ export const invoiceItemSchema = z.object({
   description: z.string().trim().min(2).max(240),
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
-  discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
 });
 
 export const invoiceDraftSchema = z.object({
@@ -194,7 +194,8 @@ export const invoiceDraftSchema = z.object({
   invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
   dueAt: optionalText(10),
-  taxRate: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase pajak tidak valid."),
+  profitPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase keuntungan tidak valid."),
+  discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
 });
@@ -224,13 +225,13 @@ const purchaseOrderRosterSchema = z.object({
   memberId: z.string().trim().min(1, "ID anggota wajib diisi.").max(80),
   name: z.string().trim().min(2, "Nama anggota minimal 2 karakter.").max(160),
   sizeId: entityIdSchema,
+  sleeveLength: z.enum(["PENDEK", "PANJANG"], { message: "Panjang lengan roster wajib dipilih." }),
 });
 
 export const purchaseOrderDraftSchema = z.object({
   opportunityId: entityIdSchema,
   purchaseOrderId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
-  customerReference: optionalText(120),
   garmentType: z.enum(["JERSEY", "NON_JERSEY"], { message: "Jenis pakaian wajib dipilih." }),
   productName: z.string().trim().min(2, "Nama produk atau pola wajib diisi.").max(120),
   material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
@@ -246,8 +247,12 @@ export const purchaseOrderDraftSchema = z.object({
   deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
   designDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline desain wajib dipilih."),
   sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
+  rosterMode: z.enum(["none", "manual", "excel"], { message: "Pilih cara mengisi roster." }),
   roster: z.array(purchaseOrderRosterSchema).max(5_000),
 }).superRefine((value, context) => {
+  if (value.orderDate && value.designDeadline < value.orderDate) {
+    context.addIssue({ code: "custom", path: ["designDeadline"], message: "Deadline desain tidak boleh lebih awal dari tanggal order." });
+  }
   const positiveSizes = value.sizes.filter((item) => item.quantity > 0);
   if (!positiveSizes.length) {
     context.addIssue({ code: "custom", path: ["sizes"], message: "Isi minimal satu jumlah pada matriks ukuran." });
@@ -259,6 +264,12 @@ export const purchaseOrderDraftSchema = z.object({
   const rosterIds = value.roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
   if (new Set(rosterIds).size !== rosterIds.length) {
     context.addIssue({ code: "custom", path: ["roster"], message: "ID anggota roster tidak boleh duplikat." });
+  }
+  if (value.rosterMode === "manual" && !value.roster.length) {
+    context.addIssue({ code: "custom", path: ["roster"], message: "Tambahkan minimal satu pemakai atau pilih Tanpa roster." });
+  }
+  if (value.rosterMode !== "manual" && value.roster.length) {
+    context.addIssue({ code: "custom", path: ["roster"], message: "Roster manual hanya boleh diisi pada mode Ketik manual." });
   }
 });
 
@@ -282,16 +293,15 @@ export const completeDealSchema = z.object({
   invoiceId: entityIdSchema,
   invoiceVersion: requiredVersion,
   kind: z.enum(["LUNAS", "DP"]),
-  initialDueAt: z.string().trim().min(1, "Deadline pembayaran awal wajib diisi."),
-  initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
 }).superRefine((value, context) => {
-  if (value.kind === "DP" && value.terms.length === 0) {
-    context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
-  }
-  if (value.kind === "LUNAS" && value.terms.length > 0) {
+  const isLunas = value.kind === "LUNAS" || Number(value.initialValue) === 100;
+  if (isLunas && value.terms.length > 0) {
     context.addIssue({ code: "custom", path: ["terms"], message: "Pembayaran lunas tidak memakai termin." });
+  }
+  if (!isLunas && value.terms.length === 0) {
+    context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
   }
 });
 
@@ -386,7 +396,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
   password: strongPasswordSchema,
 });
 
@@ -395,7 +405,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
   password: z.preprocess(
     (value) => (typeof value === "string" && value === "" ? undefined : value),
     strongPasswordSchema.optional(),

@@ -38,6 +38,26 @@ test("endpoint membatasi data berdasarkan sesi dan pemilik job", async () => {
   assert.match(source, /manager \? safeError\(account\.lastError\) : null/);
 });
 
+test("Admin Customer mengelola akun WhatsApp tanpa mendapat akses Data Master", async () => {
+  const [permissions, actions, data, nav, monitor] = await Promise.all([
+    readFile(new URL("../lib/auth/permissions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/whatsapp.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/whatsapp/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/whatsapp-health-monitor.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(permissions, /WHATSAPP_ACCOUNT_MANAGER_ROLES = \["ADMIN_CUSTOMER"\]/);
+  assert.equal(actions.match(/requireActor\(WHATSAPP_ACCOUNT_MANAGER_ROLES\)/g)?.length, 4);
+  assert.match(data, /requireActor\(WHATSAPP_ACCOUNT_MANAGER_ROLES\)/);
+  assert.match(nav, /<span>WhatsApp<\/span>/);
+  assert.match(nav, /label: "Kotak Masuk"/);
+  assert.match(nav, /label: "Template Pesan"/);
+  assert.match(nav, /label: "Akun & Koneksi"/);
+  assert.doesNotMatch(nav, /href: "\/master-data\/whatsapp\/accounts", label: "Account WhatsApp"/);
+  assert.match(monitor, /WHATSAPP_ACCOUNT_MANAGER_ROLES/);
+});
+
 test("toast flash dideduplikasi lintas pemasangan PageMessage", async () => {
   const source = await readFile(new URL("../components/flash-message-alert.tsx", import.meta.url), "utf8");
   assert.match(source, /sessionStorage\.getItem\(key\)/);

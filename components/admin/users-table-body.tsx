@@ -16,7 +16,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 
-const USER_ROLES = ["OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
+const USER_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
 
 export type EditableUserRow = {
   id: string;
@@ -46,11 +46,13 @@ function UserEditActions({ name, onCancel }: { name: string; onCancel: () => voi
 export function UsersTableBody({
   users,
   actorId,
+  canManageDevelopers,
   numberOffset,
   returnTo,
 }: {
   users: EditableUserRow[];
   actorId?: string;
+  canManageDevelopers: boolean;
   numberOffset: number;
   returnTo: string;
 }) {
@@ -119,7 +121,7 @@ export function UsersTableBody({
                     defaultValue={user.role}
                     className="w-full min-w-28"
                   >
-                    {USER_ROLES.map((role) => (
+                    {USER_ROLES.filter((role) => canManageDevelopers || role !== "DEVELOPER").map((role) => (
                       <NativeSelectOption key={role} value={role}>{ROLE_LABEL[role]}</NativeSelectOption>
                     ))}
                   </NativeSelect>

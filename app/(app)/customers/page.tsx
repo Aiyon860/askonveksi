@@ -414,7 +414,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
             <EmptyHeader>
               <EmptyMedia variant="icon"><UsersRound aria-hidden="true" /></EmptyMedia>
               <EmptyTitle>{query ? "Customer tidak ditemukan" : archived ? "Arsip masih kosong" : "Belum ada customer"}</EmptyTitle>
-              <EmptyDescription>{query ? "Coba kata kunci lain atau hapus filter pencarian." : "Tambahkan customer atau buat lead baru dari pipeline."}</EmptyDescription>
+              <EmptyDescription>{query ? "Coba kata kunci lain atau hapus filter pencarian." : "Tambahkan customer atau buat prospek baru dari pipeline."}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
