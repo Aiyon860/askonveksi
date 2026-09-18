@@ -33,6 +33,33 @@
         "value": "rgb(0.2, 0.2, 0.2)",
         "createdAt": "2026-08-27T14:35:33.911Z",
         "reason": "Printable quotation PDF uses an intentional neutral grayscale mapped to the project monochrome design system."
+      },
+      {
+        "rule": "codex-grid-background",
+        "value": "*",
+        "files": [
+          "app/globals.css"
+        ],
+        "createdAt": "2026-09-13T09:07:59.697Z",
+        "reason": "Agent: intentional garment cutting-table canvas matching the user-provided Fuser-style hero reference and DESIGN-LANDING.md"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "48px",
+        "createdAt": "2026-09-13T10:09:29.262Z",
+        "reason": "Agent: DESIGN-LANDING.md explicitly defines heading-lg as 48px and the user approved a large ScrollReveal paragraph for the landing surface"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "32px",
+        "createdAt": "2026-09-13T14:05:42.590Z",
+        "reason": "User explicitly set the Landing About scroll-reveal maximum text size to 32px"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "1.125rem",
+        "createdAt": "2026-09-13T14:13:28.197Z",
+        "reason": "DESIGN-LANDING.md explicitly defines 18px body text, equivalent to 1.125rem, for the responsive About description"
       }
     ]
   }

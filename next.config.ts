@@ -15,7 +15,15 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ["image/avif", "image/webp"],
+    maximumRedirects: 0,
     minimumCacheTTL: 86400,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "placehold.co",
+        pathname: "/**",
+      },
+    ],
   },
   async headers() {
     return [
