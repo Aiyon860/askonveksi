@@ -42,9 +42,9 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: ["/hero.jpg"],
   },
-  verification: process.env.GOOGLE_SITE_VERIFICATION
-    ? { google: process.env.GOOGLE_SITE_VERIFICATION }
-    : undefined,
+  verification: {
+    google: "zpSFhEruGw-d1qYEo8_X9PNJdEwqRgTwUsUk3mhqIPs",
+  },
 };
 
 const structuredData = {
