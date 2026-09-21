@@ -1,220 +1,93 @@
-"use client";
-
-import { ArrowDown } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { Clock3, MessageCircle, Paintbrush, Spool, Shirt } from "lucide-react";
 import Image from "next/image";
 
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { ASKONVEKSI_WHATSAPP } from "@/lib/contact";
 
-const easeOut: [number, number, number, number] = [0.16, 1, 0.3, 1];
-
-const heroCards = [
+const benefits = [
   {
-    alt: "Proses pemeriksaan hasil sablon pada kaos",
-    src: "/hero-element/1.png",
-    sizes: "(max-width: 767px) 120px, (max-width: 1023px) 160px, 192px",
-    className: "left-4 top-24 w-[120px] md:left-[7%] md:top-[10%] md:w-40 lg:left-[8%] lg:top-[11%] lg:w-48",
-    rotate: -3,
-    enterX: -56,
-    enterY: -44,
-    loading: "eager" as const,
+    icon: Shirt,
+    title: "Bahan Berkualitas",
+    description: "Pilihan bahan yang nyaman dan tahan lama",
   },
   {
-    alt: "Proses pengeringan sablon pada kain",
-    src: "/hero-element/2.png",
-    sizes: "(max-width: 767px) 120px, (max-width: 1023px) 160px, 192px",
-    className: "bottom-8 right-4 w-[120px] md:bottom-auto md:right-[7%] md:top-[11%] md:w-40 lg:right-[8%] lg:top-[12%] lg:w-48",
-    rotate: 3,
-    enterX: 56,
-    enterY: -40,
-    loading: "eager" as const,
+    icon: Spool,
+    title: "Jahitan Presisi",
+    description: "Hasil rapi dan kuat dengan standar tinggi",
   },
   {
-    alt: "Proses pembuatan desain produk",
-    src: "/hero-element/3.png",
-    sizes: "(max-width: 1023px) 160px, 192px",
-    className: "bottom-[12%] left-[7%] hidden w-40 md:block lg:bottom-[13%] lg:left-[8%] lg:w-48",
-    rotate: 2,
-    enterX: -52,
-    enterY: 46,
+    icon: Paintbrush,
+    title: "Custom Desain",
+    description: "Bebas desain, warna, ukuran, dan logo",
   },
   {
-    alt: "Proses pemeriksaan hasil produksi jersey",
-    src: "/hero-element/4.png",
-    sizes: "(max-width: 1023px) 160px, 192px",
-    className: "bottom-[12%] right-[7%] hidden w-40 md:block lg:bottom-[14%] lg:right-[8%] lg:w-48",
-    rotate: -2,
-    enterX: 52,
-    enterY: 46,
-  },
-  {
-    alt: "Proses sablon kaos dengan mesin press",
-    src: "/hero-element/5.png",
-    sizes: "176px",
-    className: "bottom-[3%] left-[28%] hidden w-44 lg:block",
-    rotate: -2,
-    enterX: -24,
-    enterY: 58,
-  },
-  {
-    alt: "Proses produksi pakaian di workshop",
-    src: "/hero-element/6.png",
-    sizes: "176px",
-    className: "bottom-[3%] right-[28%] hidden w-44 lg:block",
-    rotate: 2,
-    enterX: 24,
-    enterY: 58,
+    icon: Clock3,
+    title: "On Time Production",
+    description: "Komitmen pada ketepatan waktu produksi",
   },
 ] as const;
 
-export function LandingHero({ headingClassName }: { headingClassName: string }) {
-  const reduceMotion = useReducedMotion();
-  const copyHidden = reduceMotion
-    ? { opacity: 0.55 }
-    : {
-        opacity: 0,
-        y: 24,
-        filter: "blur(7px)",
-        clipPath: "inset(0 0 18% 0)",
-        transition: { duration: 0.28, ease: easeOut },
-      };
-
+export function LandingHero() {
   return (
-    <section
-      id="beranda"
-      aria-labelledby="hero-title"
-      className="landing-grid relative isolate flex min-h-[820px] scroll-mt-24 items-center justify-center overflow-hidden px-5 py-32 sm:px-8 md:min-h-[860px] lg:min-h-[900px]"
-    >
-      <noscript>
-        <style>{`.landing-motion{opacity:1!important;transform:none!important;filter:none!important;clip-path:none!important}`}</style>
-      </noscript>
+    <section id="beranda" aria-labelledby="hero-title" className="flex min-h-[calc(100dvh-4rem)] scroll-mt-16 flex-col">
+      <div className="relative isolate flex flex-1 overflow-hidden bg-[#142535] text-white">
+        <Image
+          src="/hero.jpg"
+          alt="Dua pekerja konveksi meninjau desain pakaian di ruang jahit"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-[60%_center] lg:object-center"
+        />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(11,28,43,0.15)_0%,rgba(11,28,43,0.45)_35%,rgba(11,28,43,0.94)_80%,#0b1c2b_100%)] lg:bg-[linear-gradient(90deg,#0b1c2b_0%,rgba(11,28,43,0.88)_33%,rgba(11,28,43,0.78)_50%,transparent_66%)]" />
 
-      <motion.div
-        initial={reduceMotion ? false : "hidden"}
-        whileInView={reduceMotion ? undefined : "visible"}
-        viewport={{ once: false, amount: 0.2 }}
-        variants={{
-          hidden: {},
-          visible: { transition: { delayChildren: 0.14, staggerChildren: reduceMotion ? 0.04 : 0.1 } },
-        }}
-        className="relative z-20 flex max-w-3xl flex-col items-center text-center"
-      >
-        <motion.h1
-          id="hero-title"
-          variants={{
-            hidden: copyHidden,
-            visible: {
-              opacity: 1,
-              y: 0,
-              filter: "blur(0px)",
-              clipPath: "inset(0 0 0% 0)",
-              transition: { duration: 0.72, ease: easeOut },
-            },
-          }}
-          className={cn(
-            headingClassName,
-            "landing-motion max-w-3xl text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.04em] text-landing-text sm:text-6xl lg:text-8xl",
-          )}
-        >
-          Rajanya Pembuatan Seragam
-        </motion.h1>
-        <motion.p
-          variants={{
-            hidden: copyHidden,
-            visible: {
-              opacity: 1,
-              y: 0,
-              filter: "blur(0px)",
-              clipPath: "inset(0 0 0% 0)",
-              transition: { duration: 0.62, ease: easeOut },
-            },
-          }}
-          className="landing-motion mt-6 max-w-xl text-pretty text-base leading-7 text-landing-muted sm:text-lg"
-        >
-          Bikin seragam custom untuk komunitas, organisasi, acara, dan perusahaan. Dari kaos sampai kemeja,
-          konsultasi dan desainnya gratis.
-        </motion.p>
-        <motion.a
-          href="#form-kontak"
-          variants={{
-            hidden: copyHidden,
-            visible: {
-              opacity: 1,
-              y: 0,
-              filter: "blur(0px)",
-              clipPath: "inset(0 0 0% 0)",
-              transition: { duration: 0.52, ease: easeOut },
-            },
-          }}
-          whileHover={reduceMotion ? undefined : { y: -3 }}
-          whileTap={{ scale: 0.97 }}
-          className={cn(buttonVariants({ variant: "landing", size: "lg" }), "landing-motion mt-8 min-h-11 px-5")}
-        >
-          Mulai Konsultasi Gratis
-          <ArrowDown data-icon="inline-end" aria-hidden="true" />
-        </motion.a>
-      </motion.div>
-
-      {heroCards.map((card, index) => (
-        <motion.figure
-          key={card.src}
-          initial={reduceMotion ? false : "hidden"}
-          whileInView={reduceMotion ? undefined : "visible"}
-          viewport={{ once: false, amount: 0.15 }}
-          variants={{
-            hidden: {
-              opacity: 0,
-              x: card.enterX,
-              y: card.enterY,
-              scale: 0.9,
-              rotate: card.rotate + Math.sign(card.rotate) * 5,
-              filter: "blur(6px)",
-              transition: { duration: 0.28, ease: easeOut },
-            },
-            visible: {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              rotate: card.rotate,
-              filter: "blur(0px)",
-              transition: { duration: 0.72, delay: 0.18 + index * 0.07, ease: easeOut },
-            },
-          }}
-          whileHover={reduceMotion ? undefined : { y: -7, rotate: 0, scale: 1.025 }}
-          className={cn(
-            "landing-motion absolute z-10 rounded-landing-card bg-landing-card p-2 shadow-[0_10px_15px_-3px_rgb(0_0_0/0.1),0_4px_6px_-4px_rgb(0_0_0/0.1)]",
-            card.className,
-          )}
-        >
-          <div className="relative aspect-[3/4] w-full overflow-hidden rounded-landing-control bg-landing-fog">
-            <Image
-              src={card.src}
-              alt={card.alt}
-              fill
-              sizes={card.sizes}
-              className="object-cover"
-              loading={"loading" in card ? card.loading : "lazy"}
-            />
+        <div className="relative mx-auto flex w-[90%] flex-col justify-end py-10 sm:py-12 lg:justify-center lg:py-16 lg:pl-6">
+          <div className="landing-hero-intro max-w-[52rem]">
+            <p className="text-sm font-semibold uppercase tracking-[0.13em] text-[#bdd9f5]">
+              Konveksi di Semarang
+            </p>
+            <h1 id="hero-title" className="mt-4 text-balance text-[clamp(2rem,5vw,2.75rem)] font-bold leading-[1.13] tracking-[-0.025em] sm:text-4xl lg:text-[clamp(1.75rem,2.15vw,2.5rem)]">
+              <span className="block lg:whitespace-nowrap">Konveksi di Semarang untuk</span>
+              <span className="block max-w-[36rem] text-[#80bcf5]">Seragam dan Apparel Custom</span>
+            </h1>
+            <p className="mt-5 max-w-[29rem] text-sm leading-6 text-white/90 sm:text-base sm:leading-7 lg:mt-4 lg:text-sm lg:leading-6 xl:text-base">
+              Askonveksi melayani pembuatan seragam dan apparel custom untuk perusahaan, instansi, sekolah, komunitas, dan brand di Semarang serta berbagai wilayah Jawa Tengah.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <a
+                href={`https://wa.me/${ASKONVEKSI_WHATSAPP}?text=${encodeURIComponent("Halo Askonveksi, saya ingin konsultasi pembuatan seragam.")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-landing-control bg-landing-accent px-5 text-sm font-semibold text-white transition-colors hover:bg-landing-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                <MessageCircle aria-hidden="true" className="size-4" />
+                Konsultasi Sekarang
+              </a>
+              <a
+                href="#keunggulan"
+                className="inline-flex min-h-11 items-center justify-center rounded-landing-control border border-white/65 px-5 text-sm font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                Lihat Keunggulan
+              </a>
+            </div>
           </div>
-          <motion.span
-            aria-hidden="true"
-            initial={reduceMotion ? false : "hidden"}
-            whileInView={reduceMotion ? undefined : "visible"}
-            viewport={{ once: false, amount: 0.5 }}
-            variants={{
-              hidden: { opacity: 0, y: -8, transition: { duration: 0.16, ease: easeOut } },
-              visible: {
-                opacity: 1,
-                y: 0,
-                transition: { duration: 0.28, delay: 0.62 + index * 0.07, ease: easeOut },
-              },
-            }}
-            className="landing-pin"
-          />
-        </motion.figure>
-      ))}
+        </div>
+      </div>
+
+      <div id="keunggulan" className="scroll-mt-16 border-b border-[#e3eaf1] bg-white">
+        <div className="mx-auto grid w-[90%] grid-cols-2 gap-x-4 gap-y-4 py-8 sm:gap-x-6 sm:py-10 lg:grid-cols-4 lg:gap-0">
+          {benefits.map(({ icon: Icon, title, description }) => (
+            <div key={title} className="landing-benefit-item flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4 lg:border-l lg:border-[#e3eaf1] lg:px-5 lg:first:border-l-0 lg:first:pl-0 lg:last:pr-0">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-full border border-[#a5ccef] bg-[#f4f9fe] text-landing-accent sm:size-12" aria-hidden="true">
+                <Icon className="size-6" strokeWidth={1.8} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold leading-5 text-[#142535]">{title}</h2>
+                <p className="mt-1 text-sm leading-[1.5] text-[#536578]">{description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
