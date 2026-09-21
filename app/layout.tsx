@@ -25,6 +25,10 @@ export const metadata: Metadata = {
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
+  icons: {
+    icon: "/brand/askonveksi-logo.png",
+    apple: "/brand/askonveksi-logo.png",
+  },
   robots: {
     index: false,
     follow: false,
