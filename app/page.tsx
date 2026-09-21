@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 
 import { LandingClients } from "@/components/landing-clients";
 import { LandingCta } from "@/components/landing-cta";
@@ -103,6 +104,16 @@ export default function HomePage() {
         <LandingCta />
         <LandingFooter />
       </main>
+      <Script
+        src="https://www.googletagmanager.com/gtag/js?id=G-Y62NZQ54D0"
+        strategy="afterInteractive"
+      />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`window.dataLayer = window.dataLayer || [];
+function gtag(){window.dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-Y62NZQ54D0');`}
+      </Script>
     </>
   );
 }
