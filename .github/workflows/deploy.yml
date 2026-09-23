@@ -160,8 +160,11 @@ jobs:
           [[ "$APP_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && (( APP_PORT <= 65535 )) || { echo 'APP_PORT must be valid.'; exit 1; }
           [[ "$RELEASE" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'RELEASE contains invalid characters.'; exit 1; }
           [[ "$KEEP_RELEASES" =~ ^[1-9][0-9]*$ ]] || { echo 'KEEP_RELEASES must be a positive integer.'; exit 1; }
-          command -v pm2 >/dev/null
-          command -v curl >/dev/null
+
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          command -v pm2 >/dev/null || { echo 'PM2 is not available for the deploy user.'; exit 1; }
+          command -v curl >/dev/null || { echo 'curl is not available for the deploy user.'; exit 1; }
 
           RELEASE_DIR="$DEPLOY_PATH/releases/$RELEASE"
           CURRENT_LINK="$DEPLOY_PATH/current"
@@ -172,8 +175,10 @@ jobs:
           fi
 
           install -d "$DEPLOY_PATH/releases" "$DEPLOY_PATH/shared"
-          test -f "$DEPLOY_PATH/shared/.env"
-          test ! -e "$RELEASE_DIR"
+          test -w "$DEPLOY_PATH" || { echo 'DEPLOY_PATH is not writable by the deploy user.'; exit 1; }
+          test -f "$DEPLOY_PATH/shared/.env" || { echo 'Shared runtime .env is missing.'; exit 1; }
+          test -f "$ARCHIVE" || { echo 'Release archive is missing.'; exit 1; }
+          test ! -e "$RELEASE_DIR" || { echo 'Release directory already exists.'; exit 1; }
           mkdir "$RELEASE_DIR"
           tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
           rm -f "$ARCHIVE"
