@@ -1,0 +1,219 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+  KEEP_RELEASES: 5
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Test
+        run: npm run test --if-present -- --ci
+
+      - name: Build standalone release
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+        run: npm run build
+
+      - name: Verify standalone output
+        run: |
+          test -d .next/standalone
+          test -d .next/static
+          test -f .next/standalone/server.js
+
+      - name: Package release
+        run: |
+          mkdir -p deploy_package/.next
+          cp -r .next/standalone/. deploy_package/
+          cp -r .next/static deploy_package/.next/static
+          if [ -d public ]; then cp -r public deploy_package/public; fi
+          tar -czf release.tar.gz -C deploy_package .
+          tar -tzf release.tar.gz | grep -qx './server.js'
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release.tar.gz
+          retention-days: 3
+
+  migrate:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply Prisma migrations
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npm exec prisma migrate deploy
+
+  deploy:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      PM2_APP_NAME: ${{ vars.PM2_APP_NAME }}
+      APP_PORT: ${{ vars.APP_PORT }}
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_PORT: ${{ vars.VPS_PORT || '22' }}
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Set release name
+        id: release
+        run: echo "name=${GITHUB_SHA::12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release archive
+        env:
+          RELEASE: ${{ steps.release.outputs.name }}
+        run: |
+          scp -i ~/.ssh/id_ed25519 -P "$VPS_PORT" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            release.tar.gz "$VPS_USER@$VPS_HOST:/tmp/askonveksi-release-$RELEASE.tar.gz"
+
+      - name: Deploy, verify, and roll back on failure
+        env:
+          RELEASE: ${{ steps.release.outputs.name }}
+        run: |
+          DEPLOY_PATH_B64=$(printf '%s' "$DEPLOY_PATH" | base64 -w0)
+          PM2_APP_NAME_B64=$(printf '%s' "$PM2_APP_NAME" | base64 -w0)
+          APP_PORT_B64=$(printf '%s' "$APP_PORT" | base64 -w0)
+          RELEASE_B64=$(printf '%s' "$RELEASE" | base64 -w0)
+          KEEP_RELEASES_B64=$(printf '%s' "$KEEP_RELEASES" | base64 -w0)
+          ssh -i ~/.ssh/id_ed25519 -p "$VPS_PORT" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "DEPLOY_PATH_B64=$DEPLOY_PATH_B64 PM2_APP_NAME_B64=$PM2_APP_NAME_B64 APP_PORT_B64=$APP_PORT_B64 RELEASE_B64=$RELEASE_B64 KEEP_RELEASES_B64=$KEEP_RELEASES_B64 bash -s" <<'ENDSSH'
+          set -euo pipefail
+
+          decode() { printf '%s' "$1" | base64 --decode; }
+          DEPLOY_PATH=$(decode "$DEPLOY_PATH_B64")
+          PM2_APP_NAME=$(decode "$PM2_APP_NAME_B64")
+          APP_PORT=$(decode "$APP_PORT_B64")
+          RELEASE=$(decode "$RELEASE_B64")
+          KEEP_RELEASES=$(decode "$KEEP_RELEASES_B64")
+
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_PATH" != / ]] || { echo 'DEPLOY_PATH must be an absolute non-root path.'; exit 1; }
+          [[ "$PM2_APP_NAME" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'PM2_APP_NAME contains invalid characters.'; exit 1; }
+          [[ "$APP_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && (( APP_PORT <= 65535 )) || { echo 'APP_PORT must be valid.'; exit 1; }
+          [[ "$RELEASE" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'RELEASE contains invalid characters.'; exit 1; }
+          [[ "$KEEP_RELEASES" =~ ^[1-9][0-9]*$ ]] || { echo 'KEEP_RELEASES must be a positive integer.'; exit 1; }
+          command -v pm2 >/dev/null
+          command -v curl >/dev/null
+
+          RELEASE_DIR="$DEPLOY_PATH/releases/$RELEASE"
+          CURRENT_LINK="$DEPLOY_PATH/current"
+          ARCHIVE="/tmp/askonveksi-release-$RELEASE.tar.gz"
+          PREVIOUS_RELEASE=""
+          if [ -L "$CURRENT_LINK" ]; then
+            PREVIOUS_RELEASE=$(readlink -f "$CURRENT_LINK")
+          fi
+
+          install -d "$DEPLOY_PATH/releases" "$DEPLOY_PATH/shared"
+          test -f "$DEPLOY_PATH/shared/.env"
+          test ! -e "$RELEASE_DIR"
+          mkdir "$RELEASE_DIR"
+          tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
+          rm -f "$ARCHIVE"
+          ln -sfn "$DEPLOY_PATH/shared/.env" "$RELEASE_DIR/.env"
+
+          ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+          export NODE_ENV=production PORT="$APP_PORT" HOSTNAME=127.0.0.1
+
+          if pm2 describe "$PM2_APP_NAME" >/dev/null 2>&1; then
+            pm2 reload "$PM2_APP_NAME" --update-env
+          else
+            pm2 start "$CURRENT_LINK/server.js" --name "$PM2_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000
+          fi
+
+          healthy=0
+          for _ in $(seq 1 15); do
+            if curl -fsS --max-time 5 "http://127.0.0.1:$APP_PORT" -o /dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            echo 'Health check failed, rolling back.'
+            if [ -n "$PREVIOUS_RELEASE" ] && [ -d "$PREVIOUS_RELEASE" ]; then
+              ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK"
+              pm2 reload "$PM2_APP_NAME" --update-env
+              pm2 save
+            else
+              pm2 delete "$PM2_APP_NAME" || true
+              rm -f "$CURRENT_LINK"
+            fi
+            exit 1
+          fi
+
+          pm2 save
+          find "$DEPLOY_PATH/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+            | sort -rn \
+            | tail -n +$((KEEP_RELEASES + 1)) \
+            | cut -d' ' -f2- \
+            | xargs -r rm -rf --
+          ENDSSH
