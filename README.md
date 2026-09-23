@@ -50,6 +50,8 @@ rtk npm run lint
 rtk npm run build -- --webpack
 ```
 
+`@prisma/config` dan `prisma` sementara meng-override dependency transitif yang rentan. Hapus override tersebut setelah Prisma menyediakan rilis stable yang sudah membawa versi patched.
+
 Build webpack disediakan sebagai jalur verifikasi bila Turbopack tidak diizinkan membuka port proses oleh environment sandbox.
 
 Dokumentasi database lebih lanjut tersedia di [docs/PRISMA_SETUP.md](docs/PRISMA_SETUP.md). Keputusan terbaru pipeline CRM tersedia di [PipelineCRM_Baru.md](PipelineCRM_Baru.md).
