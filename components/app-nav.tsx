@@ -84,13 +84,13 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
       className={cn(
         "flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
         nested && "ml-3",
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        active ? "bg-highlight-surface text-highlight-surface-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
       <Icon aria-hidden="true" className="size-4" />
       {item.label}
       {typeof item.count === "number" ? (
-        <Badge variant={active ? "secondary" : "default"} className="ml-auto min-w-6 px-1.5 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
+        <Badge variant={active ? "highlight" : "secondary"} className="ml-auto min-w-6 px-1.5 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
           {navCountLabel(item.count)}
         </Badge>
       ) : null}
