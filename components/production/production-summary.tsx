@@ -32,9 +32,9 @@ export function ProductionSummary({
   return (
     <section aria-label="Ringkasan produksi" className="grid gap-3">
       <MetricGroup className="sm:grid-cols-3">
-        <MetricItem label="Total Work Order" value={total} tone="primary" emphasis />
-        <MetricItem label="Terlambat" value={overdue} tone="danger" />
-        <MetricItem label="Perlu perbaikan" value={needsRepair} tone="danger" />
+        <MetricItem label="Total Work Order" value={total} emphasis />
+        <MetricItem label="Terlambat" value={overdue} />
+        <MetricItem label="Perlu perbaikan" value={needsRepair} />
       </MetricGroup>
 
       <MetricGroup

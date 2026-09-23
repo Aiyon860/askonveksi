@@ -7,6 +7,7 @@ import Link from "next/link";
 import { fetcher } from "@/lib/fetcher";
 import { InvoiceDetail } from "@/components/crm/invoice-detail";
 import { PurchaseOrderDetail } from "@/components/crm/purchase-order-detail";
+import { STAGE_SUMMARY_CLASS } from "@/components/crm/stage-theme";
 import { InvoiceStatusBadge, OpportunityStatusBadge, PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -103,7 +104,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
             <CardTitle>Follow-up mendesak</CardTitle>
             <CardDescription>Next action sampai akhir hari ini.</CardDescription>
           </CardHeader>
-          <MetricGroup className="grid-cols-2 rounded-none border-x-0 border-b-0">
+          <MetricGroup className="grid-cols-2 flex-1 rounded-none border-x-0 border-b-0">
             <MetricItem label="Terlambat" value={data.overdue} icon={AlertTriangle} tone="danger" emphasis />
             <MetricItem label="Hari ini" value={data.dueToday} icon={CalendarClock} tone="warning" emphasis />
           </MetricGroup>
@@ -214,7 +215,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
       <section aria-labelledby="pipeline-stage-title">
         <div className="mb-4"><h2 id="pipeline-stage-title" className="text-base font-semibold">Pipeline aktif</h2><p className="mt-1 text-sm text-muted-foreground">Jumlah opportunity pada setiap tahap kerja.</p></div>
         <MetricGroup className="grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
-          {PIPELINE_STAGES.map((stage) => <MetricItem key={stage} label={<OpportunityStatusBadge stage={stage} />} value={data.stageCounts[stage] ?? 0} />)}
+          {PIPELINE_STAGES.map((stage) => <MetricItem key={stage} label={<OpportunityStatusBadge stage={stage} />} value={data.stageCounts[stage] ?? 0} className={STAGE_SUMMARY_CLASS[stage]} />)}
         </MetricGroup>
       </section>
 
