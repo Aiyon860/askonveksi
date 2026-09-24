@@ -6,6 +6,7 @@ import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { ExpenseForm } from "@/components/finance/expense-form";
+import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { SortableTableHead } from "@/components/sortable-table-head";
@@ -76,18 +77,19 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
         <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
           <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted">
             <SortableTableHead label="Tanggal" href={dateSortHref(persistent, order)} active direction={order} />
-            <TableHead>Keperluan</TableHead><TableHead>Kategori</TableHead><TableHead>Metode</TableHead><TableHead>Dicatat oleh</TableHead><TableHead className="text-right">Nominal</TableHead><TableHead>Status Pribadi</TableHead><TableHead className="w-48 text-right">Aksi</TableHead>
+            <TableHead>Keperluan</TableHead><TableHead>Kategori</TableHead><TableHead>Metode</TableHead><TableHead>Bukti</TableHead><TableHead>Dicatat oleh</TableHead><TableHead className="text-right">Nominal</TableHead><TableHead>Status Pribadi</TableHead><TableHead className="w-48 text-right">Aksi</TableHead>
           </TableRow></TableHeader>
           <TableBody>{data.groups.flatMap((group) => group.items.map((item, index) => {
             const own = item.createdById === actor?.id;
+            const canManage = ["DEVELOPER", "OWNER", "KEUANGAN"].includes(actor?.role ?? "");
             const personal = item.paymentMethod === "PRIBADI";
             return <TableRow key={item.id}>
               {index === 0 ? <TableCell rowSpan={group.items.length}>{formatDate(group.spentAt)}</TableCell> : null}
-              <TableCell>{item.purpose}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{EXPENSE_METHOD_LABEL[item.paymentMethod]}</TableCell><TableCell>{item.createdBy.name}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell>
+              <TableCell>{item.purpose}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{EXPENSE_METHOD_LABEL[item.paymentMethod]}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell>
               <TableCell>{personal ? item.reimbursedAt ? <span className="text-success">Diganti {formatDate(item.reimbursedAt, true)}</span> : "Belum diganti" : "-"}</TableCell>
-              <TableCell className="text-right">{own && !item.reimbursedAt ? <div className="flex justify-end gap-2">
+              <TableCell className="text-right">{canManage && !item.reimbursedAt ? <div className="flex justify-end gap-2">
                 {personal ? <form action={reimburseExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="outline" pendingLabel="Memproses..." confirmTitle="Tandai uang sudah diganti?" confirmDescription="Pengeluaran ini tidak dapat diedit atau dihapus setelah ditandai." confirmLabel="Ya, sudah diganti"><Check data-icon="inline-start" aria-hidden="true" />Sudah diganti</ConfirmSubmitButton></form> : null}
-                <ExpenseForm expense={item} /><form action={deleteExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="destructive" pendingLabel="Menghapus..." confirmTitle="Hapus pengeluaran?" confirmDescription="Catatan pengeluaran ini akan dihapus." confirmLabel="Ya, hapus"><Trash2 data-icon="inline-start" aria-hidden="true" />Hapus</ConfirmSubmitButton></form>
+                <ExpenseForm expense={item} />{own ? <form action={deleteExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="destructive" pendingLabel="Menghapus..." confirmTitle="Hapus pengeluaran?" confirmDescription="Catatan pengeluaran ini akan dihapus." confirmLabel="Ya, hapus"><Trash2 data-icon="inline-start" aria-hidden="true" />Hapus</ConfirmSubmitButton></form> : null}
               </div> : "-"}</TableCell>
             </TableRow>;
           }))}</TableBody>

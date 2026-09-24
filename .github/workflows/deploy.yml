@@ -61,7 +61,7 @@ jobs:
           mkdir -p deploy_package/.next
           cp -r .next/standalone/. deploy_package/
           cp -r .next/static deploy_package/.next/static
-          if [ -d public ]; then cp -r public deploy_package/public; fi
+          if [ -d public ]; then cp -aT public deploy_package/public; fi
           tar -czf release.tar.gz -C deploy_package .
           tar -tzf release.tar.gz | grep -qx './server.js'
 
@@ -187,11 +187,12 @@ jobs:
           ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
           export NODE_ENV=production PORT="$APP_PORT" HOSTNAME=127.0.0.1
 
-          if pm2 describe "$PM2_APP_NAME" >/dev/null 2>&1; then
-            pm2 reload "$PM2_APP_NAME" --update-env
-          else
+          start_pm2() {
+            pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1 || true
             pm2 start "$CURRENT_LINK/server.js" --name "$PM2_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000
-          fi
+          }
+
+          start_pm2
 
           healthy=0
           for _ in $(seq 1 15); do
@@ -206,7 +207,7 @@ jobs:
             echo 'Health check failed, rolling back.'
             if [ -n "$PREVIOUS_RELEASE" ] && [ -d "$PREVIOUS_RELEASE" ]; then
               ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK"
-              pm2 reload "$PM2_APP_NAME" --update-env
+              start_pm2
               pm2 save
             else
               pm2 delete "$PM2_APP_NAME" || true

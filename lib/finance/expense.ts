@@ -35,7 +35,7 @@ export async function getExpenses(state: ExpenseListState) {
     prisma.appUser.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   const pageDates = dates.slice((state.page - 1) * state.pageSize, state.page * state.pageSize).map((item) => item.spentAt);
-  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethod: true, reimbursedAt: true, createdById: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: state.order }, { createdAt: "desc" }] }) : [];
+  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethod: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: state.order }, { createdAt: "desc" }] }) : [];
   const grouped = new Map(pageDates.map((spentAt) => [spentAt.getTime(), { spentAt, items: [] as typeof items }]));
   items.forEach((item) => grouped.get(item.spentAt.getTime())?.items.push(item));
   return { groups: [...grouped.values()].map((group) => ({ ...group, items: group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory, paymentMethod: item.paymentMethod as ExpenseMethod })) })), total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / state.pageSize)) };

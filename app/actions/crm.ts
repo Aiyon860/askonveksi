@@ -46,6 +46,7 @@ import {
   voidPaymentTransactionSchema,
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
+import { proofRequired, uploadPaymentProof } from "@/lib/payment-proof";
 import { ensureProductionWorkOrder } from "@/lib/production/service";
 import { enqueueIssuedInvoiceWhatsAppJob, enqueueManualWhatsAppMessage } from "@/lib/whatsapp/jobs";
 import { DEFAULT_ORDER_REMINDER_TEMPLATE, renderWhatsAppTemplate } from "@/lib/whatsapp/core";
@@ -1928,7 +1929,7 @@ export async function completeDealAction(formData: FormData) {
       const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
         const decimal = new Prisma.Decimal(value);
         if (valueType === "PERCENTAGE" && decimal.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-        return roundInvoiceTotal(valueType === "PERCENTAGE" ? roundedTotal.mul(decimal).div(100) : decimal);
+        return valueType === "PERCENTAGE" ? roundInvoiceTotal(roundedTotal.mul(decimal).div(100)) : decimal;
       };
       const initialValueType = "PERCENTAGE" as const;
       const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitialPercent;
@@ -1976,6 +1977,14 @@ function revalidatePaymentMutationPaths(salesOrderId?: string) {
   revalidatePath("/produksi");
 }
 
+async function paymentProof(formData: FormData, actorId: string, paymentMethodId: string, hasExistingProof = false) {
+  const method = await getPrismaClient().paymentMethod.findFirst({ where: { id: paymentMethodId, isActive: true }, select: { name: true } });
+  if (!method) throw new UserFacingError("Metode pembayaran tidak tersedia.");
+  const proof = await uploadPaymentProof(formData.get("proof"), actorId);
+  if (proofRequired(method.name) && !proof && !hasExistingProof) throw new UserFacingError(`Bukti pembayaran wajib untuk metode ${method.name}.`);
+  return proof;
+}
+
 async function createSalesOrderFromPendingPayment(formData: FormData) {
   const actor = await requireActor(DEAL_ROLES);
   const parsed = payPendingInitialPaymentSchema.safeParse({
@@ -1985,6 +1994,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
     note: formValue(formData, "note"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
   const paidAt = new Date();
 
   return runDealTransaction(async (tx) => {
@@ -2102,6 +2112,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
                 paymentMethodId: parsed.data.paymentMethodId,
                 reference: parsed.data.reference,
                 note: parsed.data.note,
+                ...(proof ?? {}),
                 createdById: actor.id,
               },
             },
@@ -2169,6 +2180,7 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
     paymentMethodId: formValue(formData, "paymentMethodId"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
   const reference = typeof formValue(formData, "reference") === "string" ? String(formValue(formData, "reference")).trim() || null : null;
   const note = typeof formValue(formData, "note") === "string" ? String(formValue(formData, "note")).trim() || null : null;
 
@@ -2194,6 +2206,7 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
         paidAt,
         reference,
         note,
+        ...(proof ?? {}),
         createdById: actor.id,
       },
       select: { id: true },
@@ -2230,6 +2243,8 @@ async function editPaymentTransaction(formData: FormData) {
     note: formValue(formData, "note"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const existingProof = await getPrismaClient().paymentTransaction.findFirst({ where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId } }, select: { proofPath: true } });
+  const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId, Boolean(existingProof?.proofPath));
   const paidAt = jakartaDateTime(parsed.data.paidAt);
   if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
   const amount = new Prisma.Decimal(parsed.data.amount);
@@ -2256,6 +2271,7 @@ async function editPaymentTransaction(formData: FormData) {
         paymentMethodId: parsed.data.paymentMethodId,
         reference: parsed.data.reference,
         note: parsed.data.note,
+        ...(proof ?? {}),
         version: { increment: 1 },
       },
     });
@@ -2371,6 +2387,7 @@ export async function payPaymentTermAction(formData: FormData) {
     normalized.set("paymentMethodId", parsed.data.paymentMethodId);
     if (parsed.data.reference) normalized.set("reference", parsed.data.reference);
     if (parsed.data.note) normalized.set("note", parsed.data.note);
+    const proof = formData.get("proof"); if (proof instanceof File && proof.size) normalized.set("proof", proof);
     await recordPaymentTerm(normalized, paidAt);
 
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran termin berhasil dicatat.");
@@ -2412,6 +2429,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
           paymentMethodId: parsed.data.paymentMethodId,
           reference: parsed.data.reference,
           note: parsed.data.note,
+          ...(proof ?? {}),
           createdById: actor.id,
         },
         select: { id: true },

@@ -312,6 +312,10 @@ model Expense {
   amount          Decimal              @db.Decimal(18, 2)
   category        ExpenseCategory
   paymentMethod   ExpensePaymentMethod
+  proofPath       String?              @db.VarChar(500)
+  proofFileName   String?              @db.VarChar(255)
+  proofMimeType   String?              @db.VarChar(100)
+  proofSize       Int?
   createdById     String
   reimbursedAt    DateTime?            @db.Timestamptz(3)
   createdBy       AppUser              @relation(fields: [createdById], references: [id], onDelete: Restrict)
@@ -924,6 +928,10 @@ model PaymentTransaction {
   paidAt          DateTime                 @db.Timestamptz(3)
   reference       String?                  @db.VarChar(120)
   note            String?                  @db.VarChar(1000)
+  proofPath       String?                  @db.VarChar(500)
+  proofFileName   String?                  @db.VarChar(255)
+  proofMimeType   String?                  @db.VarChar(100)
+  proofSize       Int?
   status          PaymentTransactionStatus @default(ACTIVE)
   createdById     String
   voidedAt        DateTime?                @db.Timestamptz(3)

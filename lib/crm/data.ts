@@ -1577,7 +1577,7 @@ export async function getInvoiceDetail(invoiceId: string) {
               outstandingAmount: true,
               transactions: {
                 where: { paymentTermId: null, status: "ACTIVE" },
-                select: { id: true, version: true, amount: true, paidAt: true, reference: true, note: true, paymentMethodId: true, paymentMethod: { select: { name: true } } },
+                select: { id: true, version: true, amount: true, paidAt: true, reference: true, note: true, paymentMethodId: true, proofPath: true, proofMimeType: true, paymentMethod: { select: { name: true } } },
                 take: 1,
               },
               terms: {
@@ -1588,7 +1588,7 @@ export async function getInvoiceDetail(invoiceId: string) {
                   dueAt: true,
                   transactions: {
                     where: { status: "ACTIVE" },
-                    select: { id: true, version: true, amount: true, paidAt: true, reference: true, note: true, paymentMethodId: true, paymentMethod: { select: { name: true } } },
+                    select: { id: true, version: true, amount: true, paidAt: true, reference: true, note: true, paymentMethodId: true, proofPath: true, proofMimeType: true, paymentMethod: { select: { name: true } } },
                     take: 1,
                   },
                 },

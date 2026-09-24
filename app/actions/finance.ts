@@ -10,6 +10,7 @@ import { requireActor } from "@/lib/auth/session";
 import { EXPENSE_CATEGORIES } from "@/lib/finance/expense-categories";
 import { EXPENSE_METHODS } from "@/lib/finance/expense-methods";
 import { getPrismaClient } from "@/lib/prisma";
+import { deletePaymentProof, uploadPaymentProof } from "@/lib/payment-proof";
 
 const expenseSchema = z.object({ id: z.string().cuid().optional(), purpose: z.string().trim().min(2, "Keperluan minimal 2 karakter.").max(500), spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid."), amount: z.coerce.number().finite().positive("Nominal harus lebih dari 0."), category: z.enum(EXPENSE_CATEGORIES), paymentMethod: z.enum(EXPENSE_METHODS) });
 const idSchema = z.string().cuid();
@@ -25,7 +26,9 @@ export async function createExpenseAction(formData: FormData) {
   return runRedirectingAction(PATH, async () => {
     const actor = await requireActor(FINANCE_ROLES); const parsed = expenseSchema.safeParse(input(formData));
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Data pengeluaran tidak valid.");
-    await getPrismaClient().$transaction(async (tx) => { const item = await tx.expense.create({ data: { ...parsed.data, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), createdById: actor.id } }); await audit(tx, actor.id, item.id, "EXPENSE_CREATED", ["purpose", "spentAt", "amount", "category", "paymentMethod"]); });
+    const proof = await uploadPaymentProof(formData.get("proof"), actor.id);
+    if (!proof) throw new UserFacingError("Bukti pengeluaran wajib dilampirkan.");
+    try { await getPrismaClient().$transaction(async (tx) => { const item = await tx.expense.create({ data: { ...parsed.data, ...proof, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), createdById: actor.id } }); await audit(tx, actor.id, item.id, "EXPENSE_CREATED", ["purpose", "spentAt", "amount", "category", "paymentMethod", "proofPath"]); }); } catch (error) { await deletePaymentProof(proof.proofPath); throw error; }
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran berhasil dicatat.");
   });
 }
@@ -35,7 +38,13 @@ export async function updateExpenseAction(formData: FormData) {
     const actor = await requireActor(FINANCE_ROLES); const parsed = expenseSchema.safeParse(input(formData));
     if (!parsed.success || !parsed.data.id) throw new UserFacingError(parsed.error?.issues[0]?.message ?? "Data pengeluaran tidak valid.");
     const id = parsed.data.id;
-    await getPrismaClient().$transaction(async (tx) => { const current = await tx.expense.findUnique({ where: { id }, select: { createdById: true, reimbursedAt: true } }); if (!current || current.createdById !== actor.id) throw new UserFacingError("Anda hanya dapat mengubah pengeluaran sendiri."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran yang sudah diganti tidak dapat diubah."); await tx.expense.update({ where: { id }, data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethod: parsed.data.paymentMethod } }); await audit(tx, actor.id, id, "EXPENSE_UPDATED", ["purpose", "spentAt", "amount", "category", "paymentMethod"]); });
+    const current = await getPrismaClient().expense.findUnique({ where: { id }, select: { reimbursedAt: true, proofPath: true } });
+    if (!current) throw new UserFacingError("Pengeluaran tidak ditemukan.");
+    if (current.reimbursedAt) throw new UserFacingError("Pengeluaran yang sudah diganti tidak dapat diubah.");
+    const proof = await uploadPaymentProof(formData.get("proof"), actor.id);
+    if (!proof && !current.proofPath) throw new UserFacingError("Bukti pengeluaran wajib dilampirkan.");
+    try { await getPrismaClient().$transaction(async (tx) => { await tx.expense.update({ where: { id }, data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethod: parsed.data.paymentMethod, ...(proof ?? {}) } }); await audit(tx, actor.id, id, "EXPENSE_UPDATED", ["purpose", "spentAt", "amount", "category", "paymentMethod", ...(proof ? ["proofPath"] : [])]); }); } catch (error) { await deletePaymentProof(proof?.proofPath); throw error; }
+    if (proof) await deletePaymentProof(current.proofPath);
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran berhasil diperbarui.");
   });
 }
@@ -43,7 +52,7 @@ export async function updateExpenseAction(formData: FormData) {
 export async function deleteExpenseAction(formData: FormData) {
   return runRedirectingAction(PATH, async () => {
     const actor = await requireActor(FINANCE_ROLES); const parsed = idSchema.safeParse(formData.get("id")); if (!parsed.success) throw new UserFacingError("Pengeluaran tidak valid.");
-    await getPrismaClient().$transaction(async (tx) => { const current = await tx.expense.findUnique({ where: { id: parsed.data }, select: { createdById: true, reimbursedAt: true } }); if (!current || current.createdById !== actor.id) throw new UserFacingError("Anda hanya dapat menghapus pengeluaran sendiri."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran yang sudah diganti tidak dapat dihapus."); await tx.expense.delete({ where: { id: parsed.data } }); await audit(tx, actor.id, parsed.data, "EXPENSE_DELETED", []); });
+    const current = await getPrismaClient().expense.findUnique({ where: { id: parsed.data }, select: { createdById: true, reimbursedAt: true, proofPath: true } }); if (!current || current.createdById !== actor.id) throw new UserFacingError("Anda hanya dapat menghapus pengeluaran sendiri."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran yang sudah diganti tidak dapat dihapus."); await getPrismaClient().$transaction(async (tx) => { await tx.expense.delete({ where: { id: parsed.data } }); await audit(tx, actor.id, parsed.data, "EXPENSE_DELETED", []); }); await deletePaymentProof(current.proofPath);
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran berhasil dihapus.");
   });
 }
@@ -51,7 +60,7 @@ export async function deleteExpenseAction(formData: FormData) {
 export async function reimburseExpenseAction(formData: FormData) {
   return runRedirectingAction(PATH, async () => {
     const actor = await requireActor(FINANCE_ROLES); const parsed = idSchema.safeParse(formData.get("id")); if (!parsed.success) throw new UserFacingError("Pengeluaran tidak valid.");
-    await getPrismaClient().$transaction(async (tx) => { const current = await tx.expense.findUnique({ where: { id: parsed.data }, select: { createdById: true, paymentMethod: true, reimbursedAt: true } }); if (!current || current.createdById !== actor.id) throw new UserFacingError("Anda hanya dapat memverifikasi pengeluaran sendiri."); if (current.paymentMethod !== "PRIBADI") throw new UserFacingError("Verifikasi hanya tersedia untuk metode Pribadi."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran ini sudah ditandai diganti."); await tx.expense.update({ where: { id: parsed.data }, data: { reimbursedAt: new Date() } }); await audit(tx, actor.id, parsed.data, "EXPENSE_REIMBURSED", ["reimbursedAt"]); });
+    await getPrismaClient().$transaction(async (tx) => { const current = await tx.expense.findUnique({ where: { id: parsed.data }, select: { paymentMethod: true, reimbursedAt: true } }); if (!current) throw new UserFacingError("Pengeluaran tidak ditemukan."); if (current.paymentMethod !== "PRIBADI") throw new UserFacingError("Verifikasi hanya tersedia untuk metode Pribadi."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran ini sudah ditandai diganti."); await tx.expense.update({ where: { id: parsed.data }, data: { reimbursedAt: new Date() } }); await audit(tx, actor.id, parsed.data, "EXPENSE_REIMBURSED", ["reimbursedAt"]); });
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran Pribadi ditandai sudah diganti.");
   });
 }

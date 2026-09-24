@@ -22,6 +22,10 @@ const definitions = [
     id: "whatsapp-media",
     options: { public: false, fileSizeLimit: 10 * 1024 * 1024, allowedMimeTypes: ["application/pdf", "image/jpeg", "image/png", "image/webp"] },
   },
+  {
+    id: "payment-proofs",
+    options: { public: false, fileSizeLimit: 5 * 1024 * 1024, allowedMimeTypes: ["application/pdf", "image/jpeg", "image/png", "image/webp"] },
+  },
 ];
 const { data: buckets, error: listError } = await supabase.storage.listBuckets();
 if (listError) throw new Error(`Daftar bucket tidak dapat dibaca: ${listError.message}`);
