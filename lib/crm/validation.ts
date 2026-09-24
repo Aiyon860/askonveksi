@@ -194,7 +194,6 @@ export const invoiceDraftSchema = z.object({
   invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
   dueAt: optionalText(10),
-  profitPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase keuntungan tidak valid."),
   discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),

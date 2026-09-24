@@ -13,6 +13,7 @@ import { getPrismaClient } from "@/lib/prisma";
 
 const expenseSchema = z.object({ id: z.string().cuid().optional(), purpose: z.string().trim().min(2, "Keperluan minimal 2 karakter.").max(500), spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid."), amount: z.coerce.number().finite().positive("Nominal harus lebih dari 0."), category: z.enum(EXPENSE_CATEGORIES), paymentMethod: z.enum(EXPENSE_METHODS) });
 const idSchema = z.string().cuid();
+const salesOrderCostSchema = z.object({ salesOrderId: z.string().cuid(), version: z.coerce.number().int().positive(), kain: z.coerce.number().finite().nonnegative(), zipper: z.coerce.number().finite().nonnegative(), jahit: z.coerce.number().finite().nonnegative(), pres: z.coerce.number().finite().nonnegative(), dtfPlastisol: z.coerce.number().finite().nonnegative(), bordir: z.coerce.number().finite().nonnegative(), lainnya: z.coerce.number().finite().nonnegative() });
 const PATH = "/keuangan/pengeluaran";
 
 function input(formData: FormData) { const id = formData.get("id"); return { id: typeof id === "string" && id ? id : undefined, purpose: formData.get("purpose"), spentAt: formData.get("spentAt"), amount: formData.get("amount"), category: formData.get("category"), paymentMethod: formData.get("paymentMethod") }; }
@@ -52,5 +53,22 @@ export async function reimburseExpenseAction(formData: FormData) {
     const actor = await requireActor(FINANCE_ROLES); const parsed = idSchema.safeParse(formData.get("id")); if (!parsed.success) throw new UserFacingError("Pengeluaran tidak valid.");
     await getPrismaClient().$transaction(async (tx) => { const current = await tx.expense.findUnique({ where: { id: parsed.data }, select: { createdById: true, paymentMethod: true, reimbursedAt: true } }); if (!current || current.createdById !== actor.id) throw new UserFacingError("Anda hanya dapat memverifikasi pengeluaran sendiri."); if (current.paymentMethod !== "PRIBADI") throw new UserFacingError("Verifikasi hanya tersedia untuk metode Pribadi."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran ini sudah ditandai diganti."); await tx.expense.update({ where: { id: parsed.data }, data: { reimbursedAt: new Date() } }); await audit(tx, actor.id, parsed.data, "EXPENSE_REIMBURSED", ["reimbursedAt"]); });
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran Pribadi ditandai sudah diganti.");
+  });
+}
+
+export async function updateSalesOrderCostAction(formData: FormData) {
+  return runRedirectingAction("/keuangan/pemasukan", async () => {
+    const actor = await requireActor(FINANCE_ROLES);
+    const parsed = salesOrderCostSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Biaya HPP tidak valid.");
+    const { salesOrderId, version, ...costs } = parsed.data;
+    const updated = await getPrismaClient().$transaction(async (tx) => {
+      const result = await tx.salesOrderCost.updateMany({ where: { salesOrderId, version, salesOrder: { status: "ACTIVE" } }, data: { ...Object.fromEntries(Object.entries(costs).map(([key, value]) => [key, new Prisma.Decimal(value)])), version: { increment: 1 } } });
+      if (result.count !== 1) throw new UserFacingError("Data HPP sudah berubah atau order tidak aktif. Muat ulang halaman.");
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrder", entityId: salesOrderId, action: "SALES_ORDER_HPP_UPDATED", changedFields: Object.keys(costs) } });
+      return result;
+    });
+    if (updated.count) revalidatePath("/keuangan/pemasukan");
+    return flashMessagePath("/keuangan/pemasukan", "notice", "Biaya HPP berhasil diperbarui.");
   });
 }

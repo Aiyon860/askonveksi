@@ -757,11 +757,30 @@ model SalesOrder {
   payment              DealPayment?
   customerReminders    CustomerReminder[]   @relation("CustomerReminderSourceOrder")
   productionWorkOrder  ProductionWorkOrder?
+  cost                 SalesOrderCost?
   createdAt            DateTime             @default(now()) @db.Timestamptz(3)
 
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
   @@index([status, createdAt])
+}
+
+model SalesOrderCost {
+  id           String     @id @default(cuid())
+  salesOrderId String     @unique
+  kain         Decimal?   @db.Decimal(18, 2)
+  zipper       Decimal?   @db.Decimal(18, 2)
+  jahit        Decimal?   @db.Decimal(18, 2)
+  pres         Decimal?   @db.Decimal(18, 2)
+  dtfPlastisol Decimal?   @db.Decimal(18, 2)
+  bordir       Decimal?   @db.Decimal(18, 2)
+  lainnya      Decimal?   @db.Decimal(18, 2)
+  version      Int        @default(1)
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@index([updatedAt])
 }
 
 model ProductionWorkOrder {

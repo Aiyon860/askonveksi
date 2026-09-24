@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getCurrentActor } from "@/lib/auth/session";
 
 function ListPreviewSkeleton({ rows }: { rows: number }) {
   return (
@@ -141,17 +142,20 @@ function DashboardSkeleton() {
   );
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const actor = await getCurrentActor();
+  const canOpenFollowUp = actor?.role === "OWNER" || actor?.role === "ADMIN_CUSTOMER";
+
   return (
     <>
       <PageHeader
         title="Dashboard sales"
         description="Ringkasan CRM yang perlu ditindaklanjuti hari ini."
-        action={(
+        action={canOpenFollowUp ? (
           <Button render={<Link href="/crm/follow-up" />} nativeButton={false}>
             Buka Follow-up
           </Button>
-        )}
+        ) : undefined}
       />
       <Suspense
         fallback={

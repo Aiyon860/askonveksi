@@ -10,7 +10,7 @@ import {
   type AnalyticsReportMode,
 } from "@/lib/analytics/report-period";
 import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
-import { ANALYTICS_ROLES, CRM_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ANALYTICS_ROLES, CRM_ROLES, DASHBOARD_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
@@ -892,8 +892,9 @@ export async function getFollowUpBadgeCount() {
 }
 
 export async function getSalesDashboardData() {
-  const actor = await requireActor();
+  const actor = await requireActor(DASHBOARD_ROLES);
   const prisma = getPrismaClient();
+  const canViewFinancialData = hasRole(actor.role, FINANCE_ROLES);
   const documentPreviewLimit = 5;
   const { start, tomorrow } = jakartaDayBounds();
   const shifted = new Date(start.getTime() + 7 * 60 * 60 * 1000);
@@ -912,7 +913,7 @@ export async function getSalesDashboardData() {
     activeOutstanding,
   ] = await Promise.all([
     prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
-    prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }),
+    canViewFinancialData ? prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }) : null,
     prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { lt: start }, customer: { archivedAt: null } } }),
     prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { gte: start, lt: tomorrow }, customer: { archivedAt: null } } }),
     prisma.opportunity.findMany({
@@ -955,7 +956,7 @@ export async function getSalesDashboardData() {
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       take: documentPreviewLimit,
     }),
-    hasRole(actor.role, FINANCE_ROLES)
+    canViewFinancialData
       ? prisma.paymentTransaction.aggregate({
           where: {
             status: "ACTIVE",
@@ -966,7 +967,7 @@ export async function getSalesDashboardData() {
           _count: true,
         })
       : null,
-    hasRole(actor.role, FINANCE_ROLES)
+    canViewFinancialData
       ? prisma.dealPayment.aggregate({
           where: { salesOrder: { status: "ACTIVE" }, outstandingAmount: { gt: 0 } },
           _sum: { outstandingAmount: true },
@@ -984,11 +985,12 @@ export async function getSalesDashboardData() {
   const dealCount = stageCounts.DEAL ?? 0;
 
   return {
+    canViewFinancialData,
     stageCounts,
     totalLeadCount,
     dealCount,
     conversionRate: calculateConversionRate(dealCount, totalLeadCount),
-    dealRevenue: dealRevenue._sum.total?.toString() ?? "0",
+    dealRevenue: dealRevenue?._sum.total?.toString() ?? null,
     overdue,
     dueToday,
     urgentActions,
