@@ -13,14 +13,10 @@ export type InvoicePricingInput = {
 };
 
 export function roundInvoiceTotal(value: Prisma.Decimal) {
-  const whole = value.toDecimalPlaces(0, Prisma.Decimal.ROUND_DOWN);
-  const units = whole.mod(10);
-  return units.gte(6) ? whole.add(10).sub(units) : whole.sub(units);
+  return value.div(500).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_DOWN).mul(500);
 }
 
-export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercent: string, discountPercent: string) {
-  const orderProfitPercent = new Prisma.Decimal(profitPercent);
-  if (orderProfitPercent.gt(100)) throw new UserFacingError("Keuntungan maksimal 100%.");
+export function calculateInvoiceLines(items: InvoicePricingInput[], discountPercent: string) {
   const orderDiscountPercent = new Prisma.Decimal(discountPercent);
   if (orderDiscountPercent.gt(100)) throw new UserFacingError("Diskon maksimal 100%.");
 
@@ -28,10 +24,8 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercen
     const unitPrice = new Prisma.Decimal(item.unitPrice);
 
     const grossAmount = unitPrice.mul(item.quantity).toDecimalPlaces(2);
-    const profitAmount = grossAmount.mul(orderProfitPercent).div(100).toDecimalPlaces(2);
-    const amountBeforeDiscount = grossAmount.add(profitAmount);
-    const discountAmount = amountBeforeDiscount.mul(orderDiscountPercent).div(100).toDecimalPlaces(2);
-    const total = amountBeforeDiscount.sub(discountAmount);
+    const discountAmount = grossAmount.mul(orderDiscountPercent).div(100).toDecimalPlaces(2);
+    const total = grossAmount.sub(discountAmount);
 
     return {
       position,
@@ -45,8 +39,6 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercen
       discountPercent: orderDiscountPercent,
       discountCapAmount: null,
       discountAmount,
-      profitPercent: orderProfitPercent,
-      profitAmount,
       total,
       subtotal: total,
       purchaseOrderSizeId: item.purchaseOrderSizeId,
@@ -57,13 +49,11 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercen
     (acc, item) => ({
       subtotal: acc.subtotal.add(item.grossAmount),
       totalDiscount: acc.totalDiscount.add(item.discountAmount),
-      totalProfit: acc.totalProfit.add(item.profitAmount),
       total: acc.total.add(item.total),
     }),
     {
       subtotal: new Prisma.Decimal(0),
       totalDiscount: new Prisma.Decimal(0),
-      totalProfit: new Prisma.Decimal(0),
       total: new Prisma.Decimal(0),
     },
   );
@@ -74,7 +64,6 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], profitPercen
     items: calculatedItems,
     subtotal: summary.subtotal,
     totalDiscount: roundingAdjustment.isNegative() ? summary.totalDiscount.add(roundingAdjustment.abs()) : summary.totalDiscount,
-    totalProfit: roundingAdjustment.isPositive() ? summary.totalProfit.add(roundingAdjustment) : summary.totalProfit,
     discountPercent: orderDiscountPercent,
     total,
   };

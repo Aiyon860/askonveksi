@@ -20,11 +20,12 @@ import type { ReactNode } from "react";
 import type { InvoiceStatus, OpportunityStage, PurchaseOrderStatus } from "@prisma/client";
 
 export type DashboardData = {
+  canViewFinancialData: boolean;
   stageCounts: Partial<Record<OpportunityStage, number>>;
   totalLeadCount: number;
   dealCount: number;
   conversionRate: number;
-  dealRevenue: string;
+  dealRevenue: string | null;
   overdue: number;
   dueToday: number;
   urgentActions: Array<{
@@ -81,8 +82,8 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
 
   return (
     <>
-      <section aria-labelledby="sales-summary" className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.45fr)]">
-        <Card className="gap-0 py-0">
+      <section className={data.canViewFinancialData ? "grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.45fr)]" : undefined}>
+        {data.canViewFinancialData ? <Card className="gap-0 py-0">
           <CardHeader className="py-5">
             <CardTitle id="sales-summary">Ringkasan hasil sales</CardTitle>
             <CardDescription>Omzet Deal bulan berjalan dan conversion rate seluruh waktu.</CardDescription>
@@ -97,8 +98,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
               meta={data.totalLeadCount > 0 ? `${data.dealCount} Deal dari ${data.totalLeadCount} lead` : "Belum ada lead untuk dihitung."}
             />
           </MetricGroup>
-        </Card>
-
+        </Card> : null}
         <Card className="gap-0 py-0">
           <CardHeader className="py-5">
             <CardTitle>Follow-up mendesak</CardTitle>
@@ -111,7 +111,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
         </Card>
       </section>
 
-      {data.financeSummary ? (
+      {data.canViewFinancialData && data.financeSummary ? (
         <section aria-labelledby="finance-summary">
           <Card className="gap-0 py-0">
             <CardHeader className="py-5">
@@ -219,7 +219,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
         </MetricGroup>
       </section>
 
-      <LazyBusinessTrendChart />
+      {data.canViewFinancialData ? <LazyBusinessTrendChart /> : null}
 
       <section aria-labelledby="next-action-title">
         <Card>

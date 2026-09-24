@@ -18,3 +18,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - For page-load, navigation, rendering, Core Web Vitals, or bundle performance work, use the `performance` skill.
 - For any Supabase work—including Database, Auth, Realtime, Storage, Edge Functions, RLS, and other Supabase services—use the `supabase` skill.
 - When a task spans multiple areas, use every relevant skill. For example, Supabase Auth requires both `supabase` and `security-and-hardening`, while shadcn-based interface work requires both `impeccable` and `shadcn`.
+
+SETIAP PENAMBAHAN FITUR ATAU PENYEMBUNYIAN PENGHAPUSAN FITUR USER ROLE DEVELOPER TETAP BISA MENGAKSESNYA

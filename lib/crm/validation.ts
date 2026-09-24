@@ -194,7 +194,6 @@ export const invoiceDraftSchema = z.object({
   invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
   dueAt: optionalText(10),
-  profitPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase keuntungan tidak valid."),
   discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
@@ -396,7 +395,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "KEUANGAN", "DESIGNER"]),
   password: strongPasswordSchema,
 });
 
@@ -405,7 +404,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "KEUANGAN", "DESIGNER"]),
   password: z.preprocess(
     (value) => (typeof value === "string" && value === "" ? undefined : value),
     strongPasswordSchema.optional(),

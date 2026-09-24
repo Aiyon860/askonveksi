@@ -6,6 +6,13 @@ const [dataSource, dashboardSource] = await Promise.all([
   readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
   readFile(new URL("../components/dashboard/dashboard-content-client.tsx", import.meta.url), "utf8"),
 ]);
+const [permissionsSource, loginSource, authActionsSource, navSource, dashboardPageSource] = await Promise.all([
+  readFile(new URL("../lib/auth/permissions.ts", import.meta.url), "utf8"),
+  readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/actions/auth.ts", import.meta.url), "utf8"),
+  readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/(app)/dashboard/page.tsx", import.meta.url), "utf8"),
+]);
 
 function queryBlock(model) {
   const start = dataSource.indexOf(`prisma.${model}.findMany({`, dataSource.indexOf("export async function getSalesDashboardData"));
@@ -42,5 +49,26 @@ test("preview dokumen menyediakan detail, tautan lengkap, dan empty state", () =
 });
 
 test("query dashboard tetap memeriksa aktor sebelum membaca data", () => {
-  assert.match(dataSource, /export async function getSalesDashboardData\(\) \{\s+const actor = await requireActor\(\);\s+const prisma/);
+  assert.match(dataSource, /export async function getSalesDashboardData\(\) \{\s+const actor = await requireActor\(DASHBOARD_ROLES\);\s+const prisma/);
+});
+
+test("Keuangan dapat membuka Dashboard tanpa membuka CRM", () => {
+  assert.match(permissionsSource, /DASHBOARD_ROLES = \[\.\.\.CRM_ROLES, "KEUANGAN"\]/);
+  assert.match(navSource, /const canViewDashboard = canViewCrm \|\| role === "KEUANGAN"/);
+  assert.match(navSource, /\{canViewDashboard \? mainItems\.map/);
+  assert.doesNotMatch(loginSource, /role === "KEUANGAN" \? "\/keuangan"/);
+  assert.doesNotMatch(authActionsSource, /role === "KEUANGAN" \? "\/keuangan"/);
+});
+
+test("tombol Follow-up Dashboard hanya untuk Owner dan Admin Customer", () => {
+  assert.match(dashboardPageSource, /actor\?\.role === "OWNER" \|\| actor\?\.role === "ADMIN_CUSTOMER"/);
+  assert.match(dashboardPageSource, /action=\{canOpenFollowUp \?/);
+});
+
+test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
+  assert.match(dataSource, /const canViewFinancialData = hasRole\(actor\.role, FINANCE_ROLES\)/);
+  assert.match(dataSource, /canViewFinancialData \? prisma\.salesOrder\.aggregate/);
+  assert.match(dataSource, /dealRevenue: dealRevenue\?\._sum\.total\?\.toString\(\) \?\? null/);
+  assert.match(dashboardSource, /\{data\.canViewFinancialData \? <Card/);
+  assert.match(dashboardSource, /\{data\.canViewFinancialData \? <LazyBusinessTrendChart \/> : null\}/);
 });

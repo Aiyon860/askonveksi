@@ -1,7 +1,8 @@
 import type { AppRole } from "@prisma/client";
 
-export const APP_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "DESIGNER"] as const satisfies readonly AppRole[];
+export const APP_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "KEUANGAN", "DESIGNER"] as const satisfies readonly AppRole[];
 export const CRM_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
+export const DASHBOARD_ROLES = [...CRM_ROLES, "KEUANGAN"] as const satisfies readonly AppRole[];
 export const CRM_OPERATOR_ROLES = CRM_ROLES;
 export const CUSTOMER_REMINDER_SETTING_ROLES = ["OWNER", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const DEAL_ROLES = CRM_ROLES;
@@ -11,9 +12,10 @@ export const USER_ADMIN_ROLES = ["DEVELOPER"] as const satisfies readonly AppRol
 export const MASTER_DATA_ROLES = [] as const satisfies readonly AppRole[];
 export const WHATSAPP_ACCOUNT_MANAGER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const ANALYTICS_ROLES = [] as const satisfies readonly AppRole[];
-export const FINANCE_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "ADMIN", "SALES", "DESIGNER", "PRODUCTION", "QC"] as const satisfies readonly AppRole[];
+export const FINANCE_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
 export const PRODUCTION_ROLES = ["ADMIN_PRODUCTION"] as const satisfies readonly AppRole[];
 export const PRODUCTION_MANAGEMENT_ROLES = PRODUCTION_ROLES;
+export const DETAIL_DESIGN_ROLES = PRODUCTION_ROLES;
 export const DESIGN_ROLES = ["DESIGNER"] as const satisfies readonly AppRole[];
 export const DESIGN_VIEW_ROLES = ["DESIGNER", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const DESIGN_APPROVER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];

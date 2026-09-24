@@ -46,6 +46,7 @@ import {
   voidPaymentTransactionSchema,
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
+import { proofRequired, uploadPaymentProof } from "@/lib/payment-proof";
 import { ensureProductionWorkOrder } from "@/lib/production/service";
 import { enqueueIssuedInvoiceWhatsAppJob, enqueueManualWhatsAppMessage } from "@/lib/whatsapp/jobs";
 import { DEFAULT_ORDER_REMINDER_TEMPLATE, renderWhatsAppTemplate } from "@/lib/whatsapp/core";
@@ -243,7 +244,6 @@ function invoiceInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId") || undefined,
     version: formValue(formData, "version") || undefined,
     dueAt: formValue(formData, "dueAt"),
-    profitPercent: formValue(formData, "profitPercent") || "0",
     discountPercent: formValue(formData, "discountPercent") || "0",
     notes: formValue(formData, "notes"),
     items,
@@ -436,7 +436,6 @@ function calculateInvoiceForPurchaseOrder(
     sizes: Array<{ id: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
   submittedItems: InvoicePricingInput[],
-  profitPercent: string,
   discountPercent: string,
 ) {
   const submittedById = new Map(submittedItems.map((item) => [String(item.purchaseOrderSizeId), item]));
@@ -455,7 +454,7 @@ function calculateInvoiceForPurchaseOrder(
       quantity: poRow.quantity,
       unitPrice: String(submitted.unitPrice),
     };
-  }), profitPercent, discountPercent);
+  }), discountPercent);
   return {
     ...calculated,
     items: calculated.items.map(({ purchaseOrderSizeId, ...item }) => ({
@@ -1591,7 +1590,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           },
         });
         if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
+        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent);
         const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
         const aggregate = await tx.invoice.aggregate({ where: { opportunityId: opportunity.id }, _max: { revision: true } });
@@ -1616,7 +1615,6 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1626,7 +1624,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_DRAFT_CREATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
         ], { opportunityId: opportunity.id });
         return created;
       },
@@ -1661,7 +1659,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
       },
     });
     if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
+    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent);
     timer.mark("calculate");
 
     await prisma.$transaction(
@@ -1674,7 +1672,6 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1687,7 +1684,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
           data: calculated.items.map((item) => ({ ...item, invoiceId })),
         });
         await audit(tx, actor, "Invoice", invoiceId, "INVOICE_DRAFT_UPDATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
         ]);
       },
       DOCUMENT_DRAFT_TRANSACTION_OPTIONS,
@@ -1816,7 +1813,6 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             discountValue: true,
             subtotal: true,
             totalDiscount: true,
-            totalProfit: true,
             total: true,
             dueAt: true,
             notes: true,
@@ -1848,7 +1844,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           throw new UserFacingError("Revisi invoice hanya dapat dibuat dari PO aktif saat Negosiasi.");
         }
         if (source.opportunity.purchaseOrders.length) throw new UserFacingError("Sepakati atau selesaikan draft PO sebelum merevisi invoice.");
-        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.profitPercent, parsed.data.discountPercent);
+        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.discountPercent);
         const locked = await tx.invoice.updateMany({
           where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
@@ -1875,7 +1871,6 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
-            totalProfit: calculated.totalProfit,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1885,7 +1880,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_REVISION_CREATED", [
-          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "totalProfit", "total", "dueAt", "notes",
+          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
         ], { sourceInvoiceId: source.id });
         return source.opportunityId;
       },
@@ -1909,7 +1904,7 @@ export async function completeDealAction(formData: FormData) {
       const invoice = await tx.invoice.findUnique({
         where: { id: parsed.data.invoiceId },
         select: {
-          id: true, totalDiscount: true, totalProfit: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true, dueAt: true,
+          id: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true, dueAt: true,
           salesOrder: { select: { id: true } }, pendingPayment: { select: { id: true } },
           purchaseOrder: { select: { status: true, garmentType: true, deadline: true } },
           opportunity: { select: { stage: true, version: true, purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 }, invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 } } },
@@ -1922,20 +1917,7 @@ export async function completeDealAction(formData: FormData) {
       if (invoice.salesOrder || invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran invoice ini sudah tersedia.");
       if (!invoice.issuedAt) throw new UserFacingError("Tanggal terbit invoice tidak tersedia.");
 
-      const roundedTotal = roundInvoiceTotal(invoice.total);
-      const roundingAdjustment = roundedTotal.sub(invoice.total);
-      if (!roundingAdjustment.isZero()) {
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: {
-            total: roundedTotal,
-            totalDiscount: roundingAdjustment.isNegative() ? invoice.totalDiscount.add(roundingAdjustment.abs()) : invoice.totalDiscount,
-            totalProfit: roundingAdjustment.isPositive() ? invoice.totalProfit.add(roundingAdjustment) : invoice.totalProfit,
-            version: { increment: 1 },
-          },
-        });
-      }
-
+      const roundedTotal = invoice.total;
       const requestedInitialPercent = new Prisma.Decimal(parsed.data.initialValue);
       if (parsed.data.kind === "DP" && requestedInitialPercent.lt(50)) throw new UserFacingError("DP minimal 50%.");
       if (requestedInitialPercent.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
@@ -1947,7 +1929,7 @@ export async function completeDealAction(formData: FormData) {
       const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
         const decimal = new Prisma.Decimal(value);
         if (valueType === "PERCENTAGE" && decimal.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-        return roundInvoiceTotal(valueType === "PERCENTAGE" ? roundedTotal.mul(decimal).div(100) : decimal);
+        return valueType === "PERCENTAGE" ? roundInvoiceTotal(roundedTotal.mul(decimal).div(100)) : decimal;
       };
       const initialValueType = "PERCENTAGE" as const;
       const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitialPercent;
@@ -1995,6 +1977,14 @@ function revalidatePaymentMutationPaths(salesOrderId?: string) {
   revalidatePath("/produksi");
 }
 
+async function paymentProof(formData: FormData, actorId: string, paymentMethodId: string, hasExistingProof = false) {
+  const method = await getPrismaClient().paymentMethod.findFirst({ where: { id: paymentMethodId, isActive: true }, select: { name: true } });
+  if (!method) throw new UserFacingError("Metode pembayaran tidak tersedia.");
+  const proof = await uploadPaymentProof(formData.get("proof"), actorId);
+  if (proofRequired(method.name) && !proof && !hasExistingProof) throw new UserFacingError(`Bukti pembayaran wajib untuk metode ${method.name}.`);
+  return proof;
+}
+
 async function createSalesOrderFromPendingPayment(formData: FormData) {
   const actor = await requireActor(DEAL_ROLES);
   const parsed = payPendingInitialPaymentSchema.safeParse({
@@ -2004,6 +1994,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
     note: formValue(formData, "note"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
   const paidAt = new Date();
 
   return runDealTransaction(async (tx) => {
@@ -2032,7 +2023,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
           select: {
             position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
             unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
-            discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
+            discountAmount: true, total: true, subtotal: true,
           },
           orderBy: { position: "asc" },
         },
@@ -2102,9 +2093,8 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
         total: invoice.total,
         acceptedAt: paidAt,
         createdById: actor.id,
-        // SalesOrderItem_values_valid requires subtotal = quantity * unitPrice (gross),
-        // while invoice items carry subtotal = total incl. tax. Map explicitly.
-        items: { create: invoice.items.map((item) => ({ ...item, subtotal: item.grossAmount })) },
+        items: { create: invoice.items },
+        cost: { create: {} },
         payment: {
           create: {
             kind: invoice.pendingPayment.kind,
@@ -2122,6 +2112,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
                 paymentMethodId: parsed.data.paymentMethodId,
                 reference: parsed.data.reference,
                 note: parsed.data.note,
+                ...(proof ?? {}),
                 createdById: actor.id,
               },
             },
@@ -2189,6 +2180,7 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
     paymentMethodId: formValue(formData, "paymentMethodId"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
   const reference = typeof formValue(formData, "reference") === "string" ? String(formValue(formData, "reference")).trim() || null : null;
   const note = typeof formValue(formData, "note") === "string" ? String(formValue(formData, "note")).trim() || null : null;
 
@@ -2214,6 +2206,7 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
         paidAt,
         reference,
         note,
+        ...(proof ?? {}),
         createdById: actor.id,
       },
       select: { id: true },
@@ -2250,6 +2243,8 @@ async function editPaymentTransaction(formData: FormData) {
     note: formValue(formData, "note"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const existingProof = await getPrismaClient().paymentTransaction.findFirst({ where: { id: parsed.data.transactionId, status: "ACTIVE", payment: { salesOrderId: parsed.data.salesOrderId } }, select: { proofPath: true } });
+  const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId, Boolean(existingProof?.proofPath));
   const paidAt = jakartaDateTime(parsed.data.paidAt);
   if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
   const amount = new Prisma.Decimal(parsed.data.amount);
@@ -2276,6 +2271,7 @@ async function editPaymentTransaction(formData: FormData) {
         paymentMethodId: parsed.data.paymentMethodId,
         reference: parsed.data.reference,
         note: parsed.data.note,
+        ...(proof ?? {}),
         version: { increment: 1 },
       },
     });
@@ -2391,6 +2387,7 @@ export async function payPaymentTermAction(formData: FormData) {
     normalized.set("paymentMethodId", parsed.data.paymentMethodId);
     if (parsed.data.reference) normalized.set("reference", parsed.data.reference);
     if (parsed.data.note) normalized.set("note", parsed.data.note);
+    const proof = formData.get("proof"); if (proof instanceof File && proof.size) normalized.set("proof", proof);
     await recordPaymentTerm(normalized, paidAt);
 
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran termin berhasil dicatat.");
@@ -2411,6 +2408,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
+    const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
 
     await runDealTransaction(async (tx) => {
       const payment = await tx.dealPayment.findFirst({
@@ -2432,6 +2430,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
           paymentMethodId: parsed.data.paymentMethodId,
           reference: parsed.data.reference,
           note: parsed.data.note,
+          ...(proof ?? {}),
           createdById: actor.id,
         },
         select: { id: true },

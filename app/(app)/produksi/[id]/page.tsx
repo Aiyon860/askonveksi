@@ -5,6 +5,7 @@ import { ArrowLeft, CalendarClock, Check, Circle, RotateCcw, UserRound } from "l
 import { addProductionNoteAction, assignProductionStepAction, reopenProductionAction } from "@/app/actions/production";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +39,8 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   if (!result) notFound();
   const { workOrder, users, actor } = result;
   const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+  const designTask = workOrder.salesOrder.purchaseOrder?.designTask;
+  const designAttachments = designTask?.revisions[0]?.attachments ?? [];
 
   return (
     <>
@@ -53,6 +56,8 @@ export default async function ProductionDetailPage({ params }: { params: Promise
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
+          {designTask && designAttachments.length ? <Card><CardHeader><CardTitle>Desain final</CardTitle><CardDescription>Gunakan gambar ini sebagai acuan produksi. Arahkan kursor ke gambar untuk melihat detail.</CardDescription></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">{designAttachments.map((attachment) => <div key={attachment.id} className="flex min-w-0 flex-col gap-2"><PaymentProofPreview href={`/api/desain/${designTask.id}/attachments/${attachment.id}?inline=1`} mimeType={attachment.contentType} label={`Desain final ${attachment.originalName}`} thumbnailClassName="h-64 w-full bg-muted" imageClassName="object-cover" hoverLabel="Lihat detail desain" /><p className="truncate text-xs text-muted-foreground">{attachment.originalName}</p></div>)}</CardContent></Card> : null}
+
           <Card>
             <CardHeader><CardTitle>Tahapan produksi</CardTitle><CardDescription>PIC, percobaan, dan waktu kerja untuk setiap tahap.</CardDescription></CardHeader>
             <CardContent>

@@ -283,7 +283,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                 const editableInvoicePo = invoice.purchaseOrderId === agreedPo?.id ? agreedPo : null;
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
-                  profitPercent: invoice.items[0]?.profitPercent.toString() ?? "0",
                   discountPercent: invoice.discountValue.toString(),
                   items: invoice.items.map((item) => ({
                     size: item.size,
@@ -488,13 +487,12 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
   return (
     <div className="flex flex-col gap-4">
       <Table>
-        <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Keuntungan</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
-        <TableBody>{invoice.items.map((item) => <TableRow key={item.id}><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.profitAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>)}</TableBody>
+        <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
+        <TableBody>{invoice.items.map((item) => <TableRow key={item.id}><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>)}</TableBody>
       </Table>
       <dl className="ml-auto grid w-full max-w-xs gap-2 text-sm">
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-mono">{formatCurrency(invoice.subtotal)}</dd></div>
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Diskon</dt><dd className="font-mono">{formatCurrency(invoice.totalDiscount)}</dd></div>
-        <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Keuntungan</dt><dd className="font-mono">{formatCurrency(invoice.totalProfit)}</dd></div>
         <div className="flex justify-between gap-4 border-t pt-2 font-medium"><dt>Total</dt><dd className="font-mono">{formatCurrency(invoice.total)}</dd></div>
       </dl>
       <dl className="grid gap-2 text-sm sm:grid-cols-2">

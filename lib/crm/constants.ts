@@ -27,6 +27,7 @@ export const ROLE_LABEL = {
   OWNER: "Owner",
   ADMIN_CUSTOMER: "Admin Customer",
   ADMIN_PRODUCTION: "Admin Produksi",
+  KEUANGAN: "Keuangan",
   ADMIN: "Admin",
   SALES: "Sales",
   DESIGNER: "Desainer",
