@@ -15,6 +15,7 @@ export const ANALYTICS_ROLES = [] as const satisfies readonly AppRole[];
 export const FINANCE_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
 export const PRODUCTION_ROLES = ["ADMIN_PRODUCTION"] as const satisfies readonly AppRole[];
 export const PRODUCTION_MANAGEMENT_ROLES = PRODUCTION_ROLES;
+export const DETAIL_DESIGN_ROLES = PRODUCTION_ROLES;
 export const DESIGN_ROLES = ["DESIGNER"] as const satisfies readonly AppRole[];
 export const DESIGN_VIEW_ROLES = ["DESIGNER", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const DESIGN_APPROVER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];

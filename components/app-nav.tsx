@@ -183,6 +183,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/campaigns", label: "Campaign promo", icon: Megaphone }} onNavigate={onNavigate} /> : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
+      {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/detail-desain", label: "Detail Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (
         <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible flex flex-col gap-1">

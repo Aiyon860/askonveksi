@@ -598,6 +598,8 @@ model DesignAttachment {
   originalName     String                      @db.VarChar(255)
   contentType      String                      @db.VarChar(64)
   sizeBytes        Int
+  originalPath     String?                     @db.VarChar(500)
+  annotations      Json?
   kind             PurchaseOrderAttachmentKind @default(OTHER)
   designRevision   DesignRevision              @relation(fields: [designRevisionId], references: [id], onDelete: Restrict)
   createdAt        DateTime                    @default(now()) @db.Timestamptz(3)
@@ -805,6 +807,7 @@ model ProductionWorkOrder {
   version           Int                       @default(1)
   completedAt       DateTime?                 @db.Timestamptz(3)
   cancelledAt       DateTime?                 @db.Timestamptz(3)
+  designCompletedAt DateTime?                 @db.Timestamptz(3)
   salesOrder        SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
   steps             ProductionStep[]
   activities        ProductionActivity[]

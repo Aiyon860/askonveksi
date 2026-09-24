@@ -2,18 +2,21 @@
 
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { flashMessagePath, messageForError, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
 import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { firstValidationMessage } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addProductionNoteSchema,
   assignProductionStepSchema,
   moveProductionSchema,
   reopenProductionSchema,
 } from "@/lib/production/validation";
+import { designAnnotationsSchema } from "@/lib/production/design-annotations";
 import { isStageRole, nextProductionStage } from "@/lib/production/workflow";
 
 function value(formData: FormData, key: string) {
@@ -22,6 +25,185 @@ function value(formData: FormData, key: string) {
 
 function detailPath(id: string) {
   return `/produksi/${id}`;
+}
+
+const DESIGN_BUCKET = "crm-po-designs";
+const MAX_DESIGN_BYTES = 5 * 1024 * 1024;
+
+function isPng(bytes: Uint8Array) {
+  return bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value);
+}
+
+const designVersionSchema = z.object({ workOrderId: z.string().trim().min(10).max(40), attachmentId: z.string().trim().min(10).max(40) });
+
+export async function saveProductionDesignAction(formData: FormData) {
+  const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
+  return runRedirectingAction(fallback, async () => {
+    const actor = await requireActor(PRODUCTION_ROLES);
+    const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
+    const file = formData.get("design");
+    let rawAnnotations: unknown;
+    try { rawAnnotations = JSON.parse(String(value(formData, "annotations") ?? "null")); } catch { throw new UserFacingError("Keterangan desain tidak valid."); }
+    const annotations = designAnnotationsSchema.safeParse(rawAnnotations);
+    if (!parsed.success || !annotations.success || !(file instanceof File)) throw new UserFacingError("Desain atau keterangannya tidak valid.");
+    if (!file.size || file.size > MAX_DESIGN_BYTES || file.type !== "image/png") throw new UserFacingError("Hasil desain harus berupa PNG maksimal 5 MB.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!isPng(bytes)) throw new UserFacingError("Isi file desain tidak valid.");
+
+    const target = await getPrismaClient().productionWorkOrder.findFirst({
+      where: { id: parsed.data.workOrderId, status: "ACTIVE" },
+      select: {
+        id: true,
+        designCompletedAt: true,
+        salesOrder: {
+          select: {
+            purchaseOrder: {
+              select: {
+                designTask: {
+                  select: {
+                    revisions: {
+                      where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
+                      select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, path: true, originalPath: true } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
+    if (!target || !attachment) throw new UserFacingError("File desain yang disetujui tidak ditemukan.");
+    if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diubah.");
+    const storage = createAdminClient().storage.from(DESIGN_BUCKET);
+    const originalPath = attachment.originalPath ?? `production-design-original/${attachment.id}.png`;
+    if (!attachment.originalPath) {
+      const snapshot = await storage.exists(originalPath);
+      if (snapshot.error && ![400, 404].includes(snapshot.error.status ?? 0)) {
+        console.error("Gagal memeriksa salinan desain awal.", { status: snapshot.error.status, statusCode: snapshot.error.statusCode });
+        throw new UserFacingError("Salinan desain awal belum dapat disimpan.");
+      }
+      if (!snapshot.data) {
+        const { data: original, error: originalError } = await storage.download(attachment.path);
+        if (originalError || !original) throw new UserFacingError("Desain awal tidak dapat dibuka.");
+        const { error: copyError } = await storage.upload(originalPath, new Uint8Array(await original.arrayBuffer()), { contentType: "image/png", upsert: false });
+        if (copyError && !(await storage.exists(originalPath)).data) {
+          console.error("Gagal menyimpan salinan desain awal.", { status: copyError.status, statusCode: copyError.statusCode });
+          throw new UserFacingError("Salinan desain awal belum dapat disimpan.");
+        }
+      }
+    }
+    const { error } = await storage.upload(attachment.path, bytes, { contentType: "image/png", upsert: true });
+    if (error) throw new UserFacingError("Gambar desain belum dapat disimpan.");
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.designAttachment.update({ where: { id: attachment.id }, data: { contentType: "image/png", sizeBytes: bytes.length, originalPath, annotations: annotations.data } });
+      await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_VERSION_SAVED", ["annotations"], { attachmentId: attachment.id });
+    });
+    revalidatePath("/detail-desain");
+    revalidatePath(`/crm/purchase-orders`);
+    return flashMessagePath(fallback, "notice", "Versi desain disimpan. Konfirmasikan untuk memasukkannya ke Produksi.");
+  });
+}
+
+export async function resetProductionDesignAction(formData: FormData) {
+  const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
+  return runRedirectingAction(fallback, async () => {
+    const actor = await requireActor(PRODUCTION_ROLES);
+    const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
+    if (!parsed.success) throw new UserFacingError("Work Order tidak valid.");
+    const target = await getPrismaClient().productionWorkOrder.findFirst({
+      where: { id: parsed.data.workOrderId, status: "ACTIVE" },
+      select: {
+        id: true,
+        designCompletedAt: true,
+        salesOrder: {
+          select: {
+            purchaseOrder: {
+              select: {
+                designTask: {
+                  select: {
+                    revisions: {
+                      where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
+                      select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, path: true, originalPath: true } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
+    if (!target || !attachment) throw new UserFacingError("File desain yang disetujui tidak ditemukan.");
+    if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diubah.");
+    let originalSize: number | undefined;
+    if (attachment.originalPath) {
+      const storage = createAdminClient().storage.from(DESIGN_BUCKET);
+      const { data: original, error: downloadError } = await storage.download(attachment.originalPath);
+      if (downloadError || !original) throw new UserFacingError("Desain awal tidak dapat dibuka.");
+      const originalBytes = new Uint8Array(await original.arrayBuffer());
+      const { error: uploadError } = await storage.upload(attachment.path, originalBytes, { contentType: "image/png", upsert: true });
+      if (uploadError) throw new UserFacingError("Desain awal belum dapat dipulihkan.");
+      originalSize = originalBytes.length;
+    }
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.designAttachment.update({ where: { id: attachment.id }, data: { annotations: Prisma.JsonNull, ...(originalSize === undefined ? {} : { contentType: "image/png", sizeBytes: originalSize }) } });
+      await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_RESET", ["annotations"], { attachmentId: attachment.id });
+    });
+    revalidatePath("/detail-desain");
+    revalidatePath("/crm/purchase-orders");
+    return flashMessagePath(fallback, "notice", "Perubahan desain dikembalikan ke desain awal.");
+  });
+}
+
+export async function sendProductionDesignAction(formData: FormData) {
+  const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
+  return runRedirectingAction(fallback, async () => {
+    const actor = await requireActor(PRODUCTION_ROLES);
+    const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
+    if (!parsed.success) throw new UserFacingError("Work Order tidak valid.");
+    const order = await getPrismaClient().productionWorkOrder.findUnique({
+      where: { id: parsed.data.workOrderId },
+      select: {
+        id: true,
+        designCompletedAt: true,
+        status: true,
+        salesOrder: { select: {
+          purchaseOrder: { select: {
+            designTask: { select: {
+              revisions: {
+                where: { status: "APPROVED" },
+                orderBy: { revision: "desc" },
+                take: 1,
+                select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, annotations: true, originalPath: true } } },
+              },
+            } },
+          } },
+        } },
+      },
+    });
+    const attachment = order?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
+    if (!order || !attachment || order.status !== "ACTIVE" || order.designCompletedAt || !designAnnotationsSchema.safeParse(attachment.annotations).success) throw new UserFacingError("Simpan versi desain dengan minimal satu keterangan sebelum memasukkannya ke Produksi.");
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.productionWorkOrder.update({ where: { id: order.id }, data: { designCompletedAt: new Date() } });
+      await productionAudit(tx, actor.id, order.id, "PRODUCTION_DESIGN_SENT", ["designCompletedAt"], { attachmentId: parsed.data.attachmentId });
+    });
+    if (attachment.originalPath) {
+      try {
+        const { error } = await createAdminClient().storage.from(DESIGN_BUCKET).remove([attachment.originalPath]);
+        if (error) console.error("Gagal menghapus gambar asli desain setelah masuk Produksi.");
+        else {
+          try { await getPrismaClient().designAttachment.update({ where: { id: attachment.id }, data: { originalPath: null } }); }
+          catch { console.error("Gambar asli desain sudah dihapus, tetapi status penyimpanannya belum diperbarui."); }
+        }
+      } catch { console.error("Gagal menghapus gambar asli desain setelah masuk Produksi."); }
+    }
+    revalidatePath("/detail-desain");
+    revalidatePath("/produksi");
+    return flashMessagePath("/detail-desain", "notice", "Work Order masuk ke kanban Produksi.");
+  });
 }
 
 async function productionAudit(
