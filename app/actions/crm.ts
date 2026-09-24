@@ -2408,6 +2408,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     const paidAt = jakartaDateTime(parsed.data.paidAt);
     if (!paidAt || paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak valid.");
+    const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
 
     await runDealTransaction(async (tx) => {
       const payment = await tx.dealPayment.findFirst({
