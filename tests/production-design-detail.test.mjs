@@ -72,6 +72,18 @@ test("editor anotasi mendukung zoom dan edit langsung pada kanvas", () => {
   assert.match(editor, /Gambar desain final/);
   assert.match(editor, /const \[isSavingVersion, startSavingVersion\] = useTransition\(\)/);
   assert.match(editor, /const \[isResetting, startResetting\] = useTransition\(\)/);
+  assert.match(editor, /const pointerButton = useRef<number \| null>\(null\)/);
+  assert.match(editor, /event\.evt\.button !== 0 \|\| pointerButton\.current !== 0/);
+  assert.match(editor, /if \(selectedId === note\.id\) editNote\(note\); else selectNote\(note\)/);
+  assert.match(editor, /if \(selectedId\) \{ setSelectedId\(null\); return; \}/);
+  assert.match(editor, /event\.target\.closest\("\[data-annotation-stage\]"\)/);
+  assert.match(editor, /<Rect ref=\{selectionOutline\} visible=\{false\} listening=\{false\} stroke=\{SELECTION_COLOR\}/);
+  assert.match(editor, /\(child as Konva\.Text\)\.getTextWidth\(\)/);
+  assert.match(editor, /outline\?\.hide\(\)/);
+  assert.match(editor, /event\.key === "Delete" \|\| event\.key === "Backspace"/);
   assert.match(editor, /onContextMenu=/);
+  assert.match(editor, /function openContextMenu/);
+  assert.doesNotMatch(editor, /disabled=\{isBusy \|\| !selectedId\}/);
+  assert.doesNotMatch(editor, /PRIMARY_ACTION_DELAY|schedulePrimaryAction/);
   assert.match(editor, /Hapus keterangan/);
 });
