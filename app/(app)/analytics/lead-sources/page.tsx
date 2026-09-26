@@ -114,6 +114,62 @@ export default async function LeadSourceRevenuePage({
         </Empty>
       ) : (
         <>
+          <section className="grid items-start gap-6 xl:grid-cols-3" aria-label="Pola pesanan">
+            <Card>
+              <CardHeader>
+                <CardTitle>Kategori paling sering diorder</CardTitle>
+                <CardDescription>Jenis pakaian berdasarkan Sales Order aktif pada {data.periodLabel}.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {data.categoryRows.length ? (
+                  <Table>
+                    <TableCaption className="sr-only">Jumlah Sales Order aktif untuk setiap jenis pakaian pada {data.periodLabel}.</TableCaption>
+                    <TableHeader><TableRow><TableHead>Jenis pakaian</TableHead><TableHead className="text-right">Order</TableHead></TableRow></TableHeader>
+                    <TableBody>{data.categoryRows.map((row) => <TableRow key={row.category}><TableCell className="font-medium">{row.category}</TableCell><TableCell className="text-right font-mono tabular-nums">{row.orderCount}</TableCell></TableRow>)}</TableBody>
+                  </Table>
+                ) : (
+                  <Empty className="min-h-48 border-0"><EmptyHeader><EmptyTitle>Belum ada kategori pesanan</EmptyTitle><EmptyDescription>Jenis pakaian akan muncul setelah Sales Order aktif tercatat pada periode ini.</EmptyDescription></EmptyHeader></Empty>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Kategori customer paling sering order</CardTitle>
+                <CardDescription>Jenis customer berdasarkan Sales Order aktif pada {data.periodLabel}.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {data.customerCategoryRows.length ? (
+                  <Table>
+                    <TableCaption className="sr-only">Jumlah Sales Order aktif untuk setiap jenis customer pada {data.periodLabel}.</TableCaption>
+                    <TableHeader><TableRow><TableHead>Jenis customer</TableHead><TableHead className="text-right">Order</TableHead></TableRow></TableHeader>
+                    <TableBody>{data.customerCategoryRows.map((row) => <TableRow key={row.categoryName}><TableCell className="font-medium">{row.categoryName}</TableCell><TableCell className="text-right font-mono tabular-nums">{row.orderCount}</TableCell></TableRow>)}</TableBody>
+                  </Table>
+                ) : (
+                  <Empty className="min-h-48 border-0"><EmptyHeader><EmptyTitle>Belum ada kategori customer</EmptyTitle><EmptyDescription>Jenis customer akan muncul setelah Sales Order aktif tercatat pada periode ini.</EmptyDescription></EmptyHeader></Empty>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Customer paling sering order</CardTitle>
+                <CardDescription>Diurutkan dari jumlah Sales Order aktif pada {data.periodLabel}.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {data.topCustomers.length ? (
+                  <Table>
+                    <TableCaption className="sr-only">Customer dengan jumlah Sales Order aktif terbanyak pada {data.periodLabel}.</TableCaption>
+                    <TableHeader><TableRow><TableHead className="w-14 text-center">Peringkat</TableHead><TableHead>Customer</TableHead><TableHead className="text-right">Order</TableHead></TableRow></TableHeader>
+                    <TableBody>{data.topCustomers.map((row, index) => <TableRow key={`${row.customerName}-${index}`}><TableCell className="text-center font-mono tabular-nums text-muted-foreground">{index + 1}</TableCell><TableCell className="font-medium">{row.customerName}</TableCell><TableCell className="text-right font-mono tabular-nums">{row.orderCount}</TableCell></TableRow>)}</TableBody>
+                  </Table>
+                ) : (
+                  <Empty className="min-h-48 border-0"><EmptyHeader><EmptyTitle>Belum ada customer dengan order aktif</EmptyTitle><EmptyDescription>Customer akan muncul setelah Sales Order aktif tercatat pada periode ini.</EmptyDescription></EmptyHeader></Empty>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+
           <Card>
             <CardHeader>
               <CardTitle>Perbandingan omzet</CardTitle>

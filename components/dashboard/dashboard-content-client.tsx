@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { MetricGroup, MetricItem } from "@/components/ui/metric";
-import { LazyBusinessTrendChart } from "@/components/dashboard/lazy-business-trend-chart";
 import { PIPELINE_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
 import type { ReactNode } from "react";
@@ -26,6 +25,17 @@ export type DashboardData = {
   dealCount: number;
   conversionRate: number;
   dealRevenue: string | null;
+  businessKpis: {
+    orderCount: number;
+    averageOrderValue: string;
+    newCustomerCount: number;
+    repeatCustomerCount: number;
+    repeatRate: number;
+    grossMargin: number | null;
+    costedOrderCount: number;
+    activeProductionCount: number;
+    overdueProductionCount: number;
+  } | null;
   overdue: number;
   dueToday: number;
   urgentActions: Array<{
@@ -88,7 +98,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
             <CardTitle id="sales-summary">Ringkasan hasil sales</CardTitle>
             <CardDescription>Omzet Deal bulan berjalan dan conversion rate seluruh waktu.</CardDescription>
           </CardHeader>
-          <MetricGroup className="rounded-none border-x-0 border-b-0 sm:grid-cols-2">
+          <MetricGroup className="rounded-none border-x-0 border-b-0 sm:grid-cols-2 xl:grid-cols-5">
             <MetricItem label="Omzet deal bulan ini" value={formatCurrency(data.dealRevenue)} icon={CircleDollarSign} tone="success" emphasis />
             <MetricItem
               label="Conversion rate"
@@ -97,6 +107,9 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
               emphasis
               meta={data.totalLeadCount > 0 ? `${data.dealCount} Deal dari ${data.totalLeadCount} lead` : "Belum ada lead untuk dihitung."}
             />
+            <MetricItem label="AOV" value={formatCurrency(data.businessKpis?.averageOrderValue)} meta={`${data.businessKpis?.orderCount ?? 0} order bulan ini`} />
+            <MetricItem label="Repeat rate" value={formatPercentage(data.businessKpis?.repeatRate ?? 0)} meta={`${data.businessKpis?.repeatCustomerCount ?? 0} customer repeat`} />
+            <MetricItem label="Gross margin" value={data.businessKpis?.grossMargin === null ? "-" : formatPercentage(data.businessKpis?.grossMargin ?? 0)} meta={data.businessKpis?.costedOrderCount ? `HPP lengkap pada ${data.businessKpis.costedOrderCount} order` : "HPP belum lengkap"} />
           </MetricGroup>
         </Card> : null}
         <Card className="gap-0 py-0">
@@ -124,6 +137,16 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
               <MetricItem label="Sisa pembayaran aktif" value={formatCurrency(data.financeSummary.outstandingAmount)} meta={`${data.financeSummary.outstandingOrderCount} order belum lunas`} icon={CircleDollarSign} tone="warning" emphasis />
             </MetricGroup>
           </Card>
+        </section>
+      ) : null}
+
+      {data.canViewFinancialData && data.businessKpis ? (
+        <section aria-labelledby="owner-summary">
+          <MetricGroup className="sm:grid-cols-3">
+            <MetricItem label="Customer baru bulan ini" value={data.businessKpis.newCustomerCount} />
+            <MetricItem label="Order sedang produksi" value={data.businessKpis.activeProductionCount} />
+            <MetricItem label="Order produksi terlambat" value={data.businessKpis.overdueProductionCount} tone="danger" />
+          </MetricGroup>
         </section>
       ) : null}
 
@@ -218,8 +241,6 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
           {PIPELINE_STAGES.map((stage) => <MetricItem key={stage} label={<OpportunityStatusBadge stage={stage} />} value={data.stageCounts[stage] ?? 0} className={STAGE_SUMMARY_CLASS[stage]} />)}
         </MetricGroup>
       </section>
-
-      {data.canViewFinancialData ? <LazyBusinessTrendChart /> : null}
 
       <section aria-labelledby="next-action-title">
         <Card>
