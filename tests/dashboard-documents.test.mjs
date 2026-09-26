@@ -70,5 +70,5 @@ test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
   assert.match(dataSource, /canViewFinancialData \? prisma\.salesOrder\.aggregate/);
   assert.match(dataSource, /dealRevenue: dealRevenue\?\._sum\.total\?\.toString\(\) \?\? null/);
   assert.match(dashboardSource, /\{data\.canViewFinancialData \? <Card/);
-  assert.match(dashboardSource, /\{data\.canViewFinancialData \? <LazyBusinessTrendChart \/> : null\}/);
+  assert.match(dashboardSource, /\{data\.canViewFinancialData && data\.businessKpis \? \(/);
 });
