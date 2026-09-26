@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { LoaderCircle, Minus, Plus, Redo2, RotateCcw, Save, Send, Trash2, Undo2 } from "lucide-react";
-import { Circle, Group, Image as KonvaImage, Layer, Line, Stage, Text } from "react-konva";
+import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from "react-konva";
 import type Konva from "konva";
 
 import { resetProductionDesignAction, saveProductionDesignAction, sendProductionDesignAction } from "@/app/actions/production";
@@ -19,18 +19,22 @@ const HEIGHT = 640;
 const MIN_ZOOM = 25;
 const MAX_ZOOM = 200;
 const ZOOM_STEP = 25;
+const SELECTION_COLOR = "#3b82f6";
 const copy = (notes: DesignAnnotation[]) => notes.map((note) => ({ ...note }));
 
 type InlineEditor = { id: string; value: string; newNote?: DesignAnnotation };
 
 export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, attachmentName, savedAnnotations, readOnly = false }: { workOrderId: string; taskId: string; attachmentId: string; attachmentName: string; savedAnnotations: DesignAnnotation[]; readOnly?: boolean }) {
   const stage = useRef<Konva.Stage>(null);
+  const selectionOutline = useRef<Konva.Rect>(null);
+  const calloutNodes = useRef(new Map<string, Konva.Group>());
   const input = useRef<HTMLInputElement>(null);
   const contextAction = useRef<HTMLButtonElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const notesRef = useRef(copy(savedAnnotations));
   const editorRef = useRef<InlineEditor | null>(null);
   const skipCanvasClick = useRef(false);
+  const pointerButton = useRef<number | null>(null);
   const drag = useRef<{ id: string; kind: "target" | "text"; x: number; y: number; pointerX: number; pointerY: number } | null>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [notes, setNotes] = useState(() => copy(savedAnnotations));
@@ -54,6 +58,41 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
   const scale = zoom / 100;
   const editorId = editor?.id;
 
+  const syncSelectionOutline = useCallback((id = selectedId) => {
+    const outline = selectionOutline.current;
+    const node = id ? calloutNodes.current.get(id) : undefined;
+    const layer = node?.getLayer();
+    if (!outline || !node || !layer || editorRef.current?.id === id) {
+      outline?.hide();
+      outline?.getLayer()?.batchDraw();
+      return;
+    }
+    const childBounds = node.getChildren((child) => child.isVisible()).map((child) => {
+      const bounds = child.getClientRect({ relativeTo: layer, skipShadow: true });
+      if (child.getClassName() === "Text") bounds.width = Math.min(bounds.width, (child as Konva.Text).getTextWidth());
+      return bounds;
+    });
+    const left = Math.min(...childBounds.map((bounds) => bounds.x));
+    const top = Math.min(...childBounds.map((bounds) => bounds.y));
+    const bounds = {
+      x: left,
+      y: top,
+      width: Math.max(...childBounds.map((bounds) => bounds.x + bounds.width)) - left,
+      height: Math.max(...childBounds.map((bounds) => bounds.y + bounds.height)) - top,
+    };
+    const padding = 6 / scale;
+    outline.setAttrs({
+      x: bounds.x - padding,
+      y: bounds.y - padding,
+      width: bounds.width + padding * 2,
+      height: bounds.height + padding * 2,
+      strokeWidth: 2 / scale,
+      visible: true,
+    });
+    outline.moveToTop();
+    layer.batchDraw();
+  }, [scale, selectedId]);
+
   useEffect(() => {
     const next = new window.Image();
     next.onload = () => setImage(next);
@@ -68,6 +107,10 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
   useEffect(() => {
     if (contextMenu) window.requestAnimationFrame(() => contextAction.current?.focus());
   }, [contextMenu]);
+
+  useEffect(() => {
+    syncSelectionOutline();
+  }, [editorId, notes, syncSelectionOutline]);
 
   useEffect(() => {
     const element = viewport.current;
@@ -102,8 +145,10 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
       const previous = current.at(-1);
       if (!previous) return current;
       setFuture((next) => [copy(notesRef.current), ...next].slice(0, 50));
-      notesRef.current = copy(previous);
-      setNotes(copy(previous));
+      const previousNotes = copy(previous);
+      notesRef.current = previousNotes;
+      setNotes(previousNotes);
+      setSelectedId((id) => id && previousNotes.some((note) => note.id === id) ? id : null);
       return current.slice(0, -1);
     });
   }
@@ -113,8 +158,10 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
       const next = current[0];
       if (!next) return current;
       setHistory((previous) => [...previous, copy(notesRef.current)].slice(-50));
-      notesRef.current = copy(next);
-      setNotes(copy(next));
+      const nextNotes = copy(next);
+      notesRef.current = nextNotes;
+      setNotes(nextNotes);
+      setSelectedId((id) => id && nextNotes.some((note) => note.id === id) ? id : null);
       return current.slice(1);
     });
   }
@@ -146,6 +193,15 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
     setEditor({ id: note.id, value: note.text });
   }
 
+  function openContextMenu(note: DesignAnnotation, event: { preventDefault(): void; clientX: number; clientY: number }) {
+    pointerButton.current = 2;
+    event.preventDefault();
+    commitInline();
+    setCanvasActive(true);
+    selectNote(note);
+    setContextMenu({ id: note.id, left: Math.min(event.clientX, window.innerWidth - 220), top: Math.min(event.clientY, window.innerHeight - 48) });
+  }
+
   function commitInline() {
     const current = editorRef.current;
     if (!current) return;
@@ -167,8 +223,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
     focusCanvas();
   }
 
-  function createAtPointer() {
-    const position = point();
+  function createAtPointer(position = point()) {
     if (!position || !isInsideImage(position.x, position.y) || notesRef.current.length >= 50) {
       if (notesRef.current.length >= 50) setError("Maksimal 50 keterangan dalam satu desain.");
       return;
@@ -189,6 +244,9 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
 
   function beginDrag(id: string, kind: "target" | "text", x: number, y: number) {
     const position = point();
+    const note = notesRef.current.find((item) => item.id === id);
+    if (note) selectNote(note);
+    setContextMenu(null);
     if (position) drag.current = { id, kind, x, y, pointerX: position.x, pointerY: position.y };
   }
 
@@ -197,6 +255,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
     const position = point();
     if (!current || !position) return;
     node.position({ x: Math.max(0, Math.min(WIDTH, current.x + position.x - current.pointerX)), y: Math.max(0, Math.min(HEIGHT, current.y + position.y - current.pointerY)) });
+    syncSelectionOutline(current.id);
   }
 
   function endDrag() {
@@ -243,13 +302,23 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
     const annotations = copy(notesRef.current);
     if (!stage.current || !annotations.length) return setError("Tambahkan minimal satu keterangan.");
     setError(null);
-    window.requestAnimationFrame(() => stage.current?.toCanvas({ pixelRatio: 1 / scale }).toBlob((blob) => {
-      if (!blob) return setError("Gambar desain belum dapat dibuat.");
-      const formData = new FormData();
-      formData.set("workOrderId", workOrderId); formData.set("attachmentId", attachmentId); formData.set("annotations", JSON.stringify(annotations));
-      formData.set("design", new File([blob], attachmentName.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" }));
-      startSavingVersion(async () => { await saveProductionDesignAction(formData); });
-    }, "image/png"));
+    window.requestAnimationFrame(() => {
+      const currentStage = stage.current;
+      if (!currentStage) return setError("Gambar desain belum dapat dibuat.");
+      const outline = selectionOutline.current;
+      const showOutlineAgain = outline?.visible() ?? false;
+      outline?.hide();
+      const canvas = currentStage.toCanvas({ pixelRatio: 1 / scale });
+      if (showOutlineAgain) outline?.show();
+      outline?.getLayer()?.batchDraw();
+      canvas.toBlob((blob) => {
+        if (!blob) return setError("Gambar desain belum dapat dibuat.");
+        const formData = new FormData();
+        formData.set("workOrderId", workOrderId); formData.set("attachmentId", attachmentId); formData.set("annotations", JSON.stringify(annotations));
+        formData.set("design", new File([blob], attachmentName.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" }));
+        startSavingVersion(async () => { await saveProductionDesignAction(formData); });
+      }, "image/png");
+    });
   }
 
   function send() {
@@ -267,7 +336,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
   }
 
   return <Card>
-    <CardHeader><CardTitle>{readOnly ? "Desain final" : "Anotasi"}: {attachmentName}</CardTitle><CardDescription id={`annotation-help-${attachmentId}`}>{readOnly ? "Desain sudah masuk Produksi dan hanya dapat dilihat." : "Klik gambar untuk menambahkan keterangan, klik keterangan untuk mengubahnya, dan seret titik atau teks untuk memindahkannya."}</CardDescription></CardHeader>
+    <CardHeader><CardTitle>{readOnly ? "Desain final" : "Anotasi"}: {attachmentName}</CardTitle><CardDescription id={`annotation-help-${attachmentId}`}>{readOnly ? "Desain sudah masuk Produksi dan hanya dapat dilihat." : "Klik gambar untuk menambahkan keterangan. Klik keterangan sekali untuk memilih, klik lagi untuk mengubah, klik kanan untuk menghapus, dan seret titik atau teks untuk memindahkan."}</CardDescription></CardHeader>
     <CardContent className="flex flex-col gap-4">
       {!readOnly ? <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
         <label className="flex flex-col gap-1 text-sm font-medium" htmlFor={`font-size-${attachmentId}`}>Ukuran teks<Input id={`font-size-${attachmentId}`} className="w-14" type="number" min={12} max={48} value={fontSize} onChange={(event) => updateFontSize(Number(event.currentTarget.value))} /></label>
@@ -278,21 +347,22 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
         </div>
       </div> : null}
       <div className="relative">
-        <div ref={viewport} className="h-[70vh] min-h-[28rem] overflow-auto rounded-md border bg-muted/30">
+        <div ref={viewport} className="h-[70vh] min-h-[28rem] overflow-auto rounded-md border bg-muted/30" onClick={(event) => { if (event.target instanceof Element && event.target.closest("[data-annotation-stage]")) return; setSelectedId(null); setContextMenu(null); }}>
           <div className="flex min-h-[28rem] min-w-full items-center justify-center p-8">
-            <div className="relative shrink-0" style={{ width: WIDTH * scale, height: HEIGHT * scale }}>
-              <Stage ref={stage} width={WIDTH * scale} height={HEIGHT * scale} scaleX={scale} scaleY={scale} tabIndex={readOnly ? -1 : 0} aria-label={readOnly ? "Gambar desain final" : "Kanvas anotasi desain"} aria-describedby={`annotation-help-${attachmentId}`} className={cn("max-w-none bg-white", readOnly ? "cursor-default" : "cursor-crosshair focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring")} onClick={readOnly ? undefined : () => { setCanvasActive(true); setContextMenu(null); if (skipCanvasClick.current) { skipCanvasClick.current = false; return; } if (editorRef.current) { commitInline(); return; } createAtPointer(); }} onMouseDown={readOnly ? undefined : () => { if (editorRef.current) { skipCanvasClick.current = true; commitInline(); } }} onBlur={() => setCanvasActive(false)}>
+            <div className="relative shrink-0" data-annotation-stage style={{ width: WIDTH * scale, height: HEIGHT * scale }}>
+              <Stage ref={stage} width={WIDTH * scale} height={HEIGHT * scale} scaleX={scale} scaleY={scale} tabIndex={readOnly ? -1 : 0} aria-label={readOnly ? "Gambar desain final" : "Kanvas anotasi desain"} aria-describedby={`annotation-help-${attachmentId}`} className={cn("max-w-none bg-white", readOnly ? "cursor-default" : "cursor-crosshair focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring")} onClick={readOnly ? undefined : (event) => { if (event.evt.button !== 0 || pointerButton.current !== 0) return; const clickPosition = point(); setCanvasActive(true); setContextMenu(null); if (skipCanvasClick.current) { skipCanvasClick.current = false; return; } if (editorRef.current) { commitInline(); return; } if (selectedId) { setSelectedId(null); return; } createAtPointer(clickPosition); }} onMouseDown={readOnly ? undefined : (event) => { pointerButton.current = event.evt.button; if (event.evt.button !== 0) return; if (editorRef.current) { skipCanvasClick.current = true; commitInline(); } }} onContextMenu={readOnly ? undefined : (event) => { pointerButton.current = 2; event.evt.preventDefault(); event.cancelBubble = true; }} onBlur={() => setCanvasActive(false)}>
                 <Layer>
                   {image ? <KonvaImage image={image} x={imageX} y={imageY} width={imageWidth} height={imageHeight} /> : null}
-                  {visibleNotes.map((note) => <Group key={note.id} cursor="pointer" onMouseDown={(event) => { event.cancelBubble = true; }} onClick={(event) => { event.cancelBubble = true; if (!editor?.newNote || editor.id !== note.id) editNote(note); }} onContextMenu={(event) => { event.evt.preventDefault(); event.cancelBubble = true; selectNote(note); setContextMenu({ id: note.id, left: Math.min(event.evt.clientX, window.innerWidth - 220), top: Math.min(event.evt.clientY, window.innerHeight - 48) }); }}>
+                  {visibleNotes.map((note) => <Group ref={(node) => { if (node) calloutNodes.current.set(note.id, node); else calloutNodes.current.delete(note.id); }} key={note.id} cursor="pointer" onMouseDown={(event) => { event.cancelBubble = true; pointerButton.current = event.evt.button; }} onClick={(event) => { event.cancelBubble = true; if (event.evt.button !== 0 || pointerButton.current !== 0) return; setCanvasActive(true); setContextMenu(null); if (selectedId === note.id) editNote(note); else selectNote(note); }} onContextMenu={(event) => { event.cancelBubble = true; openContextMenu(note, event.evt); }}>
                     <Line points={[note.targetX, note.targetY, note.textX - 24, note.targetY, note.textX - 24, note.textY + note.fontSize / 2, note.textX - 8, note.textY + note.fontSize / 2]} stroke={RED} strokeWidth={3} lineJoin="miter" lineCap="square" />
-                    <Circle x={note.targetX} y={note.targetY} radius={selectedId === note.id ? 8 : 6} fill={RED} draggable onDragStart={() => beginDrag(note.id, "target", note.targetX, note.targetY)} onDragMove={(event) => moveDrag(event.target)} onDragEnd={endDrag} />
+                    <Circle x={note.targetX} y={note.targetY} radius={6} fill={RED} draggable onDragStart={() => beginDrag(note.id, "target", note.targetX, note.targetY)} onDragMove={(event) => moveDrag(event.target)} onDragEnd={endDrag} />
                     {editor?.id === note.id ? null : <Text x={note.textX} y={note.textY} text={note.text} fill={RED} fontStyle="bold" fontSize={note.fontSize} width={250} wrap="word" draggable onDragStart={() => beginDrag(note.id, "text", note.textX, note.textY)} onDragMove={(event) => moveDrag(event.target)} onDragEnd={endDrag} />}
                   </Group>)}
+                  {!readOnly ? <Rect ref={selectionOutline} visible={false} listening={false} stroke={SELECTION_COLOR} /> : null}
                 </Layer>
               </Stage>
               <div aria-hidden="true" className="pointer-events-none absolute border-2 border-foreground/70" style={{ left: imageX * scale, top: imageY * scale, width: imageWidth * scale, height: imageHeight * scale }} />
-              {!readOnly && activeEditorNote && editor ? <Input ref={input} value={editor.value} onChange={(event) => setEditor({ ...editor, value: event.currentTarget.value.toUpperCase() })} onBlur={commitInline} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitInline(); } if (event.key === "Escape") { event.preventDefault(); cancelInline(); } }} maxLength={120} aria-label="Keterangan callout" className="absolute border-destructive bg-background font-bold text-destructive shadow-md" style={{ left: activeEditorNote.textX * scale, top: activeEditorNote.textY * scale, width: Math.max(140, 250 * scale), height: Math.max(32, (activeEditorNote.fontSize + 14) * scale), fontSize: Math.max(12, activeEditorNote.fontSize * scale) }} /> : null}
+              {!readOnly && activeEditorNote && editor ? <Input ref={input} value={editor.value} onChange={(event) => setEditor({ ...editor, value: event.currentTarget.value.toUpperCase() })} onBlur={commitInline} onContextMenu={(event) => openContextMenu(activeEditorNote, event)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitInline(); } if (event.key === "Escape") { event.preventDefault(); cancelInline(); } }} maxLength={120} aria-label="Keterangan callout" className="absolute border-destructive bg-background font-bold text-destructive shadow-md" style={{ left: activeEditorNote.textX * scale, top: activeEditorNote.textY * scale, width: Math.max(140, 250 * scale), height: Math.max(32, (activeEditorNote.fontSize + 14) * scale), fontSize: Math.max(12, activeEditorNote.fontSize * scale) }} /> : null}
             </div>
           </div>
         </div>

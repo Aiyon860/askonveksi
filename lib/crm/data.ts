@@ -911,6 +911,10 @@ export async function getSalesDashboardData() {
     latestInvoices,
     monthMoneyIn,
     activeOutstanding,
+    monthOrders,
+    newCustomerCount,
+    activeProductionCount,
+    overdueProductionCount,
   ] = await Promise.all([
     prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
     canViewFinancialData ? prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }) : null,
@@ -972,8 +976,21 @@ export async function getSalesDashboardData() {
           where: { salesOrder: { status: "ACTIVE" }, outstandingAmount: { gt: 0 } },
           _sum: { outstandingAmount: true },
           _count: true,
-        })
+      })
       : null,
+    canViewFinancialData
+      ? prisma.salesOrder.findMany({
+          where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } },
+          select: {
+            total: true,
+            opportunity: { select: { customerId: true } },
+            cost: { select: { kain: true, zipper: true, jahit: true, pres: true, dtfPlastisol: true, bordir: true, lainnya: true } },
+          },
+        })
+      : [],
+    prisma.customer.count({ where: { createdAt: { gte: monthStart, lt: nextMonth }, archivedAt: null } }),
+    prisma.productionWorkOrder.count({ where: { status: "ACTIVE" } }),
+    prisma.productionWorkOrder.count({ where: { status: "ACTIVE", deadline: { lt: start } } }),
   ]);
   const stageCounts = Object.fromEntries(
     stageGroups.map((group) => [group.stage, group._count]),
@@ -983,6 +1000,29 @@ export async function getSalesDashboardData() {
     0,
   );
   const dealCount = stageCounts.DEAL ?? 0;
+  const monthCustomerIds = [...new Set(monthOrders.map((order) => order.opportunity.customerId))];
+  const customerOrderHistory = monthCustomerIds.length
+    ? await prisma.salesOrder.findMany({
+        where: { status: "ACTIVE", opportunity: { customerId: { in: monthCustomerIds } } },
+        select: { opportunity: { select: { customerId: true } } },
+      })
+    : [];
+  const customerOrderCounts = customerOrderHistory.reduce((counts, order) => {
+    counts.set(order.opportunity.customerId, (counts.get(order.opportunity.customerId) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  const repeatCustomerCount = monthCustomerIds.filter((id) => (customerOrderCounts.get(id) ?? 0) > 1).length;
+  const costFields = ["kain", "zipper", "jahit", "pres", "dtfPlastisol", "bordir", "lainnya"] as const;
+  const costedOrders = monthOrders.filter((order) => {
+    const cost = order.cost;
+    return cost && costFields.every((field) => cost[field] !== null);
+  });
+  const costedRevenue = costedOrders.reduce((total, order) => total.plus(order.total), new Prisma.Decimal(0));
+  const grossProfit = costedOrders.reduce((total, order) => {
+    const cost = order.cost;
+    if (!cost) return total;
+    return total.plus(order.total).sub(costFields.reduce((sum, field) => sum.plus(cost[field] ?? 0), new Prisma.Decimal(0)));
+  }, new Prisma.Decimal(0));
 
   return {
     canViewFinancialData,
@@ -991,6 +1031,17 @@ export async function getSalesDashboardData() {
     dealCount,
     conversionRate: calculateConversionRate(dealCount, totalLeadCount),
     dealRevenue: dealRevenue?._sum.total?.toString() ?? null,
+    businessKpis: canViewFinancialData ? {
+      orderCount: monthOrders.length,
+      averageOrderValue: monthOrders.length ? (dealRevenue?._sum.total ?? new Prisma.Decimal(0)).div(monthOrders.length).toString() : "0",
+      newCustomerCount,
+      repeatCustomerCount,
+      repeatRate: monthCustomerIds.length ? repeatCustomerCount / monthCustomerIds.length : 0,
+      grossMargin: costedRevenue.isZero() ? null : grossProfit.div(costedRevenue).toNumber(),
+      costedOrderCount: costedOrders.length,
+      activeProductionCount,
+      overdueProductionCount,
+    } : null,
     overdue,
     dueToday,
     urgentActions,
@@ -1034,6 +1085,21 @@ type LeadSourceRevenueQueryRow = {
   revenue: string;
 };
 
+type OrderCategoryQueryRow = {
+  category: "JERSEY" | "NON_JERSEY" | null;
+  orderCount: number;
+};
+
+type CustomerCategoryQueryRow = {
+  categoryName: string;
+  orderCount: number;
+};
+
+type TopCustomerQueryRow = {
+  customerName: string;
+  orderCount: number;
+};
+
 type AnalyticsReportParams = {
   mode?: string | string[];
   from?: string | string[];
@@ -1059,6 +1125,7 @@ function analyticsReportLabel(mode: AnalyticsReportMode, label: string) {
 export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
   await requireActor(ANALYTICS_ROLES);
   const report = parseAnalyticsReportParams(params);
+  const prisma = getPrismaClient();
   const leadDateCondition = report.start && report.end
     ? Prisma.sql`WHERE o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end}`
     : Prisma.empty;
@@ -1066,7 +1133,8 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
     ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end}`
     : Prisma.empty;
 
-  const rows = await getPrismaClient().$queryRaw<LeadSourceRevenueQueryRow[]>(Prisma.sql`
+  const [rows, categoryRows, customerCategoryRows, topCustomers] = await Promise.all([
+    prisma.$queryRaw<LeadSourceRevenueQueryRow[]>(Prisma.sql`
     WITH lead_totals AS (
       SELECT
         o."leadSourceId",
@@ -1104,7 +1172,39 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
     LEFT JOIN lead_totals lt ON lt."leadSourceId" IS NOT DISTINCT FROM sr."sourceId"
     LEFT JOIN deal_totals dt ON dt."leadSourceId" IS NOT DISTINCT FROM sr."sourceId"
     ORDER BY COALESCE(dt.revenue, 0) DESC, COALESCE(lt."leadCount", 0) DESC, sr."sourceName" ASC
-  `);
+    `),
+    prisma.$queryRaw<OrderCategoryQueryRow[]>(Prisma.sql`
+      SELECT po."garmentType"::text AS category, COUNT(*)::int AS "orderCount"
+      FROM "SalesOrder" so
+      INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
+      WHERE so."status" = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY po."garmentType"
+      ORDER BY "orderCount" DESC, category ASC NULLS LAST
+    `),
+    prisma.$queryRaw<CustomerCategoryQueryRow[]>(Prisma.sql`
+      SELECT ct.name AS "categoryName", COUNT(*)::int AS "orderCount"
+      FROM "SalesOrder" so
+      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
+      INNER JOIN "Customer" c ON c.id = o."customerId"
+      INNER JOIN "CustomerType" ct ON ct.id = c."customerTypeId"
+      WHERE so."status" = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY ct.id, ct.name
+      ORDER BY "orderCount" DESC, "categoryName" ASC
+    `),
+    prisma.$queryRaw<TopCustomerQueryRow[]>(Prisma.sql`
+      SELECT COALESCE(c."companyName", c.name) AS "customerName", COUNT(*)::int AS "orderCount"
+      FROM "SalesOrder" so
+      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
+      INNER JOIN "Customer" c ON c.id = o."customerId"
+      WHERE so."status" = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY c.id, c."companyName", c.name
+      ORDER BY "orderCount" DESC, "customerName" ASC
+      LIMIT 10
+    `),
+  ]);
 
   const totals = rows.reduce(
     (result, row) => ({
@@ -1124,11 +1224,123 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
     },
     periodLabel: analyticsReportLabel(report.mode, report.range.label),
     rows,
+    categoryRows: categoryRows.map((row) => ({
+      category: row.category === "JERSEY" ? "Jersey" : row.category === "NON_JERSEY" ? "Non-jersey" : "Belum ditentukan",
+      orderCount: row.orderCount,
+    })),
+    customerCategoryRows,
+    topCustomers,
     totals: {
       leadCount: totals.leadCount,
       dealCount: totals.dealCount,
       revenue: totals.revenue.toString(),
     },
+  };
+}
+
+type AnalyticsProductRow = {
+  productName: string;
+  orderCount: number;
+  quantity: number;
+  revenue: string;
+  hpp: string;
+  costedOrderCount: number;
+};
+
+type AnalyticsCustomerRow = {
+  customerName: string;
+  orderCount: number;
+  revenue: string;
+};
+
+type AnalyticsPicRow = {
+  picName: string;
+  leadCount: number;
+  dealCount: number;
+  revenue: string;
+};
+
+export async function getAnalyticsOverviewData(params: AnalyticsReportParams) {
+  await requireActor(ANALYTICS_ROLES);
+  const report = parseAnalyticsReportParams(params);
+  const prisma = getPrismaClient();
+  const opportunityWhere = report.start && report.end ? { createdAt: { gte: report.start, lt: report.end } } : {};
+  const orderWhere = report.start && report.end ? { status: "ACTIVE" as const, acceptedAt: { gte: report.start, lt: report.end } } : { status: "ACTIVE" as const };
+  const activityWhere = report.start && report.end ? { occurredAt: { gte: report.start, lt: report.end } } : {};
+  const orderDateCondition = report.start && report.end
+    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end}`
+    : Prisma.empty;
+
+  const [leadCount, chatCount, followUpCount, negotiationCount, quotationCount, dpCount, orderCount, paidOrderCount, productRows, customerRows, picRows, overdueFollowUps, dueTodayFollowUps] = await Promise.all([
+    prisma.opportunity.count({ where: opportunityWhere }),
+    prisma.communicationActivity.groupBy({ by: ["opportunityId"], where: { ...activityWhere, kind: "COMMUNICATION", opportunityId: { not: null } }, _count: true }).then((rows) => rows.length),
+    prisma.opportunity.count({ where: { ...opportunityWhere, stage: { in: ["FOLLOW_UP", "NEGOSIASI", "DEAL"] } } }),
+    prisma.opportunity.count({ where: { ...opportunityWhere, stage: { in: ["NEGOSIASI", "DEAL"] } } }),
+    prisma.purchaseOrder.count({ where: report.start && report.end ? { createdAt: { gte: report.start, lt: report.end } } : {} }),
+    prisma.dealPayment.count({ where: report.start && report.end ? { paidAt: { gte: report.start, lt: report.end }, kind: "DP" } : { kind: "DP" } }),
+    prisma.salesOrder.count({ where: orderWhere }),
+    prisma.dealPayment.count({ where: { ...((report.start && report.end) ? { salesOrder: { ...orderWhere } } : { salesOrder: orderWhere }), outstandingAmount: { lte: 0 } } }),
+    prisma.$queryRaw<AnalyticsProductRow[]>(Prisma.sql`
+      SELECT
+        po."productName" AS "productName",
+        COUNT(DISTINCT so.id)::int AS "orderCount",
+        COALESCE(SUM(items.quantity), 0)::int AS quantity,
+        COALESCE(SUM(so.total), 0)::text AS revenue,
+        COALESCE(SUM(CASE WHEN cost.kain IS NOT NULL AND cost.zipper IS NOT NULL AND cost.jahit IS NOT NULL AND cost.pres IS NOT NULL AND cost."dtfPlastisol" IS NOT NULL AND cost.bordir IS NOT NULL AND cost.lainnya IS NOT NULL THEN cost.kain + cost.zipper + cost.jahit + cost.pres + cost."dtfPlastisol" + cost.bordir + cost.lainnya ELSE 0 END), 0)::text AS hpp,
+        COUNT(*) FILTER (WHERE cost.kain IS NOT NULL AND cost.zipper IS NOT NULL AND cost.jahit IS NOT NULL AND cost.pres IS NOT NULL AND cost."dtfPlastisol" IS NOT NULL AND cost.bordir IS NOT NULL AND cost.lainnya IS NOT NULL)::int AS "costedOrderCount"
+      FROM "SalesOrder" so
+      INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
+      INNER JOIN (SELECT "salesOrderId", SUM(quantity)::int AS quantity FROM "SalesOrderItem" GROUP BY "salesOrderId") items ON items."salesOrderId" = so.id
+      LEFT JOIN "SalesOrderCost" cost ON cost."salesOrderId" = so.id
+      WHERE so.status = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY po."productName"
+      ORDER BY COALESCE(SUM(so.total), 0) DESC, po."productName" ASC
+      LIMIT 10
+    `),
+    prisma.$queryRaw<AnalyticsCustomerRow[]>(Prisma.sql`
+      SELECT COALESCE(c."companyName", c.name) AS "customerName", COUNT(*)::int AS "orderCount", COALESCE(SUM(so.total), 0)::text AS revenue
+      FROM "SalesOrder" so
+      INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
+      INNER JOIN "Customer" c ON c.id = o."customerId"
+      WHERE so.status = 'ACTIVE'
+      ${orderDateCondition}
+      GROUP BY c.id, c."companyName", c.name
+      ORDER BY "orderCount" DESC, revenue DESC, "customerName" ASC
+      LIMIT 10
+    `),
+    prisma.$queryRaw<AnalyticsPicRow[]>(Prisma.sql`
+      SELECT
+        u.name AS "picName",
+        COUNT(DISTINCT o.id)::int AS "leadCount",
+        COUNT(DISTINCT so.id)::int AS "dealCount",
+        COALESCE(SUM(so.total), 0)::text AS revenue
+      FROM "AppUser" u
+      INNER JOIN "Opportunity" o ON o."salesPicId" = u.id
+      LEFT JOIN "SalesOrder" so ON so."opportunityId" = o.id AND so.status = 'ACTIVE' ${orderDateCondition}
+      WHERE u.role = 'ADMIN_CUSTOMER' AND u."isActive" = true
+      ${report.start && report.end ? Prisma.sql`AND o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end}` : Prisma.empty}
+      GROUP BY u.id, u.name
+      ORDER BY revenue DESC, "leadCount" DESC, "picName" ASC
+    `),
+    prisma.opportunity.count({ where: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] }, nextActionAt: { lt: new Date() } } }),
+    prisma.opportunity.count({ where: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] }, nextActionAt: { gte: jakartaDayBounds().start, lt: jakartaDayBounds().tomorrow } } }),
+  ]);
+
+  const funnel = [
+    ["Lead", leadCount], ["Chat", chatCount], ["Follow-up", followUpCount], ["Quotation", quotationCount],
+    ["Negosiasi", negotiationCount], ["DP", dpCount], ["Sales Order", orderCount], ["Lunas", paidOrderCount],
+  ].map(([label, count]) => ({ label: String(label), count: Number(count), conversion: leadCount ? calculateConversionRate(Number(count), leadCount) : 0 }));
+
+  return {
+    mode: report.mode,
+    range: { from: report.range.from, to: report.range.to, label: report.range.label },
+    periodLabel: analyticsReportLabel(report.mode, report.range.label),
+    funnel,
+    productRows,
+    customerRows,
+    picRows,
+    followUp: { overdue: overdueFollowUps, dueToday: dueTodayFollowUps },
   };
 }
 

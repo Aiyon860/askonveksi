@@ -56,6 +56,7 @@ const ownerMasterItems = [
 ] as const;
 
 const analyticsItems = [
+  { href: "/analytics", label: "Ringkasan", icon: BarChart3 },
   { href: "/analytics/lead-sources", label: "Sumber & omzet", icon: Waypoints },
 ] as const;
 
@@ -120,7 +121,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
 
   const isDeveloper = role === "DEVELOPER";
   const canManageMasterData = isDeveloper || role === "OWNER";
-  const canViewAnalytics = isDeveloper || role === "OWNER";
+  const canViewAnalytics = isDeveloper || role === "OWNER" || role === "KEUANGAN";
   const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
   const canViewDashboard = canViewCrm || role === "KEUANGAN";
   const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";

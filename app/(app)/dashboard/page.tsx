@@ -117,27 +117,6 @@ function DashboardSkeleton() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2" aria-hidden="true">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-36" />
-            <Skeleton className="h-4 w-72 max-w-full" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-80 w-full" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-72 max-w-full" />
-          </CardHeader>
-          <CardContent>
-            <ListPreviewSkeleton rows={5} />
-          </CardContent>
-        </Card>
-      </section>
     </>
   );
 }
