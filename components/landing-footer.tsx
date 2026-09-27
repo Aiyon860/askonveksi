@@ -2,21 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { LandingReveal } from "@/components/landing-motion";
-
-const footerLinks = [
-  { href: "#beranda", label: "Beranda" },
-  { href: "#tentang-kami", label: "Tentang Kami" },
-  { href: "#produk", label: "Produk" },
-  { href: "#testimoni", label: "Testimoni" },
-  { href: "#kontak", label: "Kontak" },
-] as const;
+import { LANDING_FOOTER_LINKS } from "@/lib/navigation";
 
 export function LandingFooter() {
   return (
     <footer className="bg-[#071d32] text-white">
       <div className="mx-auto w-[90%] py-7 sm:py-8">
         <LandingReveal className="flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
-          <Link href="#beranda" aria-label="Askonveksi, kembali ke beranda" className="flex w-fit items-center gap-3 rounded-landing-control outline-none focus-visible:ring-2 focus-visible:ring-white/80">
+          <Link href="/#beranda" aria-label="Askonveksi, kembali ke beranda" className="flex w-fit items-center gap-3 rounded-landing-control outline-none focus-visible:ring-2 focus-visible:ring-white/80">
             <Image src="/brand/askonveksi-mark.png" alt="" width={494} height={410} className="h-10 w-auto object-contain" />
             <span className="leading-none">
               <span className="block text-base font-semibold tracking-[-0.02em]">Askonveksi</span>
@@ -26,7 +19,7 @@ export function LandingFooter() {
 
           <nav aria-label="Navigasi footer">
             <ul className="flex flex-wrap gap-x-6 gap-y-2 lg:justify-center">
-              {footerLinks.map((link) => (
+              {LANDING_FOOTER_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link href={link.href} className="inline-flex min-h-11 items-center text-sm font-medium text-white/75 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                     {link.label}

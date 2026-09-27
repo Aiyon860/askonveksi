@@ -9,6 +9,7 @@ import { LandingNavbar } from "@/components/landing-navbar";
 import { LandingProcess } from "@/components/landing-process";
 import { LandingProducts } from "@/components/landing-products";
 import { LandingTestimonials } from "@/components/landing-testimonials";
+import { LandingWhatsAppFab } from "@/components/landing-whatsapp-fab";
 import { LandingWhy } from "@/components/landing-why";
 import { ASKONVEKSI_WHATSAPP } from "@/lib/contact";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
@@ -103,6 +104,7 @@ export default function HomePage() {
         <LandingTestimonials />
         <LandingCta />
         <LandingFooter />
+        <LandingWhatsAppFab />
       </main>
       <Script
         src="https://www.googletagmanager.com/gtag/js?id=G-Y62NZQ54D0"

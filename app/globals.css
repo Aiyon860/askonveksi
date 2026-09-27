@@ -15,6 +15,8 @@
   --color-landing-muted: var(--landing-muted);
   --color-landing-ring: var(--landing-ring);
   --color-landing-signal: var(--landing-signal);
+  --color-landing-whatsapp: var(--landing-whatsapp);
+  --color-landing-whatsapp-hover: var(--landing-whatsapp-hover);
   --color-landing-text: var(--landing-text);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -94,6 +96,8 @@
   --landing-nav-radius: 12px;
   --landing-ring: #89bae8;
   --landing-signal: #00c950;
+  --landing-whatsapp: #25d366;
+  --landing-whatsapp-hover: #1fbe5b;
   --landing-pin: #d94b58;
   --landing-text: #0a0a0a;
   --background: oklch(0.985 0 0);
@@ -179,6 +183,34 @@
   opacity: 0.7;
   content: "";
   transform: translateX(-50%);
+}
+
+.landing-fab-ping {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--landing-whatsapp) 45%, transparent);
+  animation: landing-fab-ping 2.4s cubic-bezier(0, 0, 0.2, 1) 2s infinite;
+}
+
+@keyframes landing-fab-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+
+  70%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-fab-ping {
+    animation: none;
+  }
 }
 
 .landing-clients-track-left {
