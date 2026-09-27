@@ -1,6 +1,6 @@
 ---
 name: "ERM Askonveksi"
-description: "Ruang kendali operasional konveksi yang tenang, presisi, cepat dipindai, dan memakai biru sebagai aksen kerja."
+description: "Ruang kendali operasional konveksi yang tenang, presisi, cepat dipindai, dengan warna semantik sebagai sinyal kerja."
 colors:
   tinta-operasional: "oklch(0.145 0 0)"
   kertas-kerja: "oklch(1 0 0)"
@@ -15,6 +15,10 @@ colors:
   ruang-gelap: "oklch(0.145 0 0)"
   panel-gelap: "oklch(0.205 0 0)"
   aksen-biru: "oklch(0.47 0.19 258)"
+  sukses: "oklch(0.46 0.12 151)"
+  peringatan: "oklch(0.52 0.13 72)"
+  informasi: "oklch(0.47 0.13 240)"
+  koral-masalah: "oklch(0.55 0.19 27)"
 typography:
   title:
     fontFamily: "Inter, Arial, sans-serif"
@@ -111,7 +115,7 @@ components:
 
 **Creative North Star: "Ruang Kendali Konveksi"**
 
-ERM Askonveksi terasa seperti ruang kendali yang tenang: informasi operasional disusun agar status, angka, dan tindakan dapat dikenali tanpa kebisingan visual. Palet netral dengan satu aksen biru fungsional, tipografi sans yang lugas, serta kepadatan komponen yang ringkas menjadikan data sebagai pusat perhatian.
+ERM Askonveksi terasa seperti ruang kendali yang tenang: informasi operasional disusun agar status, angka, dan tindakan dapat dikenali tanpa kebisingan visual. Kanvas putih dan biru kerja tetap menjadi dasar; hijau, amber, koral, dan biru muda menandai hasil, perhatian, masalah, dan informasi operasional secara terkendali.
 
 Sistem ini tidak mengejar kesan dekoratif. Karakternya profesional, presisi, dan terkendali, tetapi tetap membumi untuk pengguna lintas divisi. Identitas muncul melalui disiplin hierarki, konsistensi status, dan ritme kerja—bukan melalui ornamen atau warna yang belum memiliki dasar merek.
 
@@ -125,7 +129,7 @@ Sistem ini tidak mengejar kesan dekoratif. Karakternya profesional, presisi, dan
 
 ## Colors
 
-Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penanda**. Perbedaan terang-gelap membangun hierarki, sementara biru menunjukkan tindakan atau pilihan utama dan warna status dipakai dalam bidang kecil.
+Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penanda**. Perbedaan terang-gelap membangun hierarki, sementara biru menunjukkan tindakan atau pilihan utama dan warna status dipakai pada ringkasan, badge, progres, grafik, serta keadaan kosong.
 
 ### Primary
 
@@ -137,6 +141,10 @@ Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penand
 
 - **Destruktif:** khusus untuk kesalahan, validasi gagal, dan tindakan yang berpotensi merusak data.
 - **Aksen Biru:** identitas kerja yang dipakai konsisten pada navigasi dan kontrol, bukan sebagai sapuan dekoratif pada bidang besar.
+- **Sukses:** hijau untuk pekerjaan selesai, hasil positif, dan omzet.
+- **Peringatan:** amber untuk pekerjaan tertunda atau yang memerlukan perhatian.
+- **Informasi:** biru muda untuk status baru serta informasi operasional.
+- **Koral Masalah:** untuk keterlambatan, perbaikan, dan kegagalan.
 
 ### Neutral
 
@@ -150,6 +158,8 @@ Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penand
 **The Blue Discipline Rule.** Bangun hierarki utama melalui terang-gelap, tipografi, jarak, dan struktur. Biru menandai tindakan, pilihan, fokus, atau data utama; jangan memenuhi banyak panel dengan biru sekaligus.
 
 **The Exception Color Rule.** Warna destruktif hanya muncul ketika maknanya benar-benar destruktif atau bermasalah, bukan sebagai cara menarik perhatian umum.
+
+**The Semantic Tint Rule.** Gunakan pasangan surface lembut dan foreground berkontras untuk status dan ringkasan. Tabel, formulir, dan kartu kerja tetap putih agar data harian mudah dipindai; tint tidak menjadi bidang warna besar atau pembeda modul.
 
 ## Typography
 

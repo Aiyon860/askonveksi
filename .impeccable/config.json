@@ -60,6 +60,12 @@
         "value": "1.125rem",
         "createdAt": "2026-09-13T14:13:28.197Z",
         "reason": "DESIGN-LANDING.md explicitly defines 18px body text, equivalent to 1.125rem, for the responsive About description"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgb(0 0 0 / 0.7)",
+        "createdAt": "2026-09-24T07:29:43.271Z",
+        "reason": "User requested a black transparent proof-preview backdrop."
       }
     ]
   }

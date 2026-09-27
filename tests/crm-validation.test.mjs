@@ -260,9 +260,9 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
 
   const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
-  assert.match(invoiceFormSource, /profitPercent[^\n]*defaultValue=\{values\?\.profitPercent \?\? ""\}/);
   assert.match(invoiceFormSource, /discountPercent[^\n]*defaultValue=\{values\?\.discountPercent \?\? ""\}/);
-  assert.match(actionSource, /profitPercent: formValue\(formData, "profitPercent"\) \|\| "0"/);
+  assert.doesNotMatch(invoiceFormSource, /profitPercent/);
+  assert.doesNotMatch(actionSource, /profitPercent: formValue/);
   assert.match(actionSource, /discountPercent: formValue\(formData, "discountPercent"\) \|\| "0"/);
 });
 
@@ -415,8 +415,8 @@ test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
 
 test("jadwal DP menampilkan nominal pecahan dan dapat mengisi sisa tepat", async () => {
   const source = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
-  assert.match(source, /const totalAmount = roundToTens\(Number\(total\)\)/);
-  assert.match(source, /return roundToTens\(valueType === "PERCENTAGE"/);
+  assert.match(source, /const totalAmount = Number\(total\)/);
+  assert.match(source, /valueType === "PERCENTAGE" \? roundPaymentAmount/);
   assert.match(source, /function fillTermRemainder\(key: string\)/);
   assert.match(source, /onClick=\{\(\) => fillTermRemainder\(terms\[terms\.length - 1\]\.key\)\}/);
 });
@@ -680,7 +680,8 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.match(dataSource, /requireActor\(FINANCE_ROLES\)/);
   assert.match(dataSource, /mode === "range"/);
   assert.match(dataSource, /outstandingAmount/);
-  assert.match(pageSource, /Laba Kotor/);
+  assert.match(pageSource, /Total HPP/);
+  assert.match(pageSource, /Status HPP/);
   assert.doesNotMatch(pageSource, /Status laporan/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
   assert.match(pageSource, /getIncome/);

@@ -12,7 +12,7 @@ export async function getProductionBoard(route: ProductionRoute) {
   const [rows, total] = await Promise.all([
     prisma.productionWorkOrder.findMany({
       relationLoadStrategy: "join",
-      where: { route, status: { not: "CANCELLED" } },
+      where: { route, status: { not: "CANCELLED" }, designCompletedAt: { not: null } },
       select: {
         id: true,
         workOrderNo: true,
@@ -38,7 +38,7 @@ export async function getProductionBoard(route: ProductionRoute) {
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       take: 500,
     }),
-    prisma.productionWorkOrder.count({ where: { route, status: { not: "CANCELLED" } } }),
+    prisma.productionWorkOrder.count({ where: { route, status: { not: "CANCELLED" }, designCompletedAt: { not: null } } }),
   ]);
 
   return {
@@ -78,7 +78,35 @@ export async function getProductionDetail(id: string) {
       completedAt: true,
       cancelledAt: true,
       createdAt: true,
-      salesOrder: { select: { id: true, salesOrderNo: true, snapshotCustomerName: true, acceptedAt: true } },
+      salesOrder: {
+        select: {
+          id: true,
+          salesOrderNo: true,
+          snapshotCustomerName: true,
+          acceptedAt: true,
+          purchaseOrder: {
+            select: {
+              designTask: {
+                select: {
+                  id: true,
+                  revisions: {
+                    where: { status: "APPROVED" },
+                    orderBy: { revision: "desc" },
+                    take: 1,
+                    select: {
+                      attachments: {
+                        where: { contentType: "image/png" },
+                        orderBy: { createdAt: "asc" },
+                        select: { id: true, originalName: true, contentType: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       steps: {
         select: {
           id: true,

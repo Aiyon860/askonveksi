@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getCurrentActor } from "@/lib/auth/session";
 
 function ListPreviewSkeleton({ rows }: { rows: number }) {
   return (
@@ -116,42 +117,24 @@ function DashboardSkeleton() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2" aria-hidden="true">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-36" />
-            <Skeleton className="h-4 w-72 max-w-full" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-80 w-full" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-72 max-w-full" />
-          </CardHeader>
-          <CardContent>
-            <ListPreviewSkeleton rows={5} />
-          </CardContent>
-        </Card>
-      </section>
     </>
   );
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const actor = await getCurrentActor();
+  const canOpenFollowUp = actor?.role === "OWNER" || actor?.role === "ADMIN_CUSTOMER";
+
   return (
     <>
       <PageHeader
         title="Dashboard sales"
         description="Ringkasan CRM yang perlu ditindaklanjuti hari ini."
-        action={(
+        action={canOpenFollowUp ? (
           <Button render={<Link href="/crm/follow-up" />} nativeButton={false}>
             Buka Follow-up
           </Button>
-        )}
+        ) : undefined}
       />
       <Suspense
         fallback={

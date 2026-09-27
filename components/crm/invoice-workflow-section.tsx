@@ -18,7 +18,6 @@ type PurchaseOrder = {
 
 type InvoiceDraftValues = {
   notes: string;
-  profitPercent: string;
   discountPercent: string;
   items: Array<{
     size: string;

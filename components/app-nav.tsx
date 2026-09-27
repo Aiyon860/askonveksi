@@ -56,6 +56,7 @@ const ownerMasterItems = [
 ] as const;
 
 const analyticsItems = [
+  { href: "/analytics", label: "Ringkasan", icon: BarChart3 },
   { href: "/analytics/lead-sources", label: "Sumber & omzet", icon: Waypoints },
 ] as const;
 
@@ -84,13 +85,13 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
       className={cn(
         "flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
         nested && "ml-3",
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        active ? "bg-highlight-surface text-highlight-surface-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
       <Icon aria-hidden="true" className="size-4" />
       {item.label}
       {typeof item.count === "number" ? (
-        <Badge variant={active ? "secondary" : "default"} className="ml-auto min-w-6 px-1.5 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
+        <Badge variant={active ? "highlight" : "secondary"} className="ml-auto min-w-6 px-1.5 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
           {navCountLabel(item.count)}
         </Badge>
       ) : null}
@@ -120,10 +121,11 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
 
   const isDeveloper = role === "DEVELOPER";
   const canManageMasterData = isDeveloper || role === "OWNER";
-  const canViewAnalytics = isDeveloper || role === "OWNER";
+  const canViewAnalytics = isDeveloper || role === "OWNER" || role === "KEUANGAN";
   const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
+  const canViewDashboard = canViewCrm || role === "KEUANGAN";
   const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
-  const canViewFinance = isDeveloper || role === "OWNER";
+  const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
   const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
   const masterDataActive = (isPathWithin(pathname, "/master-data") && !isPathWithin(pathname, "/master-data/whatsapp")) || isPathWithin(pathname, "/admin/users");
   const analyticsActive = isPathWithin(pathname, "/analytics");
@@ -133,7 +135,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
 
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
-      {canViewCrm ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
+      {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewFinance ? (
         <Collapsible open={financeActive || financeOpen} onOpenChange={setFinanceOpen} className="group/collapsible flex flex-col gap-1">
           <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -182,6 +184,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/campaigns", label: "Campaign promo", icon: Megaphone }} onNavigate={onNavigate} /> : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
+      {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/detail-desain", label: "Detail Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (
         <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible flex flex-col gap-1">

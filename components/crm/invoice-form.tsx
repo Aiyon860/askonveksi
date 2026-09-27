@@ -25,7 +25,7 @@ type DraftItem = {
   unitPrice: string;
 };
 
-type InvoiceFormValues = { notes: string; profitPercent: string; discountPercent: string; items: DraftItem[] };
+type InvoiceFormValues = { notes: string; discountPercent: string; items: DraftItem[] };
 type Draft = InvoiceFormValues & { id: string; version: number };
 
 export function InvoiceForm({
@@ -71,16 +71,15 @@ export function InvoiceForm({
             </TableRow>;
           })}</TableBody>
         </Table>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field><FieldLabel htmlFor={`invoice-profit-${fieldKey}`}>Keuntungan %</FieldLabel><Input id={`invoice-profit-${fieldKey}`} name="profitPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.profitPercent ?? ""} aria-label="Keuntungan persen" /></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field><FieldLabel htmlFor={`invoice-discount-${fieldKey}`}>Diskon %</FieldLabel><Input id={`invoice-discount-${fieldKey}`} name="discountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.discountPercent ?? ""} aria-label="Diskon keseluruhan invoice" /></Field>
           <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
         </div>
-        <FieldDescription>Harga akhir = harga satuan × qty × (1 + keuntungan%) × (1 − diskon%).</FieldDescription>
+        <FieldDescription>Harga akhir = jumlah harga satuan × qty, dikurangi diskon, lalu dibulatkan ke kelipatan Rp500 terdekat.</FieldDescription>
         {formState.ok === false && formState.message ? (
           <Alert variant="destructive">
             <AlertTitle>Invoice belum tersimpan</AlertTitle>
-            <AlertDescription>{formState.message} Periksa harga, keuntungan, dan diskon, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
+            <AlertDescription>{formState.message} Periksa harga dan diskon, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
         <SubmitButton pendingLabel="Menyimpan draft...">{submitLabel ?? (draft ? "Perbarui draft invoice" : "Buat draft invoice")}</SubmitButton>

@@ -35,6 +35,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         sizes: { select: { size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
         rosterEntries: { select: { memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
         attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
+        designTask: { select: { revisions: { where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1, select: { attachments: { select: { path: true, kind: true, originalName: true, contentType: true }, orderBy: { createdAt: "asc" } } } } } },
       },
     }),
     prisma.businessProfile.findUnique({ where: { id: "default" } }),
@@ -49,7 +50,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { /* Gunakan logo bawaan. */ }
     }
   }
-  const assets = (await Promise.all(purchaseOrder.attachments.map(async (item) => {
+  const designAttachments = purchaseOrder.designTask?.revisions[0]?.attachments ?? [];
+  const assets = (await Promise.all([...purchaseOrder.attachments, ...designAttachments.map((item) => ({ ...item, caption: "Desain produksi" }))].map(async (item) => {
     const label = item.caption || ATTACHMENT_LABEL[item.kind] || item.originalName;
     if (item.contentType === "application/pdf") return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array() };
     const { data } = await storage.from("crm-po-designs").download(item.path);

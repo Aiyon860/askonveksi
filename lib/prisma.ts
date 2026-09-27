@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion: string | undefined;
 };
 
-const PRISMA_SCHEMA_VERSION = "developer-testing-controls";
+const PRISMA_SCHEMA_VERSION = "finance-role";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;

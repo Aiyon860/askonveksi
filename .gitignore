@@ -44,3 +44,11 @@ next-env.d.ts
 
 # Baileys authentication state
 /.data/
+
+.agent/
+.agents/
+.claude/
+.codex/
+.gemini/
+.impeccable/
+.opencode/

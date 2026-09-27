@@ -14,10 +14,10 @@ import { formatCurrency } from "@/lib/crm/format";
 
 type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE"; value: string; dueAt: string };
 
-function roundToTens(value: number) {
-  const whole = Math.trunc(value);
-  const units = whole % 10;
-  return units >= 6 ? whole + 10 - units : whole - units;
+function roundPaymentAmount(value: number) {
+  const scaled = value / 500;
+  const lower = Math.floor(scaled);
+  return (scaled - lower > 0.5 ? lower + 1 : lower) * 500;
 }
 
 function addJakartaDays(value: string, days: number) {
@@ -39,11 +39,11 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   const [initialValue, setInitialValue] = useState("");
   const [terms, setTerms] = useState<Term[]>([{ key: "term-0", valueType: "NOMINAL", value: "", dueAt: "" }]);
   const initialDueAt = addJakartaDays(issuedAt, 7);
-  const totalAmount = roundToTens(Number(total));
+  const totalAmount = Number(total);
   const amountFor = (valueType: Term["valueType"], value: string) => {
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount < 0) return 0;
-    return roundToTens(valueType === "PERCENTAGE" ? Math.round(totalAmount * amount) / 100 : amount);
+    return valueType === "PERCENTAGE" ? roundPaymentAmount(totalAmount * amount / 100) : amount;
   };
   const isLunas = kind === "LUNAS" || Number(initialValue) === 100;
   const initialAmount = amountFor("PERCENTAGE", isLunas ? "100" : initialValue);

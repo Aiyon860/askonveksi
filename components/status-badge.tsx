@@ -8,7 +8,7 @@ import {
 } from "@/lib/crm/reminder-types";
 
 export function OpportunityStatusBadge({ stage, className }: { stage: OpportunityStage; className?: string }) {
-  const variant = stage === "LOST" ? "destructive" : stage === "DEAL" ? "success" : stage === "LEAD_BARU" ? "info" : "warning";
+  const variant = stage === "LOST" ? "destructive" : stage === "DEAL" ? "success" : stage === "NEGOSIASI" ? "warning" : stage === "FOLLOW_UP" ? "highlight" : "info";
   return <Badge variant={variant} className={className}>{STAGE_LABEL[stage]}</Badge>;
 }
 

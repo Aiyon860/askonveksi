@@ -6,17 +6,25 @@ type MetricTone = "neutral" | "primary" | "danger" | "warning" | "success";
 
 const toneClass: Record<MetricTone, string> = {
   neutral: "text-muted-foreground",
-  primary: "text-primary",
-  danger: "text-destructive",
-  warning: "text-warning",
-  success: "text-success",
+  primary: "text-highlight-surface-foreground",
+  danger: "text-destructive-surface-foreground",
+  warning: "text-warning-surface-foreground",
+  success: "text-success-surface-foreground",
+};
+
+const toneSurfaceClass: Record<MetricTone, string> = {
+  neutral: "bg-card",
+  primary: "bg-highlight-surface",
+  danger: "bg-destructive-surface",
+  warning: "bg-warning-surface",
+  success: "bg-success-surface",
 };
 
 export function MetricGroup({ className, ...props }: React.ComponentProps<"dl">) {
   return (
     <dl
       className={cn(
-        "grid overflow-hidden rounded-lg border bg-border gap-px [&>*]:bg-card",
+        "grid gap-px overflow-hidden rounded-lg border bg-border",
         className,
       )}
       {...props}
@@ -42,7 +50,7 @@ export function MetricItem({
   className?: string;
 }) {
   return (
-    <div className={cn("flex min-h-26 flex-col justify-between gap-3 p-4", className)}>
+    <div className={cn("flex min-h-26 flex-col justify-between gap-3 p-4", toneSurfaceClass[tone], className)}>
       <dt className="flex items-center gap-2 text-sm text-muted-foreground">
         {Icon ? <Icon aria-hidden="true" className={cn("size-4", toneClass[tone])} /> : null}
         <span>{label}</span>
