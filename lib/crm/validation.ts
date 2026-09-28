@@ -321,6 +321,20 @@ export const reverseSalesOrderSchema = z.object({
   cancelReason: z.string().trim().min(5, "Alasan pembatalan minimal 5 karakter.").max(2000),
 });
 
+const cancelReasonSchema = z.string().trim().min(5, "Alasan pembatalan minimal 5 karakter.").max(2000);
+
+export const cancelPurchaseOrderSchema = z.object({
+  purchaseOrderId: entityIdSchema,
+  version: requiredVersion,
+  cancelReason: cancelReasonSchema,
+});
+
+export const cancelInvoiceSchema = z.object({
+  invoiceId: entityIdSchema,
+  version: requiredVersion,
+  cancelReason: cancelReasonSchema,
+});
+
 export const payPaymentTermSchema = z.object({
   salesOrderId: entityIdSchema,
   paymentTermId: entityIdSchema,

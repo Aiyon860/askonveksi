@@ -33,6 +33,10 @@ test("finance keeps the requested expense methods, feedback, and ownership guard
   assert.match(expenseData, /groupBy\(\{ by: \["spentAt"\]/);
   assert.match(expenseData, /spentAt: state\.order/);
   for (const column of ["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Laba Bersih", "Margin", "Diskon", "Total Invoice", "DP", "Lunas", "Status"]) assert.match(income, new RegExp(column));
+  // Label persen cukup di header kolom; sel hanya menampilkan angkanya.
+  assert.match(income, /"Margin %"/);
+  assert.doesNotMatch(income, /from "lucide-react"[^\n]*Percent/);
+  assert.doesNotMatch(income, /<Percent/);
   assert.match(actions, /updateSalesOrderCostAction/);
   assert.match(actions, /requireActor\(FINANCE_ROLES\)/);
   assert.match(migration, /DROP CONSTRAINT IF EXISTS "InvoiceItem_charges_valid"/);

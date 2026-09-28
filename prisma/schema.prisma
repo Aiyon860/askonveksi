@@ -90,6 +90,7 @@ enum ProductionActivityType {
   CREATED
   STAGE_MOVED
   STAGE_SKIPPED
+  STAGE_REVERTED
   SAMPLE_REJECTED
   QC_REJECTED
   PIC_ASSIGNED
@@ -121,12 +122,14 @@ enum PurchaseOrderStatus {
   DRAFT
   AGREED
   SUPERSEDED
+  CANCELLED
 }
 
 enum InvoiceStatus {
   DRAFT
   ISSUED
   SUPERSEDED
+  CANCELLED
 }
 
 enum PaymentKind {
@@ -419,7 +422,7 @@ model Customer {
   whatsappOptInSource     String?                 @db.VarChar(120)
   whatsappOptedOutAt      DateTime?               @db.Timestamptz(3)
   whatsappOptOutReason    String?                 @db.VarChar(500)
-  orderReminderEnabled    Boolean                 @default(true)
+  orderReminderEnabled    Boolean                 @default(false)
   customerType            CustomerType            @relation(fields: [customerTypeId], references: [id], onDelete: Restrict)
   leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
   salesPic                AppUser?                @relation("CustomerSalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
@@ -428,6 +431,7 @@ model Customer {
   reminders               CustomerReminder[]
   whatsappConversations   WhatsAppConversation[]
   whatsappJobs            WhatsAppAutomationJob[]
+  campaignRecipients      WhatsAppCampaignRecipient[]
   createdAt               DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
 
@@ -804,6 +808,9 @@ model ProductionWorkOrder {
   needsRepair       Boolean                   @default(false)
   repairReason      String?                   @db.Text
   repairRequestedAt DateTime?                 @db.Timestamptz(3)
+  obstacle          String?                   @db.VarChar(2000)
+  obstacleUpdatedAt DateTime?                 @db.Timestamptz(3)
+  stageEnteredAt    DateTime?                 @db.Timestamptz(3)
   version           Int                       @default(1)
   completedAt       DateTime?                 @db.Timestamptz(3)
   cancelledAt       DateTime?                 @db.Timestamptz(3)
@@ -1144,6 +1151,7 @@ model WhatsAppCampaign {
   createdBy           AppUser                 @relation("WhatsAppCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   updatedBy           AppUser                 @relation("WhatsAppCampaignUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
   jobs                WhatsAppAutomationJob[]
+  recipients          WhatsAppCampaignRecipient[]
   createdAt           DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime                @updatedAt @db.Timestamptz(3)
 
@@ -1190,6 +1198,18 @@ model WhatsAppAutomationJob {
   @@index([opportunityId, type, scheduledAt])
   @@index([campaignId, status, scheduledAt])
   @@unique([campaignId, customerId])
+}
+
+model WhatsAppCampaignRecipient {
+  id         String           @id @default(cuid())
+  campaignId String
+  customerId String
+  campaign   WhatsAppCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer   Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@unique([campaignId, customerId])
+  @@index([customerId])
 }
 
 model SequenceCounter {

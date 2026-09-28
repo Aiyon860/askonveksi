@@ -59,13 +59,13 @@ export async function getGarmentSizes() {
       name: true,
       description: true,
       position: true,
-      _count: { select: { purchaseRows: true, rosterEntries: true } },
+      _count: { select: { purchaseRows: true, rosterEntries: true, invoiceItems: true } },
     },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
   return items.map((item) => ({
     ...item,
-    _count: { customers: item._count.purchaseRows + item._count.rosterEntries },
+    _count: { customers: item._count.purchaseRows + item._count.rosterEntries + item._count.invoiceItems },
   }));
 }
 

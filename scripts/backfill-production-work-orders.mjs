@@ -66,6 +66,7 @@ try {
           deadline: po.deadline,
           stageSequence: sequence,
           currentStage: sequence[0],
+          stageEnteredAt: new Date(),
           steps: { create: sequence.map((stage, position) => ({ stage, position, status: position === 0 ? "ACTIVE" : "PENDING", attemptCount: position === 0 ? 1 : 0, startedAt: position === 0 ? new Date() : null })) },
           activities: { create: { actorId: payment.createdById, type: "CREATED", toStage: sequence[0], note: "Dibuat otomatis dari pembayaran pertama." } },
         },

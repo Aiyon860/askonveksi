@@ -9,6 +9,8 @@ import {
   createProspectCustomerSchema,
   createOpportunitySchema,
   createUserSchema,
+  cancelInvoiceSchema,
+  cancelPurchaseOrderSchema,
   sortableMasterDataFieldsSchema,
   masterDataFieldsSchema,
   moveOpportunitySchema,
@@ -36,6 +38,8 @@ import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
 import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
 import { formatPercentage } from "../lib/crm/format.ts";
 import {
+  CUSTOM_PRODUCTION_DEADLINE_VALUE,
+  isProductionDeadlinePreset,
   productionDeadlineOptions,
 } from "../lib/crm/production-deadline.ts";
 import {
@@ -321,6 +325,43 @@ test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan ta
     { label: "3 minggu (5 April 2026)", value: "2026-04-05" },
     { label: "1 bulan (15 April 2026)", value: "2026-04-15" },
   ]);
+});
+
+test("skema pembatalan PO dan invoice mewajibkan alasan yang jelas", () => {
+  assert.equal(cancelPurchaseOrderSchema.safeParse({ purchaseOrderId: "cm123456789012", version: 1, cancelReason: "Salah input customer" }).success, true);
+  assert.equal(cancelPurchaseOrderSchema.safeParse({ purchaseOrderId: "cm123456789012", version: 1, cancelReason: "" }).success, false);
+  assert.equal(cancelInvoiceSchema.safeParse({ invoiceId: "cm123456789012", version: 1, cancelReason: "Harga salah" }).success, true);
+  assert.equal(cancelInvoiceSchema.safeParse({ invoiceId: "cm123456789012", version: 1, cancelReason: "xx" }).success, false);
+});
+
+test("membatalkan invoice draft tidak lagi diblokir CHECK issuedAt", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20260928010000_relax_invoice_issued_at_required/migration.sql", import.meta.url), "utf8");
+  const actions = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const responseSource = await readFile(new URL("../lib/actions/response.ts", import.meta.url), "utf8");
+
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS "Invoice_issued_at_required"/);
+  assert.match(sql, /"status" <> 'ISSUED' OR "issuedAt" IS NOT NULL/);
+  // Klausa lama harus hilang, kalau tidak migrasi tidak mengubah perilaku apa pun.
+  assert.doesNotMatch(sql, /status = 'DRAFT' OR "issuedAt" IS NOT NULL/);
+
+  // PO dan invoice memakai guard yang sama; kegagalan sebelumnya murni dari constraint DB.
+  assert.match(actions, /cancelInvoiceAction[\s\S]{0,1200}requireActor\(OWNER_ACTION_ROLES\)/);
+  assert.match(actions, /cancelPurchaseOrderAction[\s\S]{0,1200}requireActor\(OWNER_ACTION_ROLES\)/);
+  assert.match(actions, /data: \{ status: "CANCELLED", version: \{ increment: 1 \} \}/);
+
+  // Error tak terduga harus meninggalkan jejak di log, bukan hanya toast generik.
+  assert.match(responseSource, /console\.error\("\[redirecting-action\]"/);
+});
+
+test("deadline produksi mengenali preset dan nilai kustom", () => {
+  const reference = new Date("2026-09-09T06:00:00.000Z");
+  const presets = productionDeadlineOptions(reference);
+
+  assert.equal(presets.every((option) => isProductionDeadlinePreset(option.value, reference)), true);
+  assert.equal(isProductionDeadlinePreset("2026-10-01", reference), false);
+  assert.equal(CUSTOM_PRODUCTION_DEADLINE_VALUE, "CUSTOM");
+  assert.equal(purchaseOrderDraftSchema.shape.deadline.safeParse("2026-09-16").success, true);
+  assert.equal(purchaseOrderDraftSchema.shape.deadline.safeParse("CUSTOM").success, false);
 });
 
 test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesanan", () => {

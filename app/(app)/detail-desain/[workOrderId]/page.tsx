@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { createHash } from "node:crypto";
 import { ArrowLeft, ImageOff } from "lucide-react";
 import { notFound } from "next/navigation";
 
@@ -11,6 +12,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { designAnnotationsSchema } from "@/lib/production/design-annotations";
 import { getProductionDesignDetail } from "@/lib/production/design-detail";
 
+// Token gambar berasal dari path penyimpanan yang selalu baru setiap desain
+// diganti, sehingga URL gambar berubah dan anotasi tidak perlu bergantung pada
+// status transisi React.
+function designImageToken(path: string) {
+  return createHash("sha256").update(path).digest("hex").slice(0, 16);
+}
+
 export default async function DesignEditorPage({ params }: { params: Promise<{ workOrderId: string }> }) {
   const workOrder = await getProductionDesignDetail((await params).workOrderId);
   if (!workOrder) notFound();
@@ -21,6 +29,6 @@ export default async function DesignEditorPage({ params }: { params: Promise<{ w
     <PageHeader title={`${workOrder.designCompletedAt ? "Desain final" : "Edit desain"} ${workOrder.workOrderNo}`} description={`${workOrder.productName} · ${workOrder.salesOrder.snapshotCustomerName}`} />
     <PageMessage />
     <div className="mb-6"><Badge variant={workOrder.designCompletedAt ? "success" : "warning"}>{workOrder.designCompletedAt ? "Sudah masuk Produksi" : "Belum dikirim ke Produksi"}</Badge></div>
-    {task && attachments.length ? <div className="grid gap-6">{attachments.map((attachment) => <DesignAnnotationEditor key={attachment.id} workOrderId={workOrder.id} taskId={task.id} attachmentId={attachment.id} attachmentName={attachment.originalName} savedAnnotations={designAnnotationsSchema.safeParse(attachment.annotations).data ?? []} readOnly={Boolean(workOrder.designCompletedAt)} />)}</div> : <Card><CardContent className="flex items-center gap-3 p-6 text-sm text-muted-foreground"><ImageOff aria-hidden="true" />Tidak ada gambar PNG dari revisi desain yang sudah disetujui.</CardContent></Card>}
+    {task && attachments.length ? <div className="grid gap-6">{attachments.map((attachment) => <DesignAnnotationEditor key={attachment.id} workOrderId={workOrder.id} taskId={task.id} attachmentId={attachment.id} attachmentName={attachment.originalName} imageToken={designImageToken(attachment.path)} savedAnnotations={designAnnotationsSchema.safeParse(attachment.annotations).data ?? []} readOnly={Boolean(workOrder.designCompletedAt)} />)}</div> : <Card><CardContent className="flex items-center gap-3 p-6 text-sm text-muted-foreground"><ImageOff aria-hidden="true" />Tidak ada gambar PNG dari revisi desain yang sudah disetujui.</CardContent></Card>}
   </>;
 }

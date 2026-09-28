@@ -1,6 +1,28 @@
 import { z } from "zod";
 
+import type { GarmentType } from "@prisma/client";
+
 export const CAMPAIGN_VARIABLES = ["customer_name", "company_name", "business_name"] as const;
+
+/** Batas penerima terpilih per campaign agar pengiriman tetap terkendali. */
+export const MAX_CAMPAIGN_RECIPIENTS = 2_000;
+
+export const CAMPAIGN_ORDER_CATEGORIES = ["JERSEY", "NON_JERSEY"] as const satisfies readonly GarmentType[];
+
+export const CAMPAIGN_ORDER_CATEGORY_LABEL: Record<GarmentType, string> = {
+  JERSEY: "Jersey",
+  NON_JERSEY: "Non-jersey",
+};
+
+export type CampaignRecipientOption = {
+  id: string;
+  name: string;
+  customerTypeName: string;
+  lastOrderAt: string | null;
+  lastOrderKind: "ORDER" | "PAYMENT" | null;
+  canReceive: boolean;
+  reason: string | null;
+};
 
 const variablePattern = /{{\s*([a-z_]+)\s*}}/g;
 
@@ -57,4 +79,29 @@ export const toggleCampaignSchema = z.object({
 export const deleteCampaignSchema = z.object({
   campaignId: z.string().trim().min(10).max(40),
   version: z.coerce.number().int().positive(),
+});
+
+const campaignIdSchema = z.string().trim().min(10).max(40);
+const customerIdSchema = z.string().trim().min(10).max(40);
+
+/** Filter daftar customer tanpa keterkaitan campaign, dipakai dialog campaign & halaman Broadcast. */
+export const recipientFilterSchema = z.object({
+  query: z.string().trim().max(80).optional(),
+  from: z.string().trim().max(10).optional(),
+  to: z.string().trim().max(10).optional(),
+  customerTypeId: customerIdSchema.optional(),
+  orderCategory: z.enum(CAMPAIGN_ORDER_CATEGORIES).optional(),
+});
+
+/** Filter daftar customer pada dialog "Pilih Customer". */
+export const campaignRecipientFilterSchema = recipientFilterSchema.extend({
+  campaignId: campaignIdSchema,
+});
+
+/** Hasil pilihan penerima yang disimpan untuk sebuah campaign. */
+export const campaignRecipientSelectionSchema = z.object({
+  campaignId: campaignIdSchema,
+  customerIds: z
+    .array(customerIdSchema)
+    .max(MAX_CAMPAIGN_RECIPIENTS, `Maksimal ${MAX_CAMPAIGN_RECIPIENTS} customer per campaign.`),
 });

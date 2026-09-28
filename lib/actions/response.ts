@@ -64,6 +64,7 @@ export async function runRedirectingAction(
   try {
     destination = await work();
   } catch (error) {
+    console.error("[redirecting-action]", fallbackPath, error);
     destination = await flashMessagePath(fallbackPath, flashKindForError(error), messageForError(error));
   }
 

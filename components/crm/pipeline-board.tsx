@@ -41,6 +41,21 @@ const DEFAULT_DESTINATION: Record<OpportunityStage, OpportunityStage> = {
   LOST: "FOLLOW_UP",
 };
 
+const STAGE_ORDER: Record<OpportunityStage, number> = {
+  LEAD_BARU: 0,
+  FOLLOW_UP: 1,
+  NEGOSIASI: 2,
+  DEAL: 3,
+  LOST: 4,
+};
+
+// Maju = stage tujuan lebih depan. DEAL (alur pembayaran) dan LOST (wajib alasan)
+// selalu memakai dialog, bukan perpindahan langsung.
+function isForwardMove(from: OpportunityStage, to: OpportunityStage) {
+  if (to === "DEAL" || to === "LOST") return false;
+  return STAGE_ORDER[to] > STAGE_ORDER[from];
+}
+
 export function PipelineBoard({ opportunities, actorRole }: { opportunities: PipelineOpportunity[]; actorRole: AppRole }) {
   const router = useRouter();
   const [boardOpportunities, moveOptimistically] = useOptimistic(
@@ -68,9 +83,38 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
     return () => window.clearTimeout(timeout);
   }, [recentMove]);
 
+  function executeMove(opportunity: PipelineOpportunity, stage: OpportunityStage, formData: FormData) {
+    startMoving(async () => {
+      setRecentMove({ id: opportunity.id, stage });
+      moveOptimistically({ opportunityId: opportunity.id, stage });
+      setPreviewMove(null);
+      const result = await moveOpportunityStageOptimisticAction(formData);
+      if (!result.ok) {
+        setRecentMove(null);
+        toast.add({ title: "Status tidak berubah", description: result.message, type: result.kind });
+        return;
+      }
+      toast.add({ title: "Status diperbarui", description: `${opportunity.opportunityNo} dipindahkan ke ${STAGE_LABEL[stage]}.`, type: "success" });
+      router.refresh();
+    });
+  }
+
+  function runMove(opportunity: PipelineOpportunity, stage: OpportunityStage, cancelReason?: string) {
+    const formData = new FormData();
+    formData.set("opportunityId", opportunity.id);
+    formData.set("version", String(opportunity.version));
+    formData.set("stage", stage);
+    if (cancelReason) formData.set("cancelReason", cancelReason);
+    executeMove(opportunity, stage, formData);
+  }
+
   function requestMove(opportunity: PipelineOpportunity, stage: OpportunityStage, preview = false) {
     if (!canOperate) return;
     if (opportunity.stage === stage) return;
+    if (isForwardMove(opportunity.stage, stage)) {
+      runMove(opportunity, stage);
+      return;
+    }
     if (preview) setPreviewMove({ opportunity, stage });
     setPendingMove({ opportunity, stage });
   }
@@ -93,20 +137,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
     const data = new FormData(event.currentTarget);
     const { opportunity, stage } = pendingMove;
     setPendingMove(null);
-
-    startMoving(async () => {
-      setRecentMove({ id: opportunity.id, stage });
-      moveOptimistically({ opportunityId: opportunity.id, stage });
-      setPreviewMove(null);
-      const result = await moveOpportunityStageOptimisticAction(data);
-      if (!result.ok) {
-        setRecentMove(null);
-        toast.add({ title: "Status tidak berubah", description: result.message, type: result.kind });
-        return;
-      }
-      toast.add({ title: "Status diperbarui", description: `${opportunity.opportunityNo} dipindahkan ke ${STAGE_LABEL[stage]}.`, type: "success" });
-      router.refresh();
-    });
+    executeMove(opportunity, stage, data);
   }
 
   return (
@@ -197,7 +228,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                             <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah invoice
                           </Button>
                         ) : null}
-                        {canOperate && opportunity.stage !== "DEAL" ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setPendingMove({ opportunity, stage: DEFAULT_DESTINATION[opportunity.stage] })}>Ubah status</Button> : null}
+                        {canOperate && opportunity.stage !== "DEAL" ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => requestMove(opportunity, DEFAULT_DESTINATION[opportunity.stage])}>Ubah status</Button> : null}
                       </CardContent>
                     </Card>}</DraggablePipelineCard>
                   )) : (

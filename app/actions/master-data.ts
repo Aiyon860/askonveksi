@@ -582,6 +582,105 @@ export async function bulkUpdateGarmentSizesAction(formData: FormData) {
   });
 }
 
+async function countUsed(kind: "customerType" | "leadSource" | "garmentSize" | "paymentMethod", id: string) {
+  const prisma = getPrismaClient();
+  if (kind === "customerType") {
+    return prisma.customer.count({ where: { customerTypeId: id } });
+  }
+  if (kind === "leadSource") {
+    const [customers, opportunities] = await Promise.all([
+      prisma.customer.count({ where: { leadSourceId: id } }),
+      prisma.opportunity.count({ where: { leadSourceId: id } }),
+    ]);
+    return customers + opportunities;
+  }
+  if (kind === "garmentSize") {
+    const [purchaseRows, rosterEntries, invoiceItems] = await Promise.all([
+      prisma.purchaseOrderSize.count({ where: { sizeId: id } }),
+      prisma.purchaseOrderRosterEntry.count({ where: { sizeId: id } }),
+      prisma.invoiceItem.count({ where: { sizeId: id } }),
+    ]);
+    return purchaseRows + rosterEntries + invoiceItems;
+  }
+  return prisma.paymentTransaction.count({ where: { paymentMethodId: id } });
+}
+
+export async function deleteCustomerTypeAction(formData: FormData) {
+  return runRedirectingAction("/master-data/customer-types", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const id = formData.get("id");
+    if (typeof id !== "string" || !id) throw new UserFacingError("Jenis customer tidak ditemukan. Muat ulang halaman.");
+    const current = await getPrismaClient().customerType.findUnique({ where: { id }, select: { name: true } });
+    if (!current) throw new UserFacingError("Jenis customer tidak ditemukan atau sudah dihapus.");
+    const used = await countUsed("customerType", id);
+    if (used > 0) throw new UserFacingError(`Jenis customer "${current.name}" masih digunakan oleh ${used} customer dan tidak bisa dihapus.`);
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.customerType.delete({ where: { id } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "CustomerType", entityId: id, action: "CUSTOMER_TYPE_DELETED", changedFields: ["name", "description", "position"] } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/customer-types");
+    revalidatePath("/customers");
+    return flashMessagePath("/master-data/customer-types", "notice", `Jenis customer "${current.name}" berhasil dihapus.`);
+  });
+}
+
+export async function deleteLeadSourceAction(formData: FormData) {
+  return runRedirectingAction("/master-data/lead-sources", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const id = formData.get("id");
+    if (typeof id !== "string" || !id) throw new UserFacingError("Sumber lead tidak ditemukan. Muat ulang halaman.");
+    const current = await getPrismaClient().leadSource.findUnique({ where: { id }, select: { name: true } });
+    if (!current) throw new UserFacingError("Sumber lead tidak ditemukan atau sudah dihapus.");
+    const used = await countUsed("leadSource", id);
+    if (used > 0) throw new UserFacingError(`Sumber lead "${current.name}" masih digunakan oleh ${used} data dan tidak bisa dihapus.`);
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.leadSource.delete({ where: { id } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "LeadSource", entityId: id, action: "LEAD_SOURCE_DELETED", changedFields: ["name", "description", "position"] } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/lead-sources");
+    revalidatePath("/customers");
+    return flashMessagePath("/master-data/lead-sources", "notice", `Sumber lead "${current.name}" berhasil dihapus.`);
+  });
+}
+
+export async function deleteGarmentSizeAction(formData: FormData) {
+  return runRedirectingAction("/master-data/garment-sizes", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const id = formData.get("id");
+    if (typeof id !== "string" || !id) throw new UserFacingError("Ukuran pakaian tidak ditemukan. Muat ulang halaman.");
+    const current = await getPrismaClient().garmentSize.findUnique({ where: { id }, select: { name: true } });
+    if (!current) throw new UserFacingError("Ukuran pakaian tidak ditemukan atau sudah dihapus.");
+    const used = await countUsed("garmentSize", id);
+    if (used > 0) throw new UserFacingError(`Ukuran "${current.name}" masih digunakan oleh ${used} data dan tidak bisa dihapus.`);
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.garmentSize.delete({ where: { id } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "GarmentSize", entityId: id, action: "GARMENT_SIZE_DELETED", changedFields: ["name", "description", "position"] } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/garment-sizes");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/garment-sizes", "notice", `Ukuran "${current.name}" berhasil dihapus.`);
+  });
+}
+
+export async function deletePaymentMethodAction(formData: FormData) {
+  return runRedirectingAction("/master-data/payment-methods", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const id = formData.get("id");
+    if (typeof id !== "string" || !id) throw new UserFacingError("Metode pembayaran tidak ditemukan. Muat ulang halaman.");
+    const current = await getPrismaClient().paymentMethod.findUnique({ where: { id }, select: { name: true } });
+    if (!current) throw new UserFacingError("Metode pembayaran tidak ditemukan atau sudah dihapus.");
+    const used = await countUsed("paymentMethod", id);
+    if (used > 0) throw new UserFacingError(`Metode pembayaran "${current.name}" masih digunakan oleh ${used} transaksi dan tidak bisa dihapus.`);
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.paymentMethod.delete({ where: { id } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "PaymentMethod", entityId: id, action: "PAYMENT_METHOD_DELETED", changedFields: ["name", "description", "position"] } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/payment-methods");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/payment-methods", "notice", `Metode pembayaran "${current.name}" berhasil dihapus.`);
+  });
+}
+
 export async function updateBusinessProfileAction(formData: FormData) {
   return runRedirectingAction("/master-data/business-profile", async () => {
     const actor = await requireActor(MASTER_DATA_ROLES);

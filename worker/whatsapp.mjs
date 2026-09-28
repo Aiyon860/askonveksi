@@ -358,35 +358,39 @@ async function scheduleCampaigns() {
       });
       if (!started.count) continue;
     }
+    // Campaign hanya dikirim ke customer yang dipilih lewat dialog "Pilih Customer".
+    const recipientCount = await prisma.whatsAppCampaignRecipient.count({ where: { campaignId: campaign.id } });
+    if (!recipientCount) {
+      console.warn(`[whatsapp] Campaign ${campaign.id} (${campaign.name}) dilewati: belum ada customer yang dipilih.`);
+      await prisma.whatsAppCampaign.updateMany({
+        where: { id: campaign.id, status: "PROCESSING" },
+        data: { status: "SKIPPED", recipientCursor: null },
+      });
+      continue;
+    }
+
     let cursor = campaign.recipientCursor;
     for (let batch = 0; batch < 10; batch += 1) {
-      const recipients = await prisma.customer.findMany({
-        where: {
-          ...(cursor ? { id: { gt: cursor } } : {}),
-          createdAt: { lte: startedAt },
-          archivedAt: null,
-          whatsapp: { not: null },
-          whatsappConsentStatus: { not: "OPTED_OUT" },
-        },
-        select: { id: true, name: true, companyName: true, whatsapp: true },
-        orderBy: { id: "asc" },
+      const recipients = await prisma.whatsAppCampaignRecipient.findMany({
+        where: { campaignId: campaign.id, ...(cursor ? { customerId: { gt: cursor } } : {}) },
+        select: { customerId: true, customer: { select: { id: true, name: true, companyName: true, whatsapp: true } } },
+        orderBy: { customerId: "asc" },
         take: 200,
       });
-      if (recipients.length) {
-        const jobs = recipients.filter((item) => {
-          const number = normalizeNumber(item.whatsapp);
-          return number && (!campaignRecipientAllowlist || campaignRecipientAllowlist.has(number));
-        }).map((item) => ({
-          idempotencyKey: `campaign:${campaign.id}:${item.id}`,
-          type: "CAMPAIGN",
-          customerId: item.id,
-          campaignId: campaign.id,
-          scheduledAt: campaign.scheduledAt,
-          payload: { text: render(campaign.body, { customer_name: item.name, company_name: item.companyName || "", business_name: business?.name || "AS Konveksi" }).replace(/\s{2,}/g, " ") },
-        }));
-        if (jobs.length) await prisma.whatsAppAutomationJob.createMany({ data: jobs, skipDuplicates: true });
-        cursor = recipients.at(-1).id;
-      }
+      if (!recipients.length) break;
+      const jobs = recipients.filter(({ customer: item }) => {
+        const number = normalizeNumber(item.whatsapp);
+        return number && (!campaignRecipientAllowlist || campaignRecipientAllowlist.has(number));
+      }).map(({ customer: item }) => ({
+        idempotencyKey: `campaign:${campaign.id}:${item.id}`,
+        type: "CAMPAIGN",
+        customerId: item.id,
+        campaignId: campaign.id,
+        scheduledAt: campaign.scheduledAt,
+        payload: { text: render(campaign.body, { customer_name: item.name, company_name: item.companyName || "", business_name: business?.name || "AS Konveksi" }).replace(/\s{2,}/g, " ") },
+      }));
+      if (jobs.length) await prisma.whatsAppAutomationJob.createMany({ data: jobs, skipDuplicates: true });
+      cursor = recipients.at(-1).customerId;
       await prisma.whatsAppCampaign.updateMany({
         where: { id: campaign.id, status: "PROCESSING" },
         data: { recipientCursor: cursor, ...(recipients.length < 200 ? { snapshotCompletedAt: new Date() } : {}) },

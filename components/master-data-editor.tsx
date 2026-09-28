@@ -17,9 +17,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronLeft, ChevronRight, GripVertical, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -53,12 +54,14 @@ function SortableMasterDataRow({
   number,
   isEditing,
   singularLabel,
+  deleteAction,
   onChange,
 }: {
   item: MasterDataDraft;
   number: number;
   isEditing: boolean;
   singularLabel: string;
+  deleteAction: MasterAction;
   onChange: (id: string, field: "name" | "description", value: string) => void;
 }) {
   const {
@@ -131,6 +134,24 @@ function SortableMasterDataRow({
         )}
       </TableCell>
       <TableCell className="text-center font-mono tabular-nums">{item._count.customers}</TableCell>
+      <TableCell className="text-right">
+        {isEditing ? null : (
+          <form action={deleteAction}>
+            <input type="hidden" name="id" value={item.id} />
+            <ConfirmSubmitButton
+              size="sm"
+              variant="destructive"
+              pendingLabel="Menghapus..."
+              confirmTitle={`Hapus ${singularLabel.toLowerCase()}?`}
+              confirmDescription={`Hapus permanen "${item.name}"? Data yang masih digunakan oleh customer, transaksi, atau dokumen lain tidak bisa dihapus.`}
+              confirmLabel="Ya, hapus"
+            >
+              <Trash2 data-icon="inline-start" aria-hidden="true" />
+              Hapus
+            </ConfirmSubmitButton>
+          </form>
+        )}
+      </TableCell>
     </TableRow>
   );
 }
@@ -220,11 +241,13 @@ export function MasterDataEditor({
   items,
   singularLabel,
   updateAction,
+  deleteAction,
   usageLabel = "Jumlah customer",
 }: {
   items: MasterItem[];
   singularLabel: string;
   updateAction: MasterAction;
+  deleteAction: MasterAction;
   usageLabel?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -292,23 +315,10 @@ export function MasterDataEditor({
   }
 
   return (
-    <form
-      action={updateAction}
-      onSubmit={(event) => {
-        if (!isEditing) event.preventDefault();
-      }}
+    <section
+      className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
+      aria-label={`Daftar ${singularLabel.toLowerCase()}`}
     >
-      {isEditing ? (
-        <input
-          type="hidden"
-          name="items"
-          value={JSON.stringify(draftItems.map(({ id, name, description }) => ({ id, name, description })))}
-        />
-      ) : null}
-      <section
-        className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
-        aria-label={`Daftar ${singularLabel.toLowerCase()}`}
-      >
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-md">
             <InputGroup data-disabled={isEditing || undefined}>
@@ -336,10 +346,15 @@ export function MasterDataEditor({
               <strong className="font-medium text-foreground">{isEditing ? items.length : filteredItems.length}</strong> {debouncedQuery && !isEditing ? "data ditemukan" : "data tercatat"}
             </p>
             {isEditing ? (
-              <>
+              <form action={updateAction} className="flex flex-wrap items-center gap-2">
+                <input
+                  type="hidden"
+                  name="items"
+                  value={JSON.stringify(draftItems.map(({ id, name, description }) => ({ id, name, description })))}
+                />
                 <Button type="button" variant="outline" size="sm" onClick={cancelEditing}>Batal</Button>
                 <SubmitButton size="sm" pendingLabel="Menyimpan...">Simpan perubahan</SubmitButton>
-              </>
+              </form>
             ) : (
               <Button type="button" variant="outline" size="sm" onClick={startEditing}>Edit</Button>
             )}
@@ -365,6 +380,7 @@ export function MasterDataEditor({
                     <TableHead className="min-w-56">Nama</TableHead>
                     <TableHead className="min-w-80">Deskripsi</TableHead>
                     <TableHead className="w-32 text-center">{usageLabel}</TableHead>
+                    <TableHead className="w-32 text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -376,6 +392,7 @@ export function MasterDataEditor({
                         number={isEditing ? index + 1 : (page - 1) * pageSize + index + 1}
                         isEditing={isEditing}
                         singularLabel={singularLabel}
+                        deleteAction={deleteAction}
                         onChange={updateDraft}
                       />
                     ))}
@@ -403,7 +420,6 @@ export function MasterDataEditor({
           onPageChange={setPage}
           onPageSizeChange={changePageSize}
         />
-      </section>
-    </form>
+    </section>
   );
 }

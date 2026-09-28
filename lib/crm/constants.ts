@@ -39,12 +39,14 @@ export const INVOICE_STATUS_LABEL = {
   DRAFT: "Draft",
   ISSUED: "Terbit",
   SUPERSEDED: "Digantikan",
+  CANCELLED: "Dibatalkan",
 } as const;
 
 export const PURCHASE_ORDER_STATUS_LABEL = {
   DRAFT: "Draft",
   AGREED: "Disepakati",
   SUPERSEDED: "Digantikan",
+  CANCELLED: "Dibatalkan",
 } as const;
 
 export const DECORATION_METHODS = ["NONE", "TINTA", "SABLON", "BORDIR"] as const;

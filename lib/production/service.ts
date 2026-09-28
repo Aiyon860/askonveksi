@@ -30,6 +30,7 @@ export async function createProductionWorkOrder(
       deadline: input.deadline,
       stageSequence: sequence,
       currentStage,
+      stageEnteredAt: new Date(),
       steps: {
         create: sequence.map((stage, position) => ({
           stage,

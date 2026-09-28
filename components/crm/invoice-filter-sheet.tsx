@@ -120,6 +120,7 @@ export function InvoiceFilterSheet({
                   <NativeSelectOption value="DRAFT">Draft</NativeSelectOption>
                   <NativeSelectOption value="ISSUED">Diterbitkan</NativeSelectOption>
                   <NativeSelectOption value="SUPERSEDED">Digantikan</NativeSelectOption>
+                  <NativeSelectOption value="CANCELLED">Dibatalkan</NativeSelectOption>
                 </NativeSelect>
               </Field>
               <Field className="gap-1.5">
