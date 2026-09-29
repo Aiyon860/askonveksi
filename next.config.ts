@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
     useTypeScriptCli: false,
     serverSourceMaps: false,
     webpackMemoryOptimizations: true,
-    optimizePackageImports: ["lucide-react", "recharts"],
+    optimizePackageImports: ["lucide-react", "recharts", "konva", "react-konva", "@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
   },
   images: {
     formats: ["image/avif", "image/webp"],
@@ -32,6 +32,10 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {    return [
+      {
+        source: "/_next/static/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
       {
         source: "/:path*",
         headers: [

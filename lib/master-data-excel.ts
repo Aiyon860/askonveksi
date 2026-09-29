@@ -1,6 +1,6 @@
 import "server-only";
 
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 
 import { UserFacingError } from "@/lib/actions/response";
 
@@ -17,6 +17,7 @@ const XLSX_MAX_UNCOMPRESSED_BYTES = 8 * 1024 * 1024;
 const XLSX_MAX_COMPRESSION_RATIO = 100;
 
 export async function createMasterDataWorkbook(title: string, rows: MasterDataExcelRow[]) {
+  const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ERM Askonveksi";
   workbook.created = new Date();
@@ -113,6 +114,7 @@ export async function parseMasterDataWorkbook(file: File, maxNameLength: number)
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new UserFacingError("Isi file tidak sesuai format XLSX.");
   assertSafeXlsxArchive(bytes);
 
+  const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(bytes as never);

@@ -1,0 +1,340 @@
+// CI-only: copy the node_modules closure needed by worker/whatsapp.mjs
+// into the deploy package. Same source tree => identical versions.
+// Standalone dirs may be FILE-pruned, so trust is per-file, never per-dir:
+// - package dir absent in dest -> copy whole (keeps non-imported assets
+//   like .node/.wasm next to reachable files).
+// - package dir present -> merge only the traced files missing in dest.
+//
+// Usage: node scripts/collect-worker-deps.mjs [destDir]
+// Exits non-zero when a reachable import cannot be resolved.
+import {
+  cpSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
+import { builtinModules, createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const root = process.cwd();
+const dest = path.resolve(process.argv[2] ?? "deploy_package");
+const BUILTINS = new Set(builtinModules.map((m) => m.replace(/^node:/, "")));
+
+// Optional deps loaded inside try/catch by their importers; safe to skip.
+// - @opentelemetry/api: supabase-js tracing only, works without it.
+// - jimp: baileys image processing, falls back to sharp (installed).
+// - audio-decode: baileys voice waveforms, feature degrades without it.
+// - link-preview-js: baileys link previews, feature degrades without it.
+// - bufferutil, utf-8-validate: ws native perf addons, pure-JS fallback.
+// - pg-native: behind PG_NATIVE flag + try/catch.
+const OPTIONAL = new Set([
+  "@opentelemetry/api",
+  "jimp",
+  "audio-decode",
+  "link-preview-js",
+  "bufferutil",
+  "utf-8-validate",
+  "pg-native",
+]);
+// Platform-specific native binaries probed per-platform inside try/catch
+// (only the matching platform is ever installed).
+const OPTIONAL_PREFIXES = ["@img/"];
+
+function isOptional(spec) {
+  if (OPTIONAL.has(spec)) return true;
+  return OPTIONAL_PREFIXES.some((prefix) => spec.startsWith(prefix));
+}
+
+const warnedOptional = new Set();
+function warnOptional(spec) {
+  if (warnedOptional.has(spec)) return;
+  warnedOptional.add(spec);
+  console.warn(`optional dep skipped: ${spec}`);
+}
+
+// ESM entry of a package per its exports map (condition priority for a
+// Node ESM importer). Returns an absolute path or null. Needed because
+// dual packages (pg, pg-pool: esm/index.mjs vs lib/index.js) expose a
+// different file to ESM importers than CJS resolution finds.
+function pickImportCondition(node) {
+  while (node && typeof node === "object" && !Array.isArray(node)) {
+    node = node.node ?? node.import ?? node.default;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const hit = pickImportCondition(item);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  return typeof node === "string" ? node : null;
+}
+
+function esmEntryOf(pkgDir) {
+  let manifest;
+  try {
+    manifest = JSON.parse(
+      readFileSync(path.join(pkgDir, "package.json"), "utf8"),
+    );
+  } catch {
+    return null;
+  }
+  const entry = pickImportCondition(manifest.exports?.["."]);
+  if (!entry) return null;
+  const abs = path.normalize(path.join(pkgDir, entry));
+  return abs.startsWith(pkgDir + path.sep) ? abs : null; // stay in-package
+}
+
+// Resolvers may return logical paths without CJS extension probing
+// (e.g. the ESM leg for an exports-less package: `xtend/mutable`
+// instead of `mutable.js`). Probe like CJS before giving up.
+function probeExisting(abs) {
+  const pick = (candidate) => {
+    try {
+      return statSync(candidate).isFile() ? candidate : null;
+    } catch {
+      return null;
+    }
+  };
+  if (pick(abs)) return abs;
+  for (const suffix of [
+    ".js",
+    ".json",
+    ".node",
+    "/index.js",
+    "/index.mjs",
+    "/index.cjs",
+  ]) {
+    const probed = pick(abs + suffix);
+    if (probed) return probed;
+  }
+  return null;
+}
+
+const IMPORT_RE =
+  /(?:import\s+(?:[^'"]*?\s+from\s+)?|export\s+[^'"]*?\s+from\s+|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g;
+const PARSEABLE_RE = /\.(?:mjs|cjs|js)$/;
+
+// Spans of template literals (best-effort; `}` inside nested template text
+// can skew depth). Real import statements never live inside backticks, but
+// doc/error text does (e.g. Prisma's constructor error message quotes
+// `import ... from './generated/prisma/client'`).
+function templateSpans(text) {
+  const spans = [];
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    if (text[i] !== "`") {
+      i++;
+      continue;
+    }
+    const start = i++;
+    let depth = 0;
+    while (i < n) {
+      const c = text[i];
+      if (c === "\\") {
+        i += 2;
+        continue;
+      }
+      if (c === "$" && text[i + 1] === "{") {
+        depth++;
+        i += 2;
+        continue;
+      }
+      if (c === "}" && depth > 0) {
+        depth--;
+        i++;
+        continue;
+      }
+      if (c === "`" && depth === 0) break;
+      i++;
+    }
+    spans.push([start, Math.min(i, n)]);
+    if (i < n) i++;
+  }
+  return spans;
+}
+
+function inSpans(spans, index) {
+  return spans.some(([start, end]) => index >= start && index < end);
+}
+
+function specifiersOf(file) {
+  let text;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return [];
+  }
+  // Strip comments so words inside them are never treated as imports.
+  text = text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  const spans = templateSpans(text);
+  const out = [];
+  for (const m of text.matchAll(IMPORT_RE)) {
+    if (!inSpans(spans, m.index ?? 0)) out.push(m[1]);
+  }
+  return out;
+}
+
+function packageDirOf(abs) {
+  // Directory of the package owning abs, via the LAST node_modules segment
+  // (handles packages nested inside other packages).
+  const parts = abs.split(path.sep);
+  const idx = parts.lastIndexOf("node_modules");
+  if (idx < 0) return null;
+  const rest = parts.slice(idx + 1);
+  if (rest.length === 0) return null;
+  const depth = rest[0].startsWith("@") ? 2 : 1;
+  if (rest.length < depth) return null;
+  return parts.slice(0, idx + 1 + depth).join(path.sep);
+}
+
+const entry = path.join(root, "worker", "whatsapp.mjs");
+if (!existsSync(entry)) {
+  console.error(`entry not found: ${entry}`);
+  process.exit(1);
+}
+
+const seen = new Set();
+const tracedFiles = new Set(); // reachable files under root (phase 1)
+const supplementedPkgs = new Set(); // packages with ESM entry queued
+const missing = [];
+const queue = [entry];
+
+while (queue.length > 0) {
+  const file = queue.pop();
+  if (seen.has(file)) continue;
+  seen.add(file);
+  if (!PARSEABLE_RE.test(file)) continue;
+
+  for (const spec of specifiersOf(file)) {
+    if (
+      spec.startsWith("node:") ||
+      BUILTINS.has(spec) ||
+      spec.startsWith("data:") ||
+      spec === "." ||
+      spec === ".."
+    )
+      continue;
+    // CJS resolution first: reliable parent handling, incl. dot-leading
+    // packages like `.prisma/...` that ESM rejects outright.
+    // ESM only as fallback for import-only export conditions.
+    // (import.meta.resolve is NOT run alongside: in this resolver role it
+    // ignores the parent for relative specs and returns unprobed paths.)
+    const resolvedHrefs = new Set();
+    try {
+      resolvedHrefs.add(
+        pathToFileURL(createRequire(file).resolve(spec)).href,
+      );
+    } catch {
+      try {
+        resolvedHrefs.add(
+          await import.meta.resolve(spec, pathToFileURL(file).href),
+        );
+      } catch {
+        // handled by the missing check below
+      }
+    }
+    if (resolvedHrefs.size === 0) {
+      if (isOptional(spec)) {
+        warnOptional(spec);
+        continue;
+      }
+      missing.push(`${path.relative(root, file)} -> ${spec}`);
+      continue;
+    }
+    for (const resolved of resolvedHrefs) {
+      if (!resolved.startsWith("file://")) continue;
+      const abs = probeExisting(fileURLToPath(resolved));
+      if (!abs) {
+        if (isOptional(spec)) {
+          warnOptional(spec);
+          continue;
+        }
+        missing.push(
+          `${path.relative(root, file)} -> ${spec} (resolved, not on disk)`,
+        );
+        continue;
+      }
+      queue.push(abs);
+      if (abs.startsWith(root + path.sep)) tracedFiles.add(abs);
+      // Supplement the package's ESM entry (see esmEntryOf): the file the
+      // worker hits as an ESM importer may differ from the CJS walk.
+      const pkgDir = packageDirOf(abs);
+      if (pkgDir && !supplementedPkgs.has(pkgDir)) {
+        supplementedPkgs.add(pkgDir);
+        const esmEntry = esmEntryOf(pkgDir);
+        if (esmEntry && existsSync(esmEntry)) {
+          queue.push(esmEntry);
+          if (esmEntry.startsWith(root + path.sep)) tracedFiles.add(esmEntry);
+        }
+      }
+    }
+  }
+}
+
+// Phase 2: group traced files by owning package, then copy hybrid.
+const byPkg = new Map();
+for (const file of tracedFiles) {
+  const pkgDir = packageDirOf(file);
+  if (!pkgDir) {
+    if (process.env.WORKER_DEPS_DEBUG)
+      console.warn(`outside node_modules: ${file}`);
+    continue;
+  }
+  if (!byPkg.has(pkgDir)) byPkg.set(pkgDir, new Set());
+  byPkg.get(pkgDir).add(file);
+}
+
+let copiedPkgs = 0;
+let mergedFiles = 0;
+for (const [pkgDir, files] of byPkg) {
+  const out = path.join(dest, path.relative(root, pkgDir));
+  if (!existsSync(out)) {
+    mkdirSync(path.dirname(out), { recursive: true });
+    cpSync(pkgDir, out, { recursive: true, dereference: true });
+    copiedPkgs++;
+    continue;
+  }
+  for (const file of files) {
+    const target = path.join(dest, path.relative(root, file));
+    if (existsSync(target)) continue;
+    // Guard: never crash copyFileSync on a non-file (dir, socket, ghost).
+    let ok = false;
+    try {
+      ok = statSync(file).isFile();
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      console.warn(`skipped non-file: ${path.relative(root, file)}`);
+      continue;
+    }
+    mkdirSync(path.dirname(target), { recursive: true });
+    copyFileSync(file, target);
+    mergedFiles++;
+  }
+  // package.json carries name/version/exports; without it subpath
+  // resolution inside a merged dir fails at runtime.
+  const manifestOut = path.join(out, "package.json");
+  if (!existsSync(manifestOut) && existsSync(path.join(pkgDir, "package.json"))) {
+    copyFileSync(path.join(pkgDir, "package.json"), manifestOut);
+    mergedFiles++;
+  }
+  copiedPkgs++;
+}
+
+if (missing.length > 0) {
+  console.error("unresolvable worker imports:");
+  for (const line of missing) console.error(`  ${line}`);
+  process.exit(1);
+}
+
+console.log(
+  `worker deps: ${byPkg.size} packages traced, ${copiedPkgs} ensured, ${mergedFiles} files merged into pruned dirs`,
+);
