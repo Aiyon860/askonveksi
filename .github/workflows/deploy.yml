@@ -189,6 +189,9 @@ jobs:
           # Persist Baileys auth across releases (WA session survives rollback/deploy).
           install -d "$DEPLOY_PATH/shared/.data/baileys-auth"
           ln -sfn "$DEPLOY_PATH/shared/.data" "$RELEASE_DIR/.data"
+          # ESM worker deps: Node ESM ignores NODE_PATH, so link shared
+          # node_modules into the release for standard node_modules resolution.
+          ln -sfn "$DEPLOY_PATH/shared/node_modules" "$RELEASE_DIR/node_modules"
 
           ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
           export NODE_ENV=production PORT="$APP_PORT" HOSTNAME=127.0.0.1
