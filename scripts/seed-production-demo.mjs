@@ -234,6 +234,7 @@ try {
             deadline: deadlineAfter(demo.deadlineDays),
             stageSequence: demo.stages,
             currentStage: demo.stages[0],
+            stageEnteredAt: new Date(),
             steps: {
               create: demo.stages.map((stage, position) => ({
                 stage,

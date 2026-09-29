@@ -39,7 +39,7 @@ export type PipelineOpportunity = {
   purchaseOrder: {
     id: string;
     purchaseOrderNo: string;
-    status: "DRAFT" | "AGREED" | "SUPERSEDED";
+    status: "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
     productName: string;
     garmentType: "JERSEY" | "NON_JERSEY" | null;
     totalQuantity: number;
@@ -48,7 +48,7 @@ export type PipelineOpportunity = {
     id: string;
     invoiceNo: string;
     purchaseOrderId: string;
-    status: "DRAFT" | "ISSUED" | "SUPERSEDED";
+    status: "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
     version: number;
     total: string;
     issuedAt: string | null;
@@ -813,60 +813,12 @@ export async function getCommunicationTimeline({
   };
 }
 
-type FollowUpBucket = "overdue" | "today" | "tomorrow" | "upcoming";
-
 function jakartaDayBounds(reference = new Date()) {
   const shifted = new Date(reference.getTime() + 7 * 60 * 60 * 1000);
   const start = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 7 * 60 * 60 * 1000);
   const tomorrow = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   const dayAfterTomorrow = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000);
   return { start, tomorrow, dayAfterTomorrow };
-}
-
-export async function getFollowUpData({ bucket, picId }: { bucket: FollowUpBucket; picId?: string }) {
-  const actor = await requireActor();
-  const { start, tomorrow, dayAfterTomorrow } = jakartaDayBounds();
-  const timeWhere = bucket === "overdue"
-    ? { lt: start }
-    : bucket === "today"
-      ? { gte: start, lt: tomorrow }
-      : bucket === "tomorrow"
-        ? { gte: tomorrow, lt: dayAfterTomorrow }
-        : { gte: dayAfterTomorrow };
-  const selectedPicId = picId === "all" ? undefined : picId || (actor.role === "ADMIN_CUSTOMER" ? actor.id : undefined);
-  const baseWhere = {
-    stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] as OpportunityStage[] },
-    nextActionAt: { not: null },
-    customer: { archivedAt: null },
-    ...(selectedPicId ? { salesPicId: selectedPicId } : {}),
-  } satisfies Prisma.OpportunityWhereInput;
-  const prisma = getPrismaClient();
-  const [items, overdue, today, tomorrowCount, upcoming, salesUsers] = await Promise.all([
-    prisma.opportunity.findMany({
-      where: { ...baseWhere, nextActionAt: timeWhere },
-      select: {
-        id: true,
-        opportunityNo: true,
-        title: true,
-        stage: true,
-        version: true,
-        nextAction: true,
-        nextActionAt: true,
-        lastContactedAt: true,
-        cancelReason: true,
-        customer: { select: { id: true, name: true, companyName: true, whatsapp: true } },
-        salesPic: { select: { id: true, name: true } },
-      },
-      orderBy: [{ nextActionAt: "asc" }, { id: "asc" }],
-      take: 200,
-    }),
-    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { lt: start } } }),
-    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: start, lt: tomorrow } } }),
-    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: tomorrow, lt: dayAfterTomorrow } } }),
-    prisma.opportunity.count({ where: { ...baseWhere, nextActionAt: { gte: dayAfterTomorrow } } }),
-    prisma.appUser.findMany({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-  ]);
-  return { items, counts: { overdue, today, tomorrow: tomorrowCount, upcoming }, salesUsers, selectedPicId };
 }
 
 async function countFollowUpBadge(actorId: string, actorRole: string) {
@@ -1423,8 +1375,8 @@ export async function getSalesOrderDetail(salesOrderId: string) {
   });
 }
 
-export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED";
-export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED";
+export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
+export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
 export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "UNSCHEDULED";
 export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
 export type PurchaseOrderListSort = "purchaseOrderNo" | "productName" | "customer" | "status" | "createdAt" | "deadline";

@@ -9,12 +9,14 @@ export const moveProductionSchema = z.object({
   workOrderId,
   version,
   targetStage: stage,
-  decision: z.enum(["ADVANCE", "SKIP", "SAMPLE_REJECT", "QC_REJECT"]).default("ADVANCE"),
+  decision: z.enum(["ADVANCE", "SKIP", "SAMPLE_REJECT", "QC_REJECT", "REVERT"]).default("ADVANCE"),
+  // Kendala opsional untuk semua jenis perpindahan proses.
   note: z.string().trim().max(2000).optional(),
-}).superRefine((value, context) => {
-  if (value.decision !== "ADVANCE" && (!value.note || value.note.length < 3)) {
-    context.addIssue({ code: "custom", path: ["note"], message: "Alasan minimal 3 karakter." });
-  }
+});
+
+export const updateProductionObstacleSchema = z.object({
+  workOrderId,
+  obstacle: z.string().trim().max(2000).optional(),
 });
 
 export const assignProductionStepSchema = z.object({

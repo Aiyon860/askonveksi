@@ -16,7 +16,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { DECORATION_METHOD_LABEL, DECORATION_METHODS, type DecorationMethod } from "@/lib/crm/constants";
-import { productionDeadlineOptions } from "@/lib/crm/production-deadline";
+import { CUSTOM_PRODUCTION_DEADLINE_VALUE, isProductionDeadlinePreset, productionDeadlineOptions } from "@/lib/crm/production-deadline";
 import { cn } from "@/lib/utils";
 
 type SizeOption = { id: string; name: string };
@@ -87,6 +87,9 @@ export function PurchaseOrderForm({
   const [garmentType, setGarmentType] = useState(values?.garmentType ?? "");
   const [selectedOrderDate, setSelectedOrderDate] = useState(orderDate);
   const [deadline, setDeadline] = useState(values?.deadline ?? "");
+  const [deadlineMode, setDeadlineMode] = useState<"PRESET" | "CUSTOM">(() => (
+    values?.deadline && !isProductionDeadlinePreset(values.deadline, orderDate) ? "CUSTOM" : "PRESET"
+  ));
   const [designDeadline, setDesignDeadline] = useState(values?.designDeadline ?? "");
   const [hasChangedOrderDate, setHasChangedOrderDate] = useState(false);
   const deadlineOptions = useMemo(
@@ -158,16 +161,46 @@ export function PurchaseOrderForm({
               </NativeSelect>
               {legacyDecoration ? <FieldDescription>Nilai lama “{legacyDecoration}” perlu dipilih ulang menggunakan opsi yang tersedia.</FieldDescription> : null}
             </Field>
-            <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" value={selectedOrderDate} onChange={(event) => { const nextOrderDate = event.currentTarget.value; setSelectedOrderDate(nextOrderDate); setDeadline(""); setDesignDeadline((current) => current && current < nextOrderDate ? "" : current); setHasChangedOrderDate(true); }} /></Field>
+            <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" value={selectedOrderDate} onChange={(event) => { const nextOrderDate = event.currentTarget.value; setSelectedOrderDate(nextOrderDate); setDeadline(""); setDeadlineMode("PRESET"); setDesignDeadline((current) => current && current < nextOrderDate ? "" : current); setHasChangedOrderDate(true); }} /></Field>
             <Field>
               <FieldLabel htmlFor={`po-deadline-${fieldKey}`} required>Deadline produksi</FieldLabel>
-              <NativeSelect id={`po-deadline-${fieldKey}`} name="deadline" required value={deadline} onChange={(event) => setDeadline(event.currentTarget.value)} className="w-full">
+              <NativeSelect
+                id={`po-deadline-${fieldKey}`}
+                required
+                value={deadlineMode === "CUSTOM" ? CUSTOM_PRODUCTION_DEADLINE_VALUE : deadline}
+                onChange={(event) => {
+                  const next = event.currentTarget.value;
+                  if (next === CUSTOM_PRODUCTION_DEADLINE_VALUE) {
+                    setDeadlineMode("CUSTOM");
+                    setDeadline("");
+                  } else {
+                    setDeadlineMode("PRESET");
+                    setDeadline(next);
+                  }
+                }}
+                className="w-full"
+              >
                 <NativeSelectOption value="" disabled>Pilih deadline produksi</NativeSelectOption>
                 {deadlineOptions.map((option) => (
                   <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>
                 ))}
+                <NativeSelectOption value={CUSTOM_PRODUCTION_DEADLINE_VALUE}>Tanggal kustom</NativeSelectOption>
               </NativeSelect>
-              <FieldDescription>Dihitung dari tanggal order.</FieldDescription>
+              {deadlineMode === "CUSTOM" ? (
+                <Input
+                  id={`po-deadline-custom-${fieldKey}`}
+                  name="deadline"
+                  type="date"
+                  required
+                  min={selectedOrderDate || jakartaToday()}
+                  value={deadline}
+                  aria-label="Tanggal deadline produksi kustom"
+                  onChange={(event) => setDeadline(event.currentTarget.value)}
+                />
+              ) : (
+                <input type="hidden" name="deadline" value={deadline} />
+              )}
+              <FieldDescription>Dihitung dari tanggal order, atau pilih tanggal kustom sesuai kebutuhan.</FieldDescription>
             </Field>
             <Field><FieldLabel htmlFor={`po-design-deadline-${fieldKey}`} required>Deadline upload desain</FieldLabel><Input id={`po-design-deadline-${fieldKey}`} name="designDeadline" type="date" required min={selectedOrderDate || jakartaToday()} value={designDeadline} onChange={(event) => setDesignDeadline(event.currentTarget.value)} /></Field>
             {garmentType === "JERSEY" ? (

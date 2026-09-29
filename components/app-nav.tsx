@@ -2,13 +2,12 @@
 
 import type { AppRole } from "@prisma/client";
 import type { LucideIcon } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, CalendarClock, ChevronDown, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Megaphone, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Tags, UsersRound, Waypoints } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Megaphone, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Tags, UsersRound, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 const mainItems = [
@@ -23,7 +22,7 @@ const financeItems = [
 
 const crmItems = [
   { href: "/crm", label: "Pipeline", icon: KanbanSquare },
-  { href: "/crm/follow-up", label: "Follow-up", icon: CalendarClock },
+  { href: "/crm/follow-up", label: "Broadcast", icon: CalendarClock },
   { href: "/crm/purchase-orders", label: "Purchase Order", icon: FileText },
   { href: "/crm/invoices", label: "Invoice", icon: Receipt },
   { href: "/crm/sales-orders", label: "Sales Order", icon: ScrollText },
@@ -99,13 +98,20 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
   );
 }
 
+function NavGroup({ label, icon: Icon, children }: { label: ReactNode; icon: LucideIcon; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground">
+        <Icon aria-hidden="true" className="size-4" />
+        {label}
+      </div>
+      <div className="flex flex-col gap-1">{children}</div>
+    </div>
+  );
+}
+
 export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole; onNavigate?: () => void }) {
   const pathname = usePathname();
-  const [masterDataOpen, setMasterDataOpen] = useState(false);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [crmOpen, setCrmOpen] = useState(false);
-  const [financeOpen, setFinanceOpen] = useState(false);
-  const [whatsAppOpen, setWhatsAppOpen] = useState(false);
   const [followUpCount, setFollowUpCount] = useState(0);
   const [whatsAppCount, setWhatsAppCount] = useState(0);
 
@@ -127,89 +133,48 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
   const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
   const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
-  const masterDataActive = (isPathWithin(pathname, "/master-data") && !isPathWithin(pathname, "/master-data/whatsapp")) || isPathWithin(pathname, "/admin/users");
-  const analyticsActive = isPathWithin(pathname, "/analytics");
-  const crmActive = isPathWithin(pathname, "/crm") || isPathWithin(pathname, "/sales-orders");
-  const financeActive = isPathWithin(pathname, "/keuangan");
-  const whatsAppActive = isPathWithin(pathname, "/whatsapp") || isPathWithin(pathname, "/master-data/whatsapp");
-
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewFinance ? (
-        <Collapsible open={financeActive || financeOpen} onOpenChange={setFinanceOpen} className="group/collapsible flex flex-col gap-1">
-          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
-            <CircleDollarSign aria-hidden="true" className="size-4" />
-            <span>Keuangan</span>
-            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-1">
-            {financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
-          </CollapsibleContent>
-        </Collapsible>
+        <NavGroup label={<span>Keuangan</span>} icon={CircleDollarSign}>
+          {financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+        </NavGroup>
       ) : null}
       {canViewCrm ? (
-        <Collapsible open={crmActive || crmOpen} onOpenChange={setCrmOpen} className="group/collapsible flex flex-col gap-1">
-          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
-            <KanbanSquare aria-hidden="true" className="size-4" />
-            <span>CRM</span>
-            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-1">
-            {crmItems.map((item) => (
-              <NavLink
-                key={item.href}
-                pathname={pathname}
-                item={item.href === "/crm/follow-up" ? { ...item, count: followUpCount } : item}
-                nested
-                onNavigate={onNavigate}
-              />
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
+        <NavGroup label={<span>CRM</span>} icon={KanbanSquare}>
+          {crmItems.map((item) => (
+            <NavLink
+              key={item.href}
+              pathname={pathname}
+              item={item.href === "/crm/follow-up" ? { ...item, count: followUpCount } : item}
+              nested
+              onNavigate={onNavigate}
+            />
+          ))}
+        </NavGroup>
       ) : null}
       {canViewCrm ? prospectItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewCrm ? (
-        <Collapsible open={whatsAppActive || whatsAppOpen} onOpenChange={setWhatsAppOpen} className="group/collapsible flex flex-col gap-1">
-          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
-            <MessageCircle aria-hidden="true" className="size-4" />
-            <span>WhatsApp</span>
-            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-1">
-            {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested onNavigate={onNavigate} />)}
-          </CollapsibleContent>
-        </Collapsible>
+        <NavGroup label={<span>WhatsApp</span>} icon={MessageCircle}>
+          {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested onNavigate={onNavigate} />)}
+        </NavGroup>
       ) : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/campaigns", label: "Campaign promo", icon: Megaphone }} onNavigate={onNavigate} /> : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
       {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/detail-desain", label: "Detail Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
       {canViewAnalytics ? (
-        <Collapsible open={analyticsActive || analyticsOpen} onOpenChange={setAnalyticsOpen} className="group/collapsible flex flex-col gap-1">
-          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
-            <BarChart3 aria-hidden="true" className="size-4" />
-            <span>Analytics</span>
-            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-1">
-            {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
-          </CollapsibleContent>
-        </Collapsible>
+        <NavGroup label={<span>Analytics</span>} icon={BarChart3}>
+          {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+        </NavGroup>
       ) : null}
       {canManageMasterData ? (
-        <Collapsible open={masterDataActive || masterDataOpen} onOpenChange={setMasterDataOpen} className="group/collapsible flex flex-col gap-1">
-          <CollapsibleTrigger className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
-            <Database aria-hidden="true" className="size-4" />
-            <span>Data Master</span>
-            <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform group-data-open/collapsible:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-1">
-            {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
-            {canManageMasterData ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />) : null}
-          </CollapsibleContent>
-        </Collapsible>
+        <NavGroup label={<span>Data Master</span>} icon={Database}>
+          {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+          {ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+        </NavGroup>
       ) : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: Settings2 }} onNavigate={onNavigate} /> : null}
     </nav>

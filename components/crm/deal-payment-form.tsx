@@ -5,6 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 import { completeDealAction } from "@/app/actions/crm";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { MoneyInput } from "@/components/money-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -124,7 +125,11 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`term-value-${term.key}`} required>Nilai termin {index + 1}</FieldLabel>
-                    <Input id={`term-value-${term.key}`} name="termValue" type="number" required min="0.01" max={term.valueType === "PERCENTAGE" ? 100 : undefined} step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
+                    {term.valueType === "NOMINAL" ? (
+                      <MoneyInput id={`term-value-${term.key}`} name="termValue" required min="0.01" step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
+                    ) : (
+                      <Input id={`term-value-${term.key}`} name="termValue" type="number" required min="0.01" max={100} step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
+                    )}
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`term-date-${term.key}`} required>Deadline Termin {index + 1}</FieldLabel>

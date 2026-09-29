@@ -5,6 +5,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { CopyPlus, FileDown, XCircle } from "lucide-react";
 
+import { cancelInvoiceAction } from "@/app/actions/crm";
+import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
 import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { Button } from "@/components/ui/button";
@@ -32,10 +34,11 @@ type InvoiceWorkflowSectionProps = {
   invoiceId: string;
   invoiceVersion: number;
   invoiceRevision: number;
-  invoiceStatus: "DRAFT" | "ISSUED" | "SUPERSEDED";
+  invoiceStatus: "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
   title: string;
   description: string;
   canOperate: boolean;
+  canCancel: boolean;
   inNegotiation: boolean;
   purchaseOrder: PurchaseOrder | null;
   draftValues: InvoiceDraftValues;
@@ -53,6 +56,7 @@ export function InvoiceWorkflowSection({
   title,
   description,
   canOperate,
+  canCancel,
   inNegotiation,
   purchaseOrder,
   draftValues,
@@ -85,6 +89,14 @@ export function InvoiceWorkflowSection({
               <CopyPlus data-icon="inline-start" aria-hidden="true" />
               Buat versi revisi
             </Button>
+          ) : null}
+          {canCancel && invoiceStatus === "DRAFT" ? (
+            <DocumentCancelButton
+              action={cancelInvoiceAction}
+              fields={{ invoiceId, version: invoiceVersion }}
+              title="Batalkan invoice draft?"
+              description="Invoice akan berstatus Dibatalkan dan tidak dapat diterbitkan lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
+            />
           ) : null}
           {!isEditing && salesOrderHref && salesOrderLabel ? (
             <Button variant="outline" className="w-full sm:w-auto" render={<Link href={salesOrderHref} />} nativeButton={false}>

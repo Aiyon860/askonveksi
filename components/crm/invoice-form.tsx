@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 
 import { createInvoiceDraftAction, createInvoiceRevisionAction, updateInvoiceDraftAction } from "@/app/actions/crm";
+import { MoneyInput } from "@/components/money-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { initialFormActionState } from "@/lib/actions/form-state";
@@ -67,7 +68,7 @@ export function InvoiceForm({
               <TableCell>{poItem.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}<input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /></TableCell>
               <TableCell>{poItem.size}<input type="hidden" name="itemSize" value={poItem.size} /></TableCell>
               <TableCell className="text-right font-mono tabular-nums">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
-              <TableCell><Input name="itemUnitPrice" type="number" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${description}`} /></TableCell>
+              <TableCell><MoneyInput name="itemUnitPrice" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${description}`} /></TableCell>
             </TableRow>;
           })}</TableBody>
         </Table>

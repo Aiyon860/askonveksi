@@ -67,7 +67,7 @@ function sortHref(state: TableState, sort: InvoiceListSort) {
 
 function parseInvoiceStatus(value: string | string[] | undefined): InvoiceListStatus {
   const rawStatus = first(value);
-  return rawStatus === "DRAFT" || rawStatus === "ISSUED" || rawStatus === "SUPERSEDED" ? rawStatus : "all";
+  return rawStatus === "DRAFT" || rawStatus === "ISSUED" || rawStatus === "SUPERSEDED" || rawStatus === "CANCELLED" ? rawStatus : "all";
 }
 
 function parsePaymentStatus(value: string | string[] | undefined): InvoicePaymentStatus {
@@ -87,6 +87,7 @@ function invoiceStatusLabel(status: InvoiceListStatus) {
   if (status === "DRAFT") return "Draft";
   if (status === "ISSUED") return "Diterbitkan";
   if (status === "SUPERSEDED") return "Digantikan";
+  if (status === "CANCELLED") return "Dibatalkan";
   return null;
 }
 

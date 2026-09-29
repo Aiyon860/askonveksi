@@ -5,6 +5,7 @@ import { AlertTriangle, CalendarClock, CircleDollarSign, HandCoins, Percent } fr
 import Link from "next/link";
 
 import { fetcher } from "@/lib/fetcher";
+import { LazyBusinessTrendChart } from "@/components/dashboard/lazy-business-trend-chart";
 import { InvoiceDetail } from "@/components/crm/invoice-detail";
 import { PurchaseOrderDetail } from "@/components/crm/purchase-order-detail";
 import { STAGE_SUMMARY_CLASS } from "@/components/crm/stage-theme";
@@ -149,6 +150,8 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
           </MetricGroup>
         </section>
       ) : null}
+
+      {data.canViewFinancialData ? <LazyBusinessTrendChart /> : null}
 
       <section aria-labelledby="latest-documents-title">
         <div className="mb-4">
