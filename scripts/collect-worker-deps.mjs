@@ -13,6 +13,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
 } from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
@@ -47,9 +48,119 @@ function isOptional(spec) {
   return OPTIONAL_PREFIXES.some((prefix) => spec.startsWith(prefix));
 }
 
+const warnedOptional = new Set();
+function warnOptional(spec) {
+  if (warnedOptional.has(spec)) return;
+  warnedOptional.add(spec);
+  console.warn(`optional dep skipped: ${spec}`);
+}
+
+// ESM entry of a package per its exports map (condition priority for a
+// Node ESM importer). Returns an absolute path or null. Needed because
+// dual packages (pg, pg-pool: esm/index.mjs vs lib/index.js) expose a
+// different file to ESM importers than CJS resolution finds.
+function pickImportCondition(node) {
+  while (node && typeof node === "object" && !Array.isArray(node)) {
+    node = node.node ?? node.import ?? node.default;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const hit = pickImportCondition(item);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  return typeof node === "string" ? node : null;
+}
+
+function esmEntryOf(pkgDir) {
+  let manifest;
+  try {
+    manifest = JSON.parse(
+      readFileSync(path.join(pkgDir, "package.json"), "utf8"),
+    );
+  } catch {
+    return null;
+  }
+  const entry = pickImportCondition(manifest.exports?.["."]);
+  if (!entry) return null;
+  const abs = path.normalize(path.join(pkgDir, entry));
+  return abs.startsWith(pkgDir + path.sep) ? abs : null; // stay in-package
+}
+
+// Resolvers may return logical paths without CJS extension probing
+// (e.g. the ESM leg for an exports-less package: `xtend/mutable`
+// instead of `mutable.js`). Probe like CJS before giving up.
+function probeExisting(abs) {
+  const pick = (candidate) => {
+    try {
+      return statSync(candidate).isFile() ? candidate : null;
+    } catch {
+      return null;
+    }
+  };
+  if (pick(abs)) return abs;
+  for (const suffix of [
+    ".js",
+    ".json",
+    ".node",
+    "/index.js",
+    "/index.mjs",
+    "/index.cjs",
+  ]) {
+    const probed = pick(abs + suffix);
+    if (probed) return probed;
+  }
+  return null;
+}
+
 const IMPORT_RE =
   /(?:import\s+(?:[^'"]*?\s+from\s+)?|export\s+[^'"]*?\s+from\s+|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g;
 const PARSEABLE_RE = /\.(?:mjs|cjs|js)$/;
+
+// Spans of template literals (best-effort; `}` inside nested template text
+// can skew depth). Real import statements never live inside backticks, but
+// doc/error text does (e.g. Prisma's constructor error message quotes
+// `import ... from './generated/prisma/client'`).
+function templateSpans(text) {
+  const spans = [];
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    if (text[i] !== "`") {
+      i++;
+      continue;
+    }
+    const start = i++;
+    let depth = 0;
+    while (i < n) {
+      const c = text[i];
+      if (c === "\\") {
+        i += 2;
+        continue;
+      }
+      if (c === "$" && text[i + 1] === "{") {
+        depth++;
+        i += 2;
+        continue;
+      }
+      if (c === "}" && depth > 0) {
+        depth--;
+        i++;
+        continue;
+      }
+      if (c === "`" && depth === 0) break;
+      i++;
+    }
+    spans.push([start, Math.min(i, n)]);
+    if (i < n) i++;
+  }
+  return spans;
+}
+
+function inSpans(spans, index) {
+  return spans.some(([start, end]) => index >= start && index < end);
+}
 
 function specifiersOf(file) {
   let text;
@@ -62,8 +173,11 @@ function specifiersOf(file) {
   text = text
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  const spans = templateSpans(text);
   const out = [];
-  for (const m of text.matchAll(IMPORT_RE)) out.push(m[1]);
+  for (const m of text.matchAll(IMPORT_RE)) {
+    if (!inSpans(spans, m.index ?? 0)) out.push(m[1]);
+  }
   return out;
 }
 
@@ -88,6 +202,7 @@ if (!existsSync(entry)) {
 
 const seen = new Set();
 const tracedFiles = new Set(); // reachable files under root (phase 1)
+const supplementedPkgs = new Set(); // packages with ESM entry queued
 const missing = [];
 const queue = [entry];
 
@@ -106,28 +221,28 @@ while (queue.length > 0) {
       spec === ".."
     )
       continue;
-    // Dual-semantics: CJS-first, ESM as well. Dual packages (pg, pg-pool:
-    // esm/index.mjs vs lib/index.js) resolve differently per importer, and
-    // the worker (ESM) may hit the entry the CJS walk never sees.
-    // This mirrors runtime, where ESM entries bridge to CJS via createRequire.
+    // CJS resolution first: reliable parent handling, incl. dot-leading
+    // packages like `.prisma/...` that ESM rejects outright.
+    // ESM only as fallback for import-only export conditions.
+    // (import.meta.resolve is NOT run alongside: in this resolver role it
+    // ignores the parent for relative specs and returns unprobed paths.)
     const resolvedHrefs = new Set();
     try {
       resolvedHrefs.add(
         pathToFileURL(createRequire(file).resolve(spec)).href,
       );
     } catch {
-      // fall through to ESM attempt below
-    }
-    try {
-      resolvedHrefs.add(
-        await import.meta.resolve(spec, pathToFileURL(file).href),
-      );
-    } catch {
-      // fall through to missing check below
+      try {
+        resolvedHrefs.add(
+          await import.meta.resolve(spec, pathToFileURL(file).href),
+        );
+      } catch {
+        // handled by the missing check below
+      }
     }
     if (resolvedHrefs.size === 0) {
       if (isOptional(spec)) {
-        console.warn(`optional dep skipped: ${spec}`);
+        warnOptional(spec);
         continue;
       }
       missing.push(`${path.relative(root, file)} -> ${spec}`);
@@ -135,9 +250,30 @@ while (queue.length > 0) {
     }
     for (const resolved of resolvedHrefs) {
       if (!resolved.startsWith("file://")) continue;
-      const abs = fileURLToPath(resolved);
+      const abs = probeExisting(fileURLToPath(resolved));
+      if (!abs) {
+        if (isOptional(spec)) {
+          warnOptional(spec);
+          continue;
+        }
+        missing.push(
+          `${path.relative(root, file)} -> ${spec} (resolved, not on disk)`,
+        );
+        continue;
+      }
       queue.push(abs);
       if (abs.startsWith(root + path.sep)) tracedFiles.add(abs);
+      // Supplement the package's ESM entry (see esmEntryOf): the file the
+      // worker hits as an ESM importer may differ from the CJS walk.
+      const pkgDir = packageDirOf(abs);
+      if (pkgDir && !supplementedPkgs.has(pkgDir)) {
+        supplementedPkgs.add(pkgDir);
+        const esmEntry = esmEntryOf(pkgDir);
+        if (esmEntry && existsSync(esmEntry)) {
+          queue.push(esmEntry);
+          if (esmEntry.startsWith(root + path.sep)) tracedFiles.add(esmEntry);
+        }
+      }
     }
   }
 }
@@ -168,6 +304,17 @@ for (const [pkgDir, files] of byPkg) {
   for (const file of files) {
     const target = path.join(dest, path.relative(root, file));
     if (existsSync(target)) continue;
+    // Guard: never crash copyFileSync on a non-file (dir, socket, ghost).
+    let ok = false;
+    try {
+      ok = statSync(file).isFile();
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      console.warn(`skipped non-file: ${path.relative(root, file)}`);
+      continue;
+    }
     mkdirSync(path.dirname(target), { recursive: true });
     copyFileSync(file, target);
     mergedFiles++;
