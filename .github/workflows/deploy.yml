@@ -71,8 +71,10 @@ jobs:
           tar -czf release.tar.gz -C deploy_package .
           tar -tzf release.tar.gz | grep -qx './server.js'
           tar -tzf release.tar.gz | grep -qx './worker/whatsapp.mjs'
-          for p in dotenv @whiskeysockets/baileys @supabase/supabase-js ws; do
-            tar -tzf release.tar.gz | grep -q "^\./node_modules/$p" || { echo "Worker dep missing in tarball: $p"; exit 1; }
+          # File-level checks: standalone dirs may be pruned, so a present
+          # directory proves nothing. Fail the build here, not on the VPS.
+          for f in node_modules/dotenv/package.json node_modules/@whiskeysockets/baileys/package.json node_modules/@supabase/supabase-js/package.json node_modules/ws/wrapper.mjs node_modules/pg/esm/index.mjs node_modules/pg-pool/index.js node_modules/postgres-array/index.js node_modules/.prisma/client/default.js node_modules/@prisma/client/default.js; do
+            tar -tzf release.tar.gz | grep -q "^\./$f$" || { echo "Worker file missing in tarball: $f"; exit 1; }
           done
 
       - name: Upload build artifact
