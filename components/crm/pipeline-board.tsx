@@ -195,6 +195,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       <CardContent>
                         <div className="flex flex-wrap items-center gap-2">
                           {opportunity.stage === "DEAL" ? <Badge variant="success">Deal (SO)</Badge> : <OpportunityStatusBadge stage={opportunity.stage} />}
+                          {opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info">Prospek</Badge> : null}
                           <span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span>
                         </div>
                         <dl className="grid gap-2 text-xs text-muted-foreground">
@@ -335,7 +336,7 @@ function DraggablePipelineCard({ opportunity, draggable, entering, previewing, c
 }
 
 function PipelineDragPreview({ opportunity }: { opportunity: PipelineOpportunity }) {
-  return <Card size="sm" className="w-[20rem] scale-[1.02] shadow-lg"><CardHeader><CardTitle>{opportunity.customer.name}</CardTitle><CardDescription>{opportunity.title}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><OpportunityStatusBadge stage={opportunity.stage} /><span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span></div></CardContent></Card>;
+  return <Card size="sm" className="w-[20rem] scale-[1.02] shadow-lg"><CardHeader><CardTitle>{opportunity.customer.name}</CardTitle><CardDescription>{opportunity.title}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><OpportunityStatusBadge stage={opportunity.stage} />{opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info">Prospek</Badge> : null}<span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span></div></CardContent></Card>;
 }
 
 function useReducedMotion() {

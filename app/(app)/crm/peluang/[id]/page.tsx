@@ -29,9 +29,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CRM_OPERATOR_ROLES, DEAL_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
-import { decorationMethodLabel, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { decorationMethodLabel, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
-import { getActiveGarmentSizes, getCustomerFormOptions } from "@/lib/master-data";
+import { getActiveGarmentSizes, getActiveProductCategories, getCustomerFormOptions } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
 type OpportunityDetail = NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>;
@@ -100,12 +100,13 @@ async function OpportunityHeader({ id }: { id: string }) {
 }
 
 async function OpportunityContent({ id, initialTab, historyPage }: { id: string; initialTab: OpportunityDetailTab; historyPage: number }) {
-  const [opportunity, actor, formOptions, communicationHistory, sizeOptions] = await Promise.all([
+  const [opportunity, actor, formOptions, communicationHistory, sizeOptions, categoryOptions] = await Promise.all([
     getOpportunityDetail(id),
     getCurrentActor(),
     getCustomerFormOptions(),
     getCommunicationTimeline({ opportunityId: id, page: historyPage }),
     getActiveGarmentSizes(),
+    getActiveProductCategories(),
   ]);
   if (!opportunity || !actor) notFound();
   const purchaseOrderNoPreview = await getPurchaseOrderNoPreview(opportunity.customer);
@@ -220,9 +221,11 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     canCancel={canCancelDocuments}
                     inNegotiation={inNegotiation}
                     sizeOptions={sizeOptions}
+                    categoryOptions={categoryOptions}
                     draftValues={{
                       purchaseOrderNo: purchaseOrder.purchaseOrderNo,
                       garmentType: purchaseOrder.garmentType,
+                      productCategoryId: purchaseOrder.productCategoryId,
                       productName: purchaseOrder.productName,
                       material: purchaseOrder.material,
                       baseColor: purchaseOrder.baseColor ?? purchaseOrder.color ?? "",
@@ -243,7 +246,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   </PurchaseOrderWorkflowSection>
                 </section>
               ))}
-              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} purchaseOrderNoPreview={purchaseOrderNoPreview} /> : null}
+              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} categoryOptions={categoryOptions} purchaseOrderNoPreview={purchaseOrderNoPreview} /> : null}
             </div>
           )}
         </CardContent>
@@ -451,7 +454,8 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
     <div className="flex flex-col gap-4">
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
         <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1">{PURCHASE_ORDER_STATUS_LABEL[purchaseOrder.status]}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Jenis pakaian</dt><dd className="mt-1">{purchaseOrder.garmentType === "JERSEY" ? "Jersey" : purchaseOrder.garmentType === "NON_JERSEY" ? "Non-jersey" : "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Jenis pakaian</dt><dd className="mt-1">{purchaseOrder.garmentType ? GARMENT_TYPE_LABEL[purchaseOrder.garmentType] : "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Kategori</dt><dd className="mt-1">{purchaseOrder.productCategory?.name ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Produk atau pola</dt><dd className="mt-1">{purchaseOrder.productName}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Bahan</dt><dd className="mt-1">{purchaseOrder.material}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>

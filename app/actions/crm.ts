@@ -265,6 +265,7 @@ function purchaseOrderInput(formData: FormData) {
     purchaseOrderId: formValue(formData, "purchaseOrderId") || undefined,
     version: formValue(formData, "version") || undefined,
     garmentType: formValue(formData, "garmentType"),
+    productCategoryId: formValue(formData, "productCategoryId") || undefined,
     productName: formValue(formData, "productName"),
     material: formValue(formData, "material"),
     baseColor: formValue(formData, "baseColor"),
@@ -289,6 +290,14 @@ function purchaseOrderInput(formData: FormData) {
       sleeveLength: rosterSleeveLengths[index],
     })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
   };
+}
+
+async function resolveProductCategory(reader: Tx, productCategoryId: string | undefined, fallbackGarmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI") {
+  if (!productCategoryId) return { productCategoryId: null, garmentType: fallbackGarmentType };
+  const category = await reader.productCategory.findUnique({ where: { id: productCategoryId }, select: { garmentType: true, isActive: true } });
+  if (!category) throw new UserFacingError("Kategori produk tidak ditemukan. Pilih kategori lain.");
+  if (!category.isActive) throw new UserFacingError("Kategori produk sudah tidak aktif. Pilih kategori lain.");
+  return { productCategoryId, garmentType: category.garmentType };
 }
 
 async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "manual" | "excel") {
@@ -886,7 +895,7 @@ export async function createOpportunityAction(formData: FormData) {
 }
 
 export async function createProspectAction(formData: FormData) {
-  return runRedirectingAction("/crm", async () => {
+  return runRedirectingAction("/crm/prospek", async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
     const customerParsed = createProspectCustomerSchema.safeParse(customerFields(formData));
     if (!customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
@@ -919,14 +928,16 @@ export async function createProspectAction(formData: FormData) {
           opportunityNo: await nextOpportunityNo(tx),
           customerId: customer.id,
           title: `Prospek: ${customer.name}`,
+          stage: "FOLLOW_UP",
+          origin: "PROSPEK_FORM",
           leadSourceId,
           salesPicId,
         },
         select: { id: true },
       });
       await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-        "customerId", "title", "leadSourceId", "salesPicId", "stage",
-      ], { stage: "LEAD_BARU" });
+        "customerId", "title", "leadSourceId", "salesPicId", "stage", "origin",
+      ], { stage: "FOLLOW_UP", origin: "PROSPEK_FORM" });
       return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
@@ -965,6 +976,7 @@ export async function createRepeatOrderAction(formData: FormData) {
           title: `Repeat Order: ${customer.name}`,
           stage: "NEGOSIASI",
           isRepeatOrder: true,
+          origin: "REPEAT_ORDER",
           leadSourceId: customer.leadSourceId,
           salesPicId,
         },
@@ -1061,7 +1073,7 @@ async function moveOpportunityStage(formData: FormData) {
     if (current.stage === "DEAL") throw new UserFacingError("Deal hanya dapat dibatalkan melalui Sales Order oleh Admin.");
     const allowedTransitions: Record<string, readonly string[]> = {
       LEAD_BARU: ["FOLLOW_UP", "NEGOSIASI", "LOST"],
-      FOLLOW_UP: ["LEAD_BARU", "NEGOSIASI", "LOST"],
+      FOLLOW_UP: ["NEGOSIASI", "LOST"],
       NEGOSIASI: ["FOLLOW_UP", "LOST"],
       LOST: ["FOLLOW_UP"],
     };
@@ -1300,13 +1312,15 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
         if (opportunity.purchaseOrders.length) throw new UserFacingError("Selesaikan draft PO yang sedang aktif.");
         if (opportunity._count.purchaseOrders > 0) throw new UserFacingError("Gunakan aksi Revisi PO dari dokumen sebelumnya.");
 
+        const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
             purchaseOrderNo: await nextPurchaseOrderNo(tx, opportunity.customer),
             opportunityId: parsed.data.opportunityId,
             revision: 1,
-            garmentType: parsed.data.garmentType,
+            garmentType: category.garmentType,
+            productCategoryId: category.productCategoryId,
             productName: parsed.data.productName,
             material: parsed.data.material,
             color: parsed.data.baseColor,
@@ -1314,7 +1328,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
             variationColor: parsed.data.variationColor,
             decorationMethod: parsed.data.decorationMethod,
             orderDate: optionalDate(parsed.data.orderDate),
-            sampleSize: parsed.data.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
+            sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
@@ -1326,7 +1340,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_DRAFT_CREATED", [
-          "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
         ], { opportunityId: parsed.data.opportunityId });
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1355,10 +1369,12 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
     const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
     timer.mark("rows");
     await prisma.$transaction(async (tx) => {
+        const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
         const updated = await tx.purchaseOrder.updateMany({
           where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { purchaseOrders: { none: { status: "AGREED" } }, invoices: { none: { status: "ISSUED" } } } },
           data: {
-            garmentType: parsed.data.garmentType,
+            garmentType: category.garmentType,
+            productCategoryId: category.productCategoryId,
             productName: parsed.data.productName,
             material: parsed.data.material,
             color: parsed.data.baseColor,
@@ -1366,7 +1382,7 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
             variationColor: parsed.data.variationColor,
             decorationMethod: parsed.data.decorationMethod,
             orderDate: optionalDate(parsed.data.orderDate),
-            sampleSize: parsed.data.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
+            sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
@@ -1382,7 +1398,7 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
         });
         if (rows.roster.length) await tx.purchaseOrderRosterEntry.createMany({ data: rows.roster.map((item) => ({ purchaseOrderId, ...item })) });
         await audit(tx, actor, "PurchaseOrder", purchaseOrderId, "PURCHASE_ORDER_DRAFT_UPDATED", [
-          "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
         ]);
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1512,6 +1528,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
         if (source.opportunity.purchaseOrders.length || source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("PO atau invoice sudah final dan tidak dapat direvisi.");
         if (source.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Revisi PO hanya dapat dibuat saat Negosiasi.");
         if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
+        const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
         const locked = await tx.purchaseOrder.updateMany({
           where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
@@ -1523,7 +1540,8 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             purchaseOrderNo: formatPurchaseOrderRevisionNo(source.purchaseOrderNo, source.revision + 1),
             opportunityId: source.opportunityId,
             revision: source.revision + 1,
-            garmentType: parsed.data.garmentType,
+            garmentType: category.garmentType,
+            productCategoryId: category.productCategoryId,
             productName: parsed.data.productName,
             material: parsed.data.material,
             color: parsed.data.baseColor,
@@ -1531,7 +1549,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             variationColor: parsed.data.variationColor,
             decorationMethod: parsed.data.decorationMethod,
             orderDate: optionalDate(parsed.data.orderDate),
-            sampleSize: parsed.data.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
+            sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
@@ -1543,7 +1561,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
-          "revision", "garmentType", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
+          "revision", "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
         ], { sourcePurchaseOrderId: source.id });
         return source.opportunityId;
     }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

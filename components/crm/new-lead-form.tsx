@@ -12,7 +12,7 @@ import { FieldGroup } from "@/components/ui/field";
 export function NewLeadForm({ customerTypes, leadSources, salesUsers }: { customerTypes: CustomerFormOption[]; leadSources: CustomerFormOption[]; salesUsers: CustomerFormOption[] }) {
   return (
     <Dialog>
-      <DialogTrigger render={<Button />}><Plus data-icon="inline-start" aria-hidden="true" />Prospek</DialogTrigger>
+      <DialogTrigger render={<Button type="button" />}><Plus data-icon="inline-start" aria-hidden="true" />Prospek</DialogTrigger>
       <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Tambah Prospek</DialogTitle>

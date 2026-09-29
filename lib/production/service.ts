@@ -88,7 +88,7 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
 
   return createProductionWorkOrder(tx, actor, {
     salesOrderId: order.id,
-    route: order.purchaseOrder.garmentType,
+    route: order.purchaseOrder.garmentType === "JERSEY" ? "JERSEY" : "NON_JERSEY",
     productName: order.purchaseOrder.productName,
     quantity: order.purchaseOrder.sizes.reduce((sum, item) => sum + item.quantity, 0),
     deadline: order.purchaseOrder.deadline,

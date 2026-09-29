@@ -29,7 +29,7 @@ export default function CRMLoading() {
         </Card>
       </section>
 
-      <KanbanSkeleton columns={5} cardsPerColumn={[2, 1, 1, 1, 1]} />
+      <KanbanSkeleton columns={4} cardsPerColumn={[2, 1, 1, 1]} />
     </LoadingPage>
   );
 }

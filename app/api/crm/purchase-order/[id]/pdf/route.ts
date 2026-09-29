@@ -32,6 +32,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       where: { id: parsed.data },
       include: {
         opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
+        productCategory: { select: { name: true } },
         sizes: { select: { size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
         rosterEntries: { select: { memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
         attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
@@ -65,6 +66,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const profile = purchaseOrder.status === "DRAFT" ? currentBusiness : null;
   const pdf = await createPurchaseOrderPdf({
     ...purchaseOrder,
+    productCategory: purchaseOrder.productCategory?.name ?? null,
     snapshotBusinessName: purchaseOrder.snapshotBusinessName ?? profile?.name ?? "AS Konveksi",
     snapshotBusinessPhone: purchaseOrder.snapshotBusinessPhone ?? profile?.phone ?? null,
     snapshotBusinessEmail: purchaseOrder.snapshotBusinessEmail ?? profile?.email ?? null,

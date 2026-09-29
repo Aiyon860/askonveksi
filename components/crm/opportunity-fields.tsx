@@ -13,7 +13,7 @@ type Values = {
   leadSourceId: string | null;
   salesPicId: string | null;
   productName: string | null;
-  garmentType: "JERSEY" | "NON_JERSEY" | null;
+  garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   needPurpose: string | null;
   specification: string | null;
   nextAction: string | null;

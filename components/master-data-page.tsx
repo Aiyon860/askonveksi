@@ -1,6 +1,6 @@
 import { Database, Download, Upload } from "lucide-react";
 
-import { MasterDataEditor, type MasterAction, type MasterItem } from "@/components/master-data-editor";
+import { MasterDataEditor, type MasterAction, type MasterItem, type MasterKindOption } from "@/components/master-data-editor";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { FilePicker } from "@/components/ui/file-picker";
 import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 
 type MasterDataPageProps = {
@@ -21,6 +22,10 @@ type MasterDataPageProps = {
   exportHref: string;
   maxNameLength?: number;
   usageLabel?: string;
+  nameLabel?: string;
+  kindLabel?: string;
+  kindOptions?: MasterKindOption[];
+  excelHint?: string;
 };
 
 export function MasterDataPage({
@@ -34,6 +39,10 @@ export function MasterDataPage({
   exportHref,
   maxNameLength = 80,
   usageLabel,
+  nameLabel = "Nama",
+  kindLabel,
+  kindOptions,
+  excelHint = "kolom Nama dan Deskripsi",
 }: MasterDataPageProps) {
   const importInputId = `master-import-${exportHref.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`;
 
@@ -41,9 +50,12 @@ export function MasterDataPage({
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
       {items.length ? (
         <MasterDataEditor
-          key={items.map((item) => `${item.id}:${item.position}:${item.name}:${item.description ?? ""}`).join("|")}
+          key={items.map((item) => `${item.id}:${item.position}:${item.name}:${item.description ?? ""}:${item.kind ?? ""}`).join("|")}
           items={items}
           singularLabel={singularLabel}
+          nameLabel={nameLabel}
+          kindLabel={kindLabel}
+          kindOptions={kindOptions}
           updateAction={bulkUpdateAction}
           deleteAction={deleteAction}
           usageLabel={usageLabel}
@@ -67,7 +79,7 @@ export function MasterDataPage({
         <Card>
           <CardHeader>
             <CardTitle>Excel</CardTitle>
-            <CardDescription>Export semua data, atau import XLSX dengan kolom Nama dan Deskripsi.</CardDescription>
+            <CardDescription>Export semua data, atau import XLSX dengan {excelHint}.</CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>
@@ -101,13 +113,25 @@ export function MasterDataPage({
             <form action={createAction}>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="master-name" required>Nama</FieldLabel>
+                  <FieldLabel htmlFor="master-name" required>{nameLabel}</FieldLabel>
                   <Input id="master-name" name="name" required minLength={2} maxLength={maxNameLength} />
                 </Field>
-                <Field>
-                  <FieldLabel htmlFor="master-description">Deskripsi</FieldLabel>
-                  <Textarea id="master-description" name="description" maxLength={500} rows={3} />
-                </Field>
+                {kindOptions && kindLabel ? (
+                  <Field>
+                    <FieldLabel htmlFor="master-kind" required>{kindLabel}</FieldLabel>
+                    <NativeSelect id="master-kind" name="kind" required>
+                      <NativeSelectOption value="" disabled>Pilih {kindLabel.toLocaleLowerCase("id")}</NativeSelectOption>
+                      {kindOptions.map((option) => (
+                        <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                ) : (
+                  <Field>
+                    <FieldLabel htmlFor="master-description">Deskripsi</FieldLabel>
+                    <Textarea id="master-description" name="description" maxLength={500} rows={3} />
+                  </Field>
+                )}
 
                 <SubmitButton pendingLabel="Menyimpan...">Tambah {singularLabel.toLowerCase()}</SubmitButton>
               </FieldGroup>

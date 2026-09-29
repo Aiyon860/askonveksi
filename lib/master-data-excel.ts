@@ -7,6 +7,19 @@ import { UserFacingError } from "@/lib/actions/response";
 export type MasterDataExcelRow = {
   name: string;
   description: string | null;
+  kind?: string | null;
+};
+
+export type MasterDataExcelKindOption = {
+  header: string;
+  values: Record<string, "JERSEY" | "NON_JERSEY" | "AKSESORI">;
+  allowedLabels: string[];
+};
+
+export const PRODUCT_CATEGORY_EXCEL_KIND: MasterDataExcelKindOption = {
+  header: "Jenis Kategori",
+  values: { jersey: "JERSEY", "non jersey": "NON_JERSEY", aksesori: "AKSESORI" },
+  allowedLabels: ["Jersey", "Non-jersey", "Aksesori"],
 };
 
 export const MASTER_DATA_EXCEL_MAX_BYTES = 1 * 1024 * 1024;
@@ -16,21 +29,29 @@ const XLSX_MAX_ENTRIES = 100;
 const XLSX_MAX_UNCOMPRESSED_BYTES = 8 * 1024 * 1024;
 const XLSX_MAX_COMPRESSION_RATIO = 100;
 
-export async function createMasterDataWorkbook(title: string, rows: MasterDataExcelRow[]) {
+export async function createMasterDataWorkbook(title: string, rows: MasterDataExcelRow[], kindOption?: MasterDataExcelKindOption) {
   const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ERM Askonveksi";
   workbook.created = new Date();
 
   const worksheet = workbook.addWorksheet(title);
-  worksheet.columns = [
-    { header: "No", key: "number", width: 8 },
-    { header: "Nama", key: "name", width: 32 },
-    { header: "Deskripsi", key: "description", width: 60 },
-  ];
+  worksheet.columns = kindOption
+    ? [
+        { header: "No", key: "number", width: 8 },
+        { header: "Nama", key: "name", width: 32 },
+        { header: kindOption.header, key: "kind", width: 20 },
+      ]
+    : [
+        { header: "No", key: "number", width: 8 },
+        { header: "Nama", key: "name", width: 32 },
+        { header: "Deskripsi", key: "description", width: 60 },
+      ];
   worksheet.getRow(1).font = { bold: true };
   rows.forEach((row, index) => {
-    worksheet.addRow({ number: index + 1, name: row.name, description: row.description ?? "" });
+    worksheet.addRow(kindOption
+      ? { number: index + 1, name: row.name, kind: row.kind ?? "" }
+      : { number: index + 1, name: row.name, description: row.description ?? "" });
   });
 
   return workbook.xlsx.writeBuffer();
@@ -102,7 +123,11 @@ function cellText(value: ExcelJS.CellValue): string {
   return String(value).trim();
 }
 
-export async function parseMasterDataWorkbook(file: File, maxNameLength: number): Promise<MasterDataExcelRow[]> {
+function normalizeKindValue(value: string) {
+  return value.toLocaleLowerCase("id-ID").replace(/[\s_-]+/g, " ").trim();
+}
+
+export async function parseMasterDataWorkbook(file: File, maxNameLength: number, kindOption?: MasterDataExcelKindOption): Promise<MasterDataExcelRow[]> {
   if (!file.size) throw new UserFacingError("Pilih file Excel terlebih dahulu.");
   if (file.size > MASTER_DATA_EXCEL_MAX_BYTES) throw new UserFacingError("File Excel maksimal 1 MB.");
   const name = file.name.toLocaleLowerCase("id-ID");
@@ -133,7 +158,9 @@ export async function parseMasterDataWorkbook(file: File, maxNameLength: number)
   const headers = Array.from({ length: header.cellCount }, (_, index) => cellText(header.getCell(index + 1).value).toLocaleLowerCase("id-ID"));
   const nameIndex = headers.findIndex((value) => value === "nama" || value === "name");
   const descriptionIndex = headers.findIndex((value) => value === "deskripsi" || value === "description");
+  const kindIndex = kindOption ? headers.findIndex((value) => value === normalizeKindValue(kindOption.header) || value === "jenis") : -1;
   if (nameIndex < 0) throw new UserFacingError("Header Excel harus memuat kolom Nama.");
+  if (kindOption && kindIndex < 0) throw new UserFacingError(`Header Excel harus memuat kolom ${kindOption.header}.`);
 
   const rows: MasterDataExcelRow[] = [];
   worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
@@ -144,7 +171,13 @@ export async function parseMasterDataWorkbook(file: File, maxNameLength: number)
     if (itemName.length < 2) throw new UserFacingError(`Nama pada baris ${rowNumber} minimal 2 karakter.`);
     if (itemName.length > maxNameLength) throw new UserFacingError(`Nama pada baris ${rowNumber} maksimal ${maxNameLength} karakter.`);
     if (description.length > 500) throw new UserFacingError(`Deskripsi pada baris ${rowNumber} maksimal 500 karakter.`);
-    rows.push({ name: itemName, description: description || null });
+    let kind: string | null = null;
+    if (kindOption) {
+      const rawKind = cellText(row.getCell(kindIndex + 1).value);
+      kind = kindOption.values[normalizeKindValue(rawKind)] ?? null;
+      if (!kind) throw new UserFacingError(`${kindOption.header} pada baris ${rowNumber} tidak dikenali. Nilai yang diperbolehkan: ${kindOption.allowedLabels.join(", ")}.`);
+    }
+    rows.push({ name: itemName, description: description || null, kind });
   });
 
   if (!rows.length) throw new UserFacingError("File Excel tidak memiliki data untuk diimpor.");

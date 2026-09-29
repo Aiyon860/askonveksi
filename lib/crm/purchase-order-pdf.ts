@@ -1,8 +1,9 @@
 import "server-only";
 
+import type { GarmentType } from "@prisma/client";
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFImage, type PDFPage } from "pdf-lib";
 
-import { decorationMethodLabel } from "@/lib/crm/constants";
+import { decorationMethodLabel, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
 
 type PurchaseOrderPdfData = {
   purchaseOrderNo: string;
@@ -10,7 +11,8 @@ type PurchaseOrderPdfData = {
   revision: number;
   status: string;
   productName: string;
-  garmentType: string | null;
+  garmentType: GarmentType | null;
+  productCategory: string | null;
   material: string;
   baseColor: string | null;
   color: string | null;
@@ -77,8 +79,8 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   const rows = [
     ["Customer", data.opportunity.customer.name], ["Perusahaan", data.opportunity.customer.companyName ?? "-"],
     ["Tanggal order", formatDate(data.orderDate)],
-    ["Deadline produksi", formatDate(data.deadline)], ["Jenis pakaian", data.garmentType === "JERSEY" ? "Jersey" : data.garmentType === "NON_JERSEY" ? "Non-jersey" : "-"],
-    ["Bahan", data.material], ["Warna dasar", data.baseColor ?? data.color ?? "-"],
+    ["Deadline produksi", formatDate(data.deadline)], ["Jenis pakaian", data.garmentType ? GARMENT_TYPE_LABEL[data.garmentType] : "-"],
+    ["Kategori", data.productCategory ?? "-"], ["Bahan", data.material], ["Warna dasar", data.baseColor ?? data.color ?? "-"],
     ["Warna variasi", data.variationColor ?? "-"], ["Metode dekorasi", decorationMethodLabel(data.decorationMethod)],
   ];
   rows.forEach(([label, value], index) => {

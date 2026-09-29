@@ -63,6 +63,7 @@ export function PurchaseOrderDetail({
                 <Info label="No. PO" value={detail.purchaseOrderNo} mono />
                 <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1"><PurchaseOrderStatusBadge status={detail.status} /></dd></div>
                 <Info label="Customer" value={detail.opportunity.customer.companyName ?? detail.opportunity.customer.name} />
+                <Info label="Kategori" value={detail.productCategory?.name ?? "-"} />
                 <Info label="Produk" value={detail.productName} />
                 <Info label="Material" value={detail.material} />
                 <Info label="Warna" value={detail.color ?? "-"} />

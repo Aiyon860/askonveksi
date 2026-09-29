@@ -6,14 +6,15 @@ import { CopyPlus, XCircle } from "lucide-react";
 
 import { cancelPurchaseOrderAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
-import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
+import { PurchaseOrderForm, type ProductCategoryOption } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderPdfDownloadButton } from "@/components/crm/purchase-order-pdf-download-button";
 import { Button } from "@/components/ui/button";
 
 type SizeOption = { id: string; name: string };
 type PurchaseOrderDraftValues = {
   purchaseOrderNo: string;
-  garmentType: "JERSEY" | "NON_JERSEY" | null;
+  garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
+  productCategoryId: string | null;
   productName: string;
   material: string;
   baseColor: string;
@@ -41,6 +42,7 @@ type PurchaseOrderWorkflowSectionProps = {
   canCancel: boolean;
   inNegotiation: boolean;
   sizeOptions: SizeOption[];
+  categoryOptions: ProductCategoryOption[];
   draftValues: PurchaseOrderDraftValues;
   purchaseOrderNoPreview: string;
   children: ReactNode;
@@ -58,6 +60,7 @@ export function PurchaseOrderWorkflowSection({
   canCancel,
   inNegotiation,
   sizeOptions,
+  categoryOptions,
   draftValues,
   purchaseOrderNoPreview,
   children,
@@ -107,6 +110,7 @@ export function PurchaseOrderWorkflowSection({
           <PurchaseOrderForm
             opportunityId={opportunityId}
             sizeOptions={sizeOptions}
+            categoryOptions={categoryOptions}
             draft={persistedDraft}
             initialValues={isCreatingRevision ? draftValues : undefined}
             sourcePurchaseOrderId={isCreatingRevision ? purchaseOrderId : undefined}
