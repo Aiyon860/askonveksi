@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, DEAL_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodLabel, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
@@ -112,17 +112,20 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?tab=aktivitas&historyPage=${communicationHistory.pageCount}#communication-history`);
 
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
+  const canCancelDocuments = hasRole(actor.role, OWNER_ACTION_ROLES);
   const canCompleteDeal = hasRole(actor.role, DEAL_ROLES);
   const inNegotiation = opportunity.stage === "NEGOSIASI";
   const poDraft = opportunity.purchaseOrders.find((item) => item.status === "DRAFT");
   const agreedPo = opportunity.purchaseOrders.find((item) => item.status === "AGREED");
+  const cancelledPo = opportunity.purchaseOrders.find((item) => item.status === "CANCELLED");
   const invoiceDraft = opportunity.invoices.find((item) => item.status === "DRAFT");
+  const cancelledInvoice = opportunity.invoices.find((item) => item.status === "CANCELLED");
   const issuedInvoice = opportunity.invoices.find((item) => item.status === "ISSUED" && item.purchaseOrderId === agreedPo?.id);
   const scheduledPayment = issuedInvoice?.pendingPayment;
   const readyForDeal = Boolean(agreedPo && issuedInvoice && !poDraft && !invoiceDraft);
   const poRevisionCount = Math.max(0, opportunity.purchaseOrders.length - 1);
-  const poTabStatus = poDraft ? "Draft" : agreedPo ? "Disepakati" : poRevisionCount ? `${poRevisionCount} revisi` : opportunity.purchaseOrders.length ? "Dokumen awal" : "Belum ada";
-  const invoiceTabStatus = invoiceDraft ? "Draft" : issuedInvoice ? "Terbit" : opportunity.invoices.length ? `${opportunity.invoices.length} revisi` : "Belum ada";
+  const poTabStatus = poDraft ? "Draft" : agreedPo ? "Disepakati" : cancelledPo ? "Dibatalkan" : poRevisionCount ? `${poRevisionCount} revisi` : opportunity.purchaseOrders.length ? "Dokumen awal" : "Belum ada";
+  const invoiceTabStatus = invoiceDraft ? "Draft" : issuedInvoice ? "Terbit" : cancelledInvoice ? "Dibatalkan" : opportunity.invoices.length ? `${opportunity.invoices.length} revisi` : "Belum ada";
   const dealTabStatus = opportunity.stage === "DEAL" ? "Selesai" : opportunity.stage === "LOST" ? "Lost" : readyForDeal ? "Siap" : "Belum siap";
   const canShowPurchaseOrderAgreement = canOperate && inNegotiation && (Boolean(poDraft) || opportunity.purchaseOrders.length === 0);
   const designRevisionStatus = poDraft?.designTask?.revisions[0]?.status;
@@ -214,6 +217,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     title={`${purchaseOrder.purchaseOrderNo} · ${documentRevisionLabel(purchaseOrder.revision)}`}
                     description={`Dibuat ${formatDate(purchaseOrder.createdAt, true)} oleh ${purchaseOrder.createdBy.name}`}
                     canOperate={canOperate}
+                    canCancel={canCancelDocuments}
                     inNegotiation={inNegotiation}
                     sizeOptions={sizeOptions}
                     draftValues={{
@@ -302,6 +306,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       title={`${invoice.invoiceNo} · ${documentRevisionLabel(invoice.revision)}`}
                       description={`Berdasarkan ${invoicePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
                       canOperate={canOperate}
+                      canCancel={canCancelDocuments}
                       inNegotiation={inNegotiation}
                       purchaseOrder={editableInvoicePo}
                       draftValues={invoiceDraftValues}

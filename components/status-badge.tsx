@@ -12,13 +12,18 @@ export function OpportunityStatusBadge({ stage, className }: { stage: Opportunit
   return <Badge variant={variant} className={className}>{STAGE_LABEL[stage]}</Badge>;
 }
 
+export function ProspectStatusBadge({ stage, className }: { stage: OpportunityStage; className?: string }) {
+  const lost = stage === "LOST";
+  return <Badge variant={lost ? "destructive" : "info"} className={className}>{lost ? STAGE_LABEL.LOST : STAGE_LABEL.LEAD_BARU}</Badge>;
+}
+
 export function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
-  const variant = status === "ISSUED" ? "info" : status === "SUPERSEDED" ? "outline" : "warning";
+  const variant = status === "ISSUED" ? "info" : status === "SUPERSEDED" ? "outline" : status === "CANCELLED" ? "destructive" : "warning";
   return <Badge variant={variant}>{INVOICE_STATUS_LABEL[status]}</Badge>;
 }
 
 export function PurchaseOrderStatusBadge({ status }: { status: PurchaseOrderStatus }) {
-  const variant = status === "AGREED" ? "success" : status === "SUPERSEDED" ? "outline" : "warning";
+  const variant = status === "AGREED" ? "success" : status === "SUPERSEDED" ? "outline" : status === "CANCELLED" ? "destructive" : "warning";
   return <Badge variant={variant}>{PURCHASE_ORDER_STATUS_LABEL[status]}</Badge>;
 }
 

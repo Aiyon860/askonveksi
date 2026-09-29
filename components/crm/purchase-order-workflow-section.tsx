@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { CopyPlus, XCircle } from "lucide-react";
 
+import { cancelPurchaseOrderAction } from "@/app/actions/crm";
+import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
 import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderPdfDownloadButton } from "@/components/crm/purchase-order-pdf-download-button";
 import { Button } from "@/components/ui/button";
@@ -32,10 +34,11 @@ type PurchaseOrderWorkflowSectionProps = {
   purchaseOrderId: string;
   purchaseOrderVersion: number;
   purchaseOrderRevision: number;
-  purchaseOrderStatus: "DRAFT" | "AGREED" | "SUPERSEDED";
+  purchaseOrderStatus: "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
   title: string;
   description: string;
   canOperate: boolean;
+  canCancel: boolean;
   inNegotiation: boolean;
   sizeOptions: SizeOption[];
   draftValues: PurchaseOrderDraftValues;
@@ -52,6 +55,7 @@ export function PurchaseOrderWorkflowSection({
   title,
   description,
   canOperate,
+  canCancel,
   inNegotiation,
   sizeOptions,
   draftValues,
@@ -87,6 +91,14 @@ export function PurchaseOrderWorkflowSection({
               <CopyPlus data-icon="inline-start" aria-hidden="true" />
               Buat versi revisi
             </Button>
+          ) : null}
+          {canCancel && purchaseOrderStatus === "DRAFT" ? (
+            <DocumentCancelButton
+              action={cancelPurchaseOrderAction}
+              fields={{ purchaseOrderId, version: purchaseOrderVersion }}
+              title="Batalkan PO draft?"
+              description="PO akan berstatus Dibatalkan dan tidak dapat disepakati lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
+            />
           ) : null}
         </div>
       </div>

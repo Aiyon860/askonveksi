@@ -1,4 +1,4 @@
-import { bulkUpdatePaymentMethodsAction, createPaymentMethodAction, importPaymentMethodsAction } from "@/app/actions/master-data";
+import { bulkUpdatePaymentMethodsAction, createPaymentMethodAction, deletePaymentMethodAction, importPaymentMethodsAction } from "@/app/actions/master-data";
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
@@ -17,6 +17,7 @@ export default async function PaymentMethodsPage() {
         createDescription="Metode baru langsung tersedia saat Admin mencatat pembayaran berikutnya."
         createAction={createPaymentMethodAction}
         bulkUpdateAction={bulkUpdatePaymentMethodsAction}
+        deleteAction={deletePaymentMethodAction}
         importAction={importPaymentMethodsAction}
         exportHref="/api/master-data/payment-methods/export"
       />

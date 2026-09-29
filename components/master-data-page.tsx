@@ -16,6 +16,7 @@ type MasterDataPageProps = {
   createDescription: string;
   createAction: MasterAction;
   bulkUpdateAction: MasterAction;
+  deleteAction: MasterAction;
   importAction: MasterAction;
   exportHref: string;
   maxNameLength?: number;
@@ -28,6 +29,7 @@ export function MasterDataPage({
   createDescription,
   createAction,
   bulkUpdateAction,
+  deleteAction,
   importAction,
   exportHref,
   maxNameLength = 80,
@@ -43,6 +45,7 @@ export function MasterDataPage({
           items={items}
           singularLabel={singularLabel}
           updateAction={bulkUpdateAction}
+          deleteAction={deleteAction}
           usageLabel={usageLabel}
         />
       ) : (

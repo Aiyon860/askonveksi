@@ -6,7 +6,8 @@ import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/a
 import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { campaignTestSchema, campaignFieldsSchema, deleteCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema, updateCampaignSchema } from "@/lib/whatsapp/campaigns";
+import { campaignRecipientFilterSchema, campaignRecipientSelectionSchema, campaignTestSchema, campaignFieldsSchema, deleteCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema, updateCampaignSchema } from "@/lib/whatsapp/campaigns";
+import { getCampaignRecipientOptions } from "@/lib/whatsapp/data";
 import { enqueueCampaignTestWhatsAppMessage } from "@/lib/whatsapp/jobs";
 
 function campaignInput(formData: FormData) {
@@ -121,6 +122,80 @@ export async function toggleCampaignAction(formData: FormData) {
     revalidatePath("/campaigns");
     revalidatePath("/whatsapp/jobs");
     return flashMessagePath("/campaigns", "notice", notice);
+  });
+}
+
+/** Daftar customer pada dialog "Pilih Customer" (search + filter tanggal/kategori). */
+export async function getCampaignRecipientDialogAction(input: {
+  campaignId: string;
+  query?: string;
+  from?: string;
+  to?: string;
+  customerTypeId?: string;
+  orderCategory?: string;
+}) {
+  await requireActor(CRM_OPERATOR_ROLES);
+  const parsed = campaignRecipientFilterSchema.safeParse({
+    campaignId: input.campaignId,
+    query: input.query?.trim() ? input.query.trim() : undefined,
+    from: input.from ? input.from : undefined,
+    to: input.to ? input.to : undefined,
+    customerTypeId: input.customerTypeId ? input.customerTypeId : undefined,
+    orderCategory: input.orderCategory ? input.orderCategory : undefined,
+  });
+  if (!parsed.success) throw new UserFacingError("Filter penerima campaign tidak valid.");
+  return getCampaignRecipientOptions(parsed.data);
+}
+
+/** Simpan penerima terpilih; campaign hanya dikirim ke customer di daftar ini. */
+export async function saveCampaignRecipientsAction(input: { campaignId: string; customerIds: string[] }) {
+  return runRedirectingAction("/campaigns", async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = campaignRecipientSelectionSchema.safeParse({ campaignId: input.campaignId, customerIds: input.customerIds ?? [] });
+    if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Pilihan penerima campaign tidak valid.");
+    const customerIds = [...new Set(parsed.data.customerIds)];
+    let saved = 0;
+
+    await getPrismaClient().$transaction(async (tx) => {
+      const campaign = await tx.whatsAppCampaign.findUnique({
+        where: { id: parsed.data.campaignId },
+        select: { id: true, status: true },
+      });
+      if (!campaign) throw new UserFacingError("Campaign tidak ditemukan.");
+      if (campaign.status !== "SCHEDULED" && campaign.status !== "PAUSED") {
+        throw new UserFacingError("Penerima hanya bisa diubah sebelum campaign mulai dikirim.");
+      }
+      const customers = customerIds.length
+        ? await tx.customer.findMany({ where: { id: { in: customerIds }, archivedAt: null }, select: { id: true } })
+        : [];
+      await tx.whatsAppCampaignRecipient.deleteMany({ where: { campaignId: campaign.id } });
+      if (customers.length) {
+        await tx.whatsAppCampaignRecipient.createMany({
+          data: customers.map((item) => ({ campaignId: campaign.id, customerId: item.id })),
+          skipDuplicates: true,
+        });
+      }
+      saved = customers.length;
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          entityType: "WhatsAppCampaign",
+          entityId: campaign.id,
+          action: "CAMPAIGN_RECIPIENTS_UPDATED",
+          changedFields: ["recipients"],
+          metadata: { selected: saved, requested: customerIds.length },
+        },
+      });
+    });
+
+    revalidatePath("/campaigns");
+    return flashMessagePath(
+      "/campaigns",
+      "notice",
+      saved
+        ? `${saved} penerima disimpan untuk campaign ini.`
+        : "Pilihan penerima dikosongkan. Campaign tidak dikirim sampai ada customer dipilih.",
+    );
   });
 }
 

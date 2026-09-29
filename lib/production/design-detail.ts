@@ -26,7 +26,7 @@ const designSelect = {
               id: true,
               revisions: {
                 where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
-                select: { attachments: { where: { contentType: "image/png" }, orderBy: { createdAt: "asc" }, select: { id: true, originalName: true, annotations: true } } },
+                select: { attachments: { where: { contentType: "image/png" }, orderBy: { createdAt: "asc" }, select: { id: true, path: true, originalName: true, annotations: true } } },
               },
             },
           },

@@ -69,7 +69,7 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
   const params = await searchParams;
   const query = (first(params.q) ?? "").trim().slice(0, 80);
   const rawStatus = first(params.status);
-  const status: PurchaseOrderListStatus = rawStatus === "DRAFT" || rawStatus === "AGREED" || rawStatus === "SUPERSEDED" ? rawStatus : "all";
+  const status: PurchaseOrderListStatus = rawStatus === "DRAFT" || rawStatus === "AGREED" || rawStatus === "SUPERSEDED" || rawStatus === "CANCELLED" ? rawStatus : "all";
   const range = parseDocumentDateRange(params.from, params.to);
   const page = parsePageParam(params.page);
   const pageSize = parsePageSizeParam(params.pageSize);
@@ -99,7 +99,7 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
         {pageSize !== DATA_PAGE_SIZE ? <input type="hidden" name="pageSize" value={pageSize} /> : null}
         {sort !== "createdAt" ? <input type="hidden" name="sort" value={sort} /> : null}
         {direction !== defaultDirection(sort) ? <input type="hidden" name="order" value={direction} /> : null}
-        <Field className="w-40 gap-1"><FieldLabel htmlFor="po-status">Status</FieldLabel><NativeSelect id="po-status" name="status" defaultValue={status}><NativeSelectOption value="all">Semua status</NativeSelectOption><NativeSelectOption value="DRAFT">Draft</NativeSelectOption><NativeSelectOption value="AGREED">Disepakati</NativeSelectOption><NativeSelectOption value="SUPERSEDED">Digantikan</NativeSelectOption></NativeSelect></Field>
+        <Field className="w-40 gap-1"><FieldLabel htmlFor="po-status">Status</FieldLabel><NativeSelect id="po-status" name="status" defaultValue={status}><NativeSelectOption value="all">Semua status</NativeSelectOption><NativeSelectOption value="DRAFT">Draft</NativeSelectOption><NativeSelectOption value="AGREED">Disepakati</NativeSelectOption><NativeSelectOption value="SUPERSEDED">Digantikan</NativeSelectOption><NativeSelectOption value="CANCELLED">Dibatalkan</NativeSelectOption></NativeSelect></Field>
         <Field className="w-40 gap-1"><FieldLabel htmlFor="po-from">Dari tanggal</FieldLabel><Input key={range.from} id="po-from" name="from" type="date" max={range.today} defaultValue={range.from} /></Field>
         <Field className="w-40 gap-1"><FieldLabel htmlFor="po-to">Sampai tanggal</FieldLabel><Input key={range.to} id="po-to" name="to" type="date" max={range.today} defaultValue={range.to} /></Field>
         <Button type="submit" variant="outline">Terapkan</Button>

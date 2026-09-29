@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import useSWR from "swr";
 
@@ -24,7 +25,7 @@ export function ProductionBoardSectionClient({
   route: ProductionRoute;
   initialData: ProductionData;
 }) {
-  const { data } = useSWR<ProductionData>(`/api/produksi/board?jalur=${route}`, fetcher, {
+  const { data, mutate } = useSWR<ProductionData>(`/api/produksi/board?jalur=${route}`, fetcher, {
     fallbackData: initialData,
     revalidateOnMount: false,
     revalidateOnFocus: false,
@@ -32,6 +33,12 @@ export function ProductionBoardSectionClient({
     refreshInterval: 60000,
     dedupingInterval: 10000,
   });
+
+  // Data server (RSC) selalu paling baru setelah aksi + `router.refresh()`. Tanpa ini, cache SWR
+  // menahan snapshot lama (mis. Kendala yang baru disimpan hilang saat kartu dipindah antar kolom).
+  useEffect(() => {
+    void mutate(initialData, { revalidate: false });
+  }, [initialData, mutate]);
 
   const board = data ?? initialData;
 

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [schema, migration, board, detail, designList, productionDetailPage, actions, pdfRoute, pdf, nav, editor] = await Promise.all([
+import { designAnnotationsSchema } from "../lib/production/design-annotations.ts";
+
+const [schema, migration, board, detail, designList, productionDetailPage, actions, pdfRoute, pdf, nav, editor, designEditorPage] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260924010000_production_design_detail/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../lib/production/data.ts", import.meta.url), "utf8"),
@@ -14,6 +16,7 @@ const [schema, migration, board, detail, designList, productionDetailPage, actio
   readFile(new URL("../lib/crm/purchase-order-pdf.ts", import.meta.url), "utf8"),
   readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/production/design-annotation-editor.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/(app)/detail-desain/[workOrderId]/page.tsx", import.meta.url), "utf8"),
 ]);
 
 test("WO menunggu anotasi produksi sebelum masuk kanban", () => {
@@ -86,4 +89,63 @@ test("editor anotasi mendukung zoom dan edit langsung pada kanvas", () => {
   assert.doesNotMatch(editor, /disabled=\{isBusy \|\| !selectedId\}/);
   assert.doesNotMatch(editor, /PRIMARY_ACTION_DELAY|schedulePrimaryAction/);
   assert.match(editor, /Hapus keterangan/);
+});
+
+test("anotasi teks bisa dibuat berdiri sendiri tanpa panah", () => {
+  const text = { id: "note-1", type: "text", textX: 10, textY: 20, text: "perbesar logo", fontSize: 22 };
+  const parsed = designAnnotationsSchema.safeParse([text]);
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.data[0].type, "text");
+  assert.equal(designAnnotationsSchema.safeParse([{ ...text, text: "" }]).success, true);
+  assert.equal(designAnnotationsSchema.safeParse([{ ...text, type: "line" }]).success, false);
+  assert.equal(designAnnotationsSchema.safeParse([{ ...text, fontSize: 200 }]).success, false);
+
+  assert.match(editor, /function addTextNote\(\)/);
+  assert.match(editor, /const note: DesignText = \{/);
+  assert.match(editor, /<Type data-icon="inline-start" \/>Tambah teks/);
+  assert.match(editor, /note\.type === "text" \? \(/);
+  // Teks kosong dibuang agar tidak menyisakan anotasi tak terlihat di kanvas.
+  assert.match(editor, /if \(!text && original\.type === "text"\) \{/);
+  assert.match(editor, /pending\?\.type === "text" && !pending\.text/);
+});
+
+test("editor anotasi membuat panah hanya lewat klik-tahan-dan-tarik", () => {
+  assert.match(editor, /const MIN_ARROW_LENGTH = 12/);
+  assert.match(editor, /if \(Math\.hypot\(x2 - x1, y2 - y1\) < MIN_ARROW_LENGTH\) return/);
+  assert.doesNotMatch(editor, /clickLineLength/);
+  assert.match(editor, /onMouseUp=\{readOnly \? undefined : finishDrawing\}/);
+  assert.match(editor, /onMouseLeave=\{readOnly \? undefined : finishDrawing\}/);
+  assert.match(editor, /onDblClick=\{readOnly \? undefined : \(event\) => \{ event\.cancelBubble = true; editNote\(note\); \}\}/);
+  // Teks anotasi dapat dipisahkan dari panah: node teks bisa diseret sendiri.
+  assert.match(editor, /beginDrag\(note\.id, "text", note\.textX, note\.textY\)/);
+  assert.match(editor, /if \(current\.kind === "text"\) return \{ \.\.\.note, textX: x, textY: y \}/);
+});
+
+test("mengganti desain menulis ulang salinan aslinya dan memuat ulang pratinjau", () => {
+  const overwrite = actions.slice(
+    actions.indexOf("export async function overwriteProductionDesignAction"),
+    actions.indexOf("export async function resetProductionDesignAction"),
+  );
+  assert.ok(overwrite.length > 0);
+
+  // Byte desain pengganti harus sampai ke originalPath. Kanvas anotasi mode edit dan
+  // "Reset perubahan" sama-sama membaca originalPath, sehingga hanya memperbarui path
+  // dan originalName membuat nama file berganti tetapi gambar yang tampil tetap lama.
+  assert.match(overwrite, /storage\.upload\(originalPath, bytes, \{ contentType, upsert: true \}\)/);
+  // Salinan desain lama sengaja tidak dipertahankan karena desainnya memang diganti.
+  assert.doesNotMatch(overwrite, /storage\.download\(attachment\.path\)/);
+  assert.match(overwrite, /annotations: Prisma\.JsonNull/);
+  assert.match(overwrite, /originalName: file\.name\.slice\(0, 255\)/);
+
+  // Redirect tidak me-mount ulang editor, jadi URL gambar memakai token yang
+  // diturunkan dari path penyimpanan: path baru setiap desain diganti, sehingga
+  // gambar pasti dimuat ulang tanpa bergantung pada status transisi React.
+  assert.match(detail, /path: true/);
+  assert.match(designEditorPage, /designImageToken\(attachment\.path\)/);
+  assert.match(editor, /imageToken: string/);
+  assert.match(editor, /&v=\$\{encodeURIComponent\(imageToken\)\}/);
+  assert.doesNotMatch(editor, /wasUploading|imageVersion/);
+  // Anotasi lama menyesuaikan gambar sebelumnya, jadi ikut disinkronkan dari server.
+  assert.match(editor, /JSON\.stringify\(next\) === JSON\.stringify\(previous\)/);
+  assert.match(editor, /notesRef\.current = next/);
 });

@@ -57,6 +57,12 @@ export function productionDeadlineBaseOptions(reference: Date | string = new Dat
   ];
 }
 
+export const CUSTOM_PRODUCTION_DEADLINE_VALUE = "CUSTOM";
+
+export function isProductionDeadlinePreset(value: string, reference: Date | string = new Date()) {
+  return productionDeadlineBaseOptions(reference).some((option) => option.value === value);
+}
+
 export function productionDeadlineOptions(reference: Date | string = new Date(), storedValue?: string | null): ProductionDeadlineOption[] {
   const options = productionDeadlineBaseOptions(reference);
   if (storedValue && ISO_DATE_PATTERN.test(storedValue) && !options.some((option) => option.value === storedValue)) {

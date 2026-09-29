@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { AlertTriangle, CalendarClock, GripVertical, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, GripVertical, UserRound } from "lucide-react";
 import type { ProductionRoute, ProductionStage } from "@prisma/client";
 
-import { moveProductionOptimisticAction } from "@/app/actions/production";
+import { moveProductionOptimisticAction, updateProductionObstacleAction } from "@/app/actions/production";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,12 +24,16 @@ import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/production/s
 import { cn } from "@/lib/utils";
 
 type BoardItem = Awaited<ReturnType<typeof getProductionBoard>>["items"][number];
-type PendingMove = { item: BoardItem; targetStage: ProductionStage; decision: "ADVANCE" | "SKIP" | "SAMPLE_REJECT" | "QC_REJECT" };
+type PendingMove = { item: BoardItem; targetStage: ProductionStage; decision: "ADVANCE" | "SKIP" | "SAMPLE_REJECT" | "QC_REJECT" | "REVERT" };
 type RecentMove = { id: string; stage: ProductionStage };
 
 const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
+// Dipakai ulang tiap render kartu dan tiap polling 60 detik.
+const DATE_FORMAT = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" });
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" });
 
 function stageOptions(item: BoardItem) {
+  const currentIndex = item.stageSequence.indexOf(item.currentStage);
   const next = nextProductionStage(item.stageSequence, item.currentStage);
   const options: PendingMove[] = next ? [{ item, targetStage: next, decision: "ADVANCE" }] : [];
   if (item.route === "NON_JERSEY" && next) {
@@ -40,12 +44,23 @@ function stageOptions(item: BoardItem) {
   if (item.currentStage === "QC") {
     const qcIndex = item.stageSequence.indexOf("QC");
     options.push(...item.stageSequence.slice(0, qcIndex).map((targetStage) => ({ item, targetStage, decision: "QC_REJECT" as const })));
+  } else if (item.currentStage !== "PERSETUJUAN_SAMPEL") {
+    // Mundur ke tahap sebelumnya: pop-up konfirmasi dengan Kendala opsional.
+    options.push(...item.stageSequence.slice(0, Math.max(0, currentIndex)).map((targetStage) => ({ item, targetStage, decision: "REVERT" as const })));
   }
   return options;
 }
 
 function optionValue(move: PendingMove) {
   return `${move.decision}:${move.targetStage}`;
+}
+
+function optionLabel(option: PendingMove) {
+  if (option.decision === "SAMPLE_REJECT") return "Minta Test Print ulang";
+  if (option.decision === "QC_REJECT") return `Perbaiki di ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
+  if (option.decision === "SKIP") return `Lewati ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
+  if (option.decision === "REVERT") return `Kembalikan ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
+  return `Lanjut ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
 }
 
 export function ProductionBoard({ route, items }: { route: ProductionRoute; items: BoardItem[] }) {
@@ -70,13 +85,26 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
     return () => window.clearTimeout(timeout);
   }, [recentMove]);
 
-  function requestMove(item: BoardItem, targetStage?: ProductionStage, preview = false) {
-    const options = stageOptions(item);
-    const move = targetStage ? options.find((option) => option.targetStage === targetStage && (option.decision === "ADVANCE" || option.decision === "SKIP")) : options[0];
-    if (move) {
-      if (preview) setPreviewMove(move);
-      setPendingMove(move);
-    }
+  function runMove(item: BoardItem, move: PendingMove, note?: string) {
+    const formData = new FormData();
+    formData.set("workOrderId", item.id);
+    formData.set("version", String(item.version));
+    formData.set("targetStage", move.targetStage);
+    formData.set("decision", move.decision);
+    if (note && note.trim()) formData.set("note", note.trim());
+    startMoving(async () => {
+      setRecentMove({ id: item.id, stage: move.targetStage });
+      moveOptimistically({ id: item.id, targetStage: move.targetStage });
+      setPreviewMove(null);
+      const result = await moveProductionOptimisticAction(formData);
+      if (!result.ok) {
+        setRecentMove(null);
+        toast.add({ title: "Progres tidak berubah", description: result.message, type: "error" });
+        return;
+      }
+      toast.add({ title: "Progres disimpan", description: `${item.workOrderNo} dipindahkan ke ${PRODUCTION_STAGE_LABEL[move.targetStage]}.`, type: "success" });
+      router.refresh();
+    });
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -87,7 +115,19 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
     setActiveId(null);
     if (!event.over) return;
     const item = boardItems.find((candidate) => candidate.id === event.active.id);
-    if (item) requestMove(item, event.over.id as ProductionStage, true);
+    if (!item) return;
+    const targetStage = event.over.id as ProductionStage;
+    const options = stageOptions(item);
+    const forward = options.find((option) => option.targetStage === targetStage && (option.decision === "ADVANCE" || option.decision === "SKIP"));
+    if (forward) {
+      runMove(item, forward);
+      return;
+    }
+    const backward = options.find((option) => option.targetStage === targetStage);
+    if (backward) {
+      setPreviewMove(backward);
+      setPendingMove(backward);
+    }
   }
 
   function confirmMove(event: React.FormEvent<HTMLFormElement>) {
@@ -96,23 +136,11 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
     const formData = new FormData(event.currentTarget);
     const selected = String(formData.get("moveOption") ?? "");
     const [decision, targetStage] = selected.split(":") as [PendingMove["decision"], ProductionStage];
-    formData.set("decision", decision);
-    formData.set("targetStage", targetStage);
-    const { item, targetStage: stage } = pendingMove;
+    const note = String(formData.get("note") ?? "");
+    const move: PendingMove = { ...pendingMove, decision, targetStage };
     setPendingMove(null);
-    startMoving(async () => {
-      setRecentMove({ id: item.id, stage });
-      moveOptimistically({ id: item.id, targetStage: stage });
-      setPreviewMove(null);
-      const result = await moveProductionOptimisticAction(formData);
-      if (!result.ok) {
-        setRecentMove(null);
-        toast.add({ title: "Progres tidak berubah", description: result.message, type: "error" });
-        return;
-      }
-      toast.add({ title: "Progres disimpan", description: `${item.workOrderNo} dipindahkan ke ${PRODUCTION_STAGE_LABEL[stage]}.`, type: "success" });
-      router.refresh();
-    });
+    setPreviewMove(null);
+    runMove(move.item, move, note);
   }
 
   return (
@@ -133,7 +161,7 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
               <ProductionStageColumn
                 key={stage}
                 stage={stage}
-                canDrop={Boolean(activeItem && stageOptions(activeItem).some((option) => option.targetStage === stage && (option.decision === "ADVANCE" || option.decision === "SKIP")))}
+                canDrop={Boolean(activeItem && activeItem.currentStage !== stage && stageOptions(activeItem).some((option) => option.targetStage === stage))}
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
                   <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{PRODUCTION_STAGE_LABEL[stage]}</h2>
@@ -143,8 +171,7 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                   <div className="flex flex-col gap-2">
                   {stageItems.length ? stageItems.map((item) => {
                     const options = stageOptions(item);
-                    const canAdvance = Boolean(options.find((option) => option.decision === "ADVANCE"));
-                    const draggable = !isMoving && !previewMove && canAdvance;
+                    const draggable = !isMoving && !previewMove && item.status === "ACTIVE" && options.length > 0;
                     const overdue = item.status === "ACTIVE" && new Date(item.deadline).getTime() < new Date().setHours(0, 0, 0, 0);
                     return (
                       <DraggableProductionCard
@@ -173,14 +200,18 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                             <div className="flex items-center justify-between gap-3"><dt>Sales Order</dt><dd className="font-mono text-foreground">{item.salesOrder.salesOrderNo}</dd></div>
                             <div className="flex items-center justify-between gap-3">
                               <dt>Deadline produksi</dt>
-                              <dd className={cn("flex items-center gap-2", overdue && "font-medium text-destructive")}><CalendarClock aria-hidden="true" className="size-3.5" />{new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(item.deadline))}</dd>
+                              <dd className={cn("flex items-center gap-2", overdue && "font-medium text-destructive")}><CalendarClock aria-hidden="true" className="size-3.5" />{DATE_FORMAT.format(new Date(item.deadline))}</dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <dt>Masuk Pada</dt>
+                              <dd className="flex items-center gap-2"><Clock aria-hidden="true" className="size-3.5" />{item.stageEnteredAt ? DATE_TIME_FORMAT.format(new Date(item.stageEnteredAt)) : "-"}</dd>
                             </div>
                             <div className="flex items-center justify-between gap-3">
                               <dt>PIC</dt>
                               <dd className="flex items-center gap-2"><UserRound aria-hidden="true" className="size-3.5" />{item.assignee?.name ?? "Belum ditentukan"}</dd>
                             </div>
                           </dl>
-                          {item.status === "ACTIVE" && options.length ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => requestMove(item)}>Perbarui tahap</Button> : null}
+                          <ProductionObstacle item={item} />
                         </CardContent>
                       </Card>}</DraggableProductionCard>
                     );
@@ -215,10 +246,10 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
                       if (previewMove) setPreviewMove(selected);
                     }
                   }}>
-                    {stageOptions(pendingMove.item).map((option) => <NativeSelectOption key={optionValue(option)} value={optionValue(option)}>{option.decision === "SAMPLE_REJECT" ? "Minta Test Print ulang" : option.decision === "QC_REJECT" ? `Perbaiki di ${PRODUCTION_STAGE_LABEL[option.targetStage]}` : option.decision === "SKIP" ? `Lewati ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}` : `Lanjut ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`}</NativeSelectOption>)}
+                    {stageOptions(pendingMove.item).map((option) => <NativeSelectOption key={optionValue(option)} value={optionValue(option)}>{optionLabel(option)}</NativeSelectOption>)}
                   </NativeSelect>
                 </Field>
-                {pendingMove.decision !== "ADVANCE" ? <Field><FieldLabel htmlFor="productionMoveNote" required>Alasan</FieldLabel><Textarea id="productionMoveNote" name="note" required minLength={3} maxLength={2000} rows={4} /></Field> : null}
+                <Field><FieldLabel htmlFor="productionMoveNote">Kendala</FieldLabel><Textarea id="productionMoveNote" name="note" maxLength={2000} rows={3} placeholder="Opsional. Tuliskan kendala bila ada." /><p className="text-xs text-muted-foreground">Kendala boleh dikosongkan.</p></Field>
                 <Button type="submit" disabled={isMoving}>Simpan progres</Button>
               </FieldGroup>
             </form>
@@ -226,6 +257,61 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function ProductionObstacle({ item }: { item: BoardItem }) {
+  const router = useRouter();
+  const [isEditing, setIsEditing] = useState(false);
+  const obstacleValue = item.obstacle ?? "";
+  const obstacleUpdatedAt = item.obstacleUpdatedAt;
+  const [value, setValue] = useState(obstacleValue);
+  const [syncedObstacle, setSyncedObstacle] = useState(obstacleValue);
+  const [pending, startPending] = useTransition();
+
+  if (syncedObstacle !== obstacleValue) {
+    setSyncedObstacle(obstacleValue);
+    setValue(obstacleValue);
+  }
+
+  function save() {
+    const formData = new FormData();
+    formData.set("workOrderId", item.id);
+    formData.set("obstacle", value);
+    startPending(async () => {
+      const result = await updateProductionObstacleAction(formData);
+      if (!result.ok) {
+        toast.add({ title: "Kendala belum tersimpan", description: result.message, type: "error" });
+        return;
+      }
+      setIsEditing(false);
+      toast.add({ title: "Kendala disimpan", description: `${item.workOrderNo} diperbarui.`, type: "success" });
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-medium">Kendala</p>
+        {obstacleUpdatedAt ? <p className="text-xs text-muted-foreground tabular-nums">{DATE_TIME_FORMAT.format(new Date(obstacleUpdatedAt))}</p> : null}
+      </div>
+      <Textarea
+        value={value}
+        readOnly={!isEditing}
+        rows={2}
+        maxLength={2000}
+        placeholder={isEditing ? "Tuliskan kendala produksi..." : "Belum ada kendala"}
+        aria-label={`Kendala ${item.workOrderNo}`}
+        onChange={(event) => setValue(event.currentTarget.value)}
+        className={cn("text-xs", !isEditing && "resize-none bg-muted/40")}
+      />
+      {isEditing ? (
+        <Button type="button" size="sm" className="w-full" disabled={pending} onClick={save}>{pending ? <Spinner data-icon="inline-start" /> : null}{pending ? "Menyimpan..." : "Simpan"}</Button>
+      ) : (
+        <Button type="button" size="sm" variant="outline" className="w-full" disabled={pending} onClick={() => setIsEditing(true)}>{item.obstacle ? "Edit Kendala" : "Tambahkan Kendala"}</Button>
+      )}
+    </div>
   );
 }
 

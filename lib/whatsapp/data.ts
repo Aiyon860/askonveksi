@@ -1,11 +1,13 @@
 import "server-only";
 
-import type { Prisma, WhatsAppJobStatus } from "@prisma/client";
+import type { GarmentType, Prisma, WhatsAppJobStatus } from "@prisma/client";
 
 import { CRM_OPERATOR_ROLES, hasRole, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
+import { parseJakartaDateTime, MAX_CAMPAIGN_RECIPIENTS, type CampaignRecipientOption } from "@/lib/whatsapp/campaigns";
+import { DEFAULT_ORDER_REMINDER_TEMPLATE, normalizeWhatsAppNumber } from "@/lib/whatsapp/core";
 import { conversationVisibility } from "@/lib/whatsapp/visibility";
 
 export async function getWhatsAppInbox(selectedId?: string, query?: string) {
@@ -94,6 +96,151 @@ export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
     orderBy: { createdAt: "desc" },
     take: 200,
   });
+}
+
+const CAMPAIGN_RECIPIENT_LIMIT = 200;
+const BROADCAST_RECIPIENT_LIMIT = 500;
+
+export function campaignRecipientDateRange(from?: string, to?: string) {
+  const start = from ? parseJakartaDateTime(`${from}T00:00`) : null;
+  const endStart = to ? parseJakartaDateTime(`${to}T00:00`) : null;
+  if ((from && !start) || (to && !endStart) || (start && endStart && start > endStart)) return null;
+  return { start, end: endStart ? new Date(endStart.getTime() + 24 * 60 * 60 * 1000) : null };
+}
+
+type RecipientFilterInput = {
+  query?: string;
+  from?: string;
+  to?: string;
+  customerTypeId?: string;
+  orderCategory?: GarmentType;
+};
+
+/**
+ * Daftar customer yang bisa dipilih sebagai penerima campaign / broadcast, lengkap dengan
+ * tanggal order terakhir atau pembayaran DP terakhir. Penjaga role ada di pemanggilnya.
+ */
+async function queryRecipientOptions(input: RecipientFilterInput & { campaignId?: string; limit: number }) {
+  const prisma = getPrismaClient();
+  const range = campaignRecipientDateRange(input.from, input.to);
+  const dateFilter = range && (range.start || range.end)
+    ? { ...(range.start ? { gte: range.start } : {}), ...(range.end ? { lt: range.end } : {}) }
+    : null;
+  const filters: Prisma.CustomerWhereInput[] = [{ archivedAt: null }];
+  if (input.query) filters.push({ OR: [
+    { name: { contains: input.query, mode: "insensitive" } },
+    { companyName: { contains: input.query, mode: "insensitive" } },
+  ] });
+  if (input.customerTypeId) filters.push({ customerTypeId: input.customerTypeId });
+  if (input.orderCategory) filters.push({ opportunities: { some: { garmentType: input.orderCategory } } });
+  if (dateFilter) filters.push({ OR: [
+    { opportunities: { some: { salesOrders: { some: { acceptedAt: dateFilter } } } } },
+    { opportunities: { some: { salesOrders: { some: { payment: { is: { paidAt: dateFilter } } } } } } },
+  ] });
+  const where = { AND: filters } satisfies Prisma.CustomerWhereInput;
+
+  const [customers, total, saved, customerTypes] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        whatsapp: true,
+        whatsappConsentStatus: true,
+        customerType: { select: { name: true } },
+        opportunities: {
+          select: {
+            salesOrders: {
+              select: { acceptedAt: true, payment: { select: { paidAt: true } } },
+              orderBy: { acceptedAt: "desc" },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: input.limit,
+    }),
+    prisma.customer.count({ where }),
+    input.campaignId
+      ? prisma.whatsAppCampaignRecipient.findMany({
+          where: { campaignId: input.campaignId },
+          select: { customerId: true },
+          orderBy: { customerId: "asc" },
+          take: MAX_CAMPAIGN_RECIPIENTS,
+        })
+      : Promise.resolve([]),
+    prisma.customerType.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+
+  const items: CampaignRecipientOption[] = customers.map((customer) => {
+    let lastOrderAt: Date | null = null;
+    let lastOrderKind: CampaignRecipientOption["lastOrderKind"] = null;
+    for (const opportunity of customer.opportunities) {
+      const order = opportunity.salesOrders[0];
+      if (!order) continue;
+      if (!lastOrderAt || order.acceptedAt > lastOrderAt) {
+        lastOrderAt = order.acceptedAt;
+        lastOrderKind = "ORDER";
+      }
+      const paidAt = order.payment?.paidAt;
+      if (paidAt && paidAt > lastOrderAt) {
+        lastOrderAt = paidAt;
+        lastOrderKind = "PAYMENT";
+      }
+    }
+    const hasValidWhatsApp = Boolean(normalizeWhatsAppNumber(customer.whatsapp));
+    const consented = customer.whatsappConsentStatus !== "OPTED_OUT";
+    return {
+      id: customer.id,
+      name: customer.name,
+      customerTypeName: customer.customerType.name,
+      lastOrderAt: lastOrderAt ? lastOrderAt.toISOString() : null,
+      lastOrderKind,
+      canReceive: hasValidWhatsApp && consented,
+      reason: !hasValidWhatsApp ? "Tanpa nomor WhatsApp" : !consented ? "Menolak pesan" : null,
+    };
+  });
+
+  return {
+    items,
+    total,
+    truncated: total > input.limit,
+    selectedIds: saved.map((item) => item.customerId),
+    customerTypes,
+  };
+}
+
+/**
+ * Daftar customer yang bisa dipilih sebagai penerima campaign, lengkap dengan tanggal
+ * order terakhir / pembayaran DP terakhir dan pilihan yang saat ini tersimpan.
+ */
+export async function getCampaignRecipientOptions(input: {
+  campaignId: string;
+  query?: string;
+  from?: string;
+  to?: string;
+  customerTypeId?: string;
+  orderCategory?: GarmentType;
+}) {
+  await requireActor(CRM_OPERATOR_ROLES);
+  return queryRecipientOptions({ ...input, limit: CAMPAIGN_RECIPIENT_LIMIT });
+}
+
+/** Daftar penerima broadcast Follow Up Hari Ini pada halaman CRM > Broadcast. */
+export async function getBroadcastRecipientOptions(input: RecipientFilterInput) {
+  await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
+  return queryRecipientOptions({ ...input, limit: BROADCAST_RECIPIENT_LIMIT });
+}
+
+/** Template Follow Up Hari Ini (REACTIVATION) terbaru; fallback ke template bawaan. */
+export async function getFollowUpTemplateBody() {
+  const template = await getPrismaClient().whatsAppTemplate.findFirst({
+    where: { triggerType: "REACTIVATION", isActive: true },
+    orderBy: { updatedAt: "desc" },
+    select: { body: true },
+  });
+  return template?.body ?? DEFAULT_ORDER_REMINDER_TEMPLATE;
 }
 
 export async function getUnreadWhatsAppCount() {

@@ -1,6 +1,7 @@
 "use server";
 
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -15,6 +16,7 @@ import {
   assignProductionStepSchema,
   moveProductionSchema,
   reopenProductionSchema,
+  updateProductionObstacleSchema,
 } from "@/lib/production/validation";
 import { designAnnotationsSchema } from "@/lib/production/design-annotations";
 import { isStageRole, nextProductionStage } from "@/lib/production/workflow";
@@ -32,6 +34,20 @@ const MAX_DESIGN_BYTES = 5 * 1024 * 1024;
 
 function isPng(bytes: Uint8Array) {
   return bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value);
+}
+
+function designExtension(name: string) {
+  return /\.([a-z0-9]{1,10})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
+}
+
+function isDesignFile(bytes: Uint8Array, fileExtension: string) {
+  const png = isPng(bytes);
+  const psd = bytes.length >= 4 && bytes[0] === 56 && bytes[1] === 66 && bytes[2] === 80 && bytes[3] === 83;
+  return fileExtension === "png" ? png : fileExtension === "psd" ? psd : false;
+}
+
+function designContentType(fileExtension: string) {
+  return fileExtension === "png" ? "image/png" : "image/vnd.adobe.photoshop";
 }
 
 const designVersionSchema = z.object({ workOrderId: z.string().trim().min(10).max(40), attachmentId: z.string().trim().min(10).max(40) });
@@ -103,6 +119,95 @@ export async function saveProductionDesignAction(formData: FormData) {
     revalidatePath("/detail-desain");
     revalidatePath(`/crm/purchase-orders`);
     return flashMessagePath(fallback, "notice", "Versi desain disimpan. Konfirmasikan untuk memasukkannya ke Produksi.");
+  });
+}
+
+export async function overwriteProductionDesignAction(formData: FormData) {
+  const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
+  return runRedirectingAction(fallback, async () => {
+    const actor = await requireActor(PRODUCTION_ROLES);
+    const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
+    const file = formData.get("design");
+    if (!parsed.success || !(file instanceof File)) throw new UserFacingError("Desain yang diunggah tidak valid.");
+    if (!file.size || file.size > MAX_DESIGN_BYTES) throw new UserFacingError("File desain maksimal 5 MB.");
+    const fileExtension = designExtension(file.name);
+    if (fileExtension !== "png" && fileExtension !== "psd") throw new UserFacingError("Desain hanya boleh berupa PNG atau PSD.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!isDesignFile(bytes, fileExtension)) throw new UserFacingError("Isi file tidak sesuai format PNG atau PSD.");
+
+    const target = await getPrismaClient().productionWorkOrder.findFirst({
+      where: { id: parsed.data.workOrderId, status: "ACTIVE" },
+      select: {
+        id: true,
+        designCompletedAt: true,
+        salesOrder: {
+          select: {
+            purchaseOrder: {
+              select: {
+                designTask: {
+                  select: {
+                    revisions: {
+                      where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
+                      select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, path: true, originalPath: true } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
+    if (!target || !attachment) throw new UserFacingError("File desain yang disetujui tidak ditemukan.");
+    if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diganti.");
+
+    const storage = createAdminClient().storage.from(DESIGN_BUCKET);
+    const contentType = designContentType(fileExtension);
+    const folder = attachment.path.includes("/") ? attachment.path.slice(0, attachment.path.lastIndexOf("/")) : "design";
+    const nextPath = `${folder}/${randomUUID()}.${fileExtension}`;
+    const { error: uploadError } = await storage.upload(nextPath, bytes, { contentType, upsert: false });
+    if (uploadError) throw new UserFacingError("File desain belum dapat disimpan.");
+
+    // Kanvas anotasi mode edit dan "Reset perubahan" sama-sama membaca originalPath,
+    // sehingga byte desain pengganti harus ditulis juga ke salinan aslinya. Kalau hanya
+    // path dan originalName yang diperbarui, nama file berganti tapi gambar tetap lama.
+    const originalPath = attachment.originalPath ?? `production-design-original/${attachment.id}.png`;
+    const { error: snapshotError } = await storage.upload(originalPath, bytes, { contentType, upsert: true });
+    if (snapshotError) {
+      await storage.remove([nextPath]);
+      console.error("Gagal menyalin desain pengganti ke salinan aslinya.", { status: snapshotError.status, statusCode: snapshotError.statusCode });
+      throw new UserFacingError("File desain belum dapat disimpan.");
+    }
+
+    try {
+      await getPrismaClient().$transaction(async (tx) => {
+        await tx.designAttachment.update({
+          where: { id: attachment.id },
+          data: {
+            path: nextPath,
+            contentType,
+            sizeBytes: bytes.length,
+            originalName: file.name.slice(0, 255),
+            originalPath,
+            annotations: Prisma.JsonNull,
+          },
+        });
+        await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_REPLACED", ["path", "contentType", "sizeBytes", "originalName", "originalPath", "annotations"], { attachmentId: attachment.id, previousPath: attachment.path, nextPath });
+      });
+    } catch (error) {
+      await storage.remove([nextPath]);
+      throw error;
+    }
+
+    if (attachment.path !== nextPath) {
+      const { error: removeError } = await storage.remove([attachment.path]);
+      if (removeError) console.error("Gagal menghapus file desain lama.", { status: removeError.status, statusCode: removeError.statusCode });
+    }
+    revalidatePath("/detail-desain");
+    revalidatePath(`/detail-desain/${target.id}`);
+    revalidatePath("/crm/purchase-orders");
+    return flashMessagePath(fallback, "notice", "Desain berhasil diganti dan file desain lama sudah dihapus.");
   });
 }
 
@@ -206,6 +311,15 @@ export async function sendProductionDesignAction(formData: FormData) {
   });
 }
 
+// Perpindahan tahap berjalan di atas pooler Supabase yang bisa lambat. Default Prisma
+// (maxWait 2s / timeout 5s) sering berakhir P2028 "melewati batas waktu" di kanban,
+// jadi anggaran transaksi dinaikkan mengikuti pola `DEAL_TRANSACTION_OPTIONS` di crm.ts.
+const MOVE_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 async function productionAudit(
   tx: Prisma.TransactionClient,
   actorId: string,
@@ -253,18 +367,22 @@ async function moveProduction(formData: FormData) {
     const targetStep = order.steps.find((step) => step.stage === parsed.data.targetStage);
     if (!targetStep) throw new UserFacingError("Tahap tujuan tidak termasuk alur Work Order.");
     const now = new Date();
-    let activityType: "STAGE_MOVED" | "STAGE_SKIPPED" | "SAMPLE_REJECTED" | "QC_REJECTED" = "STAGE_MOVED";
+    let activityType: "STAGE_MOVED" | "STAGE_SKIPPED" | "STAGE_REVERTED" | "SAMPLE_REJECTED" | "QC_REJECTED" = "STAGE_MOVED";
     let completed = false;
     let needsRepair: boolean | undefined;
     let repairReason: string | null | undefined;
     let repairRequestedAt: Date | null | undefined;
     let sampleRevisionIncrement = 0;
+    // undefined = Kendala pada kartu tidak diubah.
+    let obstacleUpdate: string | null | undefined;
 
     if (parsed.data.decision === "SKIP") {
       const currentIndex = order.stageSequence.indexOf(order.currentStage);
       const targetIndex = order.stageSequence.indexOf(parsed.data.targetStage);
       if (order.route !== "NON_JERSEY" || targetIndex <= currentIndex + 1) throw new UserFacingError("Lewati tahap hanya tersedia untuk alur Non-Jersey dan harus menuju tahap setelah tahap berikutnya.");
       activityType = "STAGE_SKIPPED";
+      // Proses maju/kanan → kendala tahap sebelumnya dihapus dari kartu.
+      obstacleUpdate = null;
       await tx.productionStep.update({ where: { id: currentStep.id }, data: { status: "COMPLETED", completedAt: now } });
       await tx.productionStep.updateMany({
         where: { workOrderId: order.id, position: { gt: currentStep.position, lt: targetStep.position } },
@@ -285,16 +403,28 @@ async function moveProduction(formData: FormData) {
       if (order.currentStage !== "QC" || targetStep.position >= currentStep.position) throw new UserFacingError("QC hanya dapat mengembalikan ke tahap sebelumnya.");
       activityType = "QC_REJECTED";
       needsRepair = true;
-      repairReason = parsed.data.note!;
+      repairReason = parsed.data.note ?? null;
       repairRequestedAt = now;
       await tx.productionStep.updateMany({
         where: { workOrderId: order.id, position: { gte: targetStep.position } },
         data: { status: "PENDING", startedAt: null, completedAt: null },
       });
       await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, attemptCount: { increment: 1 } } });
+    } else if (parsed.data.decision === "REVERT") {
+      if (targetStep.position >= currentStep.position) throw new UserFacingError("Tahap mundur hanya dapat menuju tahap sebelum tahap sekarang.");
+      activityType = "STAGE_REVERTED";
+      // Mundur dengan Kendala dari pop-up → catat sebagai kendala kartu.
+      if (parsed.data.note) obstacleUpdate = parsed.data.note.slice(0, 2000);
+      await tx.productionStep.updateMany({
+        where: { workOrderId: order.id, position: { gte: targetStep.position } },
+        data: { status: "PENDING", startedAt: null, completedAt: null },
+      });
+      await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, completedAt: null, attemptCount: { increment: 1 } } });
     } else {
       const nextStage = nextProductionStage(order.stageSequence, order.currentStage);
       if (nextStage !== parsed.data.targetStage) throw new UserFacingError("Work Order hanya dapat maju ke tahap berikutnya.");
+      // Proses maju/kanan → kendala tahap sebelumnya dihapus dari kartu.
+      obstacleUpdate = null;
       await tx.productionStep.update({ where: { id: currentStep.id }, data: { status: "COMPLETED", completedAt: now } });
       completed = parsed.data.targetStage === "SELESAI";
       await tx.productionStep.update({
@@ -316,6 +446,10 @@ async function moveProduction(formData: FormData) {
         completedAt: completed ? now : null,
         ...(sampleRevisionIncrement ? { sampleRevision: { increment: sampleRevisionIncrement } } : {}),
         ...(needsRepair !== undefined ? { needsRepair, repairReason, repairRequestedAt } : {}),
+        // Kendala dikosongkan saat maju/lewat, jadi tanggal jejaknya ikut dihapus.
+        ...(obstacleUpdate !== undefined ? { obstacle: obstacleUpdate, obstacleUpdatedAt: obstacleUpdate === null ? null : now } : {}),
+        // Jejak "Masuk Pada": setiap perpindahan tahap mencatat kapan kartu masuk kolom baru.
+        stageEnteredAt: now,
         version: { increment: 1 },
       },
     });
@@ -324,9 +458,9 @@ async function moveProduction(formData: FormData) {
     await tx.productionActivity.create({
       data: { workOrderId: order.id, actorId: actor.id, type: activityType, fromStage: order.currentStage, toStage: parsed.data.targetStage, note: parsed.data.note },
     });
-    await productionAudit(tx, actor.id, order.id, activityType, ["currentStage", "status", "version"], { from: order.currentStage, to: parsed.data.targetStage });
+    await productionAudit(tx, actor.id, order.id, activityType, ["currentStage", "status", "version", "stageEnteredAt", ...(obstacleUpdate !== undefined ? ["obstacle", "obstacleUpdatedAt"] : [])], { from: order.currentStage, to: parsed.data.targetStage });
     return { id: order.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, MOVE_TRANSACTION_OPTIONS);
 }
 
 export async function moveProductionOptimisticAction(formData: FormData) {
@@ -334,6 +468,32 @@ export async function moveProductionOptimisticAction(formData: FormData) {
     const moved = await moveProduction(formData);
     revalidatePath("/produksi");
     revalidatePath(detailPath(moved.id));
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, message: messageForError(error) };
+  }
+}
+
+export async function updateProductionObstacleAction(formData: FormData) {
+  try {
+    const actor = await requireActor(PRODUCTION_ROLES);
+    const parsed = updateProductionObstacleSchema.safeParse({
+      workOrderId: value(formData, "workOrderId"),
+      obstacle: value(formData, "obstacle") ?? undefined,
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const order = await getPrismaClient().productionWorkOrder.findUnique({ where: { id: parsed.data.workOrderId }, select: { id: true, status: true } });
+    if (!order) throw new UserFacingError("Work Order tidak ditemukan.");
+    if (order.status === "CANCELLED") throw new UserFacingError("Work Order yang dibatalkan tidak dapat diubah.");
+    const obstacle = parsed.data.obstacle?.trim() ? parsed.data.obstacle.trim().slice(0, 2000) : null;
+    // Jejak "Kendala": tanggal ikut dicatat saat disimpan dan ikut hilang saat dikosongkan.
+    const obstacleUpdatedAt = obstacle ? new Date() : null;
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.productionWorkOrder.update({ where: { id: order.id }, data: { obstacle, obstacleUpdatedAt } });
+      await productionAudit(tx, actor.id, order.id, "PRODUCTION_OBSTACLE_UPDATED", ["obstacle", "obstacleUpdatedAt"], { hasObstacle: Boolean(obstacle) });
+    });
+    revalidatePath("/produksi");
+    revalidatePath(detailPath(order.id));
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, message: messageForError(error) };
@@ -408,7 +568,7 @@ export async function reopenProductionAction(formData: FormData) {
       if (updated.count !== 1) throw new UserFacingError("Work Order sudah berubah.");
       await tx.productionActivity.create({ data: { workOrderId: order.id, actorId: actor.id, type: "REOPENED", fromStage: "SELESAI", toStage: target.stage, note: parsed.data.note } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_REOPENED", ["status", "currentStage", "completedAt"], { to: target.stage });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MOVE_TRANSACTION_OPTIONS);
     revalidatePath("/produksi");
     revalidatePath(fallback);
     return flashMessagePath(fallback, "notice", "Work Order dibuka kembali.");

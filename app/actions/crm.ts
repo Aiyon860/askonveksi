@@ -6,7 +6,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
-import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, MASTER_DATA_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
+import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, MASTER_DATA_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/session";
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
@@ -24,6 +24,8 @@ import {
   editPaymentTransactionSchema,
   addCommunicationActivitySchema,
   archiveCustomerSchema,
+  cancelInvoiceSchema,
+  cancelPurchaseOrderSchema,
   createCustomerSchema,
   createProspectCustomerSchema,
   createOpportunitySchema,
@@ -1048,6 +1050,8 @@ async function moveOpportunityStage(formData: FormData) {
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
+  // Pindah stage kanban memakai anggaran transaksi yang sama seperti Deal: pooler Supabase
+  // lambat (ratusan ms per query) sehingga default Prisma (maxWait 2s / timeout 5s) bisa P2028.
   const customerId = await getPrismaClient().$transaction(async (tx) => {
     const current = await tx.opportunity.findUnique({
       where: { id: parsed.data.opportunityId },
@@ -1097,7 +1101,7 @@ async function moveOpportunityStage(formData: FormData) {
       await rearmCustomerRemindersAfterLost(tx, current.customerId);
     }
     return current.customerId;
-  });
+  }, DEAL_TRANSACTION_OPTIONS);
 
   revalidatePath("/crm");
   revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
@@ -2471,6 +2475,90 @@ export async function voidPaymentTransactionAction(formData: FormData) {
   return runRedirectingAction(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", async () => {
     await voidPaymentTransaction(formData);
     return flashMessagePath(fallbackId ? `/sales-orders/${fallbackId}` : "/crm", "notice", "Pembayaran dibatalkan dan saldo diperbarui.");
+  });
+}
+
+export async function cancelPurchaseOrderAction(formData: FormData) {
+  return runRedirectingAction(opportunityTabFallback(formData, "po"), async () => {
+    const actor = await requireActor(OWNER_ACTION_ROLES);
+    const parsed = cancelPurchaseOrderSchema.safeParse({
+      purchaseOrderId: formValue(formData, "purchaseOrderId"),
+      version: formValue(formData, "version"),
+      cancelReason: formValue(formData, "cancelReason"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    const result = await getPrismaClient().$transaction(async (tx) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({
+        where: { id: parsed.data.purchaseOrderId },
+        select: { purchaseOrderNo: true, opportunityId: true, status: true },
+      });
+      if (!purchaseOrder) throw new UserFacingError("Purchase Order tidak ditemukan.");
+      if (purchaseOrder.status !== "DRAFT") throw new UserFacingError("Hanya PO berstatus Draft yang dapat dibatalkan.");
+      const updated = await tx.purchaseOrder.updateMany({
+        where: { id: parsed.data.purchaseOrderId, status: "DRAFT", version: parsed.data.version },
+        data: { status: "CANCELLED", version: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
+      await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_CANCELLED", ["status", "cancelReason"], {
+        purchaseOrderNo: purchaseOrder.purchaseOrderNo,
+        cancelReason: parsed.data.cancelReason,
+        cancelledById: actor.id,
+        cancelledByName: actor.name,
+      });
+      return { opportunityId: purchaseOrder.opportunityId };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/purchase-orders");
+    revalidatePath(`/crm/peluang/${result.opportunityId}`);
+    return flashMessagePath(
+      `/crm/peluang/${result.opportunityId}?tab=po`,
+      "notice",
+      `PO draft dibatalkan oleh ${actor.name}. Alasan: ${parsed.data.cancelReason}`,
+    );
+  });
+}
+
+export async function cancelInvoiceAction(formData: FormData) {
+  return runRedirectingAction(opportunityTabFallback(formData, "invoice"), async () => {
+    const actor = await requireActor(OWNER_ACTION_ROLES);
+    const parsed = cancelInvoiceSchema.safeParse({
+      invoiceId: formValue(formData, "invoiceId"),
+      version: formValue(formData, "version"),
+      cancelReason: formValue(formData, "cancelReason"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    const result = await getPrismaClient().$transaction(async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: parsed.data.invoiceId },
+        select: { invoiceNo: true, opportunityId: true, status: true },
+      });
+      if (!invoice) throw new UserFacingError("Invoice tidak ditemukan.");
+      if (invoice.status !== "DRAFT") throw new UserFacingError("Hanya invoice berstatus Draft yang dapat dibatalkan.");
+      const updated = await tx.invoice.updateMany({
+        where: { id: parsed.data.invoiceId, status: "DRAFT", version: parsed.data.version },
+        data: { status: "CANCELLED", version: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new UserFacingError("Invoice sudah berubah. Muat ulang halaman.");
+      await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_CANCELLED", ["status", "cancelReason"], {
+        invoiceNo: invoice.invoiceNo,
+        cancelReason: parsed.data.cancelReason,
+        cancelledById: actor.id,
+        cancelledByName: actor.name,
+      });
+      return { opportunityId: invoice.opportunityId };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/invoices");
+    revalidatePath(`/crm/peluang/${result.opportunityId}`);
+    return flashMessagePath(
+      `/crm/peluang/${result.opportunityId}?tab=invoice`,
+      "notice",
+      `Invoice draft dibatalkan oleh ${actor.name}. Alasan: ${parsed.data.cancelReason}`,
+    );
   });
 }
 

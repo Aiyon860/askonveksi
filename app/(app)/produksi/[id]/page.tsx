@@ -21,6 +21,7 @@ const ACTIVITY_LABEL = {
   CREATED: "Work Order dibuat",
   STAGE_MOVED: "Tahap diperbarui",
   STAGE_SKIPPED: "Tahap dilewati",
+  STAGE_REVERTED: "Tahap dikembalikan",
   SAMPLE_REJECTED: "Sampel perlu direvisi",
   QC_REJECTED: "QC meminta perbaikan",
   PIC_ASSIGNED: "PIC ditetapkan",
