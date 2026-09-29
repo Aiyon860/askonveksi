@@ -54,7 +54,7 @@ export async function getExpensesForExport(state: Omit<ExpenseListState, "order"
 
 export type IncomeListState = { query: string; from: Date | null; to: Date | null; status: "all" | "DP" | "LUNAS"; hppStatus: "all" | "COMPLETE" | "INCOMPLETE"; page: number; pageSize: number };
 
-function incomeWhere(state: IncomeListState) {
+function incomeWhere(state: Omit<IncomeListState, "page" | "pageSize">) {
   const query = state.query.trim().slice(0, 80);
   const transactionWhere = { status: "ACTIVE" as const, ...(state.from && state.to ? { paidAt: { gte: state.from, lt: state.to } } : {}) };
   return {
