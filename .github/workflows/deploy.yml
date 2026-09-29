@@ -64,9 +64,16 @@ jobs:
           cp -r .next/static deploy_package/.next/static
           if [ -d public ]; then cp -aT public deploy_package/public; fi
           cp worker/whatsapp.mjs deploy_package/worker/whatsapp.mjs
+          # Worker deps missing from the standalone trace (dotenv, baileys,
+          # supabase + transitive). Copied from this same npm-ci tree so
+          # versions stay identical; skips what standalone already ships.
+          node scripts/collect-worker-deps.mjs deploy_package
           tar -czf release.tar.gz -C deploy_package .
           tar -tzf release.tar.gz | grep -qx './server.js'
           tar -tzf release.tar.gz | grep -qx './worker/whatsapp.mjs'
+          for p in dotenv @whiskeysockets/baileys @supabase/supabase-js ws; do
+            tar -tzf release.tar.gz | grep -q "^\./node_modules/$p" || { echo "Worker dep missing in tarball: $p"; exit 1; }
+          done
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -189,9 +196,6 @@ jobs:
           # Persist Baileys auth across releases (WA session survives rollback/deploy).
           install -d "$DEPLOY_PATH/shared/.data/baileys-auth"
           ln -sfn "$DEPLOY_PATH/shared/.data" "$RELEASE_DIR/.data"
-          # ESM worker deps: Node ESM ignores NODE_PATH, so link shared
-          # node_modules into the release for standard node_modules resolution.
-          ln -sfn "$DEPLOY_PATH/shared/node_modules" "$RELEASE_DIR/node_modules"
 
           ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
           export NODE_ENV=production PORT="$APP_PORT" HOSTNAME=127.0.0.1
@@ -206,11 +210,12 @@ jobs:
           }
 
           start_wa() {
-            # Worker optional: jangan gagalkan deploy Next jika deps/shared belum siap.
+            # Worker deps ship inside the release (see Package step); the
+            # dotenv check below proves the closure is complete.
             if [ ! -f "$CURRENT_LINK/worker/whatsapp.mjs" ]; then echo 'WA worker file missing, skipping.'; return 0; fi
-            if [ ! -d "$DEPLOY_PATH/shared/node_modules" ]; then echo 'Shared node_modules missing, skipping WA worker (see VPS setup docs).'; return 0; fi
+            if [ ! -d "$CURRENT_LINK/node_modules/dotenv" ]; then echo 'Worker deps missing in release, skipping WA worker.'; return 0; fi
             pm2 delete "$WA_APP_NAME" >/dev/null 2>&1 || true
-            NODE_PATH="$DEPLOY_PATH/shared/node_modules" WHATSAPP_HEALTH_PORT="$WA_PORT" pm2 start "$CURRENT_LINK/worker/whatsapp.mjs" --name "$WA_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000 \
+            WHATSAPP_HEALTH_PORT="$WA_PORT" pm2 start "$CURRENT_LINK/worker/whatsapp.mjs" --name "$WA_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000 \
               --max-memory-restart 200M --node-args="--max-old-space-size=200" \
               --exp-backoff-restart-delay=5000 || echo 'WA worker failed to start, continuing without it.'
           }
