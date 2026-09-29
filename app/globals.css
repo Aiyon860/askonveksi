@@ -21,9 +21,26 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  /*
+    Suara data memakai Inter juga: satu keluarga untuk seluruh antarmuka.
+    Nama token `--font-mono` dipertahankan sebagai penanda peran—“ini data
+    teknis”—bukan sebagai deskripsi jenis hurufnya.
+  */
+  --font-mono: var(--font-sans);
   --font-heading: var(--font-sans);
   --text-landing-micro: 10px;
+  --color-app-canvas: var(--app-canvas);
+  --color-nav-surface: var(--nav-surface);
+  --color-nav-line: var(--nav-line);
+  --color-nav-chip: var(--nav-chip);
+  --color-nav-chip-strong: var(--nav-chip-strong);
+  --color-nav-ink: var(--nav-ink);
+  --color-nav-ink-muted: var(--nav-ink-muted);
+  --color-nav-active-ink: var(--nav-active-ink);
+  --color-accent-surface: var(--accent-surface);
+  --color-accent-surface-line: var(--accent-surface-line);
+  --color-accent-chip: var(--accent-chip);
+  --color-accent-ink-muted: var(--accent-ink-muted);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -140,6 +157,30 @@
   --chart-5: oklch(0.58 0.12 230);
   --chart-revenue: oklch(0.5 0.13 151);
   --chart-orders: oklch(0.51 0.14 258);
+  /*
+    Kanvas kerja sedikit lebih gelap dan lebih dingin daripada kertas kartu,
+    supaya kartu putih punya tepi tonal tanpa perlu garis.
+  */
+  --app-canvas: oklch(0.962 0.007 256);
+  --panel-shadow:
+    0 1px 2px oklch(0.2 0.03 258 / 0.05), 0 10px 28px -14px oklch(0.2 0.03 258 / 0.16);
+  /*
+    Tiga permukaan berwarna penuh milik aplikasi: sidebar navy elegan, dan
+    bidang aksen tempat angka terpenting berdiri. Semuanya solid—tanpa lapisan
+    transparan—supaya setiap langkah tonal dan setiap teks di atasnya punya
+    kontras yang sama di tema terang maupun gelap.
+  */
+  --nav-surface: oklch(0.28 0.06 262);
+  --nav-line: oklch(0.38 0.05 262);
+  --nav-chip: oklch(0.36 0.06 262);
+  --nav-chip-strong: oklch(0.99 0 0);
+  --nav-ink: oklch(0.985 0.005 256);
+  --nav-ink-muted: oklch(0.87 0.02 256);
+  --nav-active-ink: oklch(0.27 0.06 262);
+  --accent-surface: oklch(0.47 0.19 258);
+  --accent-surface-line: oklch(0.58 0.16 258);
+  --accent-chip: oklch(0.58 0.17 258);
+  --accent-ink-muted: oklch(0.88 0.04 256);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -369,6 +410,20 @@
   --chart-5: oklch(0.269 0 0);
   --chart-revenue: oklch(0.68 0.15 254);
   --chart-orders: oklch(0.72 0.13 64);
+  --app-canvas: oklch(0.135 0.008 260);
+  --panel-shadow:
+    0 1px 2px oklch(0 0 0 / 0.4), 0 12px 30px -16px oklch(0 0 0 / 0.55);
+  --nav-surface: oklch(0.235 0.035 262);
+  --nav-line: oklch(0.33 0.045 262);
+  --nav-chip: oklch(0.3 0.045 262);
+  --nav-chip-strong: oklch(0.5 0.16 259);
+  --nav-ink: oklch(0.96 0.01 256);
+  --nav-ink-muted: oklch(0.76 0.03 256);
+  --nav-active-ink: oklch(0.99 0 0);
+  --accent-surface: oklch(0.44 0.16 259);
+  --accent-surface-line: oklch(0.56 0.14 259);
+  --accent-chip: oklch(0.57 0.15 259);
+  --accent-ink-muted: oklch(0.87 0.04 256);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.68 0.18 253);
@@ -430,3 +485,51 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/*
+  Suara data. Inter bukan monospace, jadi angka tabular dipertahankan di sini:
+  kolom harga, jumlah, dan nominal tetap lurus tanpa perlu menambahkan
+  `tabular-nums` satu per satu di setiap pemakaian `font-mono`.
+*/
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+  Permukaan navigasi. Satu warna solid; teks di atasnya diturunkan dari warna
+  bidang itu sendiri, bukan dari token abu-abu yang tidak terkait.
+*/
+.nav-surface {
+  background-color: var(--nav-surface);
+  scrollbar-color: var(--nav-line) var(--nav-surface);
+}
+
+.nav-surface ::selection {
+  background: var(--nav-chip-strong);
+  color: var(--nav-active-ink);
+}
+
+/*
+  Elevasi panel Operate: satu bayangan lembut, satu deklarasi. Ditulis di luar
+  layer utilitas supaya tidak pernah bergantung pada urutan emisi kelas—kartu
+  boleh membawa `shadow-none` bawaan komponen tanpa mematikan elevasinya.
+*/
+.dash-panel {
+  box-shadow: var(--panel-shadow);
+}
+
+/*
+  Jangkar angka pada dashboard: satu bidang biru penuh tempat angka terpenting
+  berdiri, sehingga warna hadir sebagai penanda prioritas, bukan sebagai sapuan
+  latar. Elevasinya sama dengan kartu putih di sebelahnya—satu lapisan, satu
+  bayangan.
+*/
+.dash-accent {
+  background-color: var(--accent-surface);
+}
+
+.dash-accent ::selection {
+  background: var(--accent-chip);
+  color: oklch(0.99 0 0);
+}
+

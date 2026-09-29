@@ -60,15 +60,19 @@ test("Keuangan dapat membuka Dashboard tanpa membuka CRM", () => {
   assert.doesNotMatch(authActionsSource, /role === "KEUANGAN" \? "\/keuangan"/);
 });
 
-test("tombol Follow-up Dashboard hanya untuk Owner dan Admin Customer", () => {
-  assert.match(dashboardPageSource, /actor\?\.role === "OWNER" \|\| actor\?\.role === "ADMIN_CUSTOMER"/);
-  assert.match(dashboardPageSource, /action=\{canOpenFollowUp \?/);
+test("dashboard tidak lagi menampilkan card dan tombol follow-up mendesak", () => {
+  assert.doesNotMatch(dashboardSource, /Follow-up mendesak/);
+  assert.doesNotMatch(dashboardSource, /data\.overdue/);
+  assert.doesNotMatch(dashboardSource, /data\.dueToday/);
+  assert.doesNotMatch(dashboardPageSource, /Buka Follow-up/);
+  assert.doesNotMatch(dashboardPageSource, /canOpenFollowUp/);
 });
 
 test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
   assert.match(dataSource, /const canViewFinancialData = hasRole\(actor\.role, FINANCE_ROLES\)/);
   assert.match(dataSource, /canViewFinancialData \? prisma\.salesOrder\.aggregate/);
   assert.match(dataSource, /dealRevenue: dealRevenue\?\._sum\.total\?\.toString\(\) \?\? null/);
-  assert.match(dashboardSource, /\{data\.canViewFinancialData \? <Card/);
+  assert.match(dashboardSource, /\{data\.canViewFinancialData \? \(?\s*<section/);
+  assert.match(dashboardSource, /Ringkasan hasil sales/);
   assert.match(dashboardSource, /\{data\.canViewFinancialData && data\.businessKpis \? \(/);
 });

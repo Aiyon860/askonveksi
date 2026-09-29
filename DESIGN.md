@@ -5,7 +5,10 @@ colors:
   tinta-operasional: "oklch(0.145 0 0)"
   kertas-kerja: "oklch(1 0 0)"
   kanvas-kerja: "oklch(0.985 0 0)"
+  kanvas-operate: "oklch(0.962 0.007 256)"
   kontrol-utama: "oklch(0.47 0.19 258)"
+  permukaan-aksen: "oklch(0.47 0.19 258)"
+  sidebar-navy-elegan: "oklch(0.28 0.06 262)"
   teks-di-kontrol: "oklch(0.985 0 0)"
   permukaan-sekunder: "oklch(0.97 0 0)"
   abu-penanda: "oklch(0.556 0 0)"
@@ -39,7 +42,7 @@ typography:
     lineHeight: 1.429
     letterSpacing: "normal"
   data:
-    fontFamily: "Geist Mono, monospace"
+    fontFamily: "Inter, Arial, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.429
@@ -148,7 +151,8 @@ Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penand
 
 ### Neutral
 
-- **Kertas Kerja:** kanvas utama serta permukaan kartu pada tema terang.
+- **Kertas Kerja:** permukaan kartu pada tema terang.
+- **Kanvas Operate:** kanvas halaman aplikasi; sedikit lebih gelap dan lebih dingin daripada Kertas Kerja, sehingga kartu putih mempunyai tepi tonal tanpa perlu garis.
 - **Permukaan Sekunder:** pengelompokan halus, keadaan hover, dan area pendukung.
 - **Abu Penanda:** metadata dan teks sekunder.
 - **Garis Kerja:** batas bidang, input, dan pemisah yang tidak boleh mendominasi.
@@ -156,6 +160,8 @@ Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penand
 - **Ruang Gelap dan Panel Gelap:** pasangan kanvas serta permukaan pada tema gelap.
 
 **The Blue Discipline Rule.** Bangun hierarki utama melalui terang-gelap, tipografi, jarak, dan struktur. Biru menandai tindakan, pilihan, fokus, atau data utama; jangan memenuhi banyak panel dengan biru sekaligus.
+
+**The Accent Anchor Rule.** Setiap kelompok angka boleh mempunyai satu bidang aksen biru penuh sebagai jangkar—yaitu angka terpenting di kelompok itu, dan hanya satu. Sisanya tetap kartu putih; warna hadir sebagai penanda prioritas, bukan sebagai latar.
 
 **The Exception Color Rule.** Warna destruktif hanya muncul ketika maknanya benar-benar destruktif atau bermasalah, bukan sebagai cara menarik perhatian umum.
 
@@ -165,24 +171,24 @@ Palet memakai karakter **Tinta Operasional**, **Kertas Kerja**, dan **Abu Penand
 
 **Display Font:** Inter dengan fallback Arial dan sans-serif  
 **Body Font:** Inter dengan fallback Arial dan sans-serif  
-**Label/Mono Font:** Inter untuk label; Geist Mono untuk data teknis dan keluaran sistem
+**Label/Data Font:** Inter untuk label, data teknis, dan keluaran sistem
 
-**Character:** Inter menjaga teks operasional tetap netral dan cepat dipindai. Geist Mono memisahkan identifier, respons sistem, serta data teknis tanpa membuat keseluruhan antarmuka terasa seperti alat developer.
+**Character:** Inter menjaga teks operasional tetap netral dan cepat dipindai. Seluruh antarmuka memakai satu keluarga: yang memisahkan identifier, respons sistem, dan data teknis dari prosa adalah bobot, warna, ukuran, serta angka tabular—bukan pergantian jenis huruf.
 
 ### Hierarchy
 
 - **Title:** bobot tebal untuk judul halaman atau panel utama; skala yang teramati adalah 1.5rem dengan line-height 1.333.
 - **Body:** bobot regular untuk penjelasan singkat dan metadata; skala yang teramati adalah 0.875rem dengan line-height 1.429.
 - **Label:** bobot medium untuk tombol dan kontrol; tetap ringkas pada 0.875rem.
-- **Data:** Geist Mono hanya untuk nilai atau respons yang membutuhkan pembacaan karakter secara presisi.
+- **Data:** Inter dengan angka tabular untuk nilai atau respons yang membutuhkan pembacaan karakter secara presisi.
 
-**The One Sans Voice Rule.** Inter menjadi suara utama untuk heading, body, dan kontrol; jangan mencampur Geist Sans hanya karena font tersebut ikut dimuat oleh scaffold.
+**The One Sans Voice Rule.** Inter adalah satu-satunya keluarga huruf antarmuka—heading, body, kontrol, dan data. Jangan menambahkan keluarga kedua tanpa alasan fungsional.
 
-**The Data Voice Rule.** Gunakan mono untuk identifier, kode, atau keluaran teknis—bukan untuk paragraf, navigasi, dan label tindakan sehari-hari.
+**The Data Voice Rule.** Bedakan identifier, kode, dan keluaran teknis dari prosa melalui bobot, warna, dan angka tabular; kelas `font-mono` menandai peran itu, bukan jenis hurufnya. Jangan pakai penanda ini untuk paragraf, navigasi, atau label tindakan.
 
 ## Layout
 
-Workspace menggunakan sidebar 15rem pada desktop, drawer pada layar kecil, gutter responsif 1rem hingga 2rem, serta jarak antarkelompok 1.5rem. Login dan formulir fokus menggunakan satu kolom terpusat. Landing page memakai keluarga token yang sama dengan ritme yang lebih lega.
+Workspace menggunakan sidebar 15rem pada desktop, drawer pada layar kecil, gutter responsif 1rem hingga 2rem, serta jarak antarkelompok 1.5rem. Sidebar memakai navy elegan sebagai bidang gelap, teks putih kebiruan di atasnya, dan item aktifnya adalah satu bidang putih penuh dengan teks navy—bukan satu-satunya tempat warna pada halaman. Kanvas halaman aplikasi memakai Kanvas Operate. Login dan formulir fokus menggunakan satu kolom terpusat. Landing page memakai keluarga token yang sama dengan ritme yang lebih lega.
 
 Layar Operate berikutnya harus mempertahankan scanability: kelompokkan data berdasarkan pekerjaan, tempatkan tindakan dekat dengan objek yang dipengaruhinya, dan turunkan layout secara bertahap menjadi satu kolom di ruang sempit. Nilai breakpoint dan grid dashboard harus dikarbonisasi dari implementasi pertama, bukan dikarang di dokumen ini.
 
@@ -190,9 +196,17 @@ Layar Operate berikutnya harus mempertahankan scanability: kelompokkan data berd
 
 ## Elevation & Depth
 
-Sistem menggunakan lapisan tonal dan garis halus sebagai sumber kedalaman utama. Bayangan hanya terlihat secara terbatas pada varian outline dan belum membentuk kosakata elevasi mandiri. Permukaan diam tetap tenang; fokus, hover, dan keadaan aktif memberi perubahan yang lebih terasa daripada bayangan permanen.
+Permukaan Operate memakai tiga lapisan, masing-masing dengan satu cara menyatakan kedalaman:
 
-**The Tonal-First Rule.** Pisahkan tingkat informasi dengan warna permukaan dan batas terlebih dahulu; gunakan bayangan hanya ketika sebuah elemen benar-benar berada di atas konteksnya.
+1. **Kanvas Operate**—bidang dasar halaman.
+2. **Kartu panel**—permukaan putih dengan satu bayangan lembut: offset kecil, blur lebar, warna diturunkan dari tinta operasional. Tanpa garis.
+3. **Bidang tonal di dalam kartu**—tint semantik atau tint tahap, tanpa bayangan, karena lapisannya berada di bawah permukaan, bukan di atasnya.
+
+Tidak ada lapisan yang memakai garis dan bayangan sekaligus. Permukaan diam tetap tenang; fokus, hover, dan keadaan aktif tetap memberi perubahan yang lebih terasa daripada bayangan.
+
+**The One Elevation Rule.** Satu bayangan panel berlaku untuk seluruh kartu Operate; kedalaman berikutnya datang dari langkah tonal, bukan dari menambahkan bayangan kedua.
+
+**The Tonal-First Rule.** Pisahkan tingkat informasi dengan warna permukaan terlebih dahulu; bayangan hanya menandai bahwa sebuah bidang berada di atas kanvas.
 
 ## Shapes
 
@@ -240,10 +254,12 @@ Panel status adalah pola aktual untuk menampilkan hasil proses atau respons kone
 - **Do** pertahankan cincin fokus keyboard, state disabled, dan penanda error yang sudah tersedia pada komponen.
 - **Do** gunakan Bahasa Indonesia yang singkat dan operasional pada label serta status.
 - **Do** tampilkan label teks bersama warna atau ikon status untuk memenuhi kebutuhan aksesibilitas.
+- **Do** beri satu bidang aksen pada kelompok angka terpenting, lalu biarkan sisanya putih.
+- **Do** beri setiap status yang tampil berulang sebagai baris kartu sejajar satu ikon tetap: beberapa kartu dengan bentuk identik yang hanya berbeda tint akan terbaca sebagai satu blok seragam.
 
 ### Don't:
 
-- **Don't** memakai biru atau warna status sebagai background besar pada banyak kartu sekaligus.
+- **Don't** memakai biru atau warna status sebagai background besar pada banyak kartu sekaligus; satu bidang aksen per kelompok angka sudah cukup.
 - **Don't** membuat seluruh kartu melayang dengan bayangan; kedalaman default berasal dari lapisan tonal dan batas.
 - **Don't** menggunakan bentuk pil untuk semua tombol dan bidang.
 - **Don't** mencampur Inter, Geist Sans, dan Geist Mono tanpa fungsi yang jelas.
