@@ -1,6 +1,6 @@
 import "server-only";
 
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 
 import { UserFacingError } from "@/lib/actions/response";
 
@@ -136,6 +136,7 @@ function assertLength(rowNumber: number, label: string, value: string, max: numb
 }
 
 export async function createCustomerWorkbook(rows: CustomerExcelExportRow[]) {
+  const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ERM Askonveksi";
   workbook.created = new Date();
@@ -168,6 +169,7 @@ export async function parseCustomerWorkbook(file: File): Promise<CustomerExcelRo
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new UserFacingError("Isi file tidak sesuai format XLSX.");
   assertSafeXlsxArchive(bytes);
 
+  const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(bytes as never);

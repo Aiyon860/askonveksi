@@ -98,12 +98,17 @@ function messageText(message) {
 async function findCustomer(remoteJid) {
   const number = normalizeNumber(remoteJid.split("@")[0]);
   if (!number) return null;
+  // ponytail: cache 60s agar tiap inbound tak findMany full-table (penting di 200M + RTT AU).
+  const now = Date.now();
+  if (!findCustomer.cache || now - findCustomer.cacheAt > 60_000) {
+    findCustomer.cache = await prisma.customer.findMany({
+      where: { whatsapp: { not: null }, archivedAt: null },
+      select: { id: true, whatsapp: true, salesPicId: true },
+    });
+    findCustomer.cacheAt = now;
+  }
   // ponytail: linear matching handles existing mixed phone formats; add a normalized DB column when customer volume makes this measurable.
-  const customers = await prisma.customer.findMany({
-    where: { whatsapp: { not: null }, archivedAt: null },
-    select: { id: true, whatsapp: true, salesPicId: true },
-  });
-  return customers.find((customer) => normalizeNumber(customer.whatsapp) === number) || null;
+  return findCustomer.cache.find((customer) => normalizeNumber(customer.whatsapp) === number) || null;
 }
 
 async function directMessageJid(socket, message) {
@@ -193,7 +198,8 @@ async function storeInbound(accountId, message, remoteJid) {
   let mediaSizeBytes = null;
   if (kind !== "TEXT" && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
     const buffer = await downloadMediaMessage(message, "buffer", {}, { logger: silentLogger, reuploadRequest: sessions.get(accountId)?.updateMediaMessage });
-    if (buffer.length <= 10 * 1024 * 1024) {
+    // Cap 5MB agar muat di worker 200M (sebelumnya 10MB).
+    if (buffer.length <= 5 * 1024 * 1024) {
       const media = kind === "IMAGE" ? message.message.imageMessage : message.message.documentMessage;
       mediaMimeType = media?.mimetype || "application/octet-stream";
       mediaFileName = media?.fileName || `${message.key.id}.${kind === "IMAGE" ? "jpg" : "bin"}`;
@@ -266,7 +272,8 @@ async function scheduleAutomations() {
   const opportunities = await prisma.opportunity.findMany({
     where: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] }, nextActionAt: { lte: now }, customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" } } },
     select: { id: true, opportunityNo: true, title: true, nextAction: true, nextActionAt: true, customerId: true, customer: { select: { name: true, companyName: true } }, salesPic: { select: { name: true } } },
-    take: 200,
+    // Cap 100 agar muat 200M (sebelumnya 200).
+    take: 100,
   });
   const nextTemplate = byType.get("NEXT_ACTION");
   if (nextTemplate) for (const item of opportunities) {
@@ -278,7 +285,7 @@ async function scheduleAutomations() {
   const reminders = await prisma.customerReminder.findMany({
     where: { type: "REACTIVATION", dueAt: { lte: now }, resolvedAt: null, customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" }, orderReminderEnabled: true, opportunities: { none: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] } } } } },
     select: { id: true, type: true, dueAt: true, generation: true, customerId: true, customer: { select: { name: true, companyName: true, salesPic: { select: { name: true } } } } },
-    take: 200,
+    take: 100,
   });
   for (const item of reminders) {
     const template = byType.get("REACTIVATION") || { id: null, body: DEFAULT_ORDER_REMINDER_TEMPLATE };
@@ -310,7 +317,7 @@ async function scheduleAutomations() {
       pendingPayment: { select: { id: true, kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true } } } },
       salesOrder: { select: { status: true, payment: { select: { id: true, terms: { select: { id: true, position: true, amount: true, dueAt: true, transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 } } } } } } },
     },
-    take: 200,
+    take: 100,
   });
   for (const invoice of invoices) {
     const values = { ...baseValues, customer_name: invoice.opportunity.customer.name, company_name: invoice.opportunity.customer.companyName || "", sales_pic_name: invoice.opportunity.salesPic?.name || "", opportunity_no: invoice.opportunity.opportunityNo, opportunity_title: invoice.opportunity.title, invoice_no: invoice.invoiceNo, invoice_total: new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(invoice.total)), invoice_due_date: invoice.dueAt?.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" }) || "" };
@@ -370,12 +377,13 @@ async function scheduleCampaigns() {
     }
 
     let cursor = campaign.recipientCursor;
-    for (let batch = 0; batch < 10; batch += 1) {
+    // 5 batch x 100 agar muat 200M (sebelumnya 10 x 200).
+    for (let batch = 0; batch < 5; batch += 1) {
       const recipients = await prisma.whatsAppCampaignRecipient.findMany({
         where: { campaignId: campaign.id, ...(cursor ? { customerId: { gt: cursor } } : {}) },
         select: { customerId: true, customer: { select: { id: true, name: true, companyName: true, whatsapp: true } } },
         orderBy: { customerId: "asc" },
-        take: 200,
+        take: 100,
       });
       if (!recipients.length) break;
       const jobs = recipients.filter(({ customer: item }) => {
@@ -393,9 +401,9 @@ async function scheduleCampaigns() {
       cursor = recipients.at(-1).customerId;
       await prisma.whatsAppCampaign.updateMany({
         where: { id: campaign.id, status: "PROCESSING" },
-        data: { recipientCursor: cursor, ...(recipients.length < 200 ? { snapshotCompletedAt: new Date() } : {}) },
+        data: { recipientCursor: cursor, ...(recipients.length < 100 ? { snapshotCompletedAt: new Date() } : {}) },
       });
-      if (recipients.length < 200) break;
+      if (recipients.length < 100) break;
     }
   }
   const running = await prisma.whatsAppCampaign.findMany({
@@ -590,7 +598,7 @@ async function tick() {
       await scheduleCampaigns();
       lastAutomationAt = Date.now();
     }
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       if (!await processOneJob()) break;
     }
   } catch (error) {

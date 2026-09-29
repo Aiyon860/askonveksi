@@ -32,6 +32,8 @@ export async function getDesignTasks({ query, status, start, end, page, pageSize
         revisions: { select: { id: true, revision: true, status: true, notes: true, reviewNotes: true, createdAt: true, reviewedAt: true, createdBy: { select: { name: true } }, reviewedBy: { select: { name: true } }, attachments: { select: { id: true, originalName: true } } }, orderBy: { revision: "desc" } },
       },
       orderBy: [{ deadline: "asc" }, { id: "asc" }],
+      // ponytail: status turunan JS (deadline+revision) tak bisa WHERE penuh; cap 500 deadline terdekat agar 1GB tak OOM. Naikkan/paginasi DB saat task aktif >500.
+      take: 500,
     }),
     prisma.designTask.count({ where }),
   ]);
@@ -57,5 +59,7 @@ export async function getDesignTasks({ query, status, start, end, page, pageSize
       return (direction === "asc" ? compared : -compared) || left.id.localeCompare(right.id);
     });
   const paged = items.slice((page - 1) * pageSize, page * pageSize);
-  return { items: paged, total: status === "all" ? total : items.length, pageCount: Math.max(1, Math.ceil((status === "all" ? total : items.length) / pageSize)), actorRole: actor.role };
+  const capped = rows.length >= 500;
+  const filteredTotal = status === "all" ? total : items.length;
+  return { items: paged, total: filteredTotal, pageCount: Math.max(1, Math.ceil(filteredTotal / pageSize)), actorRole: actor.role, ...(capped ? { truncated: true as const } : {}) };
 }

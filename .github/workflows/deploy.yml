@@ -45,6 +45,7 @@ jobs:
       - name: Build standalone release
         env:
           NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: '1'
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
@@ -58,12 +59,14 @@ jobs:
 
       - name: Package release
         run: |
-          mkdir -p deploy_package/.next
+          mkdir -p deploy_package/.next deploy_package/worker
           cp -r .next/standalone/. deploy_package/
           cp -r .next/static deploy_package/.next/static
           if [ -d public ]; then cp -aT public deploy_package/public; fi
+          cp worker/whatsapp.mjs deploy_package/worker/whatsapp.mjs
           tar -czf release.tar.gz -C deploy_package .
           tar -tzf release.tar.gz | grep -qx './server.js'
+          tar -tzf release.tar.gz | grep -qx './worker/whatsapp.mjs'
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -183,16 +186,34 @@ jobs:
           tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
           rm -f "$ARCHIVE"
           ln -sfn "$DEPLOY_PATH/shared/.env" "$RELEASE_DIR/.env"
+          # Persist Baileys auth across releases (WA session survives rollback/deploy).
+          install -d "$DEPLOY_PATH/shared/.data/baileys-auth"
+          ln -sfn "$DEPLOY_PATH/shared/.data" "$RELEASE_DIR/.data"
 
           ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
           export NODE_ENV=production PORT="$APP_PORT" HOSTNAME=127.0.0.1
+          WA_PORT="$(grep -E '^WHATSAPP_HEALTH_PORT=' "$DEPLOY_PATH/shared/.env" 2>/dev/null | cut -d= -f2 | tr -d ' "' || true)"
+          WA_PORT="${WA_PORT:-3001}"
+          WA_APP_NAME="${PM2_APP_NAME}-wa"
 
           start_pm2() {
             pm2 delete "$PM2_APP_NAME" >/dev/null 2>&1 || true
-            pm2 start "$CURRENT_LINK/server.js" --name "$PM2_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000
+            pm2 start "$CURRENT_LINK/server.js" --name "$PM2_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000 \
+              --max-memory-restart 600M --node-args="--max-old-space-size=600"
+          }
+
+          start_wa() {
+            # Worker optional: jangan gagalkan deploy Next jika deps/shared belum siap.
+            if [ ! -f "$CURRENT_LINK/worker/whatsapp.mjs" ]; then echo 'WA worker file missing, skipping.'; return 0; fi
+            if [ ! -d "$DEPLOY_PATH/shared/node_modules" ]; then echo 'Shared node_modules missing, skipping WA worker (see VPS setup docs).'; return 0; fi
+            pm2 delete "$WA_APP_NAME" >/dev/null 2>&1 || true
+            NODE_PATH="$DEPLOY_PATH/shared/node_modules" WHATSAPP_HEALTH_PORT="$WA_PORT" pm2 start "$CURRENT_LINK/worker/whatsapp.mjs" --name "$WA_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000 \
+              --max-memory-restart 200M --node-args="--max-old-space-size=200" \
+              --exp-backoff-restart-delay=5000 || echo 'WA worker failed to start, continuing without it.'
           }
 
           start_pm2
+          start_wa
 
           healthy=0
           for _ in $(seq 1 15); do
@@ -203,11 +224,18 @@ jobs:
             sleep 2
           done
 
+          if curl -fsS --max-time 5 "http://127.0.0.1:$WA_PORT/health" -o /dev/null 2>/dev/null; then
+            echo 'WA worker healthy.'
+          else
+            echo 'WA worker not healthy (optional, deploy continues).'
+          fi
+
           if [ "$healthy" -ne 1 ]; then
             echo 'Health check failed, rolling back.'
             if [ -n "$PREVIOUS_RELEASE" ] && [ -d "$PREVIOUS_RELEASE" ]; then
               ln -sfn "$PREVIOUS_RELEASE" "$CURRENT_LINK"
               start_pm2
+              start_wa
               pm2 save
             else
               pm2 delete "$PM2_APP_NAME" || true

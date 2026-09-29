@@ -43,6 +43,12 @@
       "skillPath": "skills/marketing-psychology/SKILL.md",
       "computedHash": "50d735eb0f5c36f379ed2200f21aeacc9b9ad85667b5d33ec6111857352a1340"
     },
+    "nextjs-performance": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/developer-kit-typescript/skills/nextjs-performance/SKILL.md",
+      "computedHash": "ea2ac97c0f3a5afe4d0196969840d383a30882b8e00a4da895e4ea6eaa32af09"
+    },
     "performance": {
       "source": "addyosmani/web-quality-skills",
       "sourceType": "github",

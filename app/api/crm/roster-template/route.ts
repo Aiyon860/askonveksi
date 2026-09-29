@@ -1,5 +1,3 @@
-import ExcelJS from "exceljs";
-
 import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { downloadFilename } from "@/lib/download-filename";
@@ -9,6 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try { await requireActor(CRM_OPERATOR_ROLES); } catch { return new Response("Anda tidak memiliki akses ke template roster.", { status: 403 }); }
+  const { default: ExcelJS } = await import("exceljs");
   const sizes = await getPrismaClient().garmentSize.findMany({
     where: { isActive: true },
     select: { name: true },
