@@ -29,7 +29,7 @@ const advantages = [
 
 export function LandingWhy() {
   return (
-    <section id="tentang-kami" aria-labelledby="why-title" className="relative isolate overflow-hidden bg-[#071d32] text-white">
+    <section id="tentang-kami" aria-labelledby="why-title" className="relative isolate scroll-mt-20 overflow-hidden bg-[#071d32] text-white">
       <Image src="/hero.jpg" alt="" fill sizes="100vw" className="-z-20 object-cover object-center" aria-hidden="true" />
       <div className="absolute inset-0 -z-10 bg-[#071d32]/90" aria-hidden="true" />
 

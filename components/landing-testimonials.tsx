@@ -22,7 +22,7 @@ const testimonials = [
 
 export function LandingTestimonials() {
   return (
-    <section id="testimoni" aria-labelledby="testimonials-title" className="bg-white py-10 sm:py-12">
+    <section id="testimoni" aria-labelledby="testimonials-title" className="scroll-mt-20 bg-white py-10 sm:py-12">
       <div className="mx-auto w-[90%]">
         <LandingReveal>
           <h2 id="testimonials-title" className="text-2xl font-bold leading-tight tracking-[-0.02em] text-[#17324d]">

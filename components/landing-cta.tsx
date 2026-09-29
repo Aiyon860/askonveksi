@@ -6,7 +6,7 @@ import { ASKONVEKSI_WHATSAPP } from "@/lib/contact";
 
 export function LandingCta() {
   return (
-    <section id="kontak" aria-labelledby="cta-title" className="relative isolate overflow-hidden bg-[#075eae] text-white">
+    <section id="kontak" aria-labelledby="cta-title" className="relative isolate scroll-mt-20 overflow-hidden bg-[#075eae] text-white">
       <Image src="/cta.jpg" alt="Koleksi pakaian produksi Askonveksi" fill sizes="100vw" className="-z-20 object-cover object-center" />
       <div className="absolute inset-0 -z-10 bg-[#075eae]/88" aria-hidden="true" />
 

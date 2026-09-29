@@ -11,6 +11,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -22,8 +25,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { LANDING_CONTACT_HREF, LANDING_NAV_LINKS } from "@/lib/navigation";
-import { LANDING_PRODUCTS } from "@/lib/products";
+import { LANDING_CONTACT_HREF, LANDING_NAV_LINKS, LANDING_PRODUCT_MENU } from "@/lib/navigation";
 
 const linkClassName =
   "flex min-h-11 items-center rounded-landing-control px-3 text-sm font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30";
@@ -31,7 +33,14 @@ const linkClassName =
 export function LandingNavbar() {
   const [open, setOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
+  const [openSub, setOpenSub] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
+
+  function closeMobileNav() {
+    setProductsOpen(false);
+    setOpenSub(null);
+    setOpen(false);
+  }
 
   return (
     <motion.header
@@ -67,7 +76,8 @@ export function LandingNavbar() {
           </Link>
 
           <div className="hidden items-center gap-1 lg:flex xl:gap-2">
-            {LANDING_NAV_LINKS.map((link) => (
+            {/* Dropdown Produk duduk setelah Portofolio, sebelum Size Chart. */}
+            {LANDING_NAV_LINKS.slice(0, 4).map((link) => (
               <Link key={link.href} href={link.href} className={linkClassName}>
                 {link.label}
               </Link>
@@ -88,31 +98,46 @@ export function LandingNavbar() {
                 side="bottom"
                 align="end"
                 sideOffset={8}
-                className="w-72 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]"
+                className="w-56 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]"
               >
-                {LANDING_PRODUCTS.map((product) => (
-                  <DropdownMenuItem
-                    key={product.slug}
-                    render={<Link href={`/produk/${product.slug}`} />}
-                    className="rounded-landing-control px-2 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-highlighted:bg-landing-fog data-highlighted:text-landing-accent"
-                  >
-                    <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[#D4EEFF]" aria-hidden="true">
-                      <Image
-                        src={product.gallery[0].src}
-                        alt=""
-                        width={36}
-                        height={36}
-                        className="size-full object-contain object-bottom p-0.5"
-                      />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block font-semibold">{product.name}</span>
-                      <span className="block truncate text-xs text-landing-muted">{product.tagline}</span>
-                    </span>
-                  </DropdownMenuItem>
-                ))}
+                {LANDING_PRODUCT_MENU.map((entry) =>
+                  "children" in entry ? (
+                    <DropdownMenuSub key={entry.label}>
+                      <DropdownMenuSubTrigger className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-popup-open:bg-landing-fog data-popup-open:text-landing-accent">
+                        {entry.label}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-56 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]">
+                        <p aria-hidden="true" className="px-3 py-1.5 text-xs font-medium text-landing-muted">
+                          {entry.label}
+                        </p>
+                        {entry.children.map((child) => (
+                          <DropdownMenuItem
+                            key={child.href}
+                            render={<Link href={child.href} />}
+                            className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-highlighted:bg-landing-fog data-highlighted:text-landing-accent"
+                          >
+                            {child.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  ) : (
+                    <DropdownMenuItem
+                      key={entry.href}
+                      render={<Link href={entry.href} />}
+                      className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-highlighted:bg-landing-fog data-highlighted:text-landing-accent"
+                    >
+                      {entry.label}
+                    </DropdownMenuItem>
+                  ),
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
+            {LANDING_NAV_LINKS.slice(4).map((link) => (
+              <Link key={link.href} href={link.href} className={linkClassName}>
+                {link.label}
+              </Link>
+            ))}
           </div>
 
           <a
@@ -144,7 +169,8 @@ export function LandingNavbar() {
                 </SheetDescription>
               </SheetHeader>
               <nav aria-label="Navigasi seluler" className="flex flex-col gap-2 p-4">
-                {LANDING_NAV_LINKS.map((link) => (
+                {/* Menu Produk duduk setelah Portofolio, sebelum Size Chart. */}
+                {LANDING_NAV_LINKS.slice(0, 4).map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
@@ -164,23 +190,61 @@ export function LandingNavbar() {
                     <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform duration-200 aria-expanded:rotate-180" />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <div className="ml-3 mt-1 flex flex-col border-l border-landing-border pl-3">
-                      {LANDING_PRODUCTS.map((product) => (
-                        <Link
-                          key={product.slug}
-                          href={`/produk/${product.slug}`}
-                          className="flex min-h-10 items-center rounded-landing-control px-3 text-sm text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
-                          onClick={() => {
-                            setProductsOpen(false);
-                            setOpen(false);
-                          }}
-                        >
-                          {product.name}
-                        </Link>
-                      ))}
+                    <div className="ml-3 mt-1 flex flex-col gap-0.5 border-l border-landing-border pl-3">
+                      {LANDING_PRODUCT_MENU.map((entry) =>
+                        "children" in entry ? (
+                          <Collapsible
+                            key={entry.label}
+                            open={openSub === entry.label}
+                            onOpenChange={(next) => setOpenSub(next ? entry.label : null)}
+                          >
+                            <CollapsibleTrigger className="flex min-h-10 w-full items-center rounded-landing-control px-3 text-left text-sm font-medium text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent">
+                              {entry.label}
+                              <ChevronDown
+                                aria-hidden="true"
+                                className="ml-auto size-4 transition-transform duration-200 aria-expanded:rotate-180"
+                              />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="ml-3 mt-0.5 flex flex-col border-l border-landing-border pl-3">
+                                {entry.children.map((child) => (
+                                  <Link
+                                    key={child.href}
+                                    href={child.href}
+                                    className="flex min-h-10 items-center rounded-landing-control px-3 text-sm text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                                    onClick={closeMobileNav}
+                                  >
+                                    {child.label}
+                                  </Link>
+                                ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ) : (
+                          <Link
+                            key={entry.href}
+                            href={entry.href}
+                            className="flex min-h-10 items-center rounded-landing-control px-3 text-sm text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                            onClick={closeMobileNav}
+                          >
+                            {entry.label}
+                          </Link>
+                        ),
+                      )}
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
+
+                {LANDING_NAV_LINKS.slice(4).map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={linkClassName}
+                    onClick={() => setOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
 
                 <a
                   href={LANDING_CONTACT_HREF}

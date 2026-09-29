@@ -31,7 +31,7 @@ export function LandingProducts({ activeSlug, showCta = true }: { activeSlug?: s
         </LandingReveal>
 
         <LandingStagger id="katalog-produk" className="grid scroll-mt-20 grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {LANDING_PRODUCTS.map((product) => (
+          {LANDING_PRODUCTS.filter((product) => !product.hideFromCatalog).map((product) => (
             <article key={product.slug} className="group h-full overflow-hidden rounded-xl bg-[#fff] shadow-[0_6px_18px_rgb(20_37_53/0.07)]">
               <Link
                 href={`/produk/${product.slug}`}

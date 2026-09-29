@@ -2,20 +2,19 @@ import type { Metadata } from "next";
 
 import { LandingFooter } from "@/components/landing-footer";
 import { LandingNavbar } from "@/components/landing-navbar";
-import { PortfolioGrid } from "@/components/portfolio-grid";
+import { SizeChartGrid } from "@/components/size-chart-grid";
 
 export const metadata: Metadata = {
-  title: "Portofolio",
-  description:
-    "Portofolio hasil produksi seragam dan apparel custom Askonveksi di Semarang untuk perusahaan, instansi, komunitas, dan brand.",
+  title: "Size Chart",
+  description: "Panduan ukuran pakaian Askonveksi untuk memastikan seragam dan apparel custom Anda pas dipakai.",
 };
 
-export default function PortofolioPage() {
+export default function SizeChartPage() {
   return (
     <main className="flex min-h-dvh flex-col bg-white">
       <LandingNavbar />
       <div className="flex-1">
-        <PortfolioGrid />
+        <SizeChartGrid />
       </div>
       <LandingFooter />
     </main>
