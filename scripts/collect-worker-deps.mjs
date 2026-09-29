@@ -1,10 +1,19 @@
 // CI-only: copy the node_modules closure needed by worker/whatsapp.mjs
-// into the deploy package, skipping files the standalone trace already has.
-// Same source tree => identical versions, no duplicate-version conflicts.
+// into the deploy package. Same source tree => identical versions.
+// Standalone dirs may be FILE-pruned, so trust is per-file, never per-dir:
+// - package dir absent in dest -> copy whole (keeps non-imported assets
+//   like .node/.wasm next to reachable files).
+// - package dir present -> merge only the traced files missing in dest.
 //
 // Usage: node scripts/collect-worker-deps.mjs [destDir]
 // Exits non-zero when a reachable import cannot be resolved.
-import { cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  cpSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+} from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -78,10 +87,9 @@ if (!existsSync(entry)) {
 }
 
 const seen = new Set();
-const copiedPkgs = new Set();
+const tracedFiles = new Set(); // reachable files under root (phase 1)
 const missing = [];
 const queue = [entry];
-let copiedFiles = 0;
 
 while (queue.length > 0) {
   const file = queue.pop();
@@ -98,48 +106,80 @@ while (queue.length > 0) {
       spec === ".."
     )
       continue;
-    // CJS-first: createRequire resolves bare + relative + extension probing
-    // uniformly (incl. dot-leading packages like `.prisma/...` that ESM
-    // rejects). ESM fallback covers import-only export conditions.
+    // Dual-semantics: CJS-first, ESM as well. Dual packages (pg, pg-pool:
+    // esm/index.mjs vs lib/index.js) resolve differently per importer, and
+    // the worker (ESM) may hit the entry the CJS walk never sees.
     // This mirrors runtime, where ESM entries bridge to CJS via createRequire.
-    let resolved = null;
+    const resolvedHrefs = new Set();
     try {
-      resolved = pathToFileURL(createRequire(file).resolve(spec)).href;
+      resolvedHrefs.add(
+        pathToFileURL(createRequire(file).resolve(spec)).href,
+      );
     } catch {
-      try {
-        resolved = await import.meta.resolve(
-          spec,
-          pathToFileURL(file).href,
-        );
-      } catch {
-        if (isOptional(spec)) {
-          console.warn(`optional dep skipped: ${spec}`);
-          continue;
-        }
-        missing.push(`${path.relative(root, file)} -> ${spec}`);
+      // fall through to ESM attempt below
+    }
+    try {
+      resolvedHrefs.add(
+        await import.meta.resolve(spec, pathToFileURL(file).href),
+      );
+    } catch {
+      // fall through to missing check below
+    }
+    if (resolvedHrefs.size === 0) {
+      if (isOptional(spec)) {
+        console.warn(`optional dep skipped: ${spec}`);
         continue;
       }
-    }
-    if (!resolved.startsWith("file://")) continue;
-    const abs = fileURLToPath(resolved);
-    queue.push(abs);
-
-    const pkgDir = packageDirOf(abs);
-    if (!pkgDir || copiedPkgs.has(pkgDir)) {
-      if (!pkgDir && process.env.WORKER_DEPS_DEBUG)
-        console.warn(
-          `outside node_modules: ${abs} (from ${path.relative(root, file)})`,
-        );
+      missing.push(`${path.relative(root, file)} -> ${spec}`);
       continue;
     }
-    copiedPkgs.add(pkgDir);
-    const rel = path.relative(root, pkgDir);
-    const out = path.join(dest, rel);
-    if (existsSync(out)) continue; // standalone trace already ships it
+    for (const resolved of resolvedHrefs) {
+      if (!resolved.startsWith("file://")) continue;
+      const abs = fileURLToPath(resolved);
+      queue.push(abs);
+      if (abs.startsWith(root + path.sep)) tracedFiles.add(abs);
+    }
+  }
+}
+
+// Phase 2: group traced files by owning package, then copy hybrid.
+const byPkg = new Map();
+for (const file of tracedFiles) {
+  const pkgDir = packageDirOf(file);
+  if (!pkgDir) {
+    if (process.env.WORKER_DEPS_DEBUG)
+      console.warn(`outside node_modules: ${file}`);
+    continue;
+  }
+  if (!byPkg.has(pkgDir)) byPkg.set(pkgDir, new Set());
+  byPkg.get(pkgDir).add(file);
+}
+
+let copiedPkgs = 0;
+let mergedFiles = 0;
+for (const [pkgDir, files] of byPkg) {
+  const out = path.join(dest, path.relative(root, pkgDir));
+  if (!existsSync(out)) {
     mkdirSync(path.dirname(out), { recursive: true });
     cpSync(pkgDir, out, { recursive: true, dereference: true });
-    copiedFiles++;
+    copiedPkgs++;
+    continue;
   }
+  for (const file of files) {
+    const target = path.join(dest, path.relative(root, file));
+    if (existsSync(target)) continue;
+    mkdirSync(path.dirname(target), { recursive: true });
+    copyFileSync(file, target);
+    mergedFiles++;
+  }
+  // package.json carries name/version/exports; without it subpath
+  // resolution inside a merged dir fails at runtime.
+  const manifestOut = path.join(out, "package.json");
+  if (!existsSync(manifestOut) && existsSync(path.join(pkgDir, "package.json"))) {
+    copyFileSync(path.join(pkgDir, "package.json"), manifestOut);
+    mergedFiles++;
+  }
+  copiedPkgs++;
 }
 
 if (missing.length > 0) {
@@ -149,5 +189,5 @@ if (missing.length > 0) {
 }
 
 console.log(
-  `worker deps: ${copiedPkgs.size} packages traced, ${copiedFiles} copied (rest already present)`,
+  `worker deps: ${byPkg.size} packages traced, ${copiedPkgs} ensured, ${mergedFiles} files merged into pruned dirs`,
 );
