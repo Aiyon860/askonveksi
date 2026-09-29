@@ -318,8 +318,7 @@ export async function getCustomersForExport({
 }: CustomerListQuery): Promise<CustomerExcelExportRow[]> {
   const actor = await requireActor(MASTER_DATA_ROLES);
   const items = await getPrismaClient().customer.findMany({
-    where: customerWhere(actor, query, segment),
-    select: {
+    where: customerWhere(actor, query, segment),    select: {
       customerNo: true,
       name: true,
       companyName: true,
@@ -335,6 +334,8 @@ export async function getCustomersForExport({
       archivedAt: true,
     },
     orderBy: customerOrderBy(sort, direction),
+    // ponytail: cap 5000 agar export muat 600M.
+    take: 5000,
   });
 
   return items.map((item) => ({

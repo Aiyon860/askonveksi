@@ -32,5 +32,6 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // Kecualikan landing/login/health dari getClaims agar hemat CPU 1vCPU untuk traffic publik + polling SWR.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|$|login|api/whatsapp/health).*)"],
 };

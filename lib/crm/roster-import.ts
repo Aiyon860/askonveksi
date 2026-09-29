@@ -1,6 +1,6 @@
 import "server-only";
 
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 
 import { UserFacingError } from "@/lib/actions/response";
 import { PURCHASE_ORDER_ROSTER_MAX_BYTES, PURCHASE_ORDER_ROSTER_MAX_ROWS } from "@/lib/crm/validation";
@@ -114,6 +114,7 @@ export async function parseRosterFile(file: File): Promise<ImportedRosterRow[]> 
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new UserFacingError("Isi file roster tidak sesuai format XLSX.");
   assertSafeXlsxArchive(bytes);
 
+  const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(bytes as never);

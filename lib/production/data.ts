@@ -1,16 +1,19 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import type { ProductionRoute } from "@prisma/client";
 
 import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 
-export async function getProductionBoard(route: ProductionRoute) {
-  const actor = await requireActor(PRODUCTION_ROLES);
-  const prisma = getPrismaClient();
-  const [rows, total] = await Promise.all([
-    prisma.productionWorkOrder.findMany({
+// Cache 30s per route agar tiap render/SWR tak RTT Sydney. Actor diambil di luar cache agar tak bocor antar user.
+const getCachedBoardRows = (route: ProductionRoute) =>
+  unstable_cache(
+    async () => {
+      const prisma = getPrismaClient();
+      return await Promise.all([
+        prisma.productionWorkOrder.findMany({
       relationLoadStrategy: "join",
       where: { route, status: { not: "CANCELLED" }, designCompletedAt: { not: null } },
       select: {
@@ -42,7 +45,15 @@ export async function getProductionBoard(route: ProductionRoute) {
       take: 500,
     }),
     prisma.productionWorkOrder.count({ where: { route, status: { not: "CANCELLED" }, designCompletedAt: { not: null } } }),
-  ]);
+      ]);
+    },
+    ["production-board", route],
+    { revalidate: 30, tags: ["production-board"] },
+  )();
+
+export async function getProductionBoard(route: ProductionRoute) {
+  const actor = await requireActor(PRODUCTION_ROLES);
+  const [rows, total] = await getCachedBoardRows(route);
 
   return {
     items: rows.map(({ steps, ...row }) => ({

@@ -31,7 +31,7 @@ test("finance keeps the requested expense methods, feedback, and ownership guard
   assert.match(expenseData, /getExpensesForExport/);
   assert.match(expenseData, /value\.getTime\(\) \+ 7 \* 60 \* 60 \* 1000/);
   assert.match(expenseData, /groupBy\(\{ by: \["spentAt"\]/);
-  assert.match(expenseData, /spentAt: state\.order/);
+  assert.match(expenseData, /spentAt: (bounded|state)\.order/);
   for (const column of ["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Laba Bersih", "Margin", "Diskon", "Total Invoice", "DP", "Lunas", "Status"]) assert.match(income, new RegExp(column));
   // Label persen cukup di header kolom; sel hanya menampilkan angkanya.
   assert.match(income, /"Margin %"/);
