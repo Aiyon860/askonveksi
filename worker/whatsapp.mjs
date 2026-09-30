@@ -13,7 +13,7 @@ const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL belum dikonfigurasi.");
 const lockConnectionString = process.env.DIRECT_URL || connectionString;
 
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 5 }) });
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 3 }) });
 // Advisory locks need a session-stable connection; avoid transaction poolers for this client.
 const lockClient = new Client({ connectionString: lockConnectionString });
 const authRoot = path.resolve(process.env.WHATSAPP_AUTH_PATH || ".data/baileys-auth");
@@ -26,6 +26,8 @@ const sessions = new Map();
 let stopping = false;
 let lastTickAt = 0;
 let lastAutomationAt = 0;
+let lastInvoiceScanAt = 0;
+let lastLagMs = 0;
 let ticking = false;
 
 const DEFAULT_INVOICE_ISSUED_TEMPLATE = "Halo {{customer_name}}, invoice {{invoice_no}} dari {{business_name}} sebesar {{invoice_total}} telah diterbitkan. Batas pembayaran: {{invoice_due_date}}. Dokumen invoice terlampir. Mohon konfirmasi setelah pembayaran. Terima kasih.";
@@ -156,9 +158,10 @@ async function connectAccount(account) {
     if (connection === "close") {
       sessions.delete(account.id);
       const statusCode = lastDisconnect?.error?.output?.statusCode;
+      console.error(`[whatsapp-worker] disconnect ${account.id}: status=${statusCode ?? "?"} ${cleanError(lastDisconnect?.error)}`);
       const loggedOut = statusCode === DisconnectReason.loggedOut;
       await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: loggedOut ? "LOGGED_OUT" : "DISCONNECTED", ...(loggedOut ? { sendEnabled: false } : {}), disconnectedAt: new Date(), lastError: cleanError(lastDisconnect?.error) } });
-      if (!loggedOut && !stopping) setTimeout(() => void reloadAccounts(), 5_000);
+      if (!loggedOut && !stopping) setTimeout(() => void reloadAccounts(), 5_000 + Math.floor(Math.random() * 5_000));
     }
   });
 
@@ -296,6 +299,9 @@ async function scheduleAutomations() {
     }
   }
 
+  // ponytail: scan invoice berat tiap 5 menit, sisanya tiap 60 dtk. Naikkan
+  // frekuensi bila reminder invoice harus lebih real-time.
+  if (Date.now() - lastInvoiceScanAt >= 300_000) {
   const invoices = await prisma.invoice.findMany({
     where: { status: "ISSUED", opportunity: { customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" } } } },
     select: {
@@ -341,6 +347,8 @@ async function scheduleAutomations() {
         metadata: { paymentTarget: target.key, dueDate: target.dueAt.toISOString().slice(0, 10), offset },
       });
     }
+  }
+    lastInvoiceScanAt = Date.now();
   }
 }
 
@@ -591,6 +599,11 @@ async function processOneJob() {
 async function tick() {
   if (stopping || ticking) return;
   ticking = true;
+  // ponytail: drift timer 2 dtk = lag event-loop; >5 dtk berarti worker kecekek.
+  if (lastTickAt) {
+    lastLagMs = Date.now() - lastTickAt - 2_000;
+    if (lastLagMs > 5_000) console.warn(`[whatsapp-worker] event-loop lag ${lastLagMs}ms`);
+  }
   try {
     await reloadAccounts();
     if (Date.now() - lastAutomationAt >= 60_000) {
@@ -611,6 +624,7 @@ async function tick() {
 
 async function shutdown() {
   stopping = true;
+  console.error("[whatsapp-worker] shutdown requested (deploy/restart/signal)");
   const accountIds = [...sessions.keys()];
   sessions.clear();
   healthServer.close();
@@ -633,7 +647,7 @@ const healthPort = Number(process.env.WHATSAPP_HEALTH_PORT || 3001);
 const healthServer = createServer((request, response) => {
   const healthy = request.url === "/health" && Date.now() - lastTickAt < 120_000;
   response.writeHead(healthy ? 200 : 503, { "content-type": "application/json" });
-  response.end(JSON.stringify({ status: healthy ? "ok" : "starting" }));
+  response.end(JSON.stringify({ status: healthy ? "ok" : "starting", lagMs: lastLagMs }));
 });
 healthServer.listen(healthPort, "0.0.0.0");
 await tick();

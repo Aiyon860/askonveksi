@@ -3,7 +3,7 @@
 import type { AppRole } from "@prisma/client";
 import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/toast";
@@ -27,6 +27,7 @@ const stateCopy: Record<Exclude<WhatsAppHealthState, "HEALTHY">, string> = {
 
 export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
   const [health, setHealth] = useState<Health | null>(null);
+  const stableRef = useRef<{ state: WhatsAppHealthState | null; count: number }>({ state: null, count: 0 });
   const manager = hasRole(role, WHATSAPP_ACCOUNT_MANAGER_ROLES);
 
   useEffect(() => {
@@ -43,8 +44,15 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
         const next = await response.json() as Health;
         const previousState = sessionStorage.getItem("whatsapp-health-state") as WhatsAppHealthState | null;
         if (whatsappHealthChanged(previousState, next.state)) {
-          const healthy = next.state === "HEALTHY";
-          toast.add({ title: healthy ? "WhatsApp kembali aktif" : "Koneksi WhatsApp berubah", description: healthy ? "Koneksi dan worker kembali normal." : stateCopy[next.state as Exclude<WhatsAppHealthState, "HEALTHY">], type: healthy ? "success" : "error" });
+          const s = stableRef.current;
+          s.count = s.state === next.state ? s.count + 1 : 1;
+          s.state = next.state;
+          // ponytail: toast hanya bila status sama 3x poll beruntun (~9 dtk);
+          // flap sesaat tidak bunyi. Naikkan angka bila masih berisik.
+          if (s.count === 3) {
+            const healthy = next.state === "HEALTHY";
+            toast.add({ title: healthy ? "WhatsApp kembali aktif" : "Koneksi WhatsApp berubah", description: healthy ? "Koneksi dan worker kembali normal." : stateCopy[next.state as Exclude<WhatsAppHealthState, "HEALTHY">], type: healthy ? "success" : "error" });
+          }
         }
         sessionStorage.setItem("whatsapp-health-state", next.state);
         for (const job of next.ownJobs) {
