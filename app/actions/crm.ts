@@ -300,6 +300,15 @@ async function resolveProductCategory(reader: Tx, productCategoryId: string | un
   return { productCategoryId, garmentType: category.garmentType };
 }
 
+// Peluang memilih nama kategori (PDH/PDL, Kaos, Polo, ...); jenis Jersey/Non-jersey ikut mengikuti kategori terpilih.
+async function resolveOpportunityCategory(reader: Tx, productCategoryId: string | undefined) {
+  if (!productCategoryId) return null;
+  const category = await reader.productCategory.findUnique({ where: { id: productCategoryId }, select: { id: true, garmentType: true, isActive: true } });
+  if (!category) throw new UserFacingError("Kategori produk tidak ditemukan. Pilih kategori lain.");
+  if (!category.isActive) throw new UserFacingError("Kategori produk sudah tidak aktif. Pilih kategori lain.");
+  return category;
+}
+
 async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "manual" | "excel") {
   const file = formData.get("rosterFile");
   if (mode !== "excel") {
@@ -350,6 +359,7 @@ async function runDealTransaction<T>(work: (tx: Tx) => Promise<T>) {
 function opportunityInput(formData: FormData) {
   return {
     title: formValue(formData, "title"),
+    productCategoryId: formValue(formData, "productCategoryId") || undefined,
     leadSourceId: formData.has("opportunityLeadSourceId")
       ? formValue(formData, "opportunityLeadSourceId")
       : formValue(formData, "leadSourceId"),
@@ -861,6 +871,7 @@ export async function createOpportunityAction(formData: FormData) {
         ]);
         if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
         if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
+        const category = await resolveOpportunityCategory(tx, parsed.data.productCategoryId);
 
         const created = await tx.opportunity.create({
           data: {
@@ -870,7 +881,8 @@ export async function createOpportunityAction(formData: FormData) {
             leadSourceId,
             salesPicId,
             productName: parsed.data.productName,
-            garmentType: parsed.data.garmentType,
+            productCategoryId: category?.id ?? null,
+            garmentType: category?.garmentType ?? parsed.data.garmentType ?? null,
             needPurpose: parsed.data.needPurpose,
             specification: parsed.data.specification,
             nextAction: parsed.data.nextAction,
@@ -879,7 +891,7 @@ export async function createOpportunityAction(formData: FormData) {
           select: { id: true },
         });
         await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-          "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose",
+          "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "productCategoryId", "needPurpose",
           "specification", "nextAction", "nextActionAt", "stage",
         ], { stage: "LEAD_BARU" });
         return created;
@@ -1015,6 +1027,7 @@ export async function updateOpportunityAction(formData: FormData) {
         const scheduleError = validateOpenOpportunitySchedule(parsed.data);
         if (scheduleError) throw new UserFacingError(scheduleError);
       }
+      const category = await resolveOpportunityCategory(tx, parsed.data.productCategoryId);
 
       const [leadSource, salesPic] = await Promise.all([
         parsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: parsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
@@ -1029,7 +1042,8 @@ export async function updateOpportunityAction(formData: FormData) {
           leadSourceId: parsed.data.leadSourceId ?? null,
           salesPicId: parsed.data.salesPicId ?? null,
           productName: parsed.data.productName ?? null,
-          garmentType: parsed.data.garmentType ?? null,
+          productCategoryId: category?.id ?? null,
+          garmentType: category?.garmentType ?? parsed.data.garmentType ?? null,
           needPurpose: parsed.data.needPurpose ?? null,
           specification: parsed.data.specification ?? null,
           nextAction: parsed.data.nextAction ?? null,
@@ -1039,7 +1053,7 @@ export async function updateOpportunityAction(formData: FormData) {
       });
       if (updated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
       await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_UPDATED", [
-        "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose", "specification",
+        "title", "leadSourceId", "salesPicId", "productName", "garmentType", "productCategoryId", "needPurpose", "specification",
         "nextAction", "nextActionAt",
       ]);
       return updated;

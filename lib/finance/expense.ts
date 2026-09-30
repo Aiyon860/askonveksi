@@ -82,7 +82,7 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   const netProfit = hpp ? order.invoice.total.sub(hpp) : null;
   const margin = netProfit && !order.invoice.total.isZero() ? netProfit.div(order.invoice.total).toNumber() : null;
   const latest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt > date ? item.paidAt : date, null);
-  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hpp: hpp?.toString() ?? null, discount: order.invoice.totalDiscount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
+  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
 }
 
 async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number, take?: number) {
@@ -91,7 +91,7 @@ async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number
     select: {
       id: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true,
       purchaseOrder: { select: { productName: true, garmentType: true } },
-      invoice: { select: { total: true, totalDiscount: true, items: { select: { quantity: true } } } },
+      invoice: { select: { subtotal: true, total: true, totalDiscount: true, items: { select: { quantity: true } } } },
       cost: { select: { kain: true, zipper: true, jahit: true, pres: true, dtfPlastisol: true, bordir: true, lainnya: true, version: true } },
       payment: { select: { kind: true, transactions: { where: { status: "ACTIVE" }, select: { amount: true, paidAt: true, paymentTermId: true } } } },
     },

@@ -155,7 +155,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             <form action={updateOpportunityAction}>
               <input type="hidden" name="opportunityId" value={opportunity.id} />
               <input type="hidden" name="version" value={opportunity.version} />
-              <OpportunityFields idPrefix="opportunity" leadSources={formOptions.leadSources} salesUsers={formOptions.salesUsers} values={opportunity} />
+              <OpportunityFields idPrefix="opportunity" leadSources={formOptions.leadSources} salesUsers={formOptions.salesUsers} categoryOptions={categoryOptions} values={opportunity} />
               <div className="mt-7 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">Simpan setelah mengubah kualifikasi atau next action.</p>
                 <SubmitButton className="w-full sm:w-auto" size="lg" pendingLabel="Memperbarui...">

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Coins, PackageCheck, type LucideIcon } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import useSWR from "swr";
 
 import {
   ChartContainer,
@@ -13,58 +14,37 @@ import {
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { DASH_CARD_CLASS, DashSectionHeading } from "@/components/dashboard/dashboard-ui";
 import { Card, CardAction, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { fetcher } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
 
-const trendYears = ["2024", "2025", "2026"] as const;
-
-type TrendYear = (typeof trendYears)[number];
-
-type TrendDatum = {
-  month: string;
-  revenue: number;
+type TrendMonth = {
+  month: number;
+  label: string;
+  revenue: string;
+  transactionCount: number;
   completedOrders: number;
 };
 
-const businessTrendData: Record<TrendYear, TrendDatum[]> = {
-  "2024": [
-    { month: "Jan", revenue: 96000000, completedOrders: 9 },
-    { month: "Feb", revenue: 112000000, completedOrders: 11 },
-    { month: "Mar", revenue: 104500000, completedOrders: 10 },
-    { month: "Apr", revenue: 126000000, completedOrders: 13 },
-    { month: "Mei", revenue: 119500000, completedOrders: 12 },
-    { month: "Jun", revenue: 138000000, completedOrders: 15 },
-    { month: "Jul", revenue: 131500000, completedOrders: 14 },
-    { month: "Agu", revenue: 146000000, completedOrders: 16 },
-    { month: "Sep", revenue: 152500000, completedOrders: 17 },
-    { month: "Okt", revenue: 149000000, completedOrders: 15 },
-    { month: "Nov", revenue: 161500000, completedOrders: 18 },
-    { month: "Des", revenue: 174000000, completedOrders: 20 },
-  ],
-  "2025": [
-    { month: "Jan", revenue: 124000000, completedOrders: 12 },
-    { month: "Feb", revenue: 132500000, completedOrders: 14 },
-    { month: "Mar", revenue: 141000000, completedOrders: 15 },
-    { month: "Apr", revenue: 136000000, completedOrders: 14 },
-    { month: "Mei", revenue: 154500000, completedOrders: 17 },
-    { month: "Jun", revenue: 163000000, completedOrders: 19 },
-    { month: "Jul", revenue: 158500000, completedOrders: 18 },
-    { month: "Agu", revenue: 171000000, completedOrders: 20 },
-    { month: "Sep", revenue: 168000000, completedOrders: 19 },
-    { month: "Okt", revenue: 182500000, completedOrders: 22 },
-    { month: "Nov", revenue: 176000000, completedOrders: 21 },
-    { month: "Des", revenue: 195500000, completedOrders: 24 },
-  ],
-  "2026": [
-    { month: "Jan", revenue: 142500000, completedOrders: 15 },
-    { month: "Feb", revenue: 151000000, completedOrders: 16 },
-    { month: "Mar", revenue: 165500000, completedOrders: 18 },
-    { month: "Apr", revenue: 158000000, completedOrders: 17 },
-    { month: "Mei", revenue: 177500000, completedOrders: 20 },
-    { month: "Jun", revenue: 184000000, completedOrders: 22 },
-    { month: "Jul", revenue: 172500000, completedOrders: 19 },
-    { month: "Agu", revenue: 191000000, completedOrders: 23 },
-  ],
+type TrendResponse = {
+  year: number;
+  months: TrendMonth[];
+  availableYears: number[];
+  totalRevenue: string;
+  totalTransactions: number;
+  totalCompletedOrders: number;
 };
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"] as const;
+
+function emptyMonths(): TrendMonth[] {
+  return MONTH_LABELS.map((label, index) => ({
+    month: index + 1,
+    label,
+    revenue: "0",
+    transactionCount: 0,
+    completedOrders: 0,
+  }));
+}
 
 const revenueChartConfig = {
   revenue: {
@@ -133,13 +113,15 @@ function YearSelect({
   label,
   selectAriaLabel,
   value,
+  years,
   onChange,
 }: {
   id: string;
   label: string;
   selectAriaLabel: string;
-  value: TrendYear;
-  onChange: (year: TrendYear) => void;
+  value: number;
+  years: number[];
+  onChange: (year: number) => void;
 }) {
   return (
     <div className="flex items-center gap-2 rounded-full border border-border bg-muted p-0.5 pl-3">
@@ -147,28 +129,53 @@ function YearSelect({
       <NativeSelect
         id={id}
         className={yearControlClass}
-        value={value}
-        onChange={(event) => onChange(event.target.value as TrendYear)}
+        value={String(value)}
+        onChange={(event) => onChange(Number(event.target.value))}
         aria-label={selectAriaLabel}
       >
-        {trendYears.map((year) => (
-          <NativeSelectOption key={year} value={year}>{year}</NativeSelectOption>
+        {years.map((year) => (
+          <NativeSelectOption key={year} value={String(year)}>{year}</NativeSelectOption>
         ))}
       </NativeSelect>
     </div>
   );
 }
 
+function useTrend(year: number) {
+  const { data, isLoading } = useSWR<TrendResponse>(`/api/crm/dashboard/trends?year=${year}`, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    refreshInterval: 30000,
+    dedupingInterval: 5000,
+  });
+  return { data, isLoading };
+}
+
 export function BusinessTrendChart() {
-  const [revenueYear, setRevenueYear] = useState<TrendYear>("2026");
-  const [ordersYear, setOrdersYear] = useState<TrendYear>("2026");
-  const trendData = businessTrendData[revenueYear];
-  const ordersTrendData = businessTrendData[ordersYear];
-  const totalRevenue = trendData.reduce((total, item) => total + item.revenue, 0);
-  const totalCompletedOrders = ordersTrendData.reduce(
-    (total, item) => total + item.completedOrders,
-    0,
-  );
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+  const [revenueYear, setRevenueYear] = useState<number>(currentYear);
+  const [ordersYear, setOrdersYear] = useState<number>(currentYear);
+  const { data: revenueTrend, isLoading: revenueLoading } = useTrend(revenueYear);
+  const { data: ordersTrend, isLoading: ordersLoading } = useTrend(ordersYear);
+
+  const availableYears = useMemo(() => {
+    const merged = new Set<number>([currentYear, revenueYear, ordersYear]);
+    for (const year of revenueTrend?.availableYears ?? []) merged.add(year);
+    for (const year of ordersTrend?.availableYears ?? []) merged.add(year);
+    return [...merged].sort((a, b) => b - a);
+  }, [currentYear, revenueYear, ordersYear, revenueTrend, ordersTrend]);
+
+  const revenueMonths = revenueTrend?.months ?? emptyMonths();
+  const ordersMonths = ordersTrend?.months ?? emptyMonths();
+
+  const trendData = revenueMonths.map((item) => ({ month: item.label, revenue: Number(item.revenue) }));
+  const ordersTrendData = ordersMonths.map((item) => ({ month: item.label, completedOrders: item.completedOrders }));
+
+  const totalRevenue = revenueTrend ? Number(revenueTrend.totalRevenue) : 0;
+  const totalTransactions = revenueTrend?.totalTransactions ?? 0;
+  const totalCompletedOrders = ordersTrend?.totalCompletedOrders ?? 0;
+  const hasRevenue = (revenueTrend != null) && (totalTransactions > 0 || totalRevenue > 0);
+  const hasCompletedOrders = (ordersTrend != null) && totalCompletedOrders > 0;
 
   return (
     <section aria-labelledby="tren-bisnis-title" className="flex flex-col">
@@ -182,13 +189,16 @@ export function BusinessTrendChart() {
         <Card className={cn(DASH_CARD_CLASS, "xl:col-span-3")}>
           <CardHeader>
             <CardTitle className="font-semibold">Pendapatan per bulan</CardTitle>
-            <CardDescription>Kas masuk aktual · data dummy {revenueYear}.</CardDescription>
+            <CardDescription>
+              {revenueLoading && !revenueTrend ? "Memuat kas masuk aktual…" : `Kas masuk aktual · ${totalTransactions} transaksi tahun ${revenueYear}.`}
+            </CardDescription>
             <CardAction>
               <YearSelect
                 id="revenue-year"
                 label="Tahun"
                 selectAriaLabel="Pilih tahun pendapatan per bulan"
                 value={revenueYear}
+                years={availableYears}
                 onChange={setRevenueYear}
               />
             </CardAction>
@@ -198,8 +208,13 @@ export function BusinessTrendChart() {
               icon={Coins}
               chipClassName="bg-success-surface text-success-surface-foreground"
               label={`Total ${revenueYear}`}
-              value={formatRupiah(totalRevenue)}
+              value={revenueLoading && !revenueTrend ? "…" : formatRupiah(totalRevenue)}
             />
+            {!revenueLoading && revenueTrend && !hasRevenue ? (
+              <p className="mt-3 rounded-xl border border-dashed border-border px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+                Belum ada kas masuk tahun {revenueYear}. Grafik menampilkan 12 bulan nol dari data PaymentTransaction aktual.
+              </p>
+            ) : null}
 
             <ChartContainer
               config={revenueChartConfig}
@@ -253,13 +268,16 @@ export function BusinessTrendChart() {
         <Card className={cn(DASH_CARD_CLASS, "xl:col-span-2")}>
           <CardHeader>
             <CardTitle className="font-semibold">Order selesai &amp; lunas</CardTitle>
-            <CardDescription>Produksi selesai dan seluruh invoice sudah dibayar.</CardDescription>
+            <CardDescription>
+              {ordersLoading && !ordersTrend ? "Memuat order selesai dan lunas…" : `Produksi selesai dan invoice lunas · ${totalCompletedOrders} order tahun ${ordersYear}.`}
+            </CardDescription>
             <CardAction>
               <YearSelect
                 id="orders-year"
                 label="Tahun"
                 selectAriaLabel="Pilih tahun order selesai dan lunas"
                 value={ordersYear}
+                years={availableYears}
                 onChange={setOrdersYear}
               />
             </CardAction>
@@ -269,8 +287,13 @@ export function BusinessTrendChart() {
               icon={PackageCheck}
               chipClassName="bg-highlight-surface text-highlight-surface-foreground"
               label={`Total ${ordersYear}`}
-              value={`${totalCompletedOrders} order`}
+              value={ordersLoading && !ordersTrend ? "…" : `${totalCompletedOrders} order`}
             />
+            {!ordersLoading && ordersTrend && !hasCompletedOrders ? (
+              <p className="mt-3 rounded-xl border border-dashed border-border px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+                Belum ada order selesai dan lunas tahun {ordersYear}. Grafik menampilkan 12 bulan nol dari data Sales Order aktual.
+              </p>
+            ) : null}
 
             <ChartContainer
               config={completedOrdersChartConfig}

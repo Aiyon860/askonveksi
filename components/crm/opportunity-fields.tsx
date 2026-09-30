@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import type { CustomerFormOption } from "@/components/crm/customer-fields";
+import { OpportunityGarmentField, type OpportunityCategoryOption } from "@/components/crm/opportunity-garment-field";
 import { toDateTimeLocalValue } from "@/lib/crm/format";
 
 type Values = {
@@ -14,6 +15,7 @@ type Values = {
   salesPicId: string | null;
   productName: string | null;
   garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
+  productCategoryId: string | null;
   needPurpose: string | null;
   specification: string | null;
   nextAction: string | null;
@@ -25,11 +27,13 @@ export function OpportunityFields({
   idPrefix,
   leadSources,
   salesUsers,
+  categoryOptions,
   values,
 }: {
   idPrefix: string;
   leadSources: CustomerFormOption[];
   salesUsers: CustomerFormOption[];
+  categoryOptions?: OpportunityCategoryOption[];
   values?: Values;
 }) {
   const scheduleRequired = !values?.stage || OPEN_STAGES.includes(values.stage);
@@ -40,7 +44,7 @@ export function OpportunityFields({
         <FieldLegend>Data kebutuhan</FieldLegend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field className="sm:col-span-2"><FieldLabel htmlFor={`${idPrefix}-title`} required>Judul peluang</FieldLabel><Input id={`${idPrefix}-title`} name="title" required minLength={3} maxLength={180} defaultValue={values?.title ?? ""} placeholder="Contoh: Seragam panitia 150 pcs" /></Field>
-          <Field><FieldLabel htmlFor={`${idPrefix}-garmentType`}>Jenis pakaian</FieldLabel><NativeSelect id={`${idPrefix}-garmentType`} name="garmentType" defaultValue={values?.garmentType ?? ""}><NativeSelectOption value="">Belum ditentukan</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
+          <OpportunityGarmentField idPrefix={idPrefix} categoryOptions={categoryOptions} defaultCategoryId={values?.productCategoryId ?? null} defaultGarmentType={values?.garmentType ?? null} />
           <Field><FieldLabel htmlFor={`${idPrefix}-productName`}>Nama produk atau pola</FieldLabel><Input id={`${idPrefix}-productName`} name="productName" maxLength={120} defaultValue={values?.productName ?? ""} placeholder="Contoh: Jersey solid atau jaket" /></Field>
           <Field><FieldLabel htmlFor={`${idPrefix}-needPurpose`}>Untuk kebutuhan</FieldLabel><Input id={`${idPrefix}-needPurpose`} name="needPurpose" maxLength={500} defaultValue={values?.needPurpose ?? ""} placeholder="Event, perusahaan, komunitas, sekolah" /></Field>
           <Field className="sm:col-span-2"><FieldLabel htmlFor={`${idPrefix}-specification`}>Spesifikasi</FieldLabel><Textarea id={`${idPrefix}-specification`} name="specification" maxLength={2000} rows={3} defaultValue={values?.specification ?? ""} placeholder="Bahan, warna, ukuran, sablon, bordir, atau detail lain." /></Field>

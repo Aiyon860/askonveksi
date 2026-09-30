@@ -400,6 +400,7 @@ model ProductCategory {
   position       Int              @default(0)
   isActive       Boolean          @default(true)
   purchaseOrders PurchaseOrder[]
+  opportunities  Opportunity[]
   createdAt      DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
 
@@ -478,6 +479,7 @@ model Opportunity {
   salesPicId              String?
   productName             String?                 @db.VarChar(120)
   garmentType             GarmentType?
+  productCategoryId       String?
   needPurpose             String?                 @db.VarChar(500)
   specification           String?                 @db.Text
   lastContactedAt         DateTime?               @db.Timestamptz(3)
@@ -489,6 +491,7 @@ model Opportunity {
   customer                Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
   leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
   salesPic                AppUser?                @relation("OpportunitySalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
+  productCategory         ProductCategory?        @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
   communicationActivities CommunicationActivity[]
   purchaseOrders          PurchaseOrder[]
   invoices                Invoice[]
@@ -503,6 +506,7 @@ model Opportunity {
   @@index([salesPicId, nextActionAt])
   @@index([leadSourceId, createdAt])
   @@index([nextActionAt])
+  @@index([productCategoryId])
 }
 
 model PublicRateLimitBucket {

@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { LoaderCircle, Minus, Plus, Redo2, RotateCcw, Save, Send, Trash2, Type, Undo2, Upload } from "lucide-react";
 import { Arrow as KonvaArrow, Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from "react-konva";
+// Daftarkan node bentuk ke Konva (react-konva tidak selalu membawa full build,
+// tanpa ini Rect/Image/dll jatuh ke Group + warning "has no node with the type").
+import "konva/lib/shapes/Arrow";
+import "konva/lib/shapes/Circle";
+import "konva/lib/shapes/Image";
+import "konva/lib/shapes/Line";
+import "konva/lib/shapes/Rect";
+import "konva/lib/shapes/Text";
 import type Konva from "konva";
 
 import { overwriteProductionDesignAction, resetProductionDesignAction, saveProductionDesignAction, sendProductionDesignAction } from "@/app/actions/production";
