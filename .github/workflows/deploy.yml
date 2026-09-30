@@ -217,9 +217,12 @@ jobs:
             if [ ! -f "$CURRENT_LINK/worker/whatsapp.mjs" ]; then echo 'WA worker file missing, skipping.'; return 0; fi
             if [ ! -d "$CURRENT_LINK/node_modules/dotenv" ]; then echo 'Worker deps missing in release, skipping WA worker.'; return 0; fi
             pm2 delete "$WA_APP_NAME" >/dev/null 2>&1 || true
+            # Cap 300M: baseline worker ~180MB; 200M membunuh tiap menit.
+            # Cron 03:00 WIB: restart terjadwal sebagai backstop bocor memori
+            # (wajib di sini, bukan manual — deploy me-recreate proses PM2).
             WHATSAPP_HEALTH_PORT="$WA_PORT" pm2 start "$CURRENT_LINK/worker/whatsapp.mjs" --name "$WA_APP_NAME" --cwd "$CURRENT_LINK" --time --kill-timeout 10000 \
-              --max-memory-restart 200M --node-args="--max-old-space-size=200" \
-              --exp-backoff-restart-delay=5000 || echo 'WA worker failed to start, continuing without it.'
+              --max-memory-restart 300M --node-args="--max-old-space-size=280" \
+              --exp-backoff-restart-delay=5000 --cron "0 3 * * *" || echo 'WA worker failed to start, continuing without it.'
           }
 
           start_pm2
