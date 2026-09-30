@@ -47,7 +47,7 @@ export function MasterDataPage({
   const importInputId = `master-import-${exportHref.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid min-w-0 max-w-full gap-6 overflow-x-clip xl:grid-cols-[minmax(0,1fr)_24rem]">
       {items.length ? (
         <MasterDataEditor
           key={items.map((item) => `${item.id}:${item.position}:${item.name}:${item.description ?? ""}:${item.kind ?? ""}`).join("|")}
@@ -75,7 +75,7 @@ export function MasterDataPage({
         </section>
       )}
 
-      <div className="flex flex-col gap-6">
+      <div className="flex min-w-0 flex-col gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Excel</CardTitle>

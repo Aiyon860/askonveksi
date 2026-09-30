@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { LoaderCircle, Minus, Plus, Redo2, RotateCcw, Save, Send, Trash2, Type, Undo2, Upload } from "lucide-react";
+import { Download, LoaderCircle, Minus, Plus, Redo2, RotateCcw, Save, Send, Trash2, Type, Undo2, Upload } from "lucide-react";
 import { Arrow as KonvaArrow, Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from "react-konva";
 // Daftarkan node bentuk ke Konva (react-konva tidak selalu membawa full build,
 // tanpa ini Rect/Image/dll jatuh ke Group + warning "has no node with the type").
@@ -527,7 +527,8 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
         </div>
       </div>
 
-      {!readOnly ? <div className="mt-2 flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={isBusy || !image}>{isSavingVersion ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}{isSavingVersion ? "Menyimpan..." : "Simpan versi"}</Button><Button type="button" variant="secondary" onClick={() => setConfirming(true)} disabled={isBusy || !savedAnnotations.length}><Send data-icon="inline-start" />Masukkan ke Produksi</Button></div> : null}
+      {!readOnly ? <div className="mt-2 flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={isBusy || !image}>{isSavingVersion ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}{isSavingVersion ? "Menyimpan..." : "Simpan versi"}</Button><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button><Button type="button" variant="secondary" onClick={() => setConfirming(true)} disabled={isBusy || !savedAnnotations.length}><Send data-icon="inline-start" />Masukkan ke Produksi</Button></div> : <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button></div>}
+      {!readOnly ? <p className="text-xs text-muted-foreground">Unduhan berisi versi terakhir yang tersimpan; simpan dulu bila ada keterangan baru.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </CardContent>
     {!readOnly && contextMenu ? <button ref={contextAction} type="button" role="menuitem" className="fixed z-50 flex h-9 items-center gap-1.5 rounded-md border border-border bg-popover px-2.5 text-sm font-medium text-destructive shadow-md outline-none focus-visible:border-destructive/40 focus-visible:ring-3 focus-visible:ring-destructive/20" style={{ left: contextMenu.left, top: contextMenu.top }} onBlur={() => setContextMenu(null)} onClick={() => remove(contextMenu.id)}><Trash2 />Hapus keterangan</button> : null}

@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatCurrency } from "@/lib/crm/format";
 
-type Term = { key: string; valueType: "NOMINAL" | "PERCENTAGE"; value: string; dueAt: string };
+type Term = { key: string; value: string; dueAt: string };
 
 function roundPaymentAmount(value: number) {
   const scaled = value / 500;
@@ -38,10 +38,10 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
   const [initialValue, setInitialValue] = useState("");
-  const [terms, setTerms] = useState<Term[]>([{ key: "term-0", valueType: "NOMINAL", value: "", dueAt: "" }]);
+  const [terms, setTerms] = useState<Term[]>([{ key: "term-0", value: "", dueAt: "" }]);
   const initialDueAt = addJakartaDays(issuedAt, 7);
   const totalAmount = Number(total);
-  const amountFor = (valueType: Term["valueType"], value: string) => {
+  const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount < 0) return 0;
     return valueType === "PERCENTAGE" ? roundPaymentAmount(totalAmount * amount / 100) : amount;
@@ -49,14 +49,18 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   const isLunas = kind === "LUNAS" || Number(initialValue) === 100;
   const initialAmount = amountFor("PERCENTAGE", isLunas ? "100" : initialValue);
   const outstandingAmount = totalAmount - initialAmount;
-  const scheduledTermAmount = terms.reduce((sum, term) => sum + amountFor(term.valueType, term.value), 0);
+  const termAmount = (value: string) => {
+    const amount = Number(value);
+    return !Number.isFinite(amount) || amount < 0 ? 0 : amount;
+  };
+  const scheduledTermAmount = terms.reduce((sum, term) => sum + termAmount(term.value), 0);
   const scheduleDifference = outstandingAmount - scheduledTermAmount;
   const datesReady = terms.every((term, index) => term.dueAt >= addJakartaDays(index ? terms[index - 1].dueAt || initialDueAt : initialDueAt, 1));
   const scheduleReady = isLunas || (Math.abs(scheduleDifference) < 0.005 && datesReady);
 
   function fillTermRemainder(key: string) {
     setTerms((current) => {
-      const remaining = Math.max(0, outstandingAmount - current.filter((term) => term.key !== key).reduce((sum, term) => sum + amountFor(term.valueType, term.value), 0));
+      const remaining = Math.max(0, outstandingAmount - current.filter((term) => term.key !== key).reduce((sum, term) => sum + termAmount(term.value), 0));
       return current.map((term) => term.key === key ? { ...term, value: String(remaining) } : term);
     });
   }
@@ -108,28 +112,18 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
                 <p className="text-sm font-medium">Termin sisa pembayaran</p>
                 <p className="mt-1 text-xs text-muted-foreground">Total seluruh termin harus tepat sama dengan sisa setelah DP.</p>
               </div>
-              <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={terms[terms.length - 1].valueType !== "NOMINAL"} onClick={() => fillTermRemainder(terms[terms.length - 1].key)}>Isi sisa</Button><Button type="button" variant="outline" size="sm" disabled={terms.length >= 12} onClick={() => setTerms((current) => [...current, { key: `term-${Date.now()}-${current.length}`, valueType: "NOMINAL", value: "", dueAt: "" }])}>
+              <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => fillTermRemainder(terms[terms.length - 1].key)}>Isi sisa</Button><Button type="button" variant="outline" size="sm" disabled={terms.length >= 12} onClick={() => setTerms((current) => [...current, { key: `term-${Date.now()}-${current.length}`, value: "", dueAt: "" }])}>
                 <Plus data-icon="inline-start" aria-hidden="true" />
                 Tambah termin
               </Button></div>
             </div>
             <div className="flex flex-col gap-3">
               {terms.map((term, index) => (
-                <div key={term.key} className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[9rem_minmax(0,1fr)_10rem_auto] sm:items-end">
-                  <Field>
-                    <FieldLabel htmlFor={`term-type-${term.key}`} required>Format</FieldLabel>
-                    <NativeSelect id={`term-type-${term.key}`} name="termValueType" required value={term.valueType} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, valueType: event.target.value as Term["valueType"] } : item))} className="w-full">
-                      <NativeSelectOption value="NOMINAL">Nominal</NativeSelectOption>
-                      <NativeSelectOption value="PERCENTAGE">Persentase</NativeSelectOption>
-                    </NativeSelect>
-                  </Field>
+                <div key={term.key} className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
+                  <input type="hidden" name="termValueType" value="NOMINAL" />
                   <Field>
                     <FieldLabel htmlFor={`term-value-${term.key}`} required>Nilai termin {index + 1}</FieldLabel>
-                    {term.valueType === "NOMINAL" ? (
-                      <MoneyInput id={`term-value-${term.key}`} name="termValue" required min="0.01" step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
-                    ) : (
-                      <Input id={`term-value-${term.key}`} name="termValue" type="number" required min="0.01" max={100} step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
-                    )}
+                    <MoneyInput id={`term-value-${term.key}`} name="termValue" required min="0.01" step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`term-date-${term.key}`} required>Deadline Termin {index + 1}</FieldLabel>
