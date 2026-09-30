@@ -3,8 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { moveProductionSchema, updateProductionObstacleSchema } from "../lib/production/validation.ts";
+import {
+  parseProductionBoardGroup,
+  PRODUCTION_BOARD_GROUPS,
+  PRODUCTION_BOARD_GROUP_LABEL,
+  stageRouteForGroup,
+} from "../lib/production/workflow.ts";
 
-const [schema, migration, skipMigration, automationMigration, workflow, actions, crmActions, service, seed, packageJson, board, revertMigration, sectionClient, data, obstacleTimestampMigration] = await Promise.all([
+const [schema, migration, skipMigration, automationMigration, workflow, actions, crmActions, service, seed, packageJson, board, revertMigration, sectionClient, data, obstacleTimestampMigration, productionPage, boardRoute, boardSection, productionDetail, summary, backfillPoScript] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260902000000_production_workflow/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260903000000_non_jersey_stage_skip/migration.sql", import.meta.url), "utf8"),
@@ -20,6 +26,12 @@ const [schema, migration, skipMigration, automationMigration, workflow, actions,
   readFile(new URL("../components/production/production-board-section-client.tsx", import.meta.url), "utf8"),
   readFile(new URL("../lib/production/data.ts", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260928020000_production_obstacle_and_stage_timestamps/migration.sql", import.meta.url), "utf8"),
+  readFile(new URL("../app/(app)/produksi/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/api/produksi/board/route.ts", import.meta.url), "utf8"),
+  readFile(new URL("../components/production/production-board-section.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../app/(app)/produksi/[id]/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../components/production/production-summary.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../scripts/backfill-purchase-order-categories.mjs", import.meta.url), "utf8"),
 ]);
 
 test("workflow Produksi memiliki dua jalur yang disepakati", () => {
@@ -64,11 +76,21 @@ test("perpindahan tahap divalidasi server dan memakai optimistic concurrency", (
   assert.match(actions, /targetStep\.position >= currentStep\.position/);
 });
 
-test("Kendala kartu dihapus saat proses maju dan diisi saat mundur", () => {
+test("board produksi auto-refresh setelah kartu dipindah", () => {
+  // Cache unstable_cache bertag "production-board" harus di-invalidasi; revalidatePath saja tidak cukup.
+  assert.match(actions, /function revalidateProductionBoard\(\)/);
+  assert.match(actions, /revalidateTag\("production-board", \{ expire: 0 \}\)/);
+  // Transisi menunggu revalidate SWR agar kartu tidak sempat balik ke kolom lama.
+  assert.match(board, /await onRefresh\?\.\(\)/);
+  assert.match(sectionClient, /onRefresh=\{\(\) => mutate\(\)\}/);
+});
+
+test("Kendala kartu dihapus saat proses maju dan mundur, diisi bila pop-up diisi", () => {
   const move = actions.slice(actions.indexOf("async function moveProduction"), actions.indexOf("export async function moveProductionOptimisticAction"));
   assert.ok(move.length > 0);
   assert.match(move, /obstacleUpdate = null/);
-  assert.match(move, /obstacleUpdate = parsed\.data\.note\.slice\(0, 2000\)/);
+  // Mundur selalu mengosongkan Kendala kartu; teks pop-up (bila ada) menjadi Kendala baru.
+  assert.match(move, /obstacleUpdate = parsed\.data\.note \? parsed\.data\.note\.slice\(0, 2000\) : null/);
   // Tanggal jejak Kendala ikut hidup saat diisi dan ikut hilang saat dikosongkan.
   assert.match(move, /\.\.\.\(obstacleUpdate !== undefined \? \{ obstacle: obstacleUpdate, obstacleUpdatedAt: obstacleUpdate === null \? null : now \} : \{\}\)/);
   assert.match(actions, /const obstacleUpdatedAt = obstacle \? new Date\(\) : null/);
@@ -146,4 +168,63 @@ test("seed development membuat satu kartu tiap jalur secara idempotent dan terpr
   assert.match(seed, /productionWorkOrder\.findUnique/);
   assert.match(packageJson, /"db:seed:production-demo": "node scripts\/seed-production-demo\.mjs"/);
   assert.doesNotMatch(packageJson, /"postinstall": [^\n]*seed-production-demo/);
+});
+
+test("kanban Produksi punya tiga jalur bertingkat dengan filter kategori produk kedua", () => {
+  assert.deepEqual(PRODUCTION_BOARD_GROUPS, ["JERSEY", "NON_JERSEY", "AKSESORI"]);
+  assert.equal(PRODUCTION_BOARD_GROUP_LABEL.AKSESORI, "Aksesoris");
+  assert.equal(parseProductionBoardGroup(undefined), "JERSEY");
+  assert.equal(parseProductionBoardGroup(["AKSESORI", "JERSEY"]), "AKSESORI");
+  assert.equal(parseProductionBoardGroup("bukan-jalur"), "JERSEY");
+  assert.equal(stageRouteForGroup("AKSESORI"), "NON_JERSEY");
+  assert.equal(stageRouteForGroup("NON_JERSEY"), "NON_JERSEY");
+  assert.equal(stageRouteForGroup("JERSEY"), "JERSEY");
+
+  assert.match(data, /if \(group === "AKSESORI"\) purchaseOrderConditions\.push\(\{ garmentType: "AKSESORI" \}\)/);
+  assert.match(data, /else if \(group === "NON_JERSEY"\) purchaseOrderConditions\.push\(\{ OR: \[\{ garmentType: "NON_JERSEY" \}, \{ garmentType: null \}\] \}\)/);
+  assert.match(data, /if \(productCategoryId\) purchaseOrderConditions\.push\(\{ OR: \[\{ productCategoryId \}, \{ productCategoryId: null \}\] \}\)/);
+  assert.match(data, /route: group === "JERSEY" \? "JERSEY" : "NON_JERSEY"/);
+  assert.match(data, /\["production-board", filter\.group, filter\.productCategoryId \?\? ""\]/);
+});
+
+test("halaman Produksi menampilkan tab jalur dan chip kategori dengan pilihan pertama otomatis", () => {
+  assert.match(productionPage, /aria-label="Filter jalur produksi"/);
+  assert.match(productionPage, /PRODUCTION_BOARD_GROUPS\.map\(\(target\) =>/);
+  assert.match(productionPage, /aria-label="Filter kategori produk"/);
+  assert.match(productionPage, /categories\.some\(\(category\) => category\.id === rawKategori\)/);
+  assert.match(productionPage, /categories\[0\]\?\.id \?\? null/);
+  assert.match(productionPage, /key=\{`\$\{group\}:\$\{kategoriId \?\? ""\}`\}/);
+  assert.match(productionPage, /stageRouteForGroup\(group\)/);
+  assert.match(boardSection, /getProductionBoard\(\{ group, productCategoryId \}\)/);
+  assert.match(sectionClient, /\/api\/produksi\/board\?jalur=\$\{group\}&kategori=\$\{productCategoryId \?\? ""\}/);
+  assert.match(boardRoute, /parseProductionBoardGroup\(params\.get\("jalur"\) \?\? undefined\)/);
+  assert.match(boardRoute, /entityIdSchema\.safeParse\(rawKategori\)/);
+});
+
+test("halaman detail kembali ke kanban pada grup dan kategori yang sama", () => {
+  assert.match(productionDetail, /const boardGroup = purchaseOrder\?\.garmentType \?\? workOrder\.route/);
+  assert.match(productionDetail, /`\/produksi\?jalur=\$\{boardGroup\}&kategori=\$\{purchaseOrder\.productCategoryId\}`/);
+  assert.match(productionDetail, /PRODUCTION_BOARD_GROUP_LABEL\[boardGroup\]/);
+  assert.match(summary, /stageRouteForGroup\(group\)/);
+});
+
+test("backfill kategori produk PO lama hanya mengisi PO yang masih kosong", () => {
+  assert.match(backfillPoScript, /productCategoryId === category\.id/);
+  assert.match(backfillPoScript, /sudah punya kategori lain/);
+  assert.match(backfillPoScript, /WellWell dan "test" sengaja dibiarkan kosong/);
+  assert.match(packageJson, /"db:backfill:po-categories": "node scripts\/backfill-purchase-order-categories\.mjs"/);
+});
+
+test("tanggal kanban diserialisasi di dalam cache sehingga cache hit tetap berupa string", () => {
+  const readerStart = data.indexOf("export async function getProductionBoard");
+  const cached = data.slice(data.indexOf("const getCachedBoardRows"), readerStart);
+  const reader = data.slice(readerStart, data.indexOf("export async function getProductionDetail"));
+  // unstable_cache menyimpan hasil sebagai JSON (Date -> string); konversi wajib ada di dalam callback.
+  assert.match(cached, /deadline: row\.deadline\.toISOString\(\)/);
+  assert.match(cached, /updatedAt: row\.updatedAt\.toISOString\(\)/);
+  assert.match(cached, /stageEnteredAt: row\.stageEnteredAt\?\.toISOString\(\) \?\? null/);
+  assert.match(cached, /obstacleUpdatedAt: row\.obstacleUpdatedAt\?\.toISOString\(\) \?\? null/);
+  assert.match(cached, /activeStepId: steps\[0\]\?\.id \?\? null/);
+  assert.doesNotMatch(reader, /\.toISOString\(/);
+  assert.doesNotMatch(reader, /steps/);
 });

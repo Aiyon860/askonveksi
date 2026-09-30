@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion: string | undefined;
 };
 
-const PRISMA_SCHEMA_VERSION = "product-category-aksesori";
+const PRISMA_SCHEMA_VERSION = "expense-payment-method-fk";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;

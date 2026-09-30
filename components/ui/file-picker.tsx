@@ -4,9 +4,8 @@ import { useRef, useState, type ComponentProps } from "react";
 import { FileUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
-type FilePickerProps = Omit<ComponentProps<typeof Input>, "type" | "value"> & {
+type FilePickerProps = Omit<ComponentProps<"input">, "type" | "value"> & {
   emptyLabel?: string;
 };
 
@@ -29,7 +28,7 @@ export function FilePicker({
 
   return (
     <div className="grid min-w-0 gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-      <Input
+      <input
         ref={inputRef}
         id={id}
         type="file"

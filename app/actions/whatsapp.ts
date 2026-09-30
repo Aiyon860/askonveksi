@@ -112,6 +112,46 @@ export async function saveWhatsAppTemplateAction(formData: FormData) {
   });
 }
 
+export async function deleteWhatsAppTemplateAction(formData: FormData) {
+  return runRedirectingAction("/master-data/whatsapp/templates", async () => {
+    await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = entityIdSchema.safeParse(String(formData.get("id") ?? ""));
+    if (!parsed.success) throw new UserFacingError("Template tidak valid.");
+    const deleted = await getPrismaClient().whatsAppTemplate.deleteMany({ where: { id: parsed.data } });
+    if (!deleted.count) throw new UserFacingError("Template tidak ditemukan.");
+    refreshWhatsApp();
+    return flashMessagePath("/master-data/whatsapp/templates", "notice", "Template WhatsApp dihapus.");
+  });
+}
+
+export async function toggleWhatsAppTemplateAction(formData: FormData) {
+  return runRedirectingAction("/master-data/whatsapp/templates", async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = entityIdSchema.safeParse(String(formData.get("id") ?? ""));
+    if (!parsed.success) throw new UserFacingError("Template tidak valid.");
+    const version = Number(formData.get("version"));
+    if (!Number.isInteger(version) || version < 1) throw new UserFacingError("Template sudah berubah. Muat ulang lalu coba lagi.");
+    const isActive = String(formData.get("isActive") ?? "") === "true";
+    await getPrismaClient().$transaction(async (tx) => {
+      const template = await tx.whatsAppTemplate.findUnique({ where: { id: parsed.data }, select: { id: true, triggerType: true } });
+      if (!template) throw new UserFacingError("Template tidak ditemukan.");
+      if (isActive && template.triggerType !== "MANUAL") {
+        await tx.whatsAppTemplate.updateMany({
+          where: { triggerType: template.triggerType, isActive: true, id: { not: template.id } },
+          data: { isActive: false, updatedById: actor.id, version: { increment: 1 } },
+        });
+      }
+      const updated = await tx.whatsAppTemplate.updateMany({
+        where: { id: template.id, version },
+        data: { isActive, updatedById: actor.id, version: { increment: 1 } },
+      });
+      if (!updated.count) throw new UserFacingError("Template sudah berubah. Muat ulang lalu coba lagi.");
+    });
+    refreshWhatsApp();
+    return flashMessagePath("/master-data/whatsapp/templates", "notice", "Status template diperbarui.");
+  });
+}
+
 export async function sendWhatsAppMessageAction(formData: FormData) {
   const conversationId = String(formData.get("conversationId") ?? "");
   const fallback = conversationId ? `/whatsapp?conversation=${encodeURIComponent(conversationId)}` : "/whatsapp";

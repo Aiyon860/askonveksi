@@ -2,9 +2,9 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { FileDown, Plus, Trash2 } from "lucide-react";
+import { FileDown } from "lucide-react";
 
-import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction, updatePurchaseOrderDraftAction } from "@/app/actions/crm";
+import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction } from "@/app/actions/crm";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { initialFormActionState } from "@/lib/actions/form-state";
@@ -42,8 +42,6 @@ type PurchaseOrderFormValues = {
   sizes: MatrixRow[];
   roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
-type Draft = PurchaseOrderFormValues & { id: string; version: number; purchaseOrderNo: string };
-
 function jakartaToday() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
   return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}-${parts.find((part) => part.type === "day")?.value}`;
@@ -53,7 +51,6 @@ export function PurchaseOrderForm({
   opportunityId,
   sizeOptions,
   categoryOptions,
-  draft,
   initialValues,
   sourcePurchaseOrderId,
   submitLabel,
@@ -62,16 +59,15 @@ export function PurchaseOrderForm({
   opportunityId: string;
   sizeOptions: SizeOption[];
   categoryOptions?: ProductCategoryOption[];
-  draft?: Draft;
   initialValues?: PurchaseOrderFormValues;
   sourcePurchaseOrderId?: string;
   submitLabel?: string;
   purchaseOrderNoPreview?: string;
 }) {
-  const values = draft ?? initialValues;
+  const values = initialValues;
   const hasCategoryOptions = Boolean(categoryOptions?.length);
   const orderDate = values?.orderDate || jakartaToday();
-  const fieldKey = draft?.id ?? sourcePurchaseOrderId ?? "new";
+  const fieldKey = sourcePurchaseOrderId ?? "new";
   const matrixByKey = useMemo(() => new Map(values?.sizes.map((item) => [`${item.sleeveLength}:${item.sizeId ?? item.size.toLocaleLowerCase("id-ID")}`, item.quantity])), [values]);
   const [matrix, setMatrix] = useState<Record<string, number>>(() => Object.fromEntries(
     (["PENDEK", "PANJANG"] as const).flatMap((sleeveLength) => sizeOptions.map((size) => {
@@ -110,24 +106,82 @@ export function PurchaseOrderForm({
   );
   const formRef = useRef<HTMLFormElement>(null);
   const failedSubmissionRef = useRef<FormData | null>(null);
-  const serverAction = draft ? updatePurchaseOrderDraftAction : sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
+  const serverAction = sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
   const [formState, formAction] = useActionState(serverAction, initialFormActionState);
   const legacyDecoration = values?.decorationMethod
     && !DECORATION_METHODS.includes(values.decorationMethod as DecorationMethod)
     ? values.decorationMethod
     : null;
 
+  function buildDesiredRoster(source: Record<string, number>) {
+    const desired: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }> = [];
+    for (const size of sizeOptions) {
+      for (const sleeveLength of ["PENDEK", "PANJANG"] as const) {
+        const quantity = source[`${sleeveLength}:${size.id}`] ?? 0;
+        for (let index = 0; index < quantity; index += 1) desired.push({ sizeId: size.id, sleeveLength });
+      }
+    }
+    return desired;
+  }
+
+  function reconcileRoster(prev: RosterRow[], desired: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>) {
+    const signature = (rows: Array<{ sizeId: string; sleeveLength: string }>) =>
+      rows.map((row) => `${row.sizeId}:${row.sleeveLength}`).join(",");
+    if (signature(prev) === signature(desired)) {
+      let needFix = prev.length !== desired.length;
+      for (let index = 0; !needFix && index < prev.length; index += 1) {
+        if (prev[index].memberId !== String(index + 1)) needFix = true;
+      }
+      if (!needFix) return prev;
+      return prev.map((row, index) => (row.memberId === String(index + 1) ? row : { ...row, memberId: String(index + 1) }));
+    }
+    const queues = new Map<string, RosterRow[]>();
+    for (const row of prev) {
+      if (!row.sizeId || !row.sleeveLength) continue;
+      const key = `${row.sizeId}:${row.sleeveLength}`;
+      const queue = queues.get(key);
+      if (queue) queue.push(row);
+      else queues.set(key, [row]);
+    }
+    return desired.map((item, index) => {
+      const reused = queues.get(`${item.sizeId}:${item.sleeveLength}`)?.shift();
+      if (reused) {
+        if (reused.memberId === String(index + 1) && reused.sizeId === item.sizeId && reused.sleeveLength === item.sleeveLength) return reused;
+        return { ...reused, sizeId: item.sizeId, sleeveLength: item.sleeveLength, memberId: String(index + 1) };
+      }
+      return { key: `auto-${item.sizeId}-${item.sleeveLength}-${index}`, memberId: String(index + 1), name: "", sizeId: item.sizeId, sleeveLength: item.sleeveLength };
+    });
+  }
+
+  function syncRoster(source: Record<string, number>) {
+    const desired = buildDesiredRoster(source);
+    if (desired.length > 5_000) return;
+    setRoster((prev) => reconcileRoster(prev, desired));
+  }
+
   function updateMatrixValue(key: string, rawValue: string) {
     const parsed = Number(rawValue);
     const quantity = rawValue === "" || !Number.isFinite(parsed)
       ? 0
       : Math.min(10_000_000, Math.max(0, Math.trunc(parsed)));
-    setMatrix((current) => ({ ...current, [key]: quantity }));
+    const next = { ...matrix, [key]: quantity };
+    setMatrix(next);
+    if (rosterMode === "manual") syncRoster(next);
+  }
+
+  function handleRosterModeChange(next: "none" | "manual" | "excel") {
+    setRosterMode(next);
+    if (next === "manual") syncRoster(matrix);
   }
 
   function rowTotal(sleeveLength: SleeveLength) {
     return sizeOptions.reduce((total, size) => total + (matrix[`${sleeveLength}:${size.id}`] ?? 0), 0);
   }
+
+  const rosterTotal = useMemo(
+    () => sizeOptions.reduce((total, size) => total + (matrix[`PENDEK:${size.id}`] ?? 0) + (matrix[`PANJANG:${size.id}`] ?? 0), 0),
+    [matrix, sizeOptions],
+  );
 
   useEffect(() => {
     if (formState.ok || !failedSubmissionRef.current || !formRef.current) return;
@@ -142,16 +196,14 @@ export function PurchaseOrderForm({
   }, [formState]);
 
   return (
-    <form ref={formRef} action={formAction} onSubmit={(event) => { failedSubmissionRef.current = new FormData(event.currentTarget); }} data-po-draft-id={draft?.id} className="min-w-0 max-w-full">
+    <form ref={formRef} action={formAction} onSubmit={(event) => { failedSubmissionRef.current = new FormData(event.currentTarget); }} className="min-w-0 max-w-full">
       <input type="hidden" name="opportunityId" value={opportunityId} />
       {sourcePurchaseOrderId ? <input type="hidden" name="sourcePurchaseOrderId" value={sourcePurchaseOrderId} /> : null}
-      {draft ? <input type="hidden" name="purchaseOrderId" value={draft.id} /> : null}
-      {draft ? <input type="hidden" name="version" value={draft.version} /> : null}
       <FieldGroup>
         <FieldSet>
           <FieldLegend>Informasi pesanan</FieldLegend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO</FieldLabel><Input id={`po-reference-${fieldKey}`} value={draft?.purchaseOrderNo ?? purchaseOrderNoPreview ?? "Akan dibuat saat disimpan"} readOnly /></Field>
+            <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO</FieldLabel><Input id={`po-reference-${fieldKey}`} value={purchaseOrderNoPreview ?? "Akan dibuat saat disimpan"} readOnly /></Field>
             {hasCategoryOptions ? (
               <Field>
                 <FieldLabel htmlFor={`po-category-${fieldKey}`} required>Kategori produk</FieldLabel>
@@ -260,18 +312,18 @@ export function PurchaseOrderForm({
           <div className="mt-3 flex flex-wrap gap-1 rounded-md border bg-muted/40 p-1" role="radiogroup" aria-label="Cara mengisi roster">
             {([ ["none", "Tanpa roster"], ["manual", "Ketik manual"], ["excel", "Impor Excel"] ] as const).map(([value, label]) => (
               <label key={value} className={cn("relative cursor-pointer rounded-sm px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-ring", rosterMode === value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-background hover:text-foreground")}>
-                <input type="radio" name="rosterMode" value={value} checked={rosterMode === value} onChange={() => setRosterMode(value)} className="sr-only" />{label}
+                <input type="radio" name="rosterMode" value={value} checked={rosterMode === value} onChange={() => handleRosterModeChange(value)} className="sr-only" />{label}
               </label>
             ))}
           </div>
           {rosterMode === "manual" ? <div className="mt-4 flex min-w-0 flex-col gap-3">
-            <Button type="button" variant="outline" size="sm" className="self-start" disabled={roster.length >= 5000} onClick={() => setRoster((current) => [...current, { key: `roster-${Date.now()}-${current.length}`, memberId: "", name: "", sizeId: "", sleeveLength: "" }])}><Plus data-icon="inline-start" aria-hidden="true" />Tambah baris</Button>
-            {roster.map((row, index) => <div key={row.key} className="grid gap-2 rounded-md border bg-muted/30 p-3 sm:grid-cols-[8rem_minmax(0,1fr)_7rem_8rem_auto] sm:items-end">
-              <Field><FieldLabel htmlFor={`roster-id-${row.key}`} required>ID</FieldLabel><Input id={`roster-id-${row.key}`} name="rosterMemberId" required maxLength={80} value={row.memberId} onChange={(event) => setRoster((current) => current.map((item) => item.key === row.key ? { ...item, memberId: event.target.value } : item))} /></Field>
+            <FieldDescription>{rosterTotal > 0 ? `${rosterTotal.toLocaleString("id-ID")} baris dibuat otomatis dari matriks · ID 1..${rosterTotal.toLocaleString("id-ID")} · urut ukuran terkecil, Pendek dulu. Isi kolom Nama saja.` : "Isi matriks ukuran dulu, baris roster akan muncul otomatis di sini."}</FieldDescription>
+            {rosterTotal > 5_000 ? <Alert variant="destructive"><AlertTitle>Roster melebihi 5.000 baris</AlertTitle><AlertDescription>Kurangi jumlah pada matriks atau gunakan Impor Excel.</AlertDescription></Alert> : null}
+            {roster.map((row) => <div key={row.key} className="grid gap-2 rounded-md border bg-muted/30 p-3 sm:grid-cols-[6rem_minmax(0,1fr)_7rem_8rem] sm:items-end">
+              <Field><FieldLabel htmlFor={`roster-id-${row.key}`} required>ID</FieldLabel><Input id={`roster-id-${row.key}`} name="rosterMemberId" required maxLength={80} value={row.memberId} readOnly className="bg-muted font-mono tabular-nums" /></Field>
               <Field><FieldLabel htmlFor={`roster-name-${row.key}`} required>Nama</FieldLabel><Input id={`roster-name-${row.key}`} name="rosterName" required minLength={2} maxLength={160} value={row.name} onChange={(event) => setRoster((current) => current.map((item) => item.key === row.key ? { ...item, name: event.target.value } : item))} /></Field>
-              <Field><FieldLabel htmlFor={`roster-size-${row.key}`} required>Ukuran</FieldLabel><NativeSelect id={`roster-size-${row.key}`} name="rosterSizeId" required value={row.sizeId} onChange={(event) => setRoster((current) => current.map((item) => item.key === row.key ? { ...item, sizeId: event.target.value } : item))}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.id}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
-              <Field><FieldLabel htmlFor={`roster-sleeve-${row.key}`} required>Lengan</FieldLabel><NativeSelect id={`roster-sleeve-${row.key}`} name="rosterSleeveLength" required value={row.sleeveLength} onChange={(event) => setRoster((current) => current.map((item) => item.key === row.key ? { ...item, sleeveLength: event.target.value as RosterRow["sleeveLength"] } : item))}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption><NativeSelectOption value="PENDEK">Pendek</NativeSelectOption><NativeSelectOption value="PANJANG">Panjang</NativeSelectOption></NativeSelect></Field>
-              <Button type="button" variant="ghost" size="icon" aria-label={`Hapus anggota ${index + 1}`} onClick={() => setRoster((current) => current.filter((item) => item.key !== row.key))}><Trash2 aria-hidden="true" /></Button>
+              <Field><FieldLabel htmlFor={`roster-size-${row.key}`} required>Ukuran</FieldLabel><NativeSelect id={`roster-size-${row.key}`} value={row.sizeId} disabled aria-label={`Ukuran baris ${row.memberId}`}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.id}>{size.name}</NativeSelectOption>)}</NativeSelect><input type="hidden" name="rosterSizeId" value={row.sizeId} /></Field>
+              <Field><FieldLabel htmlFor={`roster-sleeve-${row.key}`} required>Lengan</FieldLabel><NativeSelect id={`roster-sleeve-${row.key}`} value={row.sleeveLength} disabled aria-label={`Lengan baris ${row.memberId}`}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption><NativeSelectOption value="PENDEK">Pendek</NativeSelectOption><NativeSelectOption value="PANJANG">Panjang</NativeSelectOption></NativeSelect><input type="hidden" name="rosterSleeveLength" value={row.sleeveLength} /></Field>
             </div>)}
           </div> : null}
           {rosterMode === "excel" ? <div className="mt-4 flex flex-col gap-3">
@@ -290,7 +342,7 @@ export function PurchaseOrderForm({
             <AlertDescription>{formState.message} Periksa matriks ukuran dan roster, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
-        <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? (draft ? "Perbarui draft PO" : "Buat draft PO")}</SubmitButton>
+        <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? "Buat draft PO"}</SubmitButton>
       </FieldGroup>
     </form>
   );

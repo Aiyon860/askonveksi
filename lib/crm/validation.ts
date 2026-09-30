@@ -91,6 +91,7 @@ export const opportunityFieldsSchema = z.object({
     (value) => (value === null || value === "" ? undefined : value),
     z.enum(["JERSEY", "NON_JERSEY"]).optional(),
   ),
+  productCategoryId: optionalEntityId,
   needPurpose: optionalText(500),
   specification: optionalText(2000),
   nextAction: optionalText(500),

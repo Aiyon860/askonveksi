@@ -13,7 +13,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatPercentage } from "@/lib/crm/format";
 import { getIncome } from "@/lib/finance/expense";
-import { parseFinanceDateRange } from "@/lib/finance/date-range";
+import { parseOptionalFinanceDateRange } from "@/lib/finance/date-range";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
 type SearchParams = Promise<{ q?: string | string[]; from?: string | string[]; to?: string | string[]; status?: string | string[]; hppStatus?: string | string[]; page?: string | string[]; pageSize?: string | string[] }>;
@@ -26,13 +26,14 @@ function sumMoney(values: Array<string | null | undefined>) {
 export default async function IncomePage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const query = (first(params.q) ?? "").trim().slice(0, 80);
-  const range = parseFinanceDateRange(params.from, params.to);
+  // Tanpa filter tanggal = tampilkan semua pemasukan (bukan default bulan berjalan).
+  const range = parseOptionalFinanceDateRange(params.from, params.to);
   const status = first(params.status) === "DP" ? "DP" : first(params.status) === "LUNAS" ? "LUNAS" : "all";
   const hppStatus = first(params.hppStatus) === "COMPLETE" ? "COMPLETE" : first(params.hppStatus) === "INCOMPLETE" ? "INCOMPLETE" : "all";
   const page = parsePageParam(params.page);
   const pageSize = parsePageSizeParam(params.pageSize);
   const data = await getIncome({ query, from: range.start, to: range.end, status, hppStatus, page, pageSize });
-  const persistent = { q: query || undefined, from: range.from, to: range.to, status: status === "all" ? undefined : status, hppStatus: hppStatus === "all" ? undefined : hppStatus, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
+  const persistent = { q: query || undefined, from: range.from || undefined, to: range.to || undefined, status: status === "all" ? undefined : status, hppStatus: hppStatus === "all" ? undefined : hppStatus, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   const exportParams = new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   // Total dihitung dari seluruh baris data yang dimuat halaman ini (data.items).
   const totalQuantity = data.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -45,12 +46,13 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
     sumMoney(data.items.map((item) => item.bordir)),
     sumMoney(data.items.map((item) => item.lainnya)),
     sumMoney(data.items.map((item) => item.hpp)),
+    sumMoney(data.items.map((item) => item.originalPrice)),
     sumMoney(data.items.map((item) => item.discount)),
     sumMoney(data.items.map((item) => item.totalInvoice)),
     sumMoney(data.items.map((item) => item.netProfit)),
   ];
-  const totalInvoiceValue = numericTotals[9];
-  const totalNetProfitValue = numericTotals[10];
+  const totalInvoiceValue = sumMoney(data.items.map((item) => item.totalInvoice));
+  const totalNetProfitValue = sumMoney(data.items.map((item) => item.netProfit));
   const totalMargin = totalInvoiceValue ? totalNetProfitValue / totalInvoiceValue : null;
   const totalDp = sumMoney(data.items.map((item) => item.dp));
   const totalSettled = sumMoney(data.items.map((item) => item.settled));
@@ -73,7 +75,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
         </form>
       </div>
       {data.items.length ? <div className="flex min-h-112 flex-1 flex-col">
-        <Table className="min-w-[170rem]" containerClassName="min-h-0 flex-1 overflow-auto"><TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead>Customer</TableHead><TableHead>Nama order</TableHead><TableHead>Jenis busana</TableHead><TableHead className="text-right">Total QTY</TableHead>{["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Diskon", "Total Invoice", "Laba Bersih", "Margin %", "DP", "Lunas"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}<TableHead>Keterangan</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader><TableBody>{data.items.map((item) => <TableRow key={item.id}><TableCell>{item.customer}</TableCell><TableCell>{item.orderName}</TableCell><TableCell>{item.garmentType}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell>{[item.kain, item.zipper, item.jahit, item.pres, item.dtfPlastisol, item.bordir, item.lainnya, item.hpp, item.discount, item.totalInvoice, item.netProfit].map((value, index) => <TableCell key={index} className="text-right font-mono tabular-nums">{value === null ? "-" : formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell><TableCell>{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell><TableCell>{item.hppStatus === "COMPLETE" ? "Lengkap" : "Belum Lengkap"}</TableCell><TableCell className="text-right">{item.costVersion !== null ? <SalesOrderCostForm item={{ ...item, costVersion: item.costVersion }} /> : "-"}</TableCell></TableRow>)}</TableBody><TableFooter><TableRow className="border-t bg-muted hover:bg-muted"><TableCell colSpan={3} className="font-medium">Total</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>{numericTotals.map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDp)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalSettled)}</TableCell><TableCell /><TableCell /><TableCell /></TableRow></TableFooter></Table>
+        <Table className="min-w-[180rem]" containerClassName="min-h-0 flex-1 overflow-auto"><TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead>Customer</TableHead><TableHead>Nama order</TableHead><TableHead>Jenis busana</TableHead><TableHead className="text-right">Total QTY</TableHead>{["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Harga Asli", "Diskon", "Total Invoice", "Laba Bersih", "Margin %", "DP", "Lunas"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}<TableHead>Keterangan</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader><TableBody>{data.items.map((item) => <TableRow key={item.id}><TableCell>{item.customer}</TableCell><TableCell>{item.orderName}</TableCell><TableCell>{item.garmentType}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell>{[item.kain, item.zipper, item.jahit, item.pres, item.dtfPlastisol, item.bordir, item.lainnya, item.hpp, item.originalPrice, item.discount, item.totalInvoice, item.netProfit].map((value, index) => <TableCell key={index} className="text-right font-mono tabular-nums">{value === null ? "-" : formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell><TableCell>{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell><TableCell>{item.hppStatus === "COMPLETE" ? "Lengkap" : "Belum Lengkap"}</TableCell><TableCell className="text-right">{item.costVersion !== null ? <SalesOrderCostForm item={{ ...item, costVersion: item.costVersion }} /> : "-"}</TableCell></TableRow>)}</TableBody><TableFooter><TableRow className="border-t bg-muted hover:bg-muted"><TableCell colSpan={3} className="font-medium">Total</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>{numericTotals.map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDp)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalSettled)}</TableCell><TableCell /><TableCell /><TableCell /></TableRow></TableFooter></Table>
         <DataPagination pathname="/keuangan/pemasukan" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
       </div> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada pemasukan</EmptyTitle><EmptyDescription>Invoice dengan pembayaran aktif akan tampil di sini.</EmptyDescription></EmptyHeader></Empty>}
     </section>

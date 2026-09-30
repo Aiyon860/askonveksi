@@ -2,7 +2,7 @@
 
 import { Prisma, type CommunicationSystemEvent } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
@@ -300,6 +300,15 @@ async function resolveProductCategory(reader: Tx, productCategoryId: string | un
   return { productCategoryId, garmentType: category.garmentType };
 }
 
+// Peluang memilih nama kategori (PDH/PDL, Kaos, Polo, ...); jenis Jersey/Non-jersey ikut mengikuti kategori terpilih.
+async function resolveOpportunityCategory(reader: Tx, productCategoryId: string | undefined) {
+  if (!productCategoryId) return null;
+  const category = await reader.productCategory.findUnique({ where: { id: productCategoryId }, select: { id: true, garmentType: true, isActive: true } });
+  if (!category) throw new UserFacingError("Kategori produk tidak ditemukan. Pilih kategori lain.");
+  if (!category.isActive) throw new UserFacingError("Kategori produk sudah tidak aktif. Pilih kategori lain.");
+  return category;
+}
+
 async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "manual" | "excel") {
   const file = formData.get("rosterFile");
   if (mode !== "excel") {
@@ -350,6 +359,7 @@ async function runDealTransaction<T>(work: (tx: Tx) => Promise<T>) {
 function opportunityInput(formData: FormData) {
   return {
     title: formValue(formData, "title"),
+    productCategoryId: formValue(formData, "productCategoryId") || undefined,
     leadSourceId: formData.has("opportunityLeadSourceId")
       ? formValue(formData, "opportunityLeadSourceId")
       : formValue(formData, "leadSourceId"),
@@ -861,6 +871,7 @@ export async function createOpportunityAction(formData: FormData) {
         ]);
         if (leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
         if (salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
+        const category = await resolveOpportunityCategory(tx, parsed.data.productCategoryId);
 
         const created = await tx.opportunity.create({
           data: {
@@ -870,7 +881,8 @@ export async function createOpportunityAction(formData: FormData) {
             leadSourceId,
             salesPicId,
             productName: parsed.data.productName,
-            garmentType: parsed.data.garmentType,
+            productCategoryId: category?.id ?? null,
+            garmentType: category?.garmentType ?? parsed.data.garmentType ?? null,
             needPurpose: parsed.data.needPurpose,
             specification: parsed.data.specification,
             nextAction: parsed.data.nextAction,
@@ -879,7 +891,7 @@ export async function createOpportunityAction(formData: FormData) {
           select: { id: true },
         });
         await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", [
-          "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose",
+          "customerId", "title", "leadSourceId", "salesPicId", "productName", "garmentType", "productCategoryId", "needPurpose",
           "specification", "nextAction", "nextActionAt", "stage",
         ], { stage: "LEAD_BARU" });
         return created;
@@ -1015,6 +1027,7 @@ export async function updateOpportunityAction(formData: FormData) {
         const scheduleError = validateOpenOpportunitySchedule(parsed.data);
         if (scheduleError) throw new UserFacingError(scheduleError);
       }
+      const category = await resolveOpportunityCategory(tx, parsed.data.productCategoryId);
 
       const [leadSource, salesPic] = await Promise.all([
         parsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: parsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
@@ -1029,7 +1042,8 @@ export async function updateOpportunityAction(formData: FormData) {
           leadSourceId: parsed.data.leadSourceId ?? null,
           salesPicId: parsed.data.salesPicId ?? null,
           productName: parsed.data.productName ?? null,
-          garmentType: parsed.data.garmentType ?? null,
+          productCategoryId: category?.id ?? null,
+          garmentType: category?.garmentType ?? parsed.data.garmentType ?? null,
           needPurpose: parsed.data.needPurpose ?? null,
           specification: parsed.data.specification ?? null,
           nextAction: parsed.data.nextAction ?? null,
@@ -1039,7 +1053,7 @@ export async function updateOpportunityAction(formData: FormData) {
       });
       if (updated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
       await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_UPDATED", [
-        "title", "leadSourceId", "salesPicId", "productName", "garmentType", "needPurpose", "specification",
+        "title", "leadSourceId", "salesPicId", "productName", "garmentType", "productCategoryId", "needPurpose", "specification",
         "nextAction", "nextActionAt",
       ]);
       return updated;
@@ -1656,6 +1670,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
+    revalidateInvoiceList();
     timer.mark("revalidate");
     return flashMessagePath(`/crm/peluang/${parsed.data.opportunityId}?tab=invoice`, "notice", `Draft invoice ${invoice.id ? "berhasil dibuat" : "dibuat"}.`);
   });
@@ -1715,6 +1730,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
+    revalidateInvoiceList();
     timer.mark("revalidate");
     return flashMessagePath(`/crm/peluang/${parsed.data.opportunityId}?tab=invoice`, "notice", "Draft invoice diperbarui.");
   });
@@ -1797,6 +1813,7 @@ export async function issueInvoiceAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${issuedInvoice.opportunityId}`);
     revalidatePath(`/customers/${issuedInvoice.customerId}`);
+    revalidateInvoiceList();
     return flashMessagePath(`/crm/peluang/${issuedInvoice.opportunityId}?tab=invoice`, "notice", "Invoice diterbitkan, dikunci, dan pengiriman WhatsApp dijadwalkan.");
   });
 }
@@ -1911,6 +1928,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${opportunityId}`);
+    revalidateInvoiceList();
     return flashMessagePath(`/crm/peluang/${opportunityId}?tab=invoice`, "notice", "Draft revisi invoice dibuat.");
   });
 }
@@ -1976,7 +1994,7 @@ export async function completeDealAction(formData: FormData) {
     });
 
     revalidatePath("/crm");
-    revalidatePath("/crm/invoices");
+    revalidateInvoiceList();
     revalidatePath(`/crm/peluang/${invoice.opportunityId}`);
     return flashMessagePath(`/crm/peluang/${invoice.opportunityId}?tab=invoice`, "notice", "Jadwal pembayaran tersimpan. Catat pembayaran awal di Detail Invoice untuk membuat Sales Order dan Work Order.");
   });
@@ -1990,6 +2008,17 @@ function crmActionFailure(error: unknown): CrmActionState {
   return { error: messageForError(error), success: false };
 }
 
+/**
+ * Tabel CRM > Invoice membaca data dari `unstable_cache` bertag "invoices" (30 detik).
+ * `revalidatePath` saja tidak mengosongkan cache itu, sehingga baris tabel (mis. status
+ * pembayaran) bisa tampak tertinggal setelah aksi; tag dikosongkan bersamaan agar
+ * auto-refresh halaman langsung menampilkan data segar.
+ */
+function revalidateInvoiceList() {
+  revalidatePath("/crm/invoices");
+  revalidateTag("invoices", { expire: 0 });
+}
+
 function revalidatePaymentMutationPaths(salesOrderId?: string) {
   if (salesOrderId) revalidatePath(`/sales-orders/${salesOrderId}`);
   revalidatePath("/crm");
@@ -1997,6 +2026,7 @@ function revalidatePaymentMutationPaths(salesOrderId?: string) {
   revalidatePath("/dashboard");
   revalidatePath("/keuangan");
   revalidatePath("/produksi");
+  revalidateInvoiceList();
 }
 
 async function paymentProof(formData: FormData, actorId: string, paymentMethodId: string, hasExistingProof = false) {
@@ -2476,6 +2506,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     revalidatePath("/dashboard");
     revalidatePath("/keuangan");
     revalidatePath("/produksi");
+    revalidateInvoiceList();
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran awal berhasil dicatat ulang.");
   });
 }
@@ -2570,7 +2601,7 @@ export async function cancelInvoiceAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/crm");
-    revalidatePath("/crm/invoices");
+    revalidateInvoiceList();
     revalidatePath(`/crm/peluang/${result.opportunityId}`);
     return flashMessagePath(
       `/crm/peluang/${result.opportunityId}?tab=invoice`,
@@ -2658,6 +2689,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
     revalidatePath(`/crm/peluang/${cancelledOrder.opportunityId}`);
     revalidatePath(`/customers/${cancelledOrder.customerId}`);
+    revalidateInvoiceList();
     revalidateCustomerReminders();
     return flashMessagePath(`/crm/peluang/${cancelledOrder.opportunityId}?tab=deal`, "notice", "Sales Order dibatalkan dan peluang dipindahkan ke Lost.");
   });

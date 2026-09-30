@@ -122,14 +122,12 @@ function NavGroup({ label, icon: Icon, children }: { label: ReactNode; icon: Luc
 
 export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole; onNavigate?: () => void }) {
   const pathname = usePathname();
-  const [followUpCount, setFollowUpCount] = useState(0);
   const [whatsAppCount, setWhatsAppCount] = useState(0);
 
   useEffect(() => {
     fetch("/api/crm/badge-counts", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
-        setFollowUpCount(data.followUpCount ?? 0);
         setWhatsAppCount(data.whatsAppCount ?? 0);
       })
       .catch(() => {});
@@ -153,15 +151,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewCrm ? (
         <NavGroup label={<span>CRM</span>} icon={KanbanSquare}>
-          {crmItems.map((item) => (
-            <NavLink
-              key={item.href}
-              pathname={pathname}
-              item={item.href === "/crm/follow-up" ? { ...item, count: followUpCount } : item}
-              nested
-              onNavigate={onNavigate}
-            />
-          ))}
+          {crmItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewCrm ? prospectItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}

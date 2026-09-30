@@ -8,13 +8,13 @@ export default async function PaymentMethodsPage() {
   const items = await getPaymentMethods();
   return (
     <>
-      <PageHeader title="Metode pembayaran" description="Kelola kanal penerimaan uang yang dipilih saat mencatat pembayaran invoice." />
+      <PageHeader title="Metode pembayaran" description="Kelola kanal penerimaan uang yang dipilih saat mencatat pembayaran invoice dan pengeluaran." />
       <PageMessage />
       <MasterDataPage
         items={items}
         singularLabel="Metode pembayaran"
         usageLabel="Transaksi"
-        createDescription="Metode baru langsung tersedia saat Admin mencatat pembayaran berikutnya."
+        createDescription="Metode baru langsung tersedia saat Admin mencatat pembayaran atau pengeluaran berikutnya."
         createAction={createPaymentMethodAction}
         bulkUpdateAction={bulkUpdatePaymentMethodsAction}
         deleteAction={deletePaymentMethodAction}

@@ -305,8 +305,8 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
           title="Pipeline aktif"
           description="Jumlah opportunity pada setiap tahap kerja dan porsinya terhadap seluruh pipeline."
         />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-          {PIPELINE_STAGES.map((stage, index) => {
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {PIPELINE_STAGES.map((stage) => {
             const count = data.stageCounts[stage] ?? 0;
             const share = shareOfPipeline(count);
             return (
@@ -319,7 +319,6 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
                 meta={`${formatPercentage(share)} dari total`}
                 surfaceClassName={STAGE_SURFACE_CLASS[stage]}
                 inkClassName={STAGE_TEXT_CLASS[stage]}
-                className={cn(index === PIPELINE_STAGES.length - 1 && "col-span-2 xl:col-span-1")}
               />
             );
           })}

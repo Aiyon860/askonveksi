@@ -11,7 +11,10 @@ const nextConfig: NextConfig = {
     useTypeScriptCli: false,
     serverSourceMaps: false,
     webpackMemoryOptimizations: true,
-    optimizePackageImports: ["lucide-react", "recharts", "konva", "react-konva", "@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
+    // "konva"/"react-konva" SENGAJA tidak dioptimasi: optimizePackageImports
+    // memecah barrel import sehingga singleton Konva terduplikasi dan node
+    // bentuk (Rect/Image/...) tidak terdaftar -> "has no node with the type".
+    optimizePackageImports: ["lucide-react", "recharts", "@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
   },
   images: {
     formats: ["image/avif", "image/webp"],

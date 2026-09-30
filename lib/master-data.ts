@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { sortProductCategoryRows } from "@/lib/crm/constants";
 import { getPrismaClient } from "@/lib/prisma";
 
 const getCachedCustomerFormOptions = unstable_cache(
@@ -75,31 +76,35 @@ export async function getProductCategories() {
     select: { id: true, name: true, garmentType: true, position: true, _count: { select: { purchaseOrders: true } } },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
-  return items.map((item) => ({
-    id: item.id,
-    name: item.name,
-    kind: item.garmentType,
-    position: item.position,
-    _count: { customers: item._count.purchaseOrders },
-  }));
+  return sortProductCategoryRows(
+    items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      kind: item.garmentType,
+      position: item.position,
+      _count: { customers: item._count.purchaseOrders },
+    })),
+    (item) => item.kind,
+  );
 }
 
 export async function getActiveProductCategories() {
   await requireActor();
-  return getPrismaClient().productCategory.findMany({
+  const items = await getPrismaClient().productCategory.findMany({
     where: { isActive: true },
-    select: { id: true, name: true, garmentType: true },
+    select: { id: true, name: true, garmentType: true, position: true },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
+  return sortProductCategoryRows(items, (item) => item.garmentType);
 }
 
 export async function getPaymentMethods() {
   await requireActor(MASTER_DATA_ROLES);
   const items = await getPrismaClient().paymentMethod.findMany({
-    select: { id: true, name: true, description: true, position: true, _count: { select: { paymentTransactions: true } } },
+    select: { id: true, name: true, description: true, position: true, _count: { select: { paymentTransactions: true, expenses: true } } },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
-  return items.map((item) => ({ ...item, _count: { customers: item._count.paymentTransactions } }));
+  return items.map((item) => ({ ...item, _count: { customers: item._count.paymentTransactions + item._count.expenses } }));
 }
 
 export async function getActivePaymentMethods() {

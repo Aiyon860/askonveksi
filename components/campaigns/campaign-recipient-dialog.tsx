@@ -15,17 +15,17 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate } from "@/lib/crm/format";
 import { paginate, RECIPIENT_PAGE_SIZE } from "@/lib/pagination";
-import { CAMPAIGN_ORDER_CATEGORIES, CAMPAIGN_ORDER_CATEGORY_LABEL, type CampaignRecipientOption } from "@/lib/whatsapp/campaigns";
+import { type CampaignRecipientOption } from "@/lib/whatsapp/campaigns";
 
 type RecipientFilters = {
   query: string;
   from: string;
   to: string;
   customerTypeId: string;
-  orderCategory: string;
+  productCategoryId: string;
 };
 
-const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "", orderCategory: "" };
+const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "", productCategoryId: "" };
 
 export function CampaignRecipientDialog({
   campaignId,
@@ -43,6 +43,7 @@ export function CampaignRecipientDialog({
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<CampaignRecipientOption[]>([]);
   const [customerTypes, setCustomerTypes] = useState<{ id: string; name: string }[]>([]);
+  const [productCategories, setProductCategories] = useState<{ id: string; name: string }[]>([]);
   const [total, setTotal] = useState(0);
   const [truncated, setTruncated] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -60,6 +61,7 @@ export function CampaignRecipientDialog({
       const result = await getCampaignRecipientDialogAction({ campaignId, ...next });
       setItems(result.items);
       setCustomerTypes(result.customerTypes);
+      setProductCategories(result.productCategories);
       setTotal(result.total);
       setTruncated(result.truncated);
       if (applySelection) setSelected(result.selectedIds);
@@ -178,11 +180,11 @@ export function CampaignRecipientDialog({
             </Field>
             <Field className="gap-1.5">
               <FieldLabel htmlFor={`recipient-category-${campaignId}`}>Kategori Order</FieldLabel>
-              <NativeSelect id={`recipient-category-${campaignId}`} value={filters.orderCategory} onChange={(event) => updateFilters({ orderCategory: event.target.value })} className="w-full">
+              <NativeSelect id={`recipient-category-${campaignId}`} value={filters.productCategoryId} onChange={(event) => updateFilters({ productCategoryId: event.target.value })} className="w-full">
                 <NativeSelectOption value="">Semua order</NativeSelectOption>
-                {CAMPAIGN_ORDER_CATEGORIES.map((category) => (
-                  <NativeSelectOption key={category} value={category}>
-                    {CAMPAIGN_ORDER_CATEGORY_LABEL[category]}
+                {productCategories.map((category) => (
+                  <NativeSelectOption key={category.id} value={category.id}>
+                    {category.name}
                   </NativeSelectOption>
                 ))}
               </NativeSelect>

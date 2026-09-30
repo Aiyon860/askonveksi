@@ -646,6 +646,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
       salesPicId: true,
       productName: true,
       garmentType: true,
+      productCategoryId: true,
       needPurpose: true,
       specification: true,
       lastContactedAt: true,
@@ -1183,7 +1184,7 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
     periodLabel: analyticsReportLabel(report.mode, report.range.label),
     rows,
     categoryRows: categoryRows.map((row) => ({
-      category: row.category === "JERSEY" ? "Jersey" : row.category === "NON_JERSEY" ? "Non-jersey" : row.category === "AKSESORI" ? "Aksesori" : "Belum ditentukan",
+      category: row.category === "JERSEY" ? "Jersey" : row.category === "NON_JERSEY" ? "Non-jersey" : row.category === "AKSESORI" ? "Aksesoris" : "Belum ditentukan",
       orderCount: row.orderCount,
     })),
     customerCategoryRows,
@@ -1861,4 +1862,126 @@ export async function getUsers({
     prisma.appUser.count({ where: canManageDevelopers ? {} : { role: { not: "DEVELOPER" as AppRole } } }),
   ]);
   return { items, total, activeTotal, allTotal, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+type BusinessTrendRevenueRow = {
+  month: number;
+  revenue: string;
+  txCount: number;
+};
+
+type BusinessTrendCompletedRow = {
+  month: number;
+  orderCount: number;
+};
+
+type BusinessTrendYearRow = {
+  year: number;
+};
+
+export type BusinessTrendMonth = {
+  month: number;
+  label: string;
+  revenue: string;
+  transactionCount: number;
+  completedOrders: number;
+};
+
+export type BusinessTrendData = {
+  year: number;
+  months: BusinessTrendMonth[];
+  availableYears: number[];
+  totalRevenue: string;
+  totalTransactions: number;
+  totalCompletedOrders: number;
+};
+
+const TREND_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"] as const;
+
+function normalizeTrendYear(value: unknown) {
+  const year = typeof value === "string" ? Number.parseInt(value, 10) : typeof value === "number" ? value : NaN;
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    throw new Error("INVALID_YEAR");
+  }
+  return year;
+}
+
+const getCachedBusinessTrendData = (year: number) =>
+  unstable_cache(
+    async (): Promise<BusinessTrendData> => {
+      const prisma = getPrismaClient();
+      const [revenueRows, completedRows, yearRows] = await Promise.all([
+        prisma.$queryRaw<BusinessTrendRevenueRow[]>(Prisma.sql`
+          SELECT
+            EXTRACT(MONTH FROM pt."paidAt" AT TIME ZONE 'Asia/Jakarta')::int AS month,
+            COALESCE(SUM(pt."amount"), 0)::text AS revenue,
+            COUNT(*)::int AS "txCount"
+          FROM "PaymentTransaction" pt
+          INNER JOIN "DealPayment" dp ON dp.id = pt."paymentId"
+          INNER JOIN "SalesOrder" so ON so.id = dp."salesOrderId"
+          WHERE pt."status" = 'ACTIVE'
+            AND so."status" = 'ACTIVE'
+            AND EXTRACT(YEAR FROM pt."paidAt" AT TIME ZONE 'Asia/Jakarta') = ${year}
+          GROUP BY 1
+        `),
+        prisma.$queryRaw<BusinessTrendCompletedRow[]>(Prisma.sql`
+          SELECT
+            EXTRACT(MONTH FROM COALESCE(w."completedAt", so."acceptedAt") AT TIME ZONE 'Asia/Jakarta')::int AS month,
+            COUNT(DISTINCT so.id)::int AS "orderCount"
+          FROM "SalesOrder" so
+          INNER JOIN "DealPayment" dp ON dp."salesOrderId" = so.id
+          INNER JOIN "ProductionWorkOrder" w ON w."salesOrderId" = so.id
+          WHERE so."status" = 'ACTIVE'
+            AND w."status" = 'COMPLETED'
+            AND dp."outstandingAmount" <= 0
+            AND EXTRACT(YEAR FROM COALESCE(w."completedAt", so."acceptedAt") AT TIME ZONE 'Asia/Jakarta') = ${year}
+          GROUP BY 1
+        `),
+        prisma.$queryRaw<BusinessTrendYearRow[]>(Prisma.sql`
+          SELECT DISTINCT y.year AS year FROM (
+            SELECT EXTRACT(YEAR FROM pt."paidAt" AT TIME ZONE 'Asia/Jakarta')::int AS year
+            FROM "PaymentTransaction" pt WHERE pt."status" = 'ACTIVE'
+            UNION
+            SELECT EXTRACT(YEAR FROM COALESCE(w."completedAt", so."acceptedAt") AT TIME ZONE 'Asia/Jakarta')::int AS year
+            FROM "SalesOrder" so
+            INNER JOIN "ProductionWorkOrder" w ON w."salesOrderId" = so.id
+            WHERE so."status" = 'ACTIVE' AND w."status" = 'COMPLETED'
+            UNION
+            SELECT EXTRACT(YEAR FROM so."acceptedAt" AT TIME ZONE 'Asia/Jakarta')::int AS year
+            FROM "SalesOrder" so WHERE so."status" = 'ACTIVE'
+          ) y WHERE y.year BETWEEN 2000 AND 2100 ORDER BY y.year DESC
+        `),
+      ]);
+
+      const revenueByMonth = new Map(revenueRows.map((row) => [row.month, row]));
+      const completedByMonth = new Map(completedRows.map((row) => [row.month, row.orderCount]));
+      const months: BusinessTrendMonth[] = TREND_MONTH_LABELS.map((label, index) => {
+        const month = index + 1;
+        return {
+          month,
+          label,
+          revenue: revenueByMonth.get(month)?.revenue ?? "0",
+          transactionCount: revenueByMonth.get(month)?.txCount ?? 0,
+          completedOrders: completedByMonth.get(month) ?? 0,
+        };
+      });
+
+      const totalRevenue = months.reduce((sum, item) => sum.plus(item.revenue), new Prisma.Decimal(0)).toString();
+      const totalTransactions = months.reduce((sum, item) => sum + item.transactionCount, 0);
+      const totalCompletedOrders = months.reduce((sum, item) => sum + item.completedOrders, 0);
+      const currentYear = new Date().getFullYear();
+      const availableYears = [...new Set([...yearRows.map((row) => row.year), currentYear])].sort((a, b) => b - a);
+
+      return { year, months, availableYears, totalRevenue, totalTransactions, totalCompletedOrders };
+    },
+    ["business-trend", String(year)],
+    { tags: ["dashboard-trends"], revalidate: 60 },
+  )();
+
+export async function getBusinessTrendData(yearInput: unknown) {
+  const actor = await requireActor(DASHBOARD_ROLES);
+  if (!hasRole(actor.role, FINANCE_ROLES)) {
+    throw new Error("UNAUTHORIZED");
+  }
+  return getCachedBusinessTrendData(normalizeTrendYear(yearInput));
 }

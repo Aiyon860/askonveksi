@@ -132,7 +132,7 @@ export async function getCampaignRecipientDialogAction(input: {
   from?: string;
   to?: string;
   customerTypeId?: string;
-  orderCategory?: string;
+  productCategoryId?: string;
 }) {
   await requireActor(CRM_OPERATOR_ROLES);
   const parsed = campaignRecipientFilterSchema.safeParse({
@@ -141,7 +141,7 @@ export async function getCampaignRecipientDialogAction(input: {
     from: input.from ? input.from : undefined,
     to: input.to ? input.to : undefined,
     customerTypeId: input.customerTypeId ? input.customerTypeId : undefined,
-    orderCategory: input.orderCategory ? input.orderCategory : undefined,
+    productCategoryId: input.productCategoryId ? input.productCategoryId.trim() : undefined,
   });
   if (!parsed.success) throw new UserFacingError("Filter penerima campaign tidak valid.");
   return getCampaignRecipientOptions(parsed.data);

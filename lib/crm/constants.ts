@@ -3,7 +3,7 @@ import type { GarmentType, OpportunityStage } from "@prisma/client";
 export const GARMENT_TYPE_LABEL: Record<GarmentType, string> = {
   JERSEY: "Jersey",
   NON_JERSEY: "Non-jersey",
-  AKSESORI: "Aksesori",
+  AKSESORI: "Aksesoris",
 };
 
 export const GARMENT_TYPE_OPTIONS: { value: GarmentType; label: string }[] = [
@@ -11,6 +11,35 @@ export const GARMENT_TYPE_OPTIONS: { value: GarmentType; label: string }[] = [
   { value: "NON_JERSEY", label: GARMENT_TYPE_LABEL.NON_JERSEY },
   { value: "AKSESORI", label: GARMENT_TYPE_LABEL.AKSESORI },
 ];
+
+/** Urutan paksa kategori produk: Jersey, lalu Non-jersey, terakhir Aksesoris. */
+export const GARMENT_TYPE_GROUP_RANK: Record<GarmentType, number> = {
+  JERSEY: 0,
+  NON_JERSEY: 1,
+  AKSESORI: 2,
+};
+
+export function garmentTypeGroupRank(value: string | null | undefined): number {
+  return value && value in GARMENT_TYPE_GROUP_RANK ? GARMENT_TYPE_GROUP_RANK[value as GarmentType] : 99;
+}
+
+/** Kelompokkan per jenis kategori tanpa mengubah urutan relatif di dalam grup (untuk drag & payload simpan). */
+export function groupProductCategories<T>(items: T[], kindOf: (item: T) => string | null | undefined): T[] {
+  return [...items].sort((a, b) => garmentTypeGroupRank(kindOf(a)) - garmentTypeGroupRank(kindOf(b)));
+}
+
+/** Urutan kanonik kategori produk: grup, lalu position, lalu nama. */
+export function sortProductCategoryRows<T extends { name: string; position: number }>(
+  items: T[],
+  kindOf: (item: T) => string | null | undefined,
+): T[] {
+  return [...items].sort(
+    (a, b) =>
+      garmentTypeGroupRank(kindOf(a)) - garmentTypeGroupRank(kindOf(b))
+      || a.position - b.position
+      || a.name.localeCompare(b.name, "id"),
+  );
+}
 
 export const PIPELINE_STAGES = [
   "FOLLOW_UP",

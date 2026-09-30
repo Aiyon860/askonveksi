@@ -1,9 +1,9 @@
 import { FileText } from "lucide-react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { PurchaseOrderDetail } from "@/components/crm/purchase-order-detail";
+import { PurchaseOrderFilterSheet } from "@/components/crm/purchase-order-filter-sheet";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
@@ -11,11 +11,7 @@ import { PageHeader } from "@/components/page-header";
 import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { SortableTableHead } from "@/components/sortable-table-head";
 import { PurchaseOrderStatusBadge } from "@/components/status-badge";
-import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { parseDocumentDateRange } from "@/lib/crm/document-list-filters";
@@ -65,6 +61,14 @@ function sortHref(state: TableState, sort: PurchaseOrderListSort) {
   return tableHref(state, { sort, direction, page: 1 });
 }
 
+function purchaseOrderStatusLabel(status: PurchaseOrderListStatus) {
+  if (status === "DRAFT") return "Draft";
+  if (status === "AGREED") return "Disepakati";
+  if (status === "SUPERSEDED") return "Digantikan";
+  if (status === "CANCELLED") return "Dibatalkan";
+  return null;
+}
+
 async function PurchaseOrdersTableSection({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const query = (first(params.q) ?? "").trim().slice(0, 80);
@@ -90,22 +94,34 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
   };
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
   const hasFilters = Boolean(query || status !== "all" || range.start);
+  const filterSummaryParts = [
+    purchaseOrderStatusLabel(status),
+    range.from && range.to ? `${range.from} s.d. ${range.to}` : range.from ? `Mulai ${range.from}` : range.to ? `Sampai ${range.to}` : null,
+  ].filter(Boolean);
+  const activeFilterCount = Number(status !== "all") + Number(Boolean(range.start));
+  const activeSummary = filterSummaryParts.length ? filterSummaryParts.join(" · ") : "Semua purchase order";
 
   return <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Daftar purchase order">
-    <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
-      <DebouncedSearchInput key={query} initialValue={query} pathname="/crm/purchase-orders" params={persistent} placeholder="Cari no. PO, produk, atau customer..." ariaLabel="Cari purchase order" className="sm:max-w-md" />
-      <form action="/crm/purchase-orders" className="flex flex-wrap items-end gap-2">
-        {query ? <input type="hidden" name="q" value={query} /> : null}
-        {pageSize !== DATA_PAGE_SIZE ? <input type="hidden" name="pageSize" value={pageSize} /> : null}
-        {sort !== "createdAt" ? <input type="hidden" name="sort" value={sort} /> : null}
-        {direction !== defaultDirection(sort) ? <input type="hidden" name="order" value={direction} /> : null}
-        <Field className="w-40 gap-1"><FieldLabel htmlFor="po-status">Status</FieldLabel><NativeSelect id="po-status" name="status" defaultValue={status}><NativeSelectOption value="all">Semua status</NativeSelectOption><NativeSelectOption value="DRAFT">Draft</NativeSelectOption><NativeSelectOption value="AGREED">Disepakati</NativeSelectOption><NativeSelectOption value="SUPERSEDED">Digantikan</NativeSelectOption><NativeSelectOption value="CANCELLED">Dibatalkan</NativeSelectOption></NativeSelect></Field>
-        <Field className="w-40 gap-1"><FieldLabel htmlFor="po-from">Dari tanggal</FieldLabel><Input key={range.from} id="po-from" name="from" type="date" max={range.today} defaultValue={range.from} /></Field>
-        <Field className="w-40 gap-1"><FieldLabel htmlFor="po-to">Sampai tanggal</FieldLabel><Input key={range.to} id="po-to" name="to" type="date" max={range.today} defaultValue={range.to} /></Field>
-        <Button type="submit" variant="outline">Terapkan</Button>
-        <Button variant="secondary" nativeButton={false} render={<Link href="/crm/purchase-orders" />}>Reset</Button>
-        <p className="ml-auto text-xs text-muted-foreground"><strong className="font-medium text-foreground">{total}</strong> purchase order</p>
-      </form>
+    <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
+      <DebouncedSearchInput key={query} initialValue={query} pathname="/crm/purchase-orders" params={persistent} placeholder="Cari no. PO, produk, atau customer..." ariaLabel="Cari purchase order" className="w-full lg:max-w-xl" />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between lg:ml-auto lg:justify-end">
+        <p className="text-xs text-muted-foreground lg:whitespace-nowrap"><strong className="font-medium text-foreground">{total}</strong> purchase order</p>
+        <div className="flex items-center gap-2">
+          {filterSummaryParts.length ? <p className="hidden max-w-80 truncate text-xs text-muted-foreground xl:block">{activeSummary}</p> : null}
+          <PurchaseOrderFilterSheet
+            query={query}
+            status={status}
+            from={range.from}
+            to={range.to}
+            today={range.today}
+            pageSize={pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize)}
+            sort={sort === "createdAt" ? undefined : sort}
+            order={direction === defaultDirection(sort) ? undefined : direction}
+            activeFilterCount={activeFilterCount}
+            activeSummary={activeSummary}
+          />
+        </div>
+      </div>
     </div>
     {items.length ? <div className="flex min-h-112 flex-1 flex-col">
       <Table className="min-w-4xl" containerClassName="min-h-0 flex-1 overflow-auto">
@@ -133,7 +149,7 @@ export default function PurchaseOrdersPage({ searchParams }: { searchParams: Sea
 function PurchaseOrdersTableFallback() {
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-hidden="true">
-      <FilterBarSkeleton searchWidth="w-full sm:max-w-md" actionWidth="w-36" controls={5} />
+      <FilterBarSkeleton searchWidth="w-full lg:max-w-xl" actionWidth="w-24" controls={1} />
       <div className="flex min-h-112 flex-1 flex-col">
         <TableSkeleton
           columns={8}

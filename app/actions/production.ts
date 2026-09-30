@@ -2,7 +2,7 @@
 
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 
 import { flashMessagePath, messageForError, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
@@ -27,6 +27,15 @@ function value(formData: FormData, key: string) {
 
 function detailPath(id: string) {
   return `/produksi/${id}`;
+}
+
+// Board di-cache unstable_cache bertag "production-board" (30 detik). `revalidatePath`
+// tidak mengosongkan cache itu, jadi tanpa `revalidateTag` kartu bisa tampak tertinggal
+// sampai 30 detik setelah dipindah. `{ expire: 0 }` membuat request berikutnya langsung
+// menunggu data segar (read-your-own-writes).
+function revalidateProductionBoard() {
+  revalidatePath("/produksi");
+  revalidateTag("production-board", { expire: 0 });
 }
 
 const DESIGN_BUCKET = "crm-po-designs";
@@ -306,7 +315,7 @@ export async function sendProductionDesignAction(formData: FormData) {
       } catch { console.error("Gagal menghapus gambar asli desain setelah masuk Produksi."); }
     }
     revalidatePath("/detail-desain");
-    revalidatePath("/produksi");
+    revalidateProductionBoard();
     return flashMessagePath("/detail-desain", "notice", "Work Order masuk ke kanban Produksi.");
   });
 }
@@ -413,8 +422,8 @@ async function moveProduction(formData: FormData) {
     } else if (parsed.data.decision === "REVERT") {
       if (targetStep.position >= currentStep.position) throw new UserFacingError("Tahap mundur hanya dapat menuju tahap sebelum tahap sekarang.");
       activityType = "STAGE_REVERTED";
-      // Mundur dengan Kendala dari pop-up → catat sebagai kendala kartu.
-      if (parsed.data.note) obstacleUpdate = parsed.data.note.slice(0, 2000);
+      // Mundur selalu mengosongkan Kendala kartu; bila pop-up diisi, teks itu menjadi Kendala baru.
+      obstacleUpdate = parsed.data.note ? parsed.data.note.slice(0, 2000) : null;
       await tx.productionStep.updateMany({
         where: { workOrderId: order.id, position: { gte: targetStep.position } },
         data: { status: "PENDING", startedAt: null, completedAt: null },
@@ -466,7 +475,7 @@ async function moveProduction(formData: FormData) {
 export async function moveProductionOptimisticAction(formData: FormData) {
   try {
     const moved = await moveProduction(formData);
-    revalidatePath("/produksi");
+    revalidateProductionBoard();
     revalidatePath(detailPath(moved.id));
     return { ok: true as const };
   } catch (error) {
@@ -492,7 +501,7 @@ export async function updateProductionObstacleAction(formData: FormData) {
       await tx.productionWorkOrder.update({ where: { id: order.id }, data: { obstacle, obstacleUpdatedAt } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_OBSTACLE_UPDATED", ["obstacle", "obstacleUpdatedAt"], { hasObstacle: Boolean(obstacle) });
     });
-    revalidatePath("/produksi");
+    revalidateProductionBoard();
     revalidatePath(detailPath(order.id));
     return { ok: true as const };
   } catch (error) {
@@ -525,7 +534,7 @@ export async function assignProductionStepAction(formData: FormData) {
       await productionAudit(tx, actor.id, parsed.data.workOrderId, "PRODUCTION_PIC_ASSIGNED", ["assigneeId"], { stepId: step.id, stage: step.stage, assigneeId: assignee.id });
     });
 
-    revalidatePath("/produksi");
+    revalidateProductionBoard();
     revalidatePath(fallback);
     return flashMessagePath(fallback, "notice", "PIC tahap diperbarui.");
   });
@@ -569,7 +578,7 @@ export async function reopenProductionAction(formData: FormData) {
       await tx.productionActivity.create({ data: { workOrderId: order.id, actorId: actor.id, type: "REOPENED", fromStage: "SELESAI", toStage: target.stage, note: parsed.data.note } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_REOPENED", ["status", "currentStage", "completedAt"], { to: target.stage });
     }, MOVE_TRANSACTION_OPTIONS);
-    revalidatePath("/produksi");
+    revalidateProductionBoard();
     revalidatePath(fallback);
     return flashMessagePath(fallback, "notice", "Work Order dibuka kembali.");
   });

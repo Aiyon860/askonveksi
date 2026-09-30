@@ -14,21 +14,16 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { paginate, RECIPIENT_PAGE_SIZE } from "@/lib/pagination";
-import {
-  CAMPAIGN_ORDER_CATEGORIES,
-  CAMPAIGN_ORDER_CATEGORY_LABEL,
-  type CampaignRecipientOption,
-} from "@/lib/whatsapp/campaigns";
+import type { CampaignRecipientOption } from "@/lib/whatsapp/campaigns";
 
 type RecipientFilters = {
   query: string;
   from: string;
   to: string;
   customerTypeId: string;
-  orderCategory: string;
 };
 
-const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "", orderCategory: "" };
+const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "" };
 
 type RecipientResult = {
   items: CampaignRecipientOption[];
@@ -157,7 +152,7 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
                   className="pl-8"
                 />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <Field className="gap-1.5">
                   <FieldLabel htmlFor="broadcast-from">Tanggal dari</FieldLabel>
                   <Input
@@ -188,22 +183,6 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
                     {customerTypes.map((type) => (
                       <NativeSelectOption key={type.id} value={type.id}>
                         {type.name}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                </Field>
-                <Field className="gap-1.5">
-                  <FieldLabel htmlFor="broadcast-category">Kategori Order</FieldLabel>
-                  <NativeSelect
-                    id="broadcast-category"
-                    value={filters.orderCategory}
-                    onChange={(event) => updateFilters({ orderCategory: event.target.value })}
-                    className="w-full"
-                  >
-                    <NativeSelectOption value="">Semua order</NativeSelectOption>
-                    {CAMPAIGN_ORDER_CATEGORIES.map((category) => (
-                      <NativeSelectOption key={category} value={category}>
-                        {CAMPAIGN_ORDER_CATEGORY_LABEL[category]}
                       </NativeSelectOption>
                     ))}
                   </NativeSelect>

@@ -726,6 +726,9 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.doesNotMatch(pageSource, /Status laporan/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
   assert.match(pageSource, /getIncome/);
+  // Default tanpa filter tanggal = tampilkan semua pemasukan (bukan bulan berjalan).
+  assert.match(pageSource, /parseOptionalFinanceDateRange/);
+  assert.doesNotMatch(pageSource, /parseFinanceDateRange/);
   assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /pajak/);
 });
@@ -893,4 +896,65 @@ test("resolver import customer mengupdate duplikat dan memakai prioritas key", (
   assert.deepEqual(lookupKeys.names, ["Budi Baru"]);
   assert.deepEqual(lookupKeys.whatsapps, ["+62 811-111-111", "0811111111"]);
   assert.deepEqual(lookupKeys.emails, ["budi@example.com"]);
+});
+
+test("peluang memakai nama kategori produk sebagai jenis pakaian", async () => {
+  const [fieldsSource, garmentFieldSource, actionSource, detailSource, validationSource, schema, migration] = await Promise.all([
+    readFile(new URL("../components/crm/opportunity-fields.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/opportunity-garment-field.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
+    readFile(new URL("../prisma/migrations/20260930010000_opportunity_product_category/migration.sql", import.meta.url), "utf8"),
+  ]);
+
+  // Opsi = nama kategori dari Master Data (PDH / PDL, Kaos Sablon, Polo Shirt, ...).
+  assert.match(fieldsSource, /OpportunityGarmentField/);
+  assert.match(fieldsSource, /categoryOptions\?:/);
+  assert.match(garmentFieldSource, /name="productCategoryId"/);
+  assert.match(garmentFieldSource, /options\.map\(\(item\) =>/);
+  // Jenis Jersey/Non-jersey tetap ditampilkan sebagai info dan dipakai saat master data kosong.
+  assert.match(garmentFieldSource, /GARMENT_TYPE_LABEL\[selected\.garmentType\]/);
+  assert.match(garmentFieldSource, /value="NON_JERSEY"/);
+  assert.match(detailSource, /categoryOptions=\{categoryOptions\}/);
+  assert.match(validationSource, /productCategoryId: optionalEntityId/);
+  assert.match(actionSource, /resolveOpportunityCategory/);
+  assert.ok(actionSource.indexOf("productCategoryId: category?.id ?? null") !== -1, "kategori terpilih disimpan ke peluang");
+  assert.match(schema, /model Opportunity \{[^}]*productCategoryId\s+String\?/s);
+  assert.match(migration, /ADD COLUMN "productCategoryId" TEXT/);
+
+  const parsed = createOpportunitySchema.safeParse({
+    customerId: "cm123456789012",
+    title: "Seragam panitia",
+    productCategoryId: "prod-category-01",
+    nextAction: "Hubungi customer",
+    nextActionAt: "2026-09-09T09:00",
+  });
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.success ? parsed.data.productCategoryId : null, "prod-category-01");
+});
+
+test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pembayaran", async () => {
+  const page = await readFile(new URL("../app/(app)/crm/invoices/page.tsx", import.meta.url), "utf8");
+  const autoRefresh = await readFile(new URL("../components/auto-refresh.tsx", import.meta.url), "utf8");
+  const invoiceDetail = await readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+
+  // Halaman memantau perubahan: tabel disegarkan berkala dan saat tab kembali aktif.
+  assert.match(page, /<AutoRefresh \/>/);
+  assert.match(autoRefresh, /router\.refresh\(\)/);
+  assert.match(autoRefresh, /document\.visibilityState === "visible"/);
+  assert.match(autoRefresh, /document\.addEventListener\("visibilitychange", refresh\)/);
+
+  // Catat pembayaran mengubah kolom status di tabel, bukan hanya isi dialog.
+  assert.match(invoiceDetail, /const loadDetail = useCallback\(/);
+  assert.match(invoiceDetail, /const reloadAfterMutation = useCallback\(/);
+  assert.match(invoiceDetail, /await loadDetail\(\);\s*startTransition\(\(\) => router\.refresh\(\)\)/);
+  assert.equal(invoiceDetail.match(/onRecorded=\{reloadAfterMutation\}/g)?.length, 2);
+
+  // Daftar invoice di-cache bertag "invoices"; `revalidatePath` saja tidak mengosongkan cache itu.
+  assert.match(actionSource, /function revalidateInvoiceList\(\) \{\s*revalidatePath\("\/crm\/invoices"\);\s*revalidateTag\("invoices", \{ expire: 0 \}\);/);
+  const paymentPaths = actionSource.slice(actionSource.indexOf("function revalidatePaymentMutationPaths"), actionSource.indexOf("async function paymentProof"));
+  assert.match(paymentPaths, /revalidateInvoiceList\(\)/);
 });

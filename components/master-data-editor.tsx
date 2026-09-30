@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { groupProductCategories } from "@/lib/crm/constants";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES } from "@/lib/pagination";
 
 export type MasterItem = {
@@ -214,7 +215,7 @@ function MasterDataPagination({
   const last = disabled ? total : Math.min(page * pageSize, total);
 
   return (
-    <div className="flex flex-col gap-4 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex min-w-0 flex-col gap-4 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs text-muted-foreground">
         Menampilkan <strong className="font-medium text-foreground">{first}</strong> hingga <strong className="font-medium text-foreground">{last}</strong> dari <strong className="font-medium text-foreground">{total}</strong> data
       </p>
@@ -352,7 +353,10 @@ export function MasterDataEditor({
     setDraftItems((currentItems) => {
       const oldIndex = currentItems.findIndex((item) => item.id === active.id);
       const newIndex = currentItems.findIndex((item) => item.id === over.id);
-      return oldIndex === -1 || newIndex === -1 ? currentItems : arrayMove(currentItems, oldIndex, newIndex);
+      if (oldIndex === -1 || newIndex === -1) return currentItems;
+      const moved = arrayMove(currentItems, oldIndex, newIndex);
+      // Kategori produk dipaksa tetap berurutan Jersey > Non-jersey > Aksesoris.
+      return kindOptions ? groupProductCategories(moved, (item) => item.kind) : moved;
     });
   }
 
@@ -361,7 +365,7 @@ export function MasterDataEditor({
       className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
       aria-label={`Daftar ${singularLabel.toLowerCase()}`}
     >
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-md">
             <InputGroup data-disabled={isEditing || undefined}>
               <InputGroupInput
@@ -380,10 +384,11 @@ export function MasterDataEditor({
             {isEditing ? (
               <p className="text-xs text-muted-foreground">
                 Seret handle pada kolom nomor untuk mengatur prioritas. Simpan untuk menerapkan seluruh perubahan.
+                {kindOptions ? " Jenis kategori selalu berurutan Jersey, Non-jersey, lalu Aksesoris." : ""}
               </p>
             ) : null}
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <p className="mr-1 text-xs text-muted-foreground" aria-live="polite">
               <strong className="font-medium text-foreground">{isEditing ? items.length : filteredItems.length}</strong> {debouncedQuery && !isEditing ? "data ditemukan" : "data tercatat"}
             </p>
@@ -405,7 +410,7 @@ export function MasterDataEditor({
           </div>
         </div>
 
-        <div className="flex min-h-112 flex-1 flex-col">
+        <div className="flex min-h-112 min-w-0 flex-1 flex-col">
           {visibleItems.length ? (
             <DndContext
               sensors={sensors}

@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { ArrowLeft, ImageOff } from "lucide-react";
 import { notFound } from "next/navigation";
 
-import { DesignAnnotationEditor } from "@/components/production/design-annotation-editor";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { designAnnotationsSchema } from "@/lib/production/design-annotations";
 import { getProductionDesignDetail } from "@/lib/production/design-detail";
+import { DesignAnnotationEditor } from "@/components/production/design-annotation-editor-lazy";
 
 // Token gambar berasal dari path penyimpanan yang selalu baru setiap desain
 // diganti, sehingga URL gambar berubah dan anotasi tidak perlu bergantung pada

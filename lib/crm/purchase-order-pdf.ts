@@ -98,13 +98,18 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
 
   const visibleAssets = embeddedAssets;
   if (visibleAssets.length) {
-    const boxWidth = 250;
-    const boxHeight = 112;
-    visibleAssets.forEach((asset, index) => {
-      const column = index % 2;
-      const row = Math.floor(index / 2);
-      const x = margin + column * 262;
-      const boxY = y - row * 126 - boxHeight;
+    const boxWidth = A4.width - margin * 2;
+    const boxHeight = 300;
+    const rowHeight = boxHeight + 14;
+    for (const asset of visibleAssets) {
+      if (y - rowHeight < 40) {
+        pageNumber += 1;
+        page = document.addPage([A4.width, A4.height]);
+        decorate(page, pageNumber);
+        y = A4.height - margin;
+      }
+      const x = margin;
+      const boxY = y - rowHeight;
       page.drawRectangle({ x, y: boxY, width: boxWidth, height: boxHeight, borderWidth: 0.75, borderColor: rgb(0.68, 0.68, 0.68) });
       if (asset.image) {
         const scaled = asset.image.scaleToFit(boxWidth - 12, boxHeight - 30);
@@ -114,8 +119,9 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
         page.drawText(safe(asset.originalName), { x: x + 8, y: boxY + 28, size: 7, font: regular, color: rgb(0.42, 0.42, 0.42) });
       }
       page.drawText(safe(asset.label), { x: x + 6, y: boxY + boxHeight - 13, size: 7, font: bold });
-    });
-    y -= Math.ceil(visibleAssets.length / 2) * 126 + 4;
+      y -= rowHeight + 4;
+    }
+    y -= 4;
   }
 
   const sizeNames = [...new Set(data.sizes.map((item) => item.size))];

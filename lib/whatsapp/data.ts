@@ -1,9 +1,10 @@
 import "server-only";
 
-import type { GarmentType, Prisma, WhatsAppJobStatus } from "@prisma/client";
+import type { Prisma, WhatsAppJobStatus } from "@prisma/client";
 
 import { CRM_OPERATOR_ROLES, hasRole, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
+import { getActiveProductCategories } from "@/lib/master-data";
 import { getPrismaClient } from "@/lib/prisma";
 import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
 import { parseJakartaDateTime, MAX_CAMPAIGN_RECIPIENTS, type CampaignRecipientOption } from "@/lib/whatsapp/campaigns";
@@ -76,9 +77,54 @@ export async function getWhatsAppAccounts() {
   return getPrismaClient().whatsAppAccount.findMany({ orderBy: [{ sendEnabled: "desc" }, { label: "asc" }] });
 }
 
-export async function getWhatsAppTemplates() {
+export type WhatsAppTemplateSort = "name" | "triggerType" | "isActive" | "updatedAt";
+export type WhatsAppTemplateTriggerFilter = "all" | "MANUAL" | "NEXT_ACTION" | "REACTIVATION" | "INVOICE_ISSUED" | "INVOICE_DUE";
+export type WhatsAppTemplateStatusFilter = "all" | "active" | "inactive";
+
+export type WhatsAppTemplateTableInput = {
+  query?: string;
+  trigger?: WhatsAppTemplateTriggerFilter;
+  status?: WhatsAppTemplateStatusFilter;
+  page?: number;
+  pageSize?: number;
+  sort?: WhatsAppTemplateSort;
+  direction?: "asc" | "desc";
+};
+
+export async function getWhatsAppTemplates(input: WhatsAppTemplateTableInput) {
   await requireActor(CRM_OPERATOR_ROLES);
-  return getPrismaClient().whatsAppTemplate.findMany({ orderBy: [{ triggerType: "asc" }, { name: "asc" }] });
+  const prisma = getPrismaClient();
+  const query = (input.query ?? "").trim().slice(0, 120);
+  const trigger = input.trigger ?? "all";
+  const status = input.status ?? "all";
+  const page = Math.max(1, input.page ?? 1);
+  const pageSize = input.pageSize ?? 20;
+  const sort = input.sort ?? "updatedAt";
+  const direction = input.direction ?? "desc";
+  const where = {
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query, mode: "insensitive" as const } },
+            { body: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+    ...(trigger === "all" ? {} : { triggerType: trigger }),
+    ...(status === "all" ? {} : { isActive: status === "active" }),
+  } satisfies Prisma.WhatsAppTemplateWhereInput;
+  const orderBy = [{ [sort]: direction }, { id: "asc" as const }] satisfies Prisma.WhatsAppTemplateOrderByWithRelationInput[];
+  const [items, total] = await Promise.all([
+    prisma.whatsAppTemplate.findMany({
+      where,
+      select: { id: true, name: true, triggerType: true, body: true, isActive: true, version: true, updatedAt: true },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.whatsAppTemplate.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
@@ -113,7 +159,7 @@ type RecipientFilterInput = {
   from?: string;
   to?: string;
   customerTypeId?: string;
-  orderCategory?: GarmentType;
+  productCategoryId?: string;
 };
 
 /**
@@ -132,14 +178,15 @@ async function queryRecipientOptions(input: RecipientFilterInput & { campaignId?
     { companyName: { contains: input.query, mode: "insensitive" } },
   ] });
   if (input.customerTypeId) filters.push({ customerTypeId: input.customerTypeId });
-  if (input.orderCategory) filters.push({ opportunities: { some: { garmentType: input.orderCategory } } });
+  // Kategori order = kategori produk Data Master pada PO (strict: PO tanpa kategori tidak ikut).
+  if (input.productCategoryId) filters.push({ opportunities: { some: { purchaseOrders: { some: { productCategoryId: input.productCategoryId } } } } });
   if (dateFilter) filters.push({ OR: [
     { opportunities: { some: { salesOrders: { some: { acceptedAt: dateFilter } } } } },
     { opportunities: { some: { salesOrders: { some: { payment: { is: { paidAt: dateFilter } } } } } } },
   ] });
   const where = { AND: filters } satisfies Prisma.CustomerWhereInput;
 
-  const [customers, total, saved, customerTypes] = await Promise.all([
+  const [customers, total, saved, customerTypes, productCategories] = await Promise.all([
     prisma.customer.findMany({
       where,
       select: {
@@ -171,6 +218,7 @@ async function queryRecipientOptions(input: RecipientFilterInput & { campaignId?
         })
       : Promise.resolve([]),
     prisma.customerType.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    getActiveProductCategories(),
   ]);
 
   const items: CampaignRecipientOption[] = customers.map((customer) => {
@@ -208,6 +256,7 @@ async function queryRecipientOptions(input: RecipientFilterInput & { campaignId?
     truncated: total > input.limit,
     selectedIds: saved.map((item) => item.customerId),
     customerTypes,
+    productCategories: productCategories.map(({ id, name }) => ({ id, name })),
   };
 }
 
@@ -221,7 +270,7 @@ export async function getCampaignRecipientOptions(input: {
   from?: string;
   to?: string;
   customerTypeId?: string;
-  orderCategory?: GarmentType;
+  productCategoryId?: string;
 }) {
   await requireActor(CRM_OPERATOR_ROLES);
   return queryRecipientOptions({ ...input, limit: CAMPAIGN_RECIPIENT_LIMIT });
