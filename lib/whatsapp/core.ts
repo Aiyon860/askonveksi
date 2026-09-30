@@ -18,6 +18,16 @@ export const WHATSAPP_TEMPLATE_VARIABLES = [
 
 export type WhatsAppTemplateVariables = Partial<Record<(typeof WHATSAPP_TEMPLATE_VARIABLES)[number], string>>;
 
+export const WHATSAPP_TRIGGER_LABELS = {
+  MANUAL: "Chat manual",
+  NEXT_ACTION: "Tindak lanjut peluang",
+  REACTIVATION: "Reminder repeat order",
+  INVOICE_ISSUED: "Invoice diterbitkan",
+  INVOICE_DUE: "Pengingat pembayaran",
+} as const;
+
+export type WhatsAppTriggerType = keyof typeof WHATSAPP_TRIGGER_LABELS;
+
 export const DEFAULT_INVOICE_ISSUED_TEMPLATE = "Halo {{customer_name}}, invoice {{invoice_no}} dari {{business_name}} sebesar {{invoice_total}} telah diterbitkan. Batas pembayaran: {{invoice_due_date}}. Dokumen invoice terlampir. Mohon konfirmasi setelah pembayaran. Terima kasih.";
 export const DEFAULT_INVOICE_DUE_TEMPLATE = "Halo {{customer_name}}, pengingat pembayaran {{payment_label}} untuk invoice {{invoice_no}} sebesar {{payment_amount}} jatuh tempo pada {{payment_due_date}}. Mohon konfirmasi setelah pembayaran. Terima kasih.";
 export const DEFAULT_ORDER_REMINDER_TEMPLATE = "Halo {{customer_name}}, sudah waktunya meninjau kebutuhan order berikutnya di {{business_name}}. Jika ada kebutuhan produksi baru, balas pesan ini dan kami akan membuat order baru dari awal.";

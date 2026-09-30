@@ -76,9 +76,54 @@ export async function getWhatsAppAccounts() {
   return getPrismaClient().whatsAppAccount.findMany({ orderBy: [{ sendEnabled: "desc" }, { label: "asc" }] });
 }
 
-export async function getWhatsAppTemplates() {
+export type WhatsAppTemplateSort = "name" | "triggerType" | "isActive" | "updatedAt";
+export type WhatsAppTemplateTriggerFilter = "all" | "MANUAL" | "NEXT_ACTION" | "REACTIVATION" | "INVOICE_ISSUED" | "INVOICE_DUE";
+export type WhatsAppTemplateStatusFilter = "all" | "active" | "inactive";
+
+export type WhatsAppTemplateTableInput = {
+  query?: string;
+  trigger?: WhatsAppTemplateTriggerFilter;
+  status?: WhatsAppTemplateStatusFilter;
+  page?: number;
+  pageSize?: number;
+  sort?: WhatsAppTemplateSort;
+  direction?: "asc" | "desc";
+};
+
+export async function getWhatsAppTemplates(input: WhatsAppTemplateTableInput) {
   await requireActor(CRM_OPERATOR_ROLES);
-  return getPrismaClient().whatsAppTemplate.findMany({ orderBy: [{ triggerType: "asc" }, { name: "asc" }] });
+  const prisma = getPrismaClient();
+  const query = (input.query ?? "").trim().slice(0, 120);
+  const trigger = input.trigger ?? "all";
+  const status = input.status ?? "all";
+  const page = Math.max(1, input.page ?? 1);
+  const pageSize = input.pageSize ?? 20;
+  const sort = input.sort ?? "updatedAt";
+  const direction = input.direction ?? "desc";
+  const where = {
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query, mode: "insensitive" as const } },
+            { body: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+    ...(trigger === "all" ? {} : { triggerType: trigger }),
+    ...(status === "all" ? {} : { isActive: status === "active" }),
+  } satisfies Prisma.WhatsAppTemplateWhereInput;
+  const orderBy = [{ [sort]: direction }, { id: "asc" as const }] satisfies Prisma.WhatsAppTemplateOrderByWithRelationInput[];
+  const [items, total] = await Promise.all([
+    prisma.whatsAppTemplate.findMany({
+      where,
+      select: { id: true, name: true, triggerType: true, body: true, isActive: true, version: true, updatedAt: true },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.whatsAppTemplate.count({ where }),
+  ]);
+  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
 export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
