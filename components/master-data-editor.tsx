@@ -34,19 +34,27 @@ import { DATA_PAGE_SIZE, DATA_PAGE_SIZES } from "@/lib/pagination";
 export type MasterItem = {
   id: string;
   name: string;
-  description: string | null;
+  description?: string | null;
+  kind?: string | null;
   position: number;
   _count: { customers: number };
 };
 
-type MasterDataDraft = Omit<MasterItem, "description"> & {
+export type MasterKindOption = { value: string; label: string };
+
+type MasterDataDraft = Omit<MasterItem, "description" | "kind"> & {
   description: string;
+  kind: string;
 };
 
 export type MasterAction = (formData: FormData) => Promise<never>;
 
-function createDraft(items: MasterItem[]): MasterDataDraft[] {
-  return items.map((item) => ({ ...item, description: item.description ?? "" }));
+function createDraft(items: MasterItem[], kindOptions?: MasterKindOption[]): MasterDataDraft[] {
+  return items.map((item) => ({
+    ...item,
+    description: item.description ?? "",
+    kind: item.kind ?? kindOptions?.[0]?.value ?? "",
+  }));
 }
 
 function SortableMasterDataRow({
@@ -54,6 +62,10 @@ function SortableMasterDataRow({
   number,
   isEditing,
   singularLabel,
+  nameLabel,
+  kindLabel,
+  kindOptions,
+  showKind,
   deleteAction,
   onChange,
 }: {
@@ -61,8 +73,12 @@ function SortableMasterDataRow({
   number: number;
   isEditing: boolean;
   singularLabel: string;
+  nameLabel: string;
+  kindLabel?: string;
+  kindOptions?: MasterKindOption[];
+  showKind: boolean;
   deleteAction: MasterAction;
-  onChange: (id: string, field: "name" | "description", value: string) => void;
+  onChange: (id: string, field: "name" | "description" | "kind", value: string) => void;
 }) {
   const {
     attributes,
@@ -112,27 +128,46 @@ function SortableMasterDataRow({
             required
             minLength={2}
             maxLength={80}
-            aria-label={`Nama ${singularLabel.toLowerCase()} urutan ${number}`}
+            aria-label={`${nameLabel} ${singularLabel.toLowerCase()} urutan ${number}`}
             onChange={(event) => onChange(item.id, "name", event.target.value)}
           />
         ) : (
           <span className="font-medium">{item.name}</span>
         )}
       </TableCell>
-      <TableCell className="whitespace-normal">
-        {isEditing ? (
-          <Input
-            value={item.description}
-            maxLength={500}
-            aria-label={`Deskripsi ${item.name}`}
-            onChange={(event) => onChange(item.id, "description", event.target.value)}
-          />
-        ) : item.description ? (
-          item.description
-        ) : (
-          <span className="text-muted-foreground">Tidak ada deskripsi</span>
-        )}
-      </TableCell>
+      {showKind ? (
+        <TableCell>
+          {isEditing && kindOptions ? (
+            <NativeSelect
+              size="sm"
+              value={item.kind}
+              aria-label={`${kindLabel} ${item.name}`}
+              onChange={(event) => onChange(item.id, "kind", event.target.value)}
+            >
+              {kindOptions.map((option) => (
+                <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>
+              ))}
+            </NativeSelect>
+          ) : (
+            kindOptions?.find((option) => option.value === item.kind)?.label ?? item.kind ?? "-"
+          )}
+        </TableCell>
+      ) : (
+        <TableCell className="whitespace-normal">
+          {isEditing ? (
+            <Input
+              value={item.description}
+              maxLength={500}
+              aria-label={`Deskripsi ${item.name}`}
+              onChange={(event) => onChange(item.id, "description", event.target.value)}
+            />
+          ) : item.description ? (
+            item.description
+          ) : (
+            <span className="text-muted-foreground">Tidak ada deskripsi</span>
+          )}
+        </TableCell>
+      )}
       <TableCell className="text-center font-mono tabular-nums">{item._count.customers}</TableCell>
       <TableCell className="text-right">
         {isEditing ? null : (
@@ -240,18 +275,24 @@ function MasterDataPagination({
 export function MasterDataEditor({
   items,
   singularLabel,
+  nameLabel = "Nama",
+  kindLabel,
+  kindOptions,
   updateAction,
   deleteAction,
   usageLabel = "Jumlah customer",
 }: {
   items: MasterItem[];
   singularLabel: string;
+  nameLabel?: string;
+  kindLabel?: string;
+  kindOptions?: MasterKindOption[];
   updateAction: MasterAction;
   deleteAction: MasterAction;
   usageLabel?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [draftItems, setDraftItems] = useState(() => createDraft(items));
+  const [draftItems, setDraftItems] = useState(() => createDraft(items, kindOptions));
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -274,21 +315,22 @@ export function MasterDataEditor({
     if (!debouncedQuery) return draftItems;
     return draftItems.filter((item) => (
       item.name.toLocaleLowerCase("id").includes(debouncedQuery)
-      || item.description.toLocaleLowerCase("id").includes(debouncedQuery)
+      || (item.description ?? "").toLocaleLowerCase("id").includes(debouncedQuery)
+      || (kindOptions?.find((option) => option.value === item.kind)?.label ?? "").toLocaleLowerCase("id").includes(debouncedQuery)
     ));
-  }, [debouncedQuery, draftItems]);
+  }, [debouncedQuery, draftItems, kindOptions]);
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const visibleItems = isEditing
     ? draftItems
     : filteredItems.slice((page - 1) * pageSize, page * pageSize);
 
   function startEditing() {
-    setDraftItems(createDraft(items));
+    setDraftItems(createDraft(items, kindOptions));
     setIsEditing(true);
   }
 
   function cancelEditing() {
-    setDraftItems(createDraft(items));
+    setDraftItems(createDraft(items, kindOptions));
     setIsEditing(false);
   }
 
@@ -297,7 +339,7 @@ export function MasterDataEditor({
     setPage(1);
   }
 
-  function updateDraft(id: string, field: "name" | "description", value: string) {
+  function updateDraft(id: string, field: "name" | "description" | "kind", value: string) {
     setDraftItems((currentItems) => currentItems.map((item) => (
       item.id === id ? { ...item, [field]: value } : item
     )));
@@ -327,7 +369,7 @@ export function MasterDataEditor({
                 maxLength={80}
                 value={query}
                 disabled={isEditing}
-                placeholder="Cari nama atau deskripsi..."
+                placeholder={kindOptions ? `Cari nama atau ${kindLabel?.toLocaleLowerCase("id") ?? "jenis"}...` : "Cari nama atau deskripsi..."}
                 aria-label={`Cari ${singularLabel.toLowerCase()}`}
                 onChange={(event) => setQuery(event.target.value)}
               />
@@ -350,7 +392,9 @@ export function MasterDataEditor({
                 <input
                   type="hidden"
                   name="items"
-                  value={JSON.stringify(draftItems.map(({ id, name, description }) => ({ id, name, description })))}
+                  value={JSON.stringify(draftItems.map(({ id, name, description, kind }) => (
+                    kindOptions ? { id, name, kind } : { id, name, description }
+                  )))}
                 />
                 <Button type="button" variant="outline" size="sm" onClick={cancelEditing}>Batal</Button>
                 <SubmitButton size="sm" pendingLabel="Menyimpan...">Simpan perubahan</SubmitButton>
@@ -377,8 +421,12 @@ export function MasterDataEditor({
                 <TableHeader className="sticky top-0 bg-muted">
                   <TableRow className="hover:bg-muted">
                     <TableHead className="w-24">No</TableHead>
-                    <TableHead className="min-w-56">Nama</TableHead>
-                    <TableHead className="min-w-80">Deskripsi</TableHead>
+                    <TableHead className="min-w-56">{nameLabel}</TableHead>
+                    {kindOptions ? (
+                      <TableHead className="min-w-40">{kindLabel}</TableHead>
+                    ) : (
+                      <TableHead className="min-w-80">Deskripsi</TableHead>
+                    )}
                     <TableHead className="w-32 text-center">{usageLabel}</TableHead>
                     <TableHead className="w-32 text-right">Aksi</TableHead>
                   </TableRow>
@@ -392,6 +440,10 @@ export function MasterDataEditor({
                         number={isEditing ? index + 1 : (page - 1) * pageSize + index + 1}
                         isEditing={isEditing}
                         singularLabel={singularLabel}
+                        nameLabel={nameLabel}
+                        kindLabel={kindLabel}
+                        kindOptions={kindOptions}
+                        showKind={Boolean(kindOptions)}
                         deleteAction={deleteAction}
                         onChange={updateDraft}
                       />

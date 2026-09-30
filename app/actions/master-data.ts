@@ -9,11 +9,17 @@ import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import {
   bulkUpdateMasterDataSchema,
+  bulkUpdateProductCategoriesSchema,
   businessProfileSchema,
   firstValidationMessage,
+  productCategoryFieldsSchema,
   sortableMasterDataFieldsSchema,
 } from "@/lib/crm/validation";
-import { parseMasterDataWorkbook, type MasterDataExcelRow } from "@/lib/master-data-excel";
+import {
+  parseMasterDataWorkbook,
+  PRODUCT_CATEGORY_EXCEL_KIND,
+  type MasterDataExcelRow,
+} from "@/lib/master-data-excel";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -21,14 +27,16 @@ function fields(formData: FormData) {
   return { name: formData.get("name"), description: formData.get("description"), position: formData.get("position") };
 }
 
-async function assertUniqueName(kind: "customerType" | "leadSource" | "paymentMethod", name: string, excludedId?: string) {
+async function assertUniqueName(kind: "customerType" | "leadSource" | "paymentMethod" | "productCategory", name: string, excludedId?: string) {
   const prisma = getPrismaClient();
   const where = { name: { equals: name, mode: "insensitive" as const }, ...(excludedId ? { id: { not: excludedId } } : {}) };
   const existing = kind === "customerType"
     ? await prisma.customerType.findFirst({ where, select: { id: true } })
     : kind === "leadSource"
       ? await prisma.leadSource.findFirst({ where, select: { id: true } })
-      : await prisma.paymentMethod.findFirst({ where, select: { id: true } });
+      : kind === "productCategory"
+        ? await prisma.productCategory.findFirst({ where, select: { id: true } })
+        : await prisma.paymentMethod.findFirst({ where, select: { id: true } });
   if (existing) throw new UserFacingError("Nama sudah digunakan. Gunakan nama lain.");
 }
 
@@ -582,10 +590,13 @@ export async function bulkUpdateGarmentSizesAction(formData: FormData) {
   });
 }
 
-async function countUsed(kind: "customerType" | "leadSource" | "garmentSize" | "paymentMethod", id: string) {
+async function countUsed(kind: "customerType" | "leadSource" | "garmentSize" | "paymentMethod" | "productCategory", id: string) {
   const prisma = getPrismaClient();
   if (kind === "customerType") {
     return prisma.customer.count({ where: { customerTypeId: id } });
+  }
+  if (kind === "productCategory") {
+    return prisma.purchaseOrder.count({ where: { productCategoryId: id } });
   }
   if (kind === "leadSource") {
     const [customers, opportunities] = await Promise.all([
@@ -678,6 +689,155 @@ export async function deletePaymentMethodAction(formData: FormData) {
     revalidatePath("/master-data/payment-methods");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/payment-methods", "notice", `Metode pembayaran "${current.name}" berhasil dihapus.`);
+  });
+}
+
+async function importProductCategoryRows(actorId: string, rows: MasterDataExcelRow[]) {
+  await getPrismaClient().$transaction(async (tx) => {
+    const currentItems = await tx.productCategory.findMany({
+      select: { id: true, name: true, garmentType: true, position: true, isActive: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    });
+    const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
+    if (currentByName.size !== currentItems.length) throw new UserFacingError("Data kategori produk memiliki nama duplikat. Rapikan data sebelum import.");
+
+    const importedIds = new Set<string>();
+    for (const [position, row] of rows.entries()) {
+      const garmentType = row.kind === "JERSEY" || row.kind === "NON_JERSEY" || row.kind === "AKSESORI" ? row.kind : null;
+      if (!garmentType) throw new UserFacingError(`${PRODUCT_CATEGORY_EXCEL_KIND.header} pada data "${row.name}" tidak dikenali.`);
+      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      if (!current) {
+        const created = await tx.productCategory.create({ data: { name: row.name, garmentType, position }, select: { id: true } });
+        importedIds.add(created.id);
+        await tx.auditEvent.create({ data: { actorId, entityType: "ProductCategory", entityId: created.id, action: "PRODUCT_CATEGORY_CREATED", changedFields: ["name", "garmentType", "position"] } });
+        continue;
+      }
+      importedIds.add(current.id);
+      const changedFields = [
+        current.name !== row.name ? "name" : null,
+        current.garmentType !== garmentType ? "garmentType" : null,
+        current.position !== position ? "position" : null,
+        !current.isActive ? "isActive" : null,
+      ].filter((field): field is string => field !== null);
+      if (!changedFields.length) continue;
+      await tx.productCategory.update({ where: { id: current.id }, data: { name: row.name, garmentType, position, isActive: true } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "ProductCategory", entityId: current.id, action: "PRODUCT_CATEGORY_UPDATED", changedFields } });
+    }
+
+    let position = rows.length;
+    for (const item of currentItems) {
+      if (importedIds.has(item.id)) continue;
+      if (item.position === position) {
+        position += 1;
+        continue;
+      }
+      await tx.productCategory.update({ where: { id: item.id }, data: { position } });
+      await tx.auditEvent.create({ data: { actorId, entityType: "ProductCategory", entityId: item.id, action: "PRODUCT_CATEGORY_UPDATED", changedFields: ["position"] } });
+      position += 1;
+    }
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function createProductCategoryAction(formData: FormData) {
+  return runRedirectingAction("/master-data/product-categories", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const parsed = productCategoryFieldsSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    await assertUniqueName("productCategory", parsed.data.name);
+    await getPrismaClient().$transaction(async (tx) => {
+      const lastItem = await tx.productCategory.aggregate({ _max: { position: true } });
+      const created = await tx.productCategory.create({
+        data: { name: parsed.data.name, garmentType: parsed.data.kind, position: (lastItem._max.position ?? -1) + 1 },
+        select: { id: true },
+      });
+      await tx.auditEvent.create({
+        data: { actorId: actor.id, entityType: "ProductCategory", entityId: created.id, action: "PRODUCT_CATEGORY_CREATED", changedFields: ["name", "garmentType", "position"] },
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/product-categories");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/product-categories", "notice", "Kategori produk berhasil dibuat.");
+  });
+}
+
+export async function importProductCategoriesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/product-categories", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rows = await parseMasterDataWorkbook(excelFile(formData), 80, PRODUCT_CATEGORY_EXCEL_KIND);
+    await importProductCategoryRows(actor.id, rows);
+    revalidatePath("/master-data/product-categories");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/product-categories", "notice", "Import kategori produk berhasil.");
+  });
+}
+
+export async function bulkUpdateProductCategoriesAction(formData: FormData) {
+  return runRedirectingAction("/master-data/product-categories", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rawItems = formData.get("items");
+    if (typeof rawItems !== "string" || rawItems.length > 200_000) throw new UserFacingError("Data kategori produk tidak valid. Muat ulang lalu coba lagi.");
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawItems);
+    } catch {
+      throw new UserFacingError("Data kategori produk tidak valid. Muat ulang lalu coba lagi.");
+    }
+    const parsed = bulkUpdateProductCategoriesSchema.safeParse(payload);
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const submittedIds = new Set(parsed.data.map((item) => item.id));
+    const normalizedNames = parsed.data.map((item) => item.name.toLocaleLowerCase("id-ID"));
+    if (submittedIds.size !== parsed.data.length || new Set(normalizedNames).size !== normalizedNames.length) {
+      throw new UserFacingError("ID dan nama kategori produk tidak boleh duplikat.");
+    }
+
+    await getPrismaClient().$transaction(async (tx) => {
+      const currentItems = await tx.productCategory.findMany({ select: { id: true, name: true, garmentType: true, position: true, isActive: true } });
+      if (currentItems.length !== parsed.data.length || currentItems.some((item) => !submittedIds.has(item.id))) {
+        throw new UserFacingError("Daftar kategori produk sudah berubah. Muat ulang lalu coba lagi.");
+      }
+      const currentById = new Map(currentItems.map((item) => [item.id, item]));
+      for (const item of parsed.data) {
+        const current = currentById.get(item.id);
+        if (current && current.name !== item.name) await tx.productCategory.update({ where: { id: item.id }, data: { name: `temporary-${randomUUID()}` } });
+      }
+      for (const [position, item] of parsed.data.entries()) {
+        const current = currentById.get(item.id);
+        if (!current) throw new UserFacingError("Kategori produk tidak ditemukan. Muat ulang lalu coba lagi.");
+        const changedFields = [
+          current.name !== item.name ? "name" : null,
+          current.garmentType !== item.kind ? "garmentType" : null,
+          current.position !== position ? "position" : null,
+          !current.isActive ? "isActive" : null,
+        ].filter((field): field is string => field !== null);
+        if (!changedFields.length) continue;
+        await tx.productCategory.update({ where: { id: item.id }, data: { name: item.name, garmentType: item.kind, position, isActive: true } });
+        await tx.auditEvent.create({
+          data: { actorId: actor.id, entityType: "ProductCategory", entityId: item.id, action: "PRODUCT_CATEGORY_UPDATED", changedFields },
+        });
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/product-categories");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/product-categories", "notice", "Kategori produk berhasil diperbarui.");
+  });
+}
+
+export async function deleteProductCategoryAction(formData: FormData) {
+  return runRedirectingAction("/master-data/product-categories", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const id = formData.get("id");
+    if (typeof id !== "string" || !id) throw new UserFacingError("Kategori produk tidak ditemukan. Muat ulang halaman.");
+    const current = await getPrismaClient().productCategory.findUnique({ where: { id }, select: { name: true } });
+    if (!current) throw new UserFacingError("Kategori produk tidak ditemukan atau sudah dihapus.");
+    const used = await countUsed("productCategory", id);
+    if (used > 0) throw new UserFacingError(`Kategori "${current.name}" masih digunakan oleh ${used} PO dan tidak bisa dihapus.`);
+    await getPrismaClient().$transaction(async (tx) => {
+      await tx.productCategory.delete({ where: { id } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "ProductCategory", entityId: id, action: "PRODUCT_CATEGORY_DELETED", changedFields: ["name", "garmentType", "position"] } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    revalidatePath("/master-data/product-categories");
+    revalidatePath("/crm");
+    return flashMessagePath("/master-data/product-categories", "notice", `Kategori "${current.name}" berhasil dihapus.`);
   });
 }
 

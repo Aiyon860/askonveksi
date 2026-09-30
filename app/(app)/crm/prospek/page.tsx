@@ -6,6 +6,7 @@ import { UsersRound } from "lucide-react";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
+import { NewLeadForm } from "@/components/crm/new-lead-form";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { ProspectStatusBadge } from "@/components/status-badge";
@@ -15,10 +16,13 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
+import { getCurrentActor } from "@/lib/auth/session";
 import { STAGE_LABEL } from "@/lib/crm/constants";
 import { getProspects, type ProspectSort, type SortDirection } from "@/lib/crm/data";
 import { parseOpenDateRange } from "@/lib/crm/document-list-filters";
 import { formatDate } from "@/lib/crm/format";
+import { getCustomerFormOptions } from "@/lib/master-data";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -56,7 +60,11 @@ async function ProspectsTable({ searchParams }: { searchParams: SearchParams }) 
   const sort = SORTS.find((item) => item === first(params.sort)) ?? "createdAt";
   const direction = DIRECTIONS.find((item) => item === first(params.order)) ?? defaultDirection(sort);
   const state = { query, from: range.from, to: range.to, page, pageSize, sort, direction } satisfies TableState;
-  const { items, total, pageCount } = await getProspects({ query, start: range.start, end: range.end, page, pageSize, sort, direction });
+  const [{ items, total, pageCount }, formOptions, actor] = await Promise.all([
+    getProspects({ query, start: range.start, end: range.end, page, pageSize, sort, direction }),
+    getCustomerFormOptions(),
+    getCurrentActor(),
+  ]);
   const persistent = { q: query || undefined, from: range.from || undefined, to: range.to || undefined, sort: sort === "createdAt" ? undefined : sort, order: direction === defaultDirection(sort) ? undefined : direction, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
   const hasFilters = Boolean(query || range.from || range.to);
@@ -73,6 +81,7 @@ async function ProspectsTable({ searchParams }: { searchParams: SearchParams }) 
         <Field className="w-40 gap-1"><FieldLabel htmlFor="prospect-to">Sampai tanggal</FieldLabel><Input id="prospect-to" name="to" type="date" defaultValue={range.to} /></Field>
         <Button type="submit" variant="outline">Terapkan</Button>
         <Button variant="secondary" nativeButton={false} render={<Link href="/crm/prospek" />}>Reset</Button>
+        {actor && hasRole(actor.role, CRM_OPERATOR_ROLES) ? <NewLeadForm {...formOptions} /> : null}
         <p className="ml-auto text-xs text-muted-foreground"><strong className="font-medium text-foreground">{total}</strong> prospek</p>
       </form>
     </div>

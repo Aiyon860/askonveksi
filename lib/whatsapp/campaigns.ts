@@ -12,6 +12,7 @@ export const CAMPAIGN_ORDER_CATEGORIES = ["JERSEY", "NON_JERSEY"] as const satis
 export const CAMPAIGN_ORDER_CATEGORY_LABEL: Record<GarmentType, string> = {
   JERSEY: "Jersey",
   NON_JERSEY: "Non-jersey",
+  AKSESORI: "Aksesori",
 };
 
 export type CampaignRecipientOption = {

@@ -111,6 +111,7 @@ export async function POST(request: Request) {
           customerId: customer.id,
           leadSourceId: leadSource.id,
           publicSubmissionKey: parsed.data.submissionKey,
+          origin: "LANDING_PAGE",
           title: parsed.data.productName,
           productName: parsed.data.productName,
         },

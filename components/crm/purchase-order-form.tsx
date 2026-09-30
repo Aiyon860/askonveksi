@@ -15,17 +15,19 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { DECORATION_METHOD_LABEL, DECORATION_METHODS, type DecorationMethod } from "@/lib/crm/constants";
+import { DECORATION_METHOD_LABEL, DECORATION_METHODS, GARMENT_TYPE_LABEL, type DecorationMethod } from "@/lib/crm/constants";
 import { CUSTOM_PRODUCTION_DEADLINE_VALUE, isProductionDeadlinePreset, productionDeadlineOptions } from "@/lib/crm/production-deadline";
 import { cn } from "@/lib/utils";
 
 type SizeOption = { id: string; name: string };
+export type ProductCategoryOption = { id: string; name: string; garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" };
 type MatrixRow = { sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number };
 type RosterRow = { key: string; memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" | "" };
 type SleeveLength = MatrixRow["sleeveLength"];
 
 type PurchaseOrderFormValues = {
-  garmentType: "JERSEY" | "NON_JERSEY" | null;
+  garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
+  productCategoryId: string | null;
   productName: string;
   material: string;
   baseColor: string;
@@ -50,6 +52,7 @@ function jakartaToday() {
 export function PurchaseOrderForm({
   opportunityId,
   sizeOptions,
+  categoryOptions,
   draft,
   initialValues,
   sourcePurchaseOrderId,
@@ -58,6 +61,7 @@ export function PurchaseOrderForm({
 }: {
   opportunityId: string;
   sizeOptions: SizeOption[];
+  categoryOptions?: ProductCategoryOption[];
   draft?: Draft;
   initialValues?: PurchaseOrderFormValues;
   sourcePurchaseOrderId?: string;
@@ -65,6 +69,7 @@ export function PurchaseOrderForm({
   purchaseOrderNoPreview?: string;
 }) {
   const values = draft ?? initialValues;
+  const hasCategoryOptions = Boolean(categoryOptions?.length);
   const orderDate = values?.orderDate || jakartaToday();
   const fieldKey = draft?.id ?? sourcePurchaseOrderId ?? "new";
   const matrixByKey = useMemo(() => new Map(values?.sizes.map((item) => [`${item.sleeveLength}:${item.sizeId ?? item.size.toLocaleLowerCase("id-ID")}`, item.quantity])), [values]);
@@ -85,6 +90,13 @@ export function PurchaseOrderForm({
   })) ?? []);
   const [rosterMode, setRosterMode] = useState<"none" | "manual" | "excel">(values?.roster.length ? "manual" : "none");
   const [garmentType, setGarmentType] = useState(values?.garmentType ?? "");
+  const [productCategoryId, setProductCategoryId] = useState(() => {
+    const saved = values?.productCategoryId;
+    return saved && categoryOptions?.some((category) => category.id === saved) ? saved : "";
+  });
+  const selectedCategory = categoryOptions?.find((category) => category.id === productCategoryId);
+  const effectiveGarmentType = hasCategoryOptions ? selectedCategory?.garmentType ?? "" : garmentType;
+  const legacyCategory = hasCategoryOptions && Boolean(values?.garmentType) && !selectedCategory;
   const [selectedOrderDate, setSelectedOrderDate] = useState(orderDate);
   const [deadline, setDeadline] = useState(values?.deadline ?? "");
   const [deadlineMode, setDeadlineMode] = useState<"PRESET" | "CUSTOM">(() => (
@@ -140,7 +152,22 @@ export function PurchaseOrderForm({
           <FieldLegend>Informasi pesanan</FieldLegend>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO</FieldLabel><Input id={`po-reference-${fieldKey}`} value={draft?.purchaseOrderNo ?? purchaseOrderNoPreview ?? "Akan dibuat saat disimpan"} readOnly /></Field>
-            <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
+            {hasCategoryOptions ? (
+              <Field>
+                <FieldLabel htmlFor={`po-category-${fieldKey}`} required>Kategori produk</FieldLabel>
+                <NativeSelect id={`po-category-${fieldKey}`} name="productCategoryId" required value={productCategoryId} onChange={(event) => setProductCategoryId(event.currentTarget.value)}>
+                  <NativeSelectOption value="" disabled>Pilih kategori produk</NativeSelectOption>
+                  {categoryOptions?.map((category) => (
+                    <NativeSelectOption key={category.id} value={category.id}>{category.name}</NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                <input type="hidden" name="garmentType" value={selectedCategory?.garmentType ?? values?.garmentType ?? ""} />
+                {selectedCategory ? <FieldDescription>Jenis: {GARMENT_TYPE_LABEL[selectedCategory.garmentType]}</FieldDescription> : null}
+                {legacyCategory ? <FieldDescription>Kategori sebelumnya tidak tersedia. Pilih ulang kategori produk untuk PO ini.</FieldDescription> : null}
+              </Field>
+            ) : (
+              <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
+            )}
             <Field><FieldLabel htmlFor={`po-product-${fieldKey}`} required>Nama produk atau pola</FieldLabel><Input id={`po-product-${fieldKey}`} name="productName" required minLength={2} maxLength={120} defaultValue={values?.productName ?? ""} placeholder="Contoh: Jaket komunitas" /></Field>
             <Field><FieldLabel htmlFor={`po-material-${fieldKey}`} required>Bahan</FieldLabel><Input id={`po-material-${fieldKey}`} name="material" required minLength={2} maxLength={120} defaultValue={values?.material ?? ""} /></Field>
             <Field><FieldLabel htmlFor={`po-base-color-${fieldKey}`}>Warna dasar</FieldLabel><Input id={`po-base-color-${fieldKey}`} name="baseColor" maxLength={120} defaultValue={values?.baseColor ?? ""} /></Field>
@@ -203,7 +230,7 @@ export function PurchaseOrderForm({
               <FieldDescription>Dihitung dari tanggal order, atau pilih tanggal kustom sesuai kebutuhan.</FieldDescription>
             </Field>
             <Field><FieldLabel htmlFor={`po-design-deadline-${fieldKey}`} required>Deadline upload desain</FieldLabel><Input id={`po-design-deadline-${fieldKey}`} name="designDeadline" type="date" required min={selectedOrderDate || jakartaToday()} value={designDeadline} onChange={(event) => setDesignDeadline(event.currentTarget.value)} /></Field>
-            {garmentType === "JERSEY" ? (
+            {effectiveGarmentType === "JERSEY" ? (
               <Field><FieldLabel htmlFor={`po-sample-size-${fieldKey}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${fieldKey}`} name="sampleSize" defaultValue={values?.sampleSize ?? ""}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
             ) : null}
           </div>

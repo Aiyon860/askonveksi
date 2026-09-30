@@ -13,7 +13,7 @@ function PipelineSkeleton() {
         <div className="flex min-h-9 min-w-0 items-center gap-4 overflow-hidden py-1">
           <Skeleton className="h-5 w-28 shrink-0" />
           <div className="flex items-center gap-3">
-            {Array.from({ length: 5 }, (_, index) => (
+            {Array.from({ length: 4 }, (_, index) => (
               <div key={index} className="flex items-center gap-2">
                 <Skeleton className="h-5 w-20" />
                 <Skeleton className="h-5 w-6" />
@@ -23,7 +23,7 @@ function PipelineSkeleton() {
         </div>
         <Skeleton className="h-9 w-32 shrink-0" />
       </section>
-      <KanbanSkeleton columns={5} cardsPerColumn={[2, 1, 1, 1, 1]} />
+      <KanbanSkeleton columns={4} cardsPerColumn={[2, 1, 1, 1]} />
     </LoadingPage>
   );
 }

@@ -72,6 +72,16 @@ export const bulkUpdateMasterDataSchema = z
   .min(1, "Minimal satu data harus tersedia.")
   .max(1_000, "Terlalu banyak data untuk diperbarui sekaligus.");
 
+export const productCategoryFieldsSchema = z.object({
+  name: masterDataFieldsSchema.shape.name,
+  kind: z.enum(["JERSEY", "NON_JERSEY", "AKSESORI"], { message: "Jenis kategori wajib dipilih." }),
+});
+
+export const bulkUpdateProductCategoriesSchema = z
+  .array(productCategoryFieldsSchema.extend({ id: entityIdSchema }))
+  .min(1, "Minimal satu data harus tersedia.")
+  .max(1_000, "Terlalu banyak data untuk diperbarui sekaligus.");
+
 export const opportunityFieldsSchema = z.object({
   title: z.string().trim().min(3, "Judul peluang minimal 3 karakter.").max(180),
   leadSourceId: optionalEntityId,
@@ -114,7 +124,7 @@ export const moveOpportunitySchema = z
   .object({
     opportunityId: entityIdSchema,
     version: requiredVersion,
-    stage: z.enum(["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI", "LOST"]),
+    stage: z.enum(["FOLLOW_UP", "NEGOSIASI", "LOST"]),
     cancelReason: optionalText(1000),
   })
   .superRefine((value, context) => {
@@ -231,7 +241,8 @@ export const purchaseOrderDraftSchema = z.object({
   opportunityId: entityIdSchema,
   purchaseOrderId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
-  garmentType: z.enum(["JERSEY", "NON_JERSEY"], { message: "Jenis pakaian wajib dipilih." }),
+  garmentType: z.enum(["JERSEY", "NON_JERSEY", "AKSESORI"], { message: "Jenis pakaian wajib dipilih." }),
+  productCategoryId: entityIdSchema.optional(),
   productName: z.string().trim().min(2, "Nama produk atau pola wajib diisi.").max(120),
   material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
   baseColor: optionalText(120),

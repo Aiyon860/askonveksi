@@ -34,6 +34,7 @@ enum ProductionRoute {
 enum GarmentType {
   JERSEY
   NON_JERSEY
+  AKSESORI
 }
 
 enum SleeveLength {
@@ -105,6 +106,13 @@ enum OpportunityStage {
   NEGOSIASI
   DEAL
   LOST
+}
+
+enum OpportunityOrigin {
+  PROSPEK_FORM
+  REPEAT_ORDER
+  LANDING_PAGE
+  MANUAL
 }
 
 enum CustomerLifecycle {
@@ -385,6 +393,19 @@ model PaymentMethod {
   @@index([isActive, position, name])
 }
 
+model ProductCategory {
+  id             String           @id @default(cuid())
+  name           String           @unique @db.VarChar(80)
+  garmentType    GarmentType
+  position       Int              @default(0)
+  isActive       Boolean          @default(true)
+  purchaseOrders PurchaseOrder[]
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([isActive, position, name])
+}
+
 model BusinessProfile {
   id                     String   @id @default("default") @db.VarChar(32)
   name                   String   @db.VarChar(160)
@@ -450,8 +471,9 @@ model Opportunity {
   opportunityNo           String                  @unique @db.VarChar(24)
   customerId              String
   title                   String                  @db.VarChar(180)
-  stage                   OpportunityStage        @default(LEAD_BARU)
+  stage                   OpportunityStage        @default(FOLLOW_UP)
   isRepeatOrder           Boolean                 @default(false)
+  origin                  OpportunityOrigin       @default(MANUAL)
   leadSourceId            String?
   salesPicId              String?
   productName             String?                 @db.VarChar(120)
@@ -527,6 +549,7 @@ model PurchaseOrder {
   status                   PurchaseOrderStatus        @default(DRAFT)
   productName              String                     @db.VarChar(120)
   garmentType              GarmentType?
+  productCategoryId        String?
   material                 String                     @db.VarChar(120)
   color                    String?                    @db.VarChar(120)
   baseColor                String?                    @db.VarChar(120)
@@ -547,6 +570,7 @@ model PurchaseOrder {
   createdById              String
   opportunity              Opportunity                @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   createdBy                AppUser                    @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  productCategory          ProductCategory?           @relation(fields: [productCategoryId], references: [id], onDelete: Restrict)
   sizes                    PurchaseOrderSize[]
   rosterEntries            PurchaseOrderRosterEntry[]
   attachments              PurchaseOrderAttachment[]
@@ -559,6 +583,7 @@ model PurchaseOrder {
   @@unique([opportunityId, revision])
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
+  @@index([productCategoryId])
 }
 
 model DesignTask {

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
-import { Prisma, type AppRole, type OpportunityStage } from "@prisma/client";
+import { Prisma, type AppRole, type OpportunityOrigin, type OpportunityStage } from "@prisma/client";
 import { cache } from "react";
 
 import {
@@ -22,6 +22,7 @@ export type PipelineOpportunity = {
   opportunityNo: string;
   title: string;
   stage: OpportunityStage;
+  origin: OpportunityOrigin;
   version: number;
   productName: string | null;
   nextAction: string | null;
@@ -41,7 +42,7 @@ export type PipelineOpportunity = {
     purchaseOrderNo: string;
     status: "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
     productName: string;
-    garmentType: "JERSEY" | "NON_JERSEY" | null;
+    garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
     totalQuantity: number;
   } | null;
   invoice: {
@@ -66,6 +67,7 @@ const opportunitySummarySelect = {
   opportunityNo: true,
   title: true,
   stage: true,
+  origin: true,
   version: true,
   productName: true,
   nextAction: true,
@@ -125,6 +127,7 @@ const getCachedPipelineData = unstable_cache(
     opportunityNo: row.opportunityNo,
     title: row.title,
     stage: row.stage,
+    origin: row.origin,
     version: row.version,
     productName: row.productName,
     nextAction: row.nextAction,
@@ -676,6 +679,8 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           revision: true,
           status: true,
           garmentType: true,
+          productCategoryId: true,
+          productCategory: { select: { name: true } },
           productName: true,
           material: true,
           color: true,
@@ -1039,7 +1044,7 @@ type LeadSourceRevenueQueryRow = {
 };
 
 type OrderCategoryQueryRow = {
-  category: "JERSEY" | "NON_JERSEY" | null;
+  category: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   orderCount: number;
 };
 
@@ -1178,7 +1183,7 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
     periodLabel: analyticsReportLabel(report.mode, report.range.label),
     rows,
     categoryRows: categoryRows.map((row) => ({
-      category: row.category === "JERSEY" ? "Jersey" : row.category === "NON_JERSEY" ? "Non-jersey" : "Belum ditentukan",
+      category: row.category === "JERSEY" ? "Jersey" : row.category === "NON_JERSEY" ? "Non-jersey" : row.category === "AKSESORI" ? "Aksesori" : "Belum ditentukan",
       orderCount: row.orderCount,
     })),
     customerCategoryRows,
@@ -1692,6 +1697,7 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
       purchaseOrderNo: true,
       customerReference: true,
       productName: true,
+      productCategory: { select: { name: true } },
       material: true,
       color: true,
       deadline: true,

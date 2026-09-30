@@ -1,7 +1,18 @@
-import type { OpportunityStage } from "@prisma/client";
+import type { GarmentType, OpportunityStage } from "@prisma/client";
+
+export const GARMENT_TYPE_LABEL: Record<GarmentType, string> = {
+  JERSEY: "Jersey",
+  NON_JERSEY: "Non-jersey",
+  AKSESORI: "Aksesori",
+};
+
+export const GARMENT_TYPE_OPTIONS: { value: GarmentType; label: string }[] = [
+  { value: "JERSEY", label: GARMENT_TYPE_LABEL.JERSEY },
+  { value: "NON_JERSEY", label: GARMENT_TYPE_LABEL.NON_JERSEY },
+  { value: "AKSESORI", label: GARMENT_TYPE_LABEL.AKSESORI },
+];
 
 export const PIPELINE_STAGES = [
-  "LEAD_BARU",
   "FOLLOW_UP",
   "NEGOSIASI",
   "DEAL",
