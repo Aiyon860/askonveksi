@@ -25,8 +25,13 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  async headers() {
+  async redirects() {
     return [
+      { source: "/produk/polo", destination: "/produk/poloshirt", permanent: true },
+      { source: "/produk/jaket", destination: "/produk/jacket", permanent: true },
+    ];
+  },
+  async headers() {    return [
       {
         source: "/_next/static/:path*",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],

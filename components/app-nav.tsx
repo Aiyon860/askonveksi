@@ -82,15 +82,24 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
+        "flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-nav-chip-strong",
         nested && "ml-3",
-        active ? "bg-highlight-surface text-highlight-surface-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        active
+          ? "bg-nav-chip-strong font-semibold text-nav-active-ink"
+          : "text-nav-ink hover:bg-nav-chip",
       )}
     >
       <Icon aria-hidden="true" className="size-4" />
       {item.label}
       {typeof item.count === "number" ? (
-        <Badge variant={active ? "highlight" : "secondary"} className="ml-auto min-w-6 px-1.5 font-semibold tabular-nums" aria-label={`${item.count} item perlu diperiksa`}>
+        <Badge
+          variant="outline"
+          className={cn(
+            "ml-auto min-w-6 border-transparent px-1.5 font-semibold tabular-nums",
+            active ? "bg-nav-active-ink text-nav-chip-strong" : "bg-nav-chip-strong text-nav-active-ink",
+          )}
+          aria-label={`${item.count} item perlu diperiksa`}
+        >
           {navCountLabel(item.count)}
         </Badge>
       ) : null}
@@ -101,7 +110,7 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
 function NavGroup({ label, icon: Icon, children }: { label: ReactNode; icon: LucideIcon; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex h-9 w-full shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground">
+      <div className="flex h-9 w-full shrink-0 items-center gap-2 px-3 text-[11px] font-semibold tracking-wide text-nav-ink-muted uppercase">
         <Icon aria-hidden="true" className="size-4" />
         {label}
       </div>
