@@ -155,7 +155,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
           onDragEnd={handleDragEnd}
           accessibility={{ screenReaderInstructions: { draggable: "Tekan spasi untuk mengambil kartu. Gunakan tombol panah untuk memilih kolom tujuan, lalu tekan spasi lagi untuk meletakkan." } }}
         >
-        <div className="grid auto-cols-[20rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3">
+        <div className="grid auto-cols-[minmax(20rem,1fr)] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3">
           {PIPELINE_STAGES.map((stage) => {
             const items = boardOpportunities.filter((opportunity) => (previewMove?.opportunity.id === opportunity.id ? previewMove.stage : opportunity.stage) === stage);
             return (

@@ -166,7 +166,7 @@ export function KanbanSkeleton({
 
   return (
     <div
-      className="grid auto-cols-[var(--kanban-col-min,17.5rem)] grid-flow-col gap-3 overflow-x-hidden pb-3"
+      className="grid auto-cols-[minmax(var(--kanban-col-min,17.5rem),1fr)] grid-flow-col gap-3 overflow-x-auto pb-3"
       style={{ "--kanban-col-min": columnMinWidth } as CSSProperties}
       aria-hidden="true"
     >

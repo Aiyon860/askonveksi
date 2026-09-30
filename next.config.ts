@@ -31,10 +31,13 @@ const nextConfig: NextConfig = {
       { source: "/produk/jaket", destination: "/produk/jacket", permanent: true },
     ];
   },
-  async headers() {    return [
+  async headers() {
+    return [
       {
+        // immutable hanya di production: nama chunk dev tidak di-hash per konten,
+        // sehingga immutable membuat dynamic import (next/dynamic) memakai cache lama.
         source: "/_next/static/:path*",
-        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+        headers: [{ key: "Cache-Control", value: process.env.NODE_ENV === "production" ? "public, max-age=31536000, immutable" : "no-cache, must-revalidate" }],
       },
       {
         source: "/:path*",
