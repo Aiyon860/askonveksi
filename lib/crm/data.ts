@@ -1184,7 +1184,7 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
     periodLabel: analyticsReportLabel(report.mode, report.range.label),
     rows,
     categoryRows: categoryRows.map((row) => ({
-      category: row.category === "JERSEY" ? "Jersey" : row.category === "NON_JERSEY" ? "Non-jersey" : row.category === "AKSESORI" ? "Aksesori" : "Belum ditentukan",
+      category: row.category === "JERSEY" ? "Jersey" : row.category === "NON_JERSEY" ? "Non-jersey" : row.category === "AKSESORI" ? "Aksesoris" : "Belum ditentukan",
       orderCount: row.orderCount,
     })),
     customerCategoryRows,

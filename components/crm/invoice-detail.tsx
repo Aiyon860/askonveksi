@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
 
 import { editInvoicePaymentTransactionAction, payInvoicePaymentTermAction, payPendingInitialPaymentAction, voidInvoicePaymentTransactionAction } from "@/app/actions/crm";
 import { invoiceDetailAction } from "@/app/actions/crm-details";
@@ -28,18 +29,28 @@ type Payment = NonNullable<NonNullable<Detail>["salesOrder"]>;
 type PendingPayment = NonNullable<NonNullable<Detail>["pendingPayment"]>;
 
 export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }: { id: string; children: React.ReactNode; triggerClassName?: string; triggerVariant?: "preview" | "table-row" }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Detail>();
   const [error, setError] = useState(false);
 
-  async function loadDetail() {
+  // Identitas harus stabil: form pembayaran memanggil `onRecorded` dari useEffect, sehingga
+  // fungsi yang dibuat ulang tiap render memicu pemuatan detail berulang tanpa henti.
+  const loadDetail = useCallback(async () => {
     try {
       setDetail(await invoiceDetailAction(id));
       setError(false);
     } catch {
       setError(true);
     }
-  }
+  }, [id]);
+
+  // Catat pembayaran mengubah kolom status pada tabel CRM > Invoice, bukan hanya isi dialog.
+  const reloadAfterMutation = useCallback(async () => {
+    await loadDetail();
+    startTransition(() => router.refresh());
+  }, [loadDetail, router, startTransition]);
 
   function showDetail() {
     setOpen(true);
@@ -62,8 +73,8 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
           </dl>
           <Table><TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Subtotal</TableHead></TableRow></TableHeader><TableBody>{detail.items.map((item) => <TableRow key={item.id}><TableCell>{item.size}</TableCell><TableCell>{item.description}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell><TableCell className="text-right tabular-nums">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right tabular-nums">{formatCurrency(item.subtotal)}</TableCell></TableRow>)}</TableBody></Table>
           <dl className="ml-auto grid w-full gap-2 sm:max-w-xs"><Total label="Subtotal" value={formatCurrency(detail.subtotal)} /><Total label="Keuntungan" value={formatCurrency(detail.totalProfit)} /><Total label="Diskon" value={formatCurrency(detail.totalDiscount ?? "0")} /><Total label="Total" value={formatCurrency(detail.total)} strong /></dl>
-          {detail.salesOrder ? <PaymentSummary payment={detail.salesOrder} methods={detail.paymentMethods} canRecord={detail.canRecordPayment} onRecorded={loadDetail} /> : null}
-          {!detail.salesOrder && detail.pendingPayment ? <PendingPaymentSummary invoiceId={detail.id} payment={detail.pendingPayment} methods={detail.paymentMethods} canRecord={detail.canRecordPayment} productionDeadline={detail.purchaseOrder.deadline} onRecorded={loadDetail} /> : null}
+          {detail.salesOrder ? <PaymentSummary payment={detail.salesOrder} methods={detail.paymentMethods} canRecord={detail.canRecordPayment} onRecorded={reloadAfterMutation} /> : null}
+          {!detail.salesOrder && detail.pendingPayment ? <PendingPaymentSummary invoiceId={detail.id} payment={detail.pendingPayment} methods={detail.paymentMethods} canRecord={detail.canRecordPayment} productionDeadline={detail.purchaseOrder.deadline} onRecorded={reloadAfterMutation} /> : null}
           {!detail.salesOrder && !detail.pendingPayment ? <section className="rounded-lg border bg-muted/30 p-3 text-sm" aria-label="Status jadwal pembayaran"><Badge variant="secondary">Jadwal pembayaran belum diatur</Badge><p className="mt-2 text-muted-foreground">Atur persentase pembayaran awal dari tab Deal SO; deadline dibuat otomatis 7 hari setelah invoice terbit.</p></section> : null}
           {detail.notes ? <Info label="Catatan" value={detail.notes} /> : null}
         </div> : null}

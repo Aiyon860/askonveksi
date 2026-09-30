@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 
 import { agreePurchaseOrderAction } from "@/app/actions/crm";
@@ -23,24 +22,6 @@ export function PurchaseOrderAgreementAction({
   canAgree,
   designMessage,
 }: PurchaseOrderAgreementActionProps) {
-  const [isDraftDirty, setIsDraftDirty] = useState(false);
-  const disabled = !canAgree || isDraftDirty;
-
-  useEffect(() => {
-    const draftForm = [...document.querySelectorAll<HTMLFormElement>("form[data-po-draft-id]")]
-      .find((form) => form.dataset.poDraftId === purchaseOrderId);
-    if (!draftForm) return;
-
-    const markDirty = () => setIsDraftDirty(true);
-    draftForm.addEventListener("input", markDirty, true);
-    draftForm.addEventListener("change", markDirty, true);
-
-    return () => {
-      draftForm.removeEventListener("input", markDirty, true);
-      draftForm.removeEventListener("change", markDirty, true);
-    };
-  }, [purchaseOrderId]);
-
   return (
     <div className="flex flex-col items-stretch gap-2 sm:items-end">
     <form action={agreePurchaseOrderAction} className="contents">
@@ -49,14 +30,14 @@ export function PurchaseOrderAgreementAction({
       <input type="hidden" name="version" value={version} />
       <ConfirmSubmitButton
         className="w-full sm:w-auto"
-        disabled={disabled || undefined}
+        disabled={!canAgree || undefined}
         pendingLabel="Mengunci PO..."
         confirmTitle="Sepakati PO terbaru?"
         confirmDescription={`${revisionLabel} akan menjadi sumber resmi ukuran dan jumlah untuk invoice. Setelah disepakati, PO bersifat final dan tidak dapat direvisi.`}
         confirmLabel="Ya, sepakati PO"
       >
         <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
-        {isDraftDirty ? "Simpan draft dulu" : "Sepakati PO terbaru"}
+        Sepakati PO terbaru
       </ConfirmSubmitButton>
     </form>
     {designMessage ? <p className="max-w-xs text-xs text-muted-foreground">{designMessage}</p> : null}

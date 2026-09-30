@@ -27,7 +27,7 @@ export default async function ProductCategoriesPage() {
         kindOptions={GARMENT_TYPE_OPTIONS}
         usageLabel="Pemakaian"
         excelHint="kolom Nama dan Jenis Kategori"
-        createDescription="Kategori baru langsung tersedia di form PO. Jenis kategori menentukan apakah kategori tersebut berjenis Jersey atau Non-jersey."
+        createDescription="Kategori baru langsung tersedia di form PO. Jenis kategori menentukan apakah kategori tersebut berjenis Jersey, Non-jersey, atau Aksesoris. Urutan selalu Jersey, Non-jersey, lalu Aksesoris."
         createAction={createProductCategoryAction}
         bulkUpdateAction={bulkUpdateProductCategoriesAction}
         deleteAction={deleteProductCategoryAction}

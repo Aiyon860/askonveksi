@@ -1,19 +1,9 @@
 import { z } from "zod";
 
-import type { GarmentType } from "@prisma/client";
-
 export const CAMPAIGN_VARIABLES = ["customer_name", "company_name", "business_name"] as const;
 
 /** Batas penerima terpilih per campaign agar pengiriman tetap terkendali. */
 export const MAX_CAMPAIGN_RECIPIENTS = 2_000;
-
-export const CAMPAIGN_ORDER_CATEGORIES = ["JERSEY", "NON_JERSEY"] as const satisfies readonly GarmentType[];
-
-export const CAMPAIGN_ORDER_CATEGORY_LABEL: Record<GarmentType, string> = {
-  JERSEY: "Jersey",
-  NON_JERSEY: "Non-jersey",
-  AKSESORI: "Aksesori",
-};
 
 export type CampaignRecipientOption = {
   id: string;
@@ -84,14 +74,17 @@ export const deleteCampaignSchema = z.object({
 
 const campaignIdSchema = z.string().trim().min(10).max(40);
 const customerIdSchema = z.string().trim().min(10).max(40);
+// ID kategori produk Data Master (berbagi bentuk dengan ID entitas lain).
+const productCategoryIdSchema = z.string().trim().min(10).max(40);
 
-/** Filter daftar customer tanpa keterkaitan campaign, dipakai dialog campaign & halaman Broadcast. */
+/** Filter daftar customer tanpa keterkaitan campaign, dipakai dialog campaign & halaman Broadcast.
+ *  `productCategoryId` (kategori produk Data Master di PO) hanya dipakai dialog campaign. */
 export const recipientFilterSchema = z.object({
   query: z.string().trim().max(80).optional(),
   from: z.string().trim().max(10).optional(),
   to: z.string().trim().max(10).optional(),
   customerTypeId: customerIdSchema.optional(),
-  orderCategory: z.enum(CAMPAIGN_ORDER_CATEGORIES).optional(),
+  productCategoryId: productCategoryIdSchema.optional(),
 });
 
 /** Filter daftar customer pada dialog "Pilih Customer". */

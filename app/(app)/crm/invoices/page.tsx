@@ -2,6 +2,7 @@ import { Receipt } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { AutoRefresh } from "@/components/auto-refresh";
 import { InvoiceDetail } from "@/components/crm/invoice-detail";
 import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { InvoiceFilterSheet } from "@/components/crm/invoice-filter-sheet";
@@ -170,6 +171,7 @@ async function InvoicesTableSection({ searchParams }: { searchParams: SearchPara
 export default function InvoicesPage({ searchParams }: { searchParams: SearchParams }) {
   return (
     <>
+      <AutoRefresh />
       <PageHeader title="Invoice" description="Pantau draft dan invoice yang sudah diterbitkan." />
       <Suspense fallback={<InvoicesTableFallback />}>
         <InvoicesTableSection searchParams={searchParams} />

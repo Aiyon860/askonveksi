@@ -4,7 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FileDown, Plus, Trash2 } from "lucide-react";
 
-import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction, updatePurchaseOrderDraftAction } from "@/app/actions/crm";
+import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction } from "@/app/actions/crm";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { initialFormActionState } from "@/lib/actions/form-state";
@@ -42,8 +42,6 @@ type PurchaseOrderFormValues = {
   sizes: MatrixRow[];
   roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
-type Draft = PurchaseOrderFormValues & { id: string; version: number; purchaseOrderNo: string };
-
 function jakartaToday() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
   return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}-${parts.find((part) => part.type === "day")?.value}`;
@@ -53,7 +51,6 @@ export function PurchaseOrderForm({
   opportunityId,
   sizeOptions,
   categoryOptions,
-  draft,
   initialValues,
   sourcePurchaseOrderId,
   submitLabel,
@@ -62,16 +59,15 @@ export function PurchaseOrderForm({
   opportunityId: string;
   sizeOptions: SizeOption[];
   categoryOptions?: ProductCategoryOption[];
-  draft?: Draft;
   initialValues?: PurchaseOrderFormValues;
   sourcePurchaseOrderId?: string;
   submitLabel?: string;
   purchaseOrderNoPreview?: string;
 }) {
-  const values = draft ?? initialValues;
+  const values = initialValues;
   const hasCategoryOptions = Boolean(categoryOptions?.length);
   const orderDate = values?.orderDate || jakartaToday();
-  const fieldKey = draft?.id ?? sourcePurchaseOrderId ?? "new";
+  const fieldKey = sourcePurchaseOrderId ?? "new";
   const matrixByKey = useMemo(() => new Map(values?.sizes.map((item) => [`${item.sleeveLength}:${item.sizeId ?? item.size.toLocaleLowerCase("id-ID")}`, item.quantity])), [values]);
   const [matrix, setMatrix] = useState<Record<string, number>>(() => Object.fromEntries(
     (["PENDEK", "PANJANG"] as const).flatMap((sleeveLength) => sizeOptions.map((size) => {
@@ -110,7 +106,7 @@ export function PurchaseOrderForm({
   );
   const formRef = useRef<HTMLFormElement>(null);
   const failedSubmissionRef = useRef<FormData | null>(null);
-  const serverAction = draft ? updatePurchaseOrderDraftAction : sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
+  const serverAction = sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
   const [formState, formAction] = useActionState(serverAction, initialFormActionState);
   const legacyDecoration = values?.decorationMethod
     && !DECORATION_METHODS.includes(values.decorationMethod as DecorationMethod)
@@ -142,16 +138,14 @@ export function PurchaseOrderForm({
   }, [formState]);
 
   return (
-    <form ref={formRef} action={formAction} onSubmit={(event) => { failedSubmissionRef.current = new FormData(event.currentTarget); }} data-po-draft-id={draft?.id} className="min-w-0 max-w-full">
+    <form ref={formRef} action={formAction} onSubmit={(event) => { failedSubmissionRef.current = new FormData(event.currentTarget); }} className="min-w-0 max-w-full">
       <input type="hidden" name="opportunityId" value={opportunityId} />
       {sourcePurchaseOrderId ? <input type="hidden" name="sourcePurchaseOrderId" value={sourcePurchaseOrderId} /> : null}
-      {draft ? <input type="hidden" name="purchaseOrderId" value={draft.id} /> : null}
-      {draft ? <input type="hidden" name="version" value={draft.version} /> : null}
       <FieldGroup>
         <FieldSet>
           <FieldLegend>Informasi pesanan</FieldLegend>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO</FieldLabel><Input id={`po-reference-${fieldKey}`} value={draft?.purchaseOrderNo ?? purchaseOrderNoPreview ?? "Akan dibuat saat disimpan"} readOnly /></Field>
+            <Field><FieldLabel htmlFor={`po-reference-${fieldKey}`}>Nomor PO</FieldLabel><Input id={`po-reference-${fieldKey}`} value={purchaseOrderNoPreview ?? "Akan dibuat saat disimpan"} readOnly /></Field>
             {hasCategoryOptions ? (
               <Field>
                 <FieldLabel htmlFor={`po-category-${fieldKey}`} required>Kategori produk</FieldLabel>
@@ -290,7 +284,7 @@ export function PurchaseOrderForm({
             <AlertDescription>{formState.message} Periksa matriks ukuran dan roster, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
-        <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? (draft ? "Perbarui draft PO" : "Buat draft PO")}</SubmitButton>
+        <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? "Buat draft PO"}</SubmitButton>
       </FieldGroup>
     </form>
   );

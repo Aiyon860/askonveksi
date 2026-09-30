@@ -6,11 +6,13 @@ import { parseDocumentDateRange, parseOpenDateRange } from "../lib/crm/document-
 
 const reference = new Date("2026-09-08T06:00:00.000Z");
 
-const [dataSource, purchaseOrderPage, invoicePage, salesOrderPage] = await Promise.all([
+const [dataSource, purchaseOrderPage, invoicePage, salesOrderPage, purchaseOrderFilterSheet, salesOrderFilterSheet] = await Promise.all([
   readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/crm/purchase-orders/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/crm/invoices/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/crm/sales-orders/page.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../components/crm/purchase-order-filter-sheet.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../components/crm/sales-order-filter-sheet.tsx", import.meta.url), "utf8"),
 ]);
 
 test("rentang dokumen memakai batas hari Jakarta yang inklusif", () => {
@@ -47,8 +49,11 @@ test("rentang deadline desain menerima tanggal masa depan dan batas terbuka", ()
 
 test("default daftar dokumen tidak membuang status yang digantikan", () => {
   assert.equal(dataSource.match(/\.\.\.\(status === "all" \? \{\} : \{ status \}\)/g)?.length, 3);
-  assert.match(purchaseOrderPage, /value="SUPERSEDED">Digantikan/);
+  // Halaman memakai filter drawer, jadi opsinya berada di komponen drawer.
+  assert.match(purchaseOrderPage, /<PurchaseOrderFilterSheet/);
+  assert.match(purchaseOrderFilterSheet, /value="SUPERSEDED">Digantikan/);
   assert.match(invoicePage, /rawStatus === "DRAFT" \|\| rawStatus === "ISSUED" \|\| rawStatus === "SUPERSEDED"/);
   assert.match(invoicePage, /if \(status === "SUPERSEDED"\) return "Digantikan"/);
-  assert.match(salesOrderPage, /value="CANCELLED">Dibatalkan/);
+  assert.match(salesOrderPage, /<SalesOrderFilterSheet/);
+  assert.match(salesOrderFilterSheet, /value="CANCELLED">Dibatalkan/);
 });

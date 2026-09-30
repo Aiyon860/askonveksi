@@ -18,8 +18,8 @@ export type MasterDataExcelKindOption = {
 
 export const PRODUCT_CATEGORY_EXCEL_KIND: MasterDataExcelKindOption = {
   header: "Jenis Kategori",
-  values: { jersey: "JERSEY", "non jersey": "NON_JERSEY", aksesori: "AKSESORI" },
-  allowedLabels: ["Jersey", "Non-jersey", "Aksesori"],
+  values: { jersey: "JERSEY", "non jersey": "NON_JERSEY", aksesoris: "AKSESORI", aksesori: "AKSESORI" },
+  allowedLabels: ["Jersey", "Non-jersey", "Aksesoris"],
 };
 
 export const MASTER_DATA_EXCEL_MAX_BYTES = 1 * 1024 * 1024;

@@ -14,7 +14,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import { STAGE_BADGE_VARIANT } from "@/components/production/stage-theme";
 import { getProductionDetail } from "@/lib/production/data";
-import { isStageRole, PRODUCTION_ROUTE_LABEL, PRODUCTION_STAGE_LABEL } from "@/lib/production/workflow";
+import { isStageRole, PRODUCTION_BOARD_GROUP_LABEL, PRODUCTION_STAGE_LABEL } from "@/lib/production/workflow";
 import { cn } from "@/lib/utils";
 
 const ACTIVITY_LABEL = {
@@ -42,10 +42,15 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
   const designTask = workOrder.salesOrder.purchaseOrder?.designTask;
   const designAttachments = designTask?.revisions[0]?.attachments ?? [];
+  const purchaseOrder = workOrder.salesOrder.purchaseOrder;
+  const boardGroup = purchaseOrder?.garmentType ?? workOrder.route;
+  const boardHref = purchaseOrder?.productCategoryId
+    ? `/produksi?jalur=${boardGroup}&kategori=${purchaseOrder.productCategoryId}`
+    : `/produksi?jalur=${boardGroup}`;
 
   return (
     <>
-      <Button variant="ghost" size="sm" render={<Link href={`/produksi?jalur=${workOrder.route}`} />} nativeButton={false} className="w-fit"><ArrowLeft data-icon="inline-start" aria-hidden="true" />Kembali ke kanban</Button>
+      <Button variant="ghost" size="sm" render={<Link href={boardHref} />} nativeButton={false} className="w-fit"><ArrowLeft data-icon="inline-start" aria-hidden="true" />Kembali ke kanban</Button>
       <PageHeader
         title={workOrder.productName}
         description={`${workOrder.workOrderNo} · ${workOrder.salesOrder.salesOrderNo} · ${workOrder.salesOrder.snapshotCustomerName}`}
@@ -107,7 +112,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
         <aside className="flex flex-col gap-6">
           <Card>
             <CardHeader><CardTitle>Ringkasan</CardTitle><CardDescription>Snapshot kebutuhan produksi dari Sales Order.</CardDescription></CardHeader>
-            <CardContent><dl className="grid gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">Jalur</dt><dd className="mt-1 font-medium">{PRODUCTION_ROUTE_LABEL[workOrder.route]}</dd></div><div><dt className="text-xs text-muted-foreground">Jumlah</dt><dd className="mt-1 font-mono">{workOrder.quantity} pcs</dd></div><div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1"><CalendarClock aria-hidden="true" className="mr-1 inline size-4" />{formatDate(workOrder.deadline)}</dd></div><div><dt className="text-xs text-muted-foreground">Revisi sampel</dt><dd className="mt-1 font-mono">{workOrder.sampleRevision}</dd></div></dl>{manager ? <Button className="mt-4 w-full" variant="outline" render={<Link href={`/sales-orders/${workOrder.salesOrder.id}`} />} nativeButton={false}>Buka Sales Order</Button> : null}</CardContent>
+            <CardContent><dl className="grid gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">Jalur</dt><dd className="mt-1 font-medium">{PRODUCTION_BOARD_GROUP_LABEL[boardGroup]}</dd></div><div><dt className="text-xs text-muted-foreground">Jumlah</dt><dd className="mt-1 font-mono">{workOrder.quantity} pcs</dd></div><div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1"><CalendarClock aria-hidden="true" className="mr-1 inline size-4" />{formatDate(workOrder.deadline)}</dd></div><div><dt className="text-xs text-muted-foreground">Revisi sampel</dt><dd className="mt-1 font-mono">{workOrder.sampleRevision}</dd></div></dl>{manager ? <Button className="mt-4 w-full" variant="outline" render={<Link href={`/sales-orders/${workOrder.salesOrder.id}`} />} nativeButton={false}>Buka Sales Order</Button> : null}</CardContent>
           </Card>
 
           {workOrder.status !== "CANCELLED" ? <Card><CardHeader><CardTitle>Catatan produksi</CardTitle><CardDescription>Catat kendala atau informasi operasional.</CardDescription></CardHeader><CardContent><form action={addProductionNoteAction}><input type="hidden" name="workOrderId" value={workOrder.id} /><FieldGroup><Field><FieldLabel htmlFor="productionNote" required>Catatan</FieldLabel><Textarea id="productionNote" name="note" required minLength={2} maxLength={2000} rows={4} /></Field><Button type="submit">Tambahkan catatan</Button></FieldGroup></form></CardContent></Card> : null}

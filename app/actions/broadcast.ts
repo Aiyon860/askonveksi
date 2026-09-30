@@ -22,20 +22,19 @@ function refreshBroadcast() {
   updateTag("badge-counts");
 }
 
-/** Daftar penerima broadcast dengan filter pencarian, tanggal, kategori customer, dan kategori order. */
+/** Daftar penerima broadcast dengan filter pencarian, tanggal, dan kategori customer.
+ *  Filter Kategori Order hanya ada di dialog Campaign Promo. */
 export async function getBroadcastRecipientsAction(input: {
   query?: string;
   from?: string;
   to?: string;
   customerTypeId?: string;
-  orderCategory?: string;
 }) {
   const parsed = recipientFilterSchema.safeParse({
     query: input.query?.trim() ? input.query.trim() : undefined,
     from: input.from || undefined,
     to: input.to || undefined,
     customerTypeId: input.customerTypeId || undefined,
-    orderCategory: input.orderCategory || undefined,
   });
   if (!parsed.success) throw new UserFacingError("Filter broadcast tidak valid.");
   const { items, total, truncated, customerTypes } = await getBroadcastRecipientOptions(parsed.data);

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { AlertTriangle, CalendarClock, Clock, GripVertical, UserRound } from "lucide-react";
-import type { ProductionRoute, ProductionStage } from "@prisma/client";
+import type { ProductionStage } from "@prisma/client";
 
 import { moveProductionOptimisticAction, updateProductionObstacleAction } from "@/app/actions/production";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
 import type { getProductionBoard } from "@/lib/production/data";
-import { nextProductionStage, productionStages, PRODUCTION_STAGE_LABEL } from "@/lib/production/workflow";
+import {
+  nextProductionStage,
+  productionStages,
+  PRODUCTION_BOARD_GROUP_LABEL,
+  PRODUCTION_STAGE_LABEL,
+  stageRouteForGroup,
+  type ProductionBoardGroup,
+} from "@/lib/production/workflow";
 import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/production/stage-theme";
 import { cn } from "@/lib/utils";
 
@@ -63,7 +70,7 @@ function optionLabel(option: PendingMove) {
   return `Lanjut ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
 }
 
-export function ProductionBoard({ route, items }: { route: ProductionRoute; items: BoardItem[] }) {
+export function ProductionBoard({ group, items, onRefresh }: { group: ProductionBoardGroup; items: BoardItem[]; onRefresh?: () => Promise<unknown> }) {
   const router = useRouter();
   const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage }) => current.map((item) => item.id === move.id ? { ...item, currentStage: move.targetStage } : item));
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -76,6 +83,7 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
   );
+  const route = stageRouteForGroup(group);
   const columns = productionStages(route);
   const activeItem = activeId ? boardItems.find((item) => item.id === activeId) ?? null : null;
 
@@ -103,6 +111,9 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
         return;
       }
       toast.add({ title: "Progres disimpan", description: `${item.workOrderNo} dipindahkan ke ${PRODUCTION_STAGE_LABEL[move.targetStage]}.`, type: "success" });
+      // Tunggu data server terbaru dulu supaya kartu tidak kembali ke kolom lama
+      // sebelum refresh selesai (transisi tetap pending selama menunggu).
+      await onRefresh?.();
       router.refresh();
     });
   }
@@ -154,13 +165,16 @@ export function ProductionBoard({ route, items }: { route: ProductionRoute; item
           onDragEnd={handleDragEnd}
           accessibility={{ screenReaderInstructions: { draggable: "Tekan spasi untuk mengambil kartu. Gunakan tombol panah untuk memilih tahap tujuan, lalu tekan spasi lagi untuk meletakkan." } }}
         >
-        <div className="grid auto-cols-[20rem] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3" aria-label={`Kanban produksi ${route === "JERSEY" ? "Jersey" : "Non-Jersey"}`}>
+        {/* Saat drag, scroll-snap dimatikan: snap selalu menarik posisi scroll kembali
+            dan melawan auto-scroll dnd-kit, sehingga board tidak maju dan tampak berkedip. */}
+        <div className={cn("grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3", !activeItem && "snap-x snap-proximity")} aria-label={`Kanban produksi ${PRODUCTION_BOARD_GROUP_LABEL[group]}`}>
           {columns.map((stage) => {
             const stageItems = boardItems.filter((item) => (previewMove?.item.id === item.id ? previewMove.targetStage : item.currentStage) === stage);
             return (
               <ProductionStageColumn
                 key={stage}
                 stage={stage}
+                dragging={Boolean(activeItem)}
                 canDrop={Boolean(activeItem && activeItem.currentStage !== stage && stageOptions(activeItem).some((option) => option.targetStage === stage))}
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
@@ -315,9 +329,9 @@ function ProductionObstacle({ item }: { item: BoardItem }) {
   );
 }
 
-function ProductionStageColumn({ stage, canDrop, children }: { stage: ProductionStage; canDrop: boolean; children: React.ReactNode }) {
+function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: ProductionStage; dragging: boolean; canDrop: boolean; children: React.ReactNode }) {
   const { isOver, setNodeRef } = useDroppable({ id: stage, disabled: !canDrop });
-  return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
+  return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border p-2", !dragging && "snap-start", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }
 
 function DraggableProductionCard({ item, draggable, entering, previewing, children }: { item: BoardItem; draggable: boolean; entering: boolean; previewing: boolean; children: (drag: Pick<ReturnType<typeof useDraggable>, "attributes" | "listeners" | "setActivatorNodeRef"> & { draggable: boolean }) => React.ReactNode }) {

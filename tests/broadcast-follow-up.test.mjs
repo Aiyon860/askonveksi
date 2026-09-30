@@ -46,7 +46,7 @@ test("kartu Follow Up Hari Ini memuat filter ala dialog Pilih Customer dan pesan
   assert.match(workspace, /Tanggal dari/);
   assert.match(workspace, /Tanggal ke/);
   assert.match(workspace, /Kategori Customer/);
-  assert.match(workspace, /Kategori Order/);
+  assert.doesNotMatch(workspace, /Kategori Order/);
   assert.match(workspace, /RecipientPagination/);
   assert.match(workspace, /allRows=\{rows\}/);
   assert.doesNotMatch(workspace, /Kategori Produk/);

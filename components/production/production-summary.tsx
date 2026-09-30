@@ -1,11 +1,14 @@
 "use client";
 
-import type { ProductionRoute } from "@prisma/client";
-
 import { STAGE_BADGE_VARIANT } from "@/components/production/stage-theme";
 import { Badge } from "@/components/ui/badge";
 import { MetricGroup, MetricItem } from "@/components/ui/metric";
-import { PRODUCTION_STAGE_LABEL, productionStages } from "@/lib/production/workflow";
+import {
+  PRODUCTION_STAGE_LABEL,
+  productionStages,
+  stageRouteForGroup,
+  type ProductionBoardGroup,
+} from "@/lib/production/workflow";
 import { cn } from "@/lib/utils";
 
 type SummaryItem = {
@@ -16,14 +19,15 @@ type SummaryItem = {
 };
 
 export function ProductionSummary({
-  route,
+  group,
   items,
   total,
 }: {
-  route: ProductionRoute;
+  group: ProductionBoardGroup;
   items: SummaryItem[];
   total: number;
 }) {
+  const route = stageRouteForGroup(group);
   const stages = productionStages(route);
   const today = new Date().setHours(0, 0, 0, 0);
   const overdue = items.filter((item) => item.status === "ACTIVE" && new Date(item.deadline).getTime() < today).length;

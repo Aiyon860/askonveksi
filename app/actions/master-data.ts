@@ -1,12 +1,13 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type GarmentType } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
 import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { groupProductCategories } from "@/lib/crm/constants";
 import {
   bulkUpdateMasterDataSchema,
   bulkUpdateProductCategoriesSchema,
@@ -613,7 +614,11 @@ async function countUsed(kind: "customerType" | "leadSource" | "garmentSize" | "
     ]);
     return purchaseRows + rosterEntries + invoiceItems;
   }
-  return prisma.paymentTransaction.count({ where: { paymentMethodId: id } });
+  const [transactions, expenses] = await Promise.all([
+    prisma.paymentTransaction.count({ where: { paymentMethodId: id } }),
+    prisma.expense.count({ where: { paymentMethodId: id } }),
+  ]);
+  return transactions + expenses;
 }
 
 export async function deleteCustomerTypeAction(formData: FormData) {
@@ -701,39 +706,40 @@ async function importProductCategoryRows(actorId: string, rows: MasterDataExcelR
     const currentByName = new Map(currentItems.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
     if (currentByName.size !== currentItems.length) throw new UserFacingError("Data kategori produk memiliki nama duplikat. Rapikan data sebelum import.");
 
-    const importedIds = new Set<string>();
-    for (const [position, row] of rows.entries()) {
+    // Baris hasil import dikelompokkan Jersey > Non-jersey > Aksesoris; baris yang tidak
+    // disentuh file tetap mengikuti urutannya sendiri di belakang baris import dalam grupnya.
+    type OrderedRow = { name: string; garmentType: GarmentType; matchedId: string | null; isActive: boolean };
+    const logicalRows: OrderedRow[] = rows.map((row) => {
       const garmentType = row.kind === "JERSEY" || row.kind === "NON_JERSEY" || row.kind === "AKSESORI" ? row.kind : null;
       if (!garmentType) throw new UserFacingError(`${PRODUCT_CATEGORY_EXCEL_KIND.header} pada data "${row.name}" tidak dikenali.`);
-      const current = currentByName.get(row.name.toLocaleLowerCase("id-ID"));
+      return { name: row.name, garmentType, matchedId: currentByName.get(row.name.toLocaleLowerCase("id-ID"))?.id ?? null, isActive: true };
+    });
+    const normalizedNames = logicalRows.map((row) => row.name.toLocaleLowerCase("id-ID"));
+    if (new Set(normalizedNames).size !== normalizedNames.length) throw new UserFacingError("Nama kategori produk pada file tidak boleh duplikat.");
+
+    const matchedIds = new Set(logicalRows.flatMap((row) => (row.matchedId ? [row.matchedId] : [])));
+    const untouchedRows: OrderedRow[] = currentItems
+      .filter((item) => !matchedIds.has(item.id))
+      .map((item) => ({ name: item.name, garmentType: item.garmentType, matchedId: item.id, isActive: item.isActive }));
+    const orderedRows = groupProductCategories([...logicalRows, ...untouchedRows], (row) => row.garmentType);
+
+    const currentById = new Map(currentItems.map((item) => [item.id, item]));
+    for (const [position, row] of orderedRows.entries()) {
+      const current = row.matchedId ? currentById.get(row.matchedId) : undefined;
       if (!current) {
-        const created = await tx.productCategory.create({ data: { name: row.name, garmentType, position }, select: { id: true } });
-        importedIds.add(created.id);
+        const created = await tx.productCategory.create({ data: { name: row.name, garmentType: row.garmentType, position }, select: { id: true } });
         await tx.auditEvent.create({ data: { actorId, entityType: "ProductCategory", entityId: created.id, action: "PRODUCT_CATEGORY_CREATED", changedFields: ["name", "garmentType", "position"] } });
         continue;
       }
-      importedIds.add(current.id);
       const changedFields = [
         current.name !== row.name ? "name" : null,
-        current.garmentType !== garmentType ? "garmentType" : null,
+        current.garmentType !== row.garmentType ? "garmentType" : null,
         current.position !== position ? "position" : null,
-        !current.isActive ? "isActive" : null,
+        current.isActive !== row.isActive ? "isActive" : null,
       ].filter((field): field is string => field !== null);
       if (!changedFields.length) continue;
-      await tx.productCategory.update({ where: { id: current.id }, data: { name: row.name, garmentType, position, isActive: true } });
+      await tx.productCategory.update({ where: { id: current.id }, data: { name: row.name, garmentType: row.garmentType, position, isActive: row.isActive } });
       await tx.auditEvent.create({ data: { actorId, entityType: "ProductCategory", entityId: current.id, action: "PRODUCT_CATEGORY_UPDATED", changedFields } });
-    }
-
-    let position = rows.length;
-    for (const item of currentItems) {
-      if (importedIds.has(item.id)) continue;
-      if (item.position === position) {
-        position += 1;
-        continue;
-      }
-      await tx.productCategory.update({ where: { id: item.id }, data: { position } });
-      await tx.auditEvent.create({ data: { actorId, entityType: "ProductCategory", entityId: item.id, action: "PRODUCT_CATEGORY_UPDATED", changedFields: ["position"] } });
-      position += 1;
     }
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
@@ -745,7 +751,9 @@ export async function createProductCategoryAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     await assertUniqueName("productCategory", parsed.data.name);
     await getPrismaClient().$transaction(async (tx) => {
-      const lastItem = await tx.productCategory.aggregate({ _max: { position: true } });
+      // Posisi dihitung di dalam grupnya sendiri supaya data baru selalu jatuh
+      // pada urutan paksa Jersey > Non-jersey > Aksesoris.
+      const lastItem = await tx.productCategory.aggregate({ where: { garmentType: parsed.data.kind }, _max: { position: true } });
       const created = await tx.productCategory.create({
         data: { name: parsed.data.name, garmentType: parsed.data.kind, position: (lastItem._max.position ?? -1) + 1 },
         select: { id: true },
@@ -789,6 +797,8 @@ export async function bulkUpdateProductCategoriesAction(formData: FormData) {
     if (submittedIds.size !== parsed.data.length || new Set(normalizedNames).size !== normalizedNames.length) {
       throw new UserFacingError("ID dan nama kategori produk tidak boleh duplikat.");
     }
+    // Urutan paksa Jersey > Non-jersey > Aksesoris, di dalam grup mengikuti urutan drag user.
+    const orderedItems = groupProductCategories(parsed.data, (item) => item.kind);
 
     await getPrismaClient().$transaction(async (tx) => {
       const currentItems = await tx.productCategory.findMany({ select: { id: true, name: true, garmentType: true, position: true, isActive: true } });
@@ -796,11 +806,11 @@ export async function bulkUpdateProductCategoriesAction(formData: FormData) {
         throw new UserFacingError("Daftar kategori produk sudah berubah. Muat ulang lalu coba lagi.");
       }
       const currentById = new Map(currentItems.map((item) => [item.id, item]));
-      for (const item of parsed.data) {
+      for (const item of orderedItems) {
         const current = currentById.get(item.id);
         if (current && current.name !== item.name) await tx.productCategory.update({ where: { id: item.id }, data: { name: `temporary-${randomUUID()}` } });
       }
-      for (const [position, item] of parsed.data.entries()) {
+      for (const [position, item] of orderedItems.entries()) {
         const current = currentById.get(item.id);
         if (!current) throw new UserFacingError("Kategori produk tidak ditemukan. Muat ulang lalu coba lagi.");
         const changedFields = [

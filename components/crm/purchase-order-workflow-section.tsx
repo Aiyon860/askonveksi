@@ -66,17 +66,8 @@ export function PurchaseOrderWorkflowSection({
   children,
 }: PurchaseOrderWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
-  const isEditingPersistedDraft = purchaseOrderStatus === "DRAFT" && purchaseOrderRevision < 4 && canOperate && inNegotiation && !isCreatingRevision;
-  const isEditing = isEditingPersistedDraft || isCreatingRevision;
+  // Draft yang sudah tersimpan bersifat readonly; perubahan hanya lewat "Buat versi revisi".
   const canCreateRevision = purchaseOrderStatus === "DRAFT" && purchaseOrderRevision < 4 && canOperate && inNegotiation && !isCreatingRevision;
-  const persistedDraft = isEditingPersistedDraft
-      ? {
-        ...draftValues,
-        id: purchaseOrderId,
-        version: purchaseOrderVersion,
-        purchaseOrderNo: draftValues.purchaseOrderNo,
-      }
-    : undefined;
 
   return (
     <>
@@ -86,7 +77,7 @@ export function PurchaseOrderWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isEditing ? (
+          {!isCreatingRevision ? (
             <PurchaseOrderPdfDownloadButton purchaseOrderId={purchaseOrderId} purchaseOrderNo={draftValues.purchaseOrderNo} />
           ) : null}
           {canCreateRevision ? (
@@ -105,29 +96,26 @@ export function PurchaseOrderWorkflowSection({
           ) : null}
         </div>
       </div>
-      {isEditing ? (
+      {isCreatingRevision ? (
         <div className="min-w-0 max-w-full">
           <PurchaseOrderForm
             opportunityId={opportunityId}
             sizeOptions={sizeOptions}
             categoryOptions={categoryOptions}
-            draft={persistedDraft}
-            initialValues={isCreatingRevision ? draftValues : undefined}
-            sourcePurchaseOrderId={isCreatingRevision ? purchaseOrderId : undefined}
-            submitLabel={isCreatingRevision ? "Buat versi revisi" : "Perbarui draft PO"}
+            initialValues={draftValues}
+            sourcePurchaseOrderId={purchaseOrderId}
+            submitLabel="Buat versi revisi"
             purchaseOrderNoPreview={purchaseOrderNoPreview}
           />
-          {isCreatingRevision ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-2 w-full border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-              onClick={() => setIsCreatingRevision(false)}
-            >
-              <XCircle data-icon="inline-start" aria-hidden="true" />
-              Batalkan draft revisi
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2 w-full border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
+            onClick={() => setIsCreatingRevision(false)}
+          >
+            <XCircle data-icon="inline-start" aria-hidden="true" />
+            Batalkan draft revisi
+          </Button>
         </div>
       ) : (
         children

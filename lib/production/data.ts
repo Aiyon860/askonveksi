@@ -1,70 +1,100 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
-import type { ProductionRoute } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
+import type { ProductionBoardGroup } from "@/lib/production/workflow";
 
-// Cache 30s per route agar tiap render/SWR tak RTT Sydney. Actor diambil di luar cache agar tak bocor antar user.
-const getCachedBoardRows = (route: ProductionRoute) =>
+export type ProductionBoardFilter = { group: ProductionBoardGroup; productCategoryId?: string | null };
+
+type BoardWhere = { group: ProductionBoardGroup; productCategoryId: string | null };
+
+function boardWhere({ group, productCategoryId }: BoardWhere): Prisma.ProductionWorkOrderWhereInput {
+  const purchaseOrderConditions: Prisma.PurchaseOrderWhereInput[] = [];
+  // Work Order aksesoris memakai route NON_JERSEY; grup menentukan pembagian tampilannya.
+  if (group === "AKSESORI") purchaseOrderConditions.push({ garmentType: "AKSESORI" });
+  else if (group === "NON_JERSEY") purchaseOrderConditions.push({ OR: [{ garmentType: "NON_JERSEY" }, { garmentType: null }] });
+  // Kartu yang PO-nya belum punya kategori produk selalu ikut tampil agar tak ada Work Order hilang.
+  if (productCategoryId) purchaseOrderConditions.push({ OR: [{ productCategoryId }, { productCategoryId: null }] });
+
+  return {
+    route: group === "JERSEY" ? "JERSEY" : "NON_JERSEY",
+    status: { not: "CANCELLED" },
+    designCompletedAt: { not: null },
+    ...(purchaseOrderConditions.length ? { salesOrder: { purchaseOrder: { AND: purchaseOrderConditions } } } : {}),
+  };
+}
+
+// Cache 30s per grup + kategori agar tiap render/SWR tak RTT Sydney. Actor diambil di luar cache agar tak bocor antar user.
+// Tanggal wajib diserialisasi DI DALAM callback: unstable_cache menyimpan hasil sebagai JSON,
+// sehingga cache hit mengembalikan string, bukan Date.
+const getCachedBoardRows = (filter: BoardWhere) =>
   unstable_cache(
     async () => {
       const prisma = getPrismaClient();
-      return await Promise.all([
+      const where = boardWhere(filter);
+      const [rows, total] = await Promise.all([
         prisma.productionWorkOrder.findMany({
-      relationLoadStrategy: "join",
-      where: { route, status: { not: "CANCELLED" }, designCompletedAt: { not: null } },
-      select: {
-        id: true,
-        workOrderNo: true,
-        route: true,
-        productName: true,
-        quantity: true,
-        deadline: true,
-        stageSequence: true,
-        currentStage: true,
-        status: true,
-        sampleRevision: true,
-        needsRepair: true,
-        repairReason: true,
-        obstacle: true,
-        obstacleUpdatedAt: true,
-        stageEnteredAt: true,
-        version: true,
-        updatedAt: true,
-        salesOrder: { select: { id: true, salesOrderNo: true, snapshotCustomerName: true } },
-        steps: {
-          where: { status: "ACTIVE" },
-          select: { id: true, assignee: { select: { id: true, name: true } } },
-          take: 1,
-        },
-      },
-      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-      take: 500,
-    }),
-    prisma.productionWorkOrder.count({ where: { route, status: { not: "CANCELLED" }, designCompletedAt: { not: null } } }),
+          relationLoadStrategy: "join",
+          where,
+          select: {
+            id: true,
+            workOrderNo: true,
+            route: true,
+            productName: true,
+            quantity: true,
+            deadline: true,
+            stageSequence: true,
+            currentStage: true,
+            status: true,
+            sampleRevision: true,
+            needsRepair: true,
+            repairReason: true,
+            obstacle: true,
+            obstacleUpdatedAt: true,
+            stageEnteredAt: true,
+            version: true,
+            updatedAt: true,
+            salesOrder: { select: { id: true, salesOrderNo: true, snapshotCustomerName: true } },
+            steps: {
+              where: { status: "ACTIVE" },
+              select: { id: true, assignee: { select: { id: true, name: true } } },
+              take: 1,
+            },
+          },
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          take: 500,
+        }),
+        prisma.productionWorkOrder.count({ where }),
       ]);
+
+      return {
+        total,
+        rows: rows.map(({ steps, ...row }) => ({
+          ...row,
+          deadline: row.deadline.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+          stageEnteredAt: row.stageEnteredAt?.toISOString() ?? null,
+          obstacleUpdatedAt: row.obstacleUpdatedAt?.toISOString() ?? null,
+          activeStepId: steps[0]?.id ?? null,
+          assignee: steps[0]?.assignee ?? null,
+        })),
+      };
     },
-    ["production-board", route],
+    ["production-board", filter.group, filter.productCategoryId ?? ""],
     { revalidate: 30, tags: ["production-board"] },
   )();
 
-export async function getProductionBoard(route: ProductionRoute) {
+export async function getProductionBoard(input: ProductionBoardFilter) {
+  const filter: BoardWhere = { group: input.group, productCategoryId: input.productCategoryId ?? null };
   const actor = await requireActor(PRODUCTION_ROLES);
-  const [rows, total] = await getCachedBoardRows(route);
+  const { rows, total } = await getCachedBoardRows(filter);
 
   return {
-    items: rows.map(({ steps, ...row }) => ({
-      ...row,
-      deadline: row.deadline.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-      stageEnteredAt: row.stageEnteredAt?.toISOString() ?? null,
-      obstacleUpdatedAt: row.obstacleUpdatedAt?.toISOString() ?? null,
-      activeStepId: steps[0]?.id ?? null,
-      assignee: steps[0]?.assignee ?? null,
-    })),
+    items: rows,
     total,
     truncated: total > rows.length,
     actor: { id: actor.id, role: actor.role },
@@ -103,6 +133,8 @@ export async function getProductionDetail(id: string) {
           acceptedAt: true,
           purchaseOrder: {
             select: {
+              garmentType: true,
+              productCategoryId: true,
               designTask: {
                 select: {
                   id: true,

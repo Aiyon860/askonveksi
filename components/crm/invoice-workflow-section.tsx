@@ -65,8 +65,7 @@ export function InvoiceWorkflowSection({
   children,
 }: InvoiceWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
-  const isEditingPersistedDraft = invoiceStatus === "DRAFT" && invoiceRevision < 4 && canOperate && inNegotiation && Boolean(purchaseOrder) && !isCreatingRevision;
-  const isEditing = isEditingPersistedDraft || isCreatingRevision;
+  // Invoice draft yang sudah tersimpan bersifat readonly; perubahan hanya lewat "Buat versi revisi".
   const showCreateRevision = invoiceStatus === "DRAFT" && invoiceRevision < 4 && canOperate && inNegotiation && !isCreatingRevision && Boolean(purchaseOrder);
 
   return (
@@ -77,8 +76,8 @@ export function InvoiceWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isEditing && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} /> : null}
-          {!isEditing && invoiceStatus !== "ISSUED" ? (
+          {!isCreatingRevision && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} /> : null}
+          {!isCreatingRevision && invoiceStatus !== "ISSUED" ? (
             <Button className="w-full sm:w-auto" render={<Link href={`/api/crm/invoice/${invoiceId}/pdf`} />} nativeButton={false}>
               <FileDown data-icon="inline-start" aria-hidden="true" />
               Unduh PDF
@@ -98,34 +97,31 @@ export function InvoiceWorkflowSection({
               description="Invoice akan berstatus Dibatalkan dan tidak dapat diterbitkan lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
             />
           ) : null}
-          {!isEditing && salesOrderHref && salesOrderLabel ? (
+          {!isCreatingRevision && salesOrderHref && salesOrderLabel ? (
             <Button variant="outline" className="w-full sm:w-auto" render={<Link href={salesOrderHref} />} nativeButton={false}>
               {salesOrderLabel}
             </Button>
           ) : null}
         </div>
       </div>
-      {isEditing && purchaseOrder ? (
+      {isCreatingRevision && purchaseOrder ? (
         <>
           <InvoiceForm
             opportunityId={opportunityId}
             purchaseOrder={purchaseOrder}
-            draft={isEditingPersistedDraft ? { id: invoiceId, version: invoiceVersion, ...draftValues } : undefined}
-            initialValues={isCreatingRevision ? draftValues : undefined}
-            sourceInvoiceId={isCreatingRevision ? invoiceId : undefined}
-            submitLabel={isCreatingRevision ? "Buat versi revisi" : "Perbarui draft invoice"}
+            initialValues={draftValues}
+            sourceInvoiceId={invoiceId}
+            submitLabel="Buat versi revisi"
           />
-          {isCreatingRevision ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-2 w-full border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-              onClick={() => setIsCreatingRevision(false)}
-            >
-              <XCircle data-icon="inline-start" aria-hidden="true" />
-              Batalkan draft revisi
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2 w-full border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
+            onClick={() => setIsCreatingRevision(false)}
+          >
+            <XCircle data-icon="inline-start" aria-hidden="true" />
+            Batalkan draft revisi
+          </Button>
         </>
       ) : (
         children

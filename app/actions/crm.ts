@@ -2,7 +2,7 @@
 
 import { Prisma, type CommunicationSystemEvent } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
@@ -1670,6 +1670,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
+    revalidateInvoiceList();
     timer.mark("revalidate");
     return flashMessagePath(`/crm/peluang/${parsed.data.opportunityId}?tab=invoice`, "notice", `Draft invoice ${invoice.id ? "berhasil dibuat" : "dibuat"}.`);
   });
@@ -1729,6 +1730,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
+    revalidateInvoiceList();
     timer.mark("revalidate");
     return flashMessagePath(`/crm/peluang/${parsed.data.opportunityId}?tab=invoice`, "notice", "Draft invoice diperbarui.");
   });
@@ -1811,6 +1813,7 @@ export async function issueInvoiceAction(formData: FormData) {
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${issuedInvoice.opportunityId}`);
     revalidatePath(`/customers/${issuedInvoice.customerId}`);
+    revalidateInvoiceList();
     return flashMessagePath(`/crm/peluang/${issuedInvoice.opportunityId}?tab=invoice`, "notice", "Invoice diterbitkan, dikunci, dan pengiriman WhatsApp dijadwalkan.");
   });
 }
@@ -1925,6 +1928,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${opportunityId}`);
+    revalidateInvoiceList();
     return flashMessagePath(`/crm/peluang/${opportunityId}?tab=invoice`, "notice", "Draft revisi invoice dibuat.");
   });
 }
@@ -1990,7 +1994,7 @@ export async function completeDealAction(formData: FormData) {
     });
 
     revalidatePath("/crm");
-    revalidatePath("/crm/invoices");
+    revalidateInvoiceList();
     revalidatePath(`/crm/peluang/${invoice.opportunityId}`);
     return flashMessagePath(`/crm/peluang/${invoice.opportunityId}?tab=invoice`, "notice", "Jadwal pembayaran tersimpan. Catat pembayaran awal di Detail Invoice untuk membuat Sales Order dan Work Order.");
   });
@@ -2004,6 +2008,17 @@ function crmActionFailure(error: unknown): CrmActionState {
   return { error: messageForError(error), success: false };
 }
 
+/**
+ * Tabel CRM > Invoice membaca data dari `unstable_cache` bertag "invoices" (30 detik).
+ * `revalidatePath` saja tidak mengosongkan cache itu, sehingga baris tabel (mis. status
+ * pembayaran) bisa tampak tertinggal setelah aksi; tag dikosongkan bersamaan agar
+ * auto-refresh halaman langsung menampilkan data segar.
+ */
+function revalidateInvoiceList() {
+  revalidatePath("/crm/invoices");
+  revalidateTag("invoices", { expire: 0 });
+}
+
 function revalidatePaymentMutationPaths(salesOrderId?: string) {
   if (salesOrderId) revalidatePath(`/sales-orders/${salesOrderId}`);
   revalidatePath("/crm");
@@ -2011,6 +2026,7 @@ function revalidatePaymentMutationPaths(salesOrderId?: string) {
   revalidatePath("/dashboard");
   revalidatePath("/keuangan");
   revalidatePath("/produksi");
+  revalidateInvoiceList();
 }
 
 async function paymentProof(formData: FormData, actorId: string, paymentMethodId: string, hasExistingProof = false) {
@@ -2490,6 +2506,7 @@ export async function recordInitialPaymentAction(formData: FormData) {
     revalidatePath("/dashboard");
     revalidatePath("/keuangan");
     revalidatePath("/produksi");
+    revalidateInvoiceList();
     return flashMessagePath(`/sales-orders/${parsed.data.salesOrderId}`, "notice", "Pembayaran awal berhasil dicatat ulang.");
   });
 }
@@ -2584,7 +2601,7 @@ export async function cancelInvoiceAction(formData: FormData) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/crm");
-    revalidatePath("/crm/invoices");
+    revalidateInvoiceList();
     revalidatePath(`/crm/peluang/${result.opportunityId}`);
     return flashMessagePath(
       `/crm/peluang/${result.opportunityId}?tab=invoice`,
@@ -2672,6 +2689,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
     revalidatePath(`/sales-orders/${parsed.data.salesOrderId}`);
     revalidatePath(`/crm/peluang/${cancelledOrder.opportunityId}`);
     revalidatePath(`/customers/${cancelledOrder.customerId}`);
+    revalidateInvoiceList();
     revalidateCustomerReminders();
     return flashMessagePath(`/crm/peluang/${cancelledOrder.opportunityId}?tab=deal`, "notice", "Sales Order dibatalkan dan peluang dipindahkan ke Lost.");
   });

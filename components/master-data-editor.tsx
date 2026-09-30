@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { groupProductCategories } from "@/lib/crm/constants";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES } from "@/lib/pagination";
 
 export type MasterItem = {
@@ -352,7 +353,10 @@ export function MasterDataEditor({
     setDraftItems((currentItems) => {
       const oldIndex = currentItems.findIndex((item) => item.id === active.id);
       const newIndex = currentItems.findIndex((item) => item.id === over.id);
-      return oldIndex === -1 || newIndex === -1 ? currentItems : arrayMove(currentItems, oldIndex, newIndex);
+      if (oldIndex === -1 || newIndex === -1) return currentItems;
+      const moved = arrayMove(currentItems, oldIndex, newIndex);
+      // Kategori produk dipaksa tetap berurutan Jersey > Non-jersey > Aksesoris.
+      return kindOptions ? groupProductCategories(moved, (item) => item.kind) : moved;
     });
   }
 
@@ -380,6 +384,7 @@ export function MasterDataEditor({
             {isEditing ? (
               <p className="text-xs text-muted-foreground">
                 Seret handle pada kolom nomor untuk mengatur prioritas. Simpan untuk menerapkan seluruh perubahan.
+                {kindOptions ? " Jenis kategori selalu berurutan Jersey, Non-jersey, lalu Aksesoris." : ""}
               </p>
             ) : null}
           </div>

@@ -6,11 +6,10 @@ import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory } from "@/lib/finance/expense-categories";
-import { EXPENSE_METHODS, EXPENSE_METHOD_LABEL, type ExpenseMethod } from "@/lib/finance/expense-methods";
 
-export { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, EXPENSE_METHODS, EXPENSE_METHOD_LABEL, type ExpenseCategory, type ExpenseMethod };
+export { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory };
 
-export type ExpenseListState = { query: string; from: Date | null; to: Date | null; category: ExpenseCategory | "all"; method: ExpenseMethod | "all"; creatorId: string | "all"; order: "asc" | "desc"; page: number; pageSize: number };
+export type ExpenseListState = { query: string; from: Date | null; to: Date | null; category: ExpenseCategory | "all"; method: string | "all"; creatorId: string | "all"; order: "asc" | "desc"; page: number; pageSize: number };
 
 function expenseWhere(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
   const query = state.query.trim().slice(0, 80);
@@ -21,7 +20,7 @@ function expenseWhere(state: Omit<ExpenseListState, "order" | "page" | "pageSize
     ...(query ? { purpose: { contains: query, mode: "insensitive" as const } } : {}),
     ...(from && to ? { spentAt: { gte: from, lt: to } } : {}),
     ...(state.category === "all" ? {} : { category: state.category }),
-    ...(state.method === "all" ? {} : { paymentMethod: state.method }),
+    ...(state.method === "all" ? {} : { paymentMethodId: state.method }),
     ...(state.creatorId === "all" ? {} : { createdById: state.creatorId }),
   } satisfies Prisma.ExpenseWhereInput;
 }
@@ -39,17 +38,17 @@ export async function getExpenses(state: ExpenseListState) {
     prisma.appUser.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
   const pageDates = dates.slice((bounded.page - 1) * bounded.pageSize, bounded.page * bounded.pageSize).map((item) => item.spentAt);
-  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethod: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
+  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
   const grouped = new Map(pageDates.map((spentAt) => [spentAt.getTime(), { spentAt, items: [] as typeof items }]));
   items.forEach((item) => grouped.get(item.spentAt.getTime())?.items.push(item));
-  return { groups: [...grouped.values()].map((group) => ({ ...group, items: group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory, paymentMethod: item.paymentMethod as ExpenseMethod })) })), total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / bounded.pageSize)) };
+  return { groups: [...grouped.values()].map((group) => ({ ...group, items: group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory })) })), total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / bounded.pageSize)) };
 }
 
 export async function getExpensesForExport(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
   await requireActor(FINANCE_ROLES);
   // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
-  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: true, amount: true, createdBy: { select: { name: true } }, reimbursedAt: true }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], take: 5000 });
-  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory, paymentMethod: row.paymentMethod as ExpenseMethod }));
+  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, createdBy: { select: { name: true } }, reimbursedAt: true }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], take: 5000 });
+  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory }));
 }
 
 export type IncomeListState = { query: string; from: Date | null; to: Date | null; status: "all" | "DP" | "LUNAS"; hppStatus: "all" | "COMPLETE" | "INCOMPLETE"; page: number; pageSize: number };

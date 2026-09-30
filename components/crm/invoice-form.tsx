@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { createInvoiceDraftAction, createInvoiceRevisionAction, updateInvoiceDraftAction } from "@/app/actions/crm";
+import { createInvoiceDraftAction, createInvoiceRevisionAction } from "@/app/actions/crm";
 import { MoneyInput } from "@/components/money-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,35 +27,30 @@ type DraftItem = {
 };
 
 type InvoiceFormValues = { notes: string; discountPercent: string; items: DraftItem[] };
-type Draft = InvoiceFormValues & { id: string; version: number };
 
 export function InvoiceForm({
   opportunityId,
   purchaseOrder,
-  draft,
   initialValues,
   sourceInvoiceId,
   submitLabel,
 }: {
   opportunityId: string;
   purchaseOrder: PurchaseOrder;
-  draft?: Draft;
   initialValues?: InvoiceFormValues;
   sourceInvoiceId?: string;
   submitLabel?: string;
 }) {
-  const serverAction = draft ? updateInvoiceDraftAction : sourceInvoiceId ? createInvoiceRevisionAction : createInvoiceDraftAction;
+  const serverAction = sourceInvoiceId ? createInvoiceRevisionAction : createInvoiceDraftAction;
   const [formState, formAction] = useActionState(serverAction, initialFormActionState);
-  const values = draft ?? initialValues;
-  const fieldKey = draft?.id ?? sourceInvoiceId ?? "new";
+  const values = initialValues;
+  const fieldKey = sourceInvoiceId ?? "new";
   const byKey = new Map(values?.items.map((item) => [`${item.sleeveLength ?? "PANJANG"}:${item.size.toLocaleLowerCase("id-ID")}`, item]));
   return (
     <form action={formAction}>
       <input type="hidden" name="opportunityId" value={opportunityId} />
       <input type="hidden" name="purchaseOrderId" value={purchaseOrder.id} />
       {sourceInvoiceId ? <input type="hidden" name="sourceInvoiceId" value={sourceInvoiceId} /> : null}
-      {draft ? <input type="hidden" name="invoiceId" value={draft.id} /> : null}
-      {draft ? <input type="hidden" name="version" value={draft.version} /> : null}
       <FieldGroup>
         <Table containerClassName="rounded-lg border">
           <TableHeader><TableRow><TableHead>Produk / deskripsi</TableHead><TableHead>Model</TableHead><TableHead>Ukuran</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead></TableRow></TableHeader>
@@ -83,7 +78,7 @@ export function InvoiceForm({
             <AlertDescription>{formState.message} Periksa harga dan diskon, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
-        <SubmitButton pendingLabel="Menyimpan draft...">{submitLabel ?? (draft ? "Perbarui draft invoice" : "Buat draft invoice")}</SubmitButton>
+        <SubmitButton pendingLabel="Menyimpan draft...">{submitLabel ?? "Buat draft invoice"}</SubmitButton>
       </FieldGroup>
     </form>
   );

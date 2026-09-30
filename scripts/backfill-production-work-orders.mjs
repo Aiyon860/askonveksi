@@ -52,7 +52,9 @@ try {
       const payment = order?.payment?.transactions[0];
       const po = order?.purchaseOrder;
       if (!order || order.productionWorkOrder || !payment || !po || po.status !== "AGREED" || !po.garmentType || !po.deadline) return null;
-      const sequence = stages[po.garmentType];
+      // PO aksesoris memakai tahapan Non-Jersey, sama dengan jalur runtime di lib/production/service.ts.
+      const route = po.garmentType === "JERSEY" ? "JERSEY" : "NON_JERSEY";
+      const sequence = stages[route];
       const quantity = po.sizes.reduce((sum, item) => sum + item.quantity, 0);
       if (!sequence || quantity <= 0) return null;
       const workOrderNo = await nextWorkOrderNo(tx);
@@ -60,7 +62,7 @@ try {
         data: {
           workOrderNo,
           salesOrderId: order.id,
-          route: po.garmentType,
+          route,
           productName: po.productName,
           quantity,
           deadline: po.deadline,

@@ -726,6 +726,9 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.doesNotMatch(pageSource, /Status laporan/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /piutang/);
   assert.match(pageSource, /getIncome/);
+  // Default tanpa filter tanggal = tampilkan semua pemasukan (bukan bulan berjalan).
+  assert.match(pageSource, /parseOptionalFinanceDateRange/);
+  assert.doesNotMatch(pageSource, /parseFinanceDateRange/);
   assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
   assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /pajak/);
 });
@@ -930,4 +933,28 @@ test("peluang memakai nama kategori produk sebagai jenis pakaian", async () => {
   });
   assert.equal(parsed.success, true);
   assert.equal(parsed.success ? parsed.data.productCategoryId : null, "prod-category-01");
+});
+
+test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pembayaran", async () => {
+  const page = await readFile(new URL("../app/(app)/crm/invoices/page.tsx", import.meta.url), "utf8");
+  const autoRefresh = await readFile(new URL("../components/auto-refresh.tsx", import.meta.url), "utf8");
+  const invoiceDetail = await readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+
+  // Halaman memantau perubahan: tabel disegarkan berkala dan saat tab kembali aktif.
+  assert.match(page, /<AutoRefresh \/>/);
+  assert.match(autoRefresh, /router\.refresh\(\)/);
+  assert.match(autoRefresh, /document\.visibilityState === "visible"/);
+  assert.match(autoRefresh, /document\.addEventListener\("visibilitychange", refresh\)/);
+
+  // Catat pembayaran mengubah kolom status di tabel, bukan hanya isi dialog.
+  assert.match(invoiceDetail, /const loadDetail = useCallback\(/);
+  assert.match(invoiceDetail, /const reloadAfterMutation = useCallback\(/);
+  assert.match(invoiceDetail, /await loadDetail\(\);\s*startTransition\(\(\) => router\.refresh\(\)\)/);
+  assert.equal(invoiceDetail.match(/onRecorded=\{reloadAfterMutation\}/g)?.length, 2);
+
+  // Daftar invoice di-cache bertag "invoices"; `revalidatePath` saja tidak mengosongkan cache itu.
+  assert.match(actionSource, /function revalidateInvoiceList\(\) \{\s*revalidatePath\("\/crm\/invoices"\);\s*revalidateTag\("invoices", \{ expire: 0 \}\);/);
+  const paymentPaths = actionSource.slice(actionSource.indexOf("function revalidatePaymentMutationPaths"), actionSource.indexOf("async function paymentProof"));
+  assert.match(paymentPaths, /revalidateInvoiceList\(\)/);
 });

@@ -4,7 +4,6 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 import {
-  CAMPAIGN_ORDER_CATEGORIES,
   MAX_CAMPAIGN_RECIPIENTS,
   campaignRecipientFilterSchema,
   campaignRecipientSelectionSchema,
@@ -15,12 +14,35 @@ const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 const campaignId = "cmu0wrmdz0002ulij36mpwbb3";
 
-test("filter penerima campaign hanya menerima kategori order yang dikenal", () => {
-  assert.deepEqual(CAMPAIGN_ORDER_CATEGORIES, ["JERSEY", "NON_JERSEY"]);
+const productCategoryId = "cmums7l4l0006ltsb8qjfk5sg";
+
+test("filter penerima campaign memakai ID kategori produk Data Master", () => {
   assert.equal(campaignRecipientFilterSchema.safeParse({ campaignId }).success, true);
-  assert.equal(campaignRecipientFilterSchema.safeParse({ campaignId, orderCategory: "JERSEY", query: "Budi" }).success, true);
-  assert.equal(campaignRecipientFilterSchema.safeParse({ campaignId, orderCategory: "KAOS" }).success, false);
-  assert.equal(campaignRecipientFilterSchema.safeParse({ campaignId: "short", orderCategory: "JERSEY" }).success, false);
+  assert.equal(campaignRecipientFilterSchema.safeParse({ campaignId, productCategoryId, query: "Budi" }).success, true);
+  assert.equal(campaignRecipientFilterSchema.safeParse({ campaignId, productCategoryId: "pendek" }).success, false);
+  assert.equal(campaignRecipientFilterSchema.safeParse({ campaignId: "short", productCategoryId }).success, false);
+});
+
+test("dialog Campaign Promo memilih Kategori Order dari Data Master Kategori Produk", async () => {
+  const [dialog, data, actions, campaigns] = await Promise.all([
+    read("components/campaigns/campaign-recipient-dialog.tsx"),
+    read("lib/whatsapp/data.ts"),
+    read("app/actions/campaigns.ts"),
+    read("lib/whatsapp/campaigns.ts"),
+  ]);
+
+  assert.match(dialog, /Kategori Order/);
+  assert.match(dialog, /value=\{filters\.productCategoryId\}/);
+  assert.match(dialog, /productCategories\.map\(/);
+  assert.match(dialog, /setProductCategories\(result\.productCategories\)/);
+  // Opsi diambil dari kategori aktif yang sudah diurutkan Jersey > Non-jersey > Aksesoris.
+  assert.match(data, /getActiveProductCategories\(\)/);
+  assert.match(data, /productCategories: productCategories\.map\(\(\{ id, name \}\) => \(\{ id, name \}\)\)/);
+  // Filter strict: hanya customer dengan PO berkategori itu; PO tanpa kategori tidak ikut.
+  assert.match(data, /purchaseOrders: \{ some: \{ productCategoryId: input\.productCategoryId \} \}/);
+  assert.match(actions, /productCategoryId: input\.productCategoryId/);
+  assert.doesNotMatch(dialog, /CAMPAIGN_ORDER_CATEG/);
+  assert.doesNotMatch(campaigns, /orderCategory|CAMPAIGN_ORDER_CATEG/);
 });
 
 test("pilihan penerima campaign dibatasi jumlahnya", () => {

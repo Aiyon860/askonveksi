@@ -145,14 +145,6 @@ enum PaymentKind {
   DP
 }
 
-enum ExpensePaymentMethod {
-  QRIS
-  TUNAI
-  BANK_A
-  BANK_B
-  PRIBADI
-}
-
 enum ExpenseCategory {
   WIFI
   LINGKUNGAN
@@ -322,19 +314,21 @@ model Expense {
   spentAt         DateTime             @db.Date
   amount          Decimal              @db.Decimal(18, 2)
   category        ExpenseCategory
-  paymentMethod   ExpensePaymentMethod
+  paymentMethodId String
+  isReimbursable  Boolean              @default(false)
   proofPath       String?              @db.VarChar(500)
   proofFileName   String?              @db.VarChar(255)
   proofMimeType   String?              @db.VarChar(100)
   proofSize       Int?
   createdById     String
   reimbursedAt    DateTime?            @db.Timestamptz(3)
+  paymentMethod   PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
   createdBy       AppUser              @relation(fields: [createdById], references: [id], onDelete: Restrict)
   createdAt       DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
 
   @@index([createdById, spentAt])
-  @@index([paymentMethod, spentAt])
+  @@index([paymentMethodId, spentAt])
   @@index([category, spentAt])
 }
 
@@ -387,6 +381,7 @@ model PaymentMethod {
   position            Int                  @default(0)
   isActive            Boolean              @default(true)
   paymentTransactions PaymentTransaction[]
+  expenses            Expense[]
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
 

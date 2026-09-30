@@ -13,7 +13,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatPercentage } from "@/lib/crm/format";
 import { getIncome } from "@/lib/finance/expense";
-import { parseFinanceDateRange } from "@/lib/finance/date-range";
+import { parseOptionalFinanceDateRange } from "@/lib/finance/date-range";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
 type SearchParams = Promise<{ q?: string | string[]; from?: string | string[]; to?: string | string[]; status?: string | string[]; hppStatus?: string | string[]; page?: string | string[]; pageSize?: string | string[] }>;
@@ -26,13 +26,14 @@ function sumMoney(values: Array<string | null | undefined>) {
 export default async function IncomePage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const query = (first(params.q) ?? "").trim().slice(0, 80);
-  const range = parseFinanceDateRange(params.from, params.to);
+  // Tanpa filter tanggal = tampilkan semua pemasukan (bukan default bulan berjalan).
+  const range = parseOptionalFinanceDateRange(params.from, params.to);
   const status = first(params.status) === "DP" ? "DP" : first(params.status) === "LUNAS" ? "LUNAS" : "all";
   const hppStatus = first(params.hppStatus) === "COMPLETE" ? "COMPLETE" : first(params.hppStatus) === "INCOMPLETE" ? "INCOMPLETE" : "all";
   const page = parsePageParam(params.page);
   const pageSize = parsePageSizeParam(params.pageSize);
   const data = await getIncome({ query, from: range.start, to: range.end, status, hppStatus, page, pageSize });
-  const persistent = { q: query || undefined, from: range.from, to: range.to, status: status === "all" ? undefined : status, hppStatus: hppStatus === "all" ? undefined : hppStatus, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
+  const persistent = { q: query || undefined, from: range.from || undefined, to: range.to || undefined, status: status === "all" ? undefined : status, hppStatus: hppStatus === "all" ? undefined : hppStatus, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   const exportParams = new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   // Total dihitung dari seluruh baris data yang dimuat halaman ini (data.items).
   const totalQuantity = data.items.reduce((sum, item) => sum + item.quantity, 0);
