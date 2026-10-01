@@ -237,15 +237,64 @@ async function storeInbound(accountId, message, remoteJid) {
   });
 }
 
+async function processAccountDeletion(account) {
+  const socket = sessions.get(account.id);
+  if (socket) {
+    await socket.logout().catch(() => undefined);
+    sessions.delete(account.id);
+  }
+  await rm(path.join(authRoot, account.id), { recursive: true, force: true });
+  const messages = await prisma.whatsAppMessage.findMany({
+    where: { accountId: account.id },
+    select: { id: true, mediaPath: true },
+    orderBy: { id: "asc" },
+    take: 500,
+  });
+  if (messages.length) {
+    const paths = [...new Set(messages.map((message) => message.mediaPath).filter(Boolean))];
+    if (paths.length && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
+      for (let index = 0; index < paths.length; index += 100) {
+        const { error } = await supabase.storage.from(mediaBucket).remove(paths.slice(index, index + 100));
+        if (error) console.error(`[whatsapp-worker] delete media ${account.id}: ${cleanError(error)}`);
+      }
+    }
+    await prisma.whatsAppMessage.deleteMany({ where: { id: { in: messages.map((message) => message.id) } } });
+    return;
+  }
+  const conversations = await prisma.whatsAppConversation.findMany({
+    where: { accountId: account.id },
+    select: { id: true },
+    orderBy: { id: "asc" },
+    take: 500,
+  });
+  if (conversations.length) {
+    await prisma.whatsAppConversation.deleteMany({ where: { id: { in: conversations.map((conversation) => conversation.id) } } });
+    return;
+  }
+  await prisma.whatsAppAccount.delete({ where: { id: account.id } });
+  console.error(`[whatsapp-worker] account ${account.id} deleted`);
+}
+
 async function reloadAccounts() {
   const accounts = await prisma.whatsAppAccount.findMany();
   for (const account of accounts) {
+    // ponytail: hapus bertahap lintas tick (500 baris/tick) agar event-loop tak kecekek; file gagal di-log saja.
+    if (account.deleteRequestedAt) {
+      try {
+        await processAccountDeletion(account);
+      } catch (error) {
+        console.error(`[whatsapp-worker] delete ${account.id}: ${cleanError(error)}`);
+        await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { lastError: cleanError(error) } }).catch(() => undefined);
+      }
+      continue;
+    }
     if (account.disconnectRequestedAt && (!account.disconnectedAt || account.disconnectRequestedAt > account.disconnectedAt)) {
       const socket = sessions.get(account.id);
       if (socket) await socket.logout().catch(() => undefined);
       sessions.delete(account.id);
       await rm(path.join(authRoot, account.id), { recursive: true, force: true });
-      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "LOGGED_OUT", sendEnabled: false, disconnectedAt: new Date(), pairingCode: null } });
+      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "LOGGED_OUT", sendEnabled: false, disconnectedAt: new Date(), connectRequestedAt: null, pairingCode: null, pairingCodeExpiresAt: null } });
       continue;
     }
     const socket = sessions.get(account.id);
@@ -255,12 +304,19 @@ async function reloadAccounts() {
       } catch (error) {
         await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "ERROR", lastError: cleanError(error) } });
       }
-    } else if ((account.connectRequestedAt || account.status === "CONNECTED") && !socket) {
+    } else if (account.status !== "LOGGED_OUT" && (account.connectRequestedAt || account.status === "CONNECTED") && !socket) {
       await connectAccount(account);
     }
   }
   const ids = [...sessions.keys()];
   if (ids.length) await prisma.whatsAppAccount.updateMany({ where: { id: { in: ids } }, data: { heartbeatAt: new Date() } });
+  const knownIds = new Set(accounts.map((account) => account.id));
+  for (const [id, socket] of sessions) {
+    if (knownIds.has(id)) continue;
+    await socket.logout().catch(() => undefined);
+    sessions.delete(id);
+    await rm(path.join(authRoot, id), { recursive: true, force: true });
+  }
 }
 
 async function scheduleAutomations() {
