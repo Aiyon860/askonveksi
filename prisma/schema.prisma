@@ -1068,6 +1068,7 @@ model WhatsAppAccount {
   sendEnabled           Boolean                 @default(false)
   connectRequestedAt    DateTime?               @db.Timestamptz(3)
   disconnectRequestedAt DateTime?               @db.Timestamptz(3)
+  deleteRequestedAt     DateTime?               @db.Timestamptz(3)
   pairingCode           String?                 @db.VarChar(32)
   pairingCodeExpiresAt  DateTime?               @db.Timestamptz(3)
   connectedAt           DateTime?               @db.Timestamptz(3)

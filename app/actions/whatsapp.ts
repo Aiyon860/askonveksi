@@ -74,9 +74,23 @@ export async function disconnectWhatsAppAccountAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/accounts", async () => {
     await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
     const id = String(formData.get("accountId") ?? "");
-    await getPrismaClient().whatsAppAccount.update({ where: { id }, data: { sendEnabled: false, disconnectRequestedAt: new Date() } });
+    await getPrismaClient().whatsAppAccount.update({ where: { id }, data: { sendEnabled: false, disconnectRequestedAt: new Date(), connectRequestedAt: null, pairingCode: null, pairingCodeExpiresAt: null } });
     refreshWhatsApp();
     return flashMessagePath("/master-data/whatsapp/accounts", "notice", "Permintaan logout dikirim ke worker.");
+  });
+}
+
+export async function deleteWhatsAppAccountAction(formData: FormData) {
+  return runRedirectingAction("/master-data/whatsapp/accounts", async () => {
+    await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
+    const id = String(formData.get("accountId") ?? "");
+    const updated = await getPrismaClient().whatsAppAccount.updateMany({
+      where: { id, deleteRequestedAt: null },
+      data: { sendEnabled: false, connectRequestedAt: null, disconnectRequestedAt: new Date(), deleteRequestedAt: new Date(), pairingCode: null, pairingCodeExpiresAt: null },
+    });
+    if (!updated.count) throw new UserFacingError("Account WhatsApp tidak ditemukan atau sedang dihapus.");
+    refreshWhatsApp();
+    return flashMessagePath("/master-data/whatsapp/accounts", "notice", "Permintaan hapus diterima. Chat dan media dihapus di latar belakang.");
   });
 }
 
