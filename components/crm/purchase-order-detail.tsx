@@ -70,6 +70,11 @@ export function PurchaseOrderDetail({
                 <Info label="Deadline produksi" value={formatDate(detail.deadline)} />
                 <Info label="Tanggal dibuat" value={formatDate(detail.createdAt)} />
               </dl>
+              {detail.garmentType === "AKSESORI" ? (
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <div><dt className="text-xs text-muted-foreground">Jumlah produk</dt><dd className="mt-1 font-mono">{detail.sizes.reduce((sum, item) => sum + item.quantity, 0).toLocaleString("id-ID")}</dd></div>
+                </dl>
+              ) : (
               <div>
                 <h3 className="mb-2 text-sm font-medium">Ukuran dan jumlah</h3>
                 <Table>
@@ -77,6 +82,7 @@ export function PurchaseOrderDetail({
                   <TableBody>{detail.sizes.map((item) => <TableRow key={item.id}><TableCell>{item.size}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell></TableRow>)}</TableBody>
                 </Table>
               </div>
+              )}
               {detail.designNotes || detail.notes ? <dl className="grid gap-4 sm:grid-cols-2"><Info label="Catatan desain" value={detail.designNotes ?? "-"} /><Info label="Catatan" value={detail.notes ?? "-"} /></dl> : null}
               {detail.attachments.length ? (
                 <div>

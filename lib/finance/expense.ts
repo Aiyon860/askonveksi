@@ -25,11 +25,21 @@ function expenseWhere(state: Omit<ExpenseListState, "order" | "page" | "pageSize
   } satisfies Prisma.ExpenseWhereInput;
 }
 
+// Jendela default memakai presisi tanggal WIB: 90 hari kalender terakhir + hari ini.
+// Kolom spentAt bertipe DATE sehingga jam pada batas waktu dipangkas Postgres saat
+// dibandingkan — batas atas harus keesokan hari agar pengeluaran hari ini ikut tampil.
+function defaultExpenseWindow() {
+  const DAY_MS = 86_400_000;
+  const JAKARTA_MS = 7 * 3_600_000;
+  const todayStart = Math.floor((Date.now() + JAKARTA_MS) / DAY_MS) * DAY_MS - JAKARTA_MS;
+  return { from: new Date(todayStart - 90 * DAY_MS), to: new Date(todayStart + DAY_MS) };
+}
+
 export async function getExpenses(state: ExpenseListState) {
   await requireActor(FINANCE_ROLES);
   // ponytail: default 90 hari agar groupBy spentAt tak scan full-table di VPS 1GB. User tetap bisa pilih range lebih luas.
   const bounded = !state.from && !state.to
-    ? { ...state, from: new Date(Date.now() - 90 * 86_400_000), to: new Date() }
+    ? { ...state, ...defaultExpenseWindow() }
     : state;
   const where = expenseWhere(bounded);
   const prisma = getPrismaClient();
@@ -81,7 +91,7 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   const netProfit = hpp ? order.invoice.total.sub(hpp) : null;
   const margin = netProfit && !order.invoice.total.isZero() ? netProfit.div(order.invoice.total).toNumber() : null;
   const latest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt > date ? item.paidAt : date, null);
-  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
+  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
 }
 
 async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number, take?: number) {
@@ -89,7 +99,7 @@ async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number
     where,
     select: {
       id: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true,
-      purchaseOrder: { select: { productName: true, garmentType: true } },
+      purchaseOrder: { select: { productName: true, productCategory: { select: { name: true } } } },
       invoice: { select: { subtotal: true, total: true, totalDiscount: true, items: { select: { quantity: true } } } },
       cost: { select: { kain: true, zipper: true, jahit: true, pres: true, dtfPlastisol: true, bordir: true, lainnya: true, version: true } },
       payment: { select: { kind: true, transactions: { where: { status: "ACTIVE" }, select: { amount: true, paidAt: true, paymentTermId: true } } } },

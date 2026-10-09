@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, CalendarClock, CircleDollarSign, Database, Factory, FileText, KanbanSquare, LayoutDashboard, Megaphone, MessageCircle, Palette, Receipt, Ruler, ScrollText, Settings2, Shirt, Tags, UsersRound, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, ImageUp, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -15,48 +15,52 @@ const mainItems = [
 ] as const;
 
 const financeItems = [
-  { href: "/keuangan/pemasukan", label: "Pemasukan", icon: Receipt },
+  { href: "/keuangan/pemasukan", label: "Pemasukan", icon: Wallet },
   { href: "/keuangan/pengeluaran", label: "Pengeluaran", icon: CircleDollarSign },
   { href: "/keuangan/laporan", label: "Laporan", icon: FileText },
 ] as const;
 
 const crmItems = [
-  { href: "/crm", label: "Pipeline", icon: KanbanSquare },
-  { href: "/crm/follow-up", label: "Broadcast", icon: CalendarClock },
-  { href: "/crm/purchase-orders", label: "Purchase Order", icon: FileText },
+  { href: "/crm", label: "Pipeline", icon: Kanban },
+  { href: "/crm/prospek", label: "Prospek", icon: UserPlus },
+  { href: "/customers", label: "Customer", icon: UsersRound },
+  { href: "/crm/purchase-orders", label: "Purchase Order", icon: ClipboardList },
   { href: "/crm/invoices", label: "Invoice", icon: Receipt },
   { href: "/crm/sales-orders", label: "Sales Order", icon: ScrollText },
-] as const;
-
-const customerItems = [
-  { href: "/customers", label: "Customer", icon: UsersRound },
+  { href: "/crm/follow-up", label: "Broadcast", icon: CalendarClock },
 ] as const;
 
 const whatsAppItems = [
   { href: "/whatsapp", label: "Kotak Masuk", icon: MessageCircle },
-  { href: "/master-data/whatsapp/templates", label: "Template Pesan", icon: MessageCircle },
+  { href: "/master-data/whatsapp/templates", label: "Template Pesan", icon: LayoutTemplate },
   { href: "/master-data/whatsapp/accounts", label: "Akun & Koneksi", icon: Settings2 },
+  { href: "/campaigns", label: "Campaign promo", icon: Megaphone },
 ] as const;
 
-const prospectItems = [
-  { href: "/crm/prospek", label: "Prospek", icon: UsersRound },
+const productionItems = [
+  { href: "/produksi", label: "Produksi", icon: Factory },
+  { href: "/detail-desain", label: "Detail Desain", icon: PenTool },
+] as const;
+
+const designItems = [
+  { href: "/desain", label: "Upload Desain", icon: ImageUp },
 ] as const;
 
 const masterItems = [
   { href: "/master-data/customer-types", label: "Jenis customer", icon: Tags },
-  { href: "/master-data/lead-sources", label: "Sumber lead", icon: Waypoints },
+  { href: "/master-data/lead-sources", label: "Sumber lead", icon: Magnet },
   { href: "/master-data/garment-sizes", label: "Ukuran pakaian", icon: Ruler },
   { href: "/master-data/product-categories", label: "Kategori produk", icon: Shirt },
-  { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CircleDollarSign },
+  { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CreditCard },
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
 ] as const;
 
 const ownerMasterItems = [
-  { href: "/admin/users", label: "Pengguna", icon: UsersRound },
+  { href: "/admin/users", label: "Pengguna", icon: ShieldCheck },
 ] as const;
 
 const analyticsItems = [
-  { href: "/analytics", label: "Ringkasan", icon: BarChart3 },
+  { href: "/analytics", label: "Ringkasan", icon: Gauge },
   { href: "/analytics/lead-sources", label: "Sumber & omzet", icon: Waypoints },
 ] as const;
 
@@ -65,7 +69,8 @@ function isPathWithin(pathname: string, href: string) {
 }
 
 function isNavItemActive(pathname: string, href: string) {
-  if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang") || isPathWithin(pathname, "/sales-orders");
+  if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang");
+  if (href === "/crm/sales-orders") return isPathWithin(pathname, href) || isPathWithin(pathname, "/sales-orders");
   if (href === "/crm/follow-up") return pathname === href;
   return isPathWithin(pathname, href);
 }
@@ -74,7 +79,7 @@ function navCountLabel(count: number) {
   return count > 99 ? "99+" : String(count);
 }
 
-function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: string; item: { href: string; label: string; icon: LucideIcon; count?: number }; nested?: boolean; onNavigate?: () => void }) {
+function NavLink({ pathname, item, nested = false, tone, onNavigate }: { pathname: string; item: { href: string; label: string; icon: LucideIcon; count?: number }; nested?: boolean; tone?: string; onNavigate?: () => void }) {
   const active = isNavItemActive(pathname, item.href);
   const Icon = item.icon;
   return (
@@ -90,7 +95,7 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
           : "text-nav-ink hover:bg-nav-chip",
       )}
     >
-      <Icon aria-hidden="true" className="size-4" />
+      <Icon aria-hidden="true" className={cn("size-4", !active && tone)} />
       {item.label}
       {typeof item.count === "number" ? (
         <Badge
@@ -108,11 +113,11 @@ function NavLink({ pathname, item, nested = false, onNavigate }: { pathname: str
   );
 }
 
-function NavGroup({ label, icon: Icon, children }: { label: ReactNode; icon: LucideIcon; children: ReactNode }) {
+function NavGroup({ label, icon: Icon, tone, children }: { label: ReactNode; icon: LucideIcon; tone?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex h-9 w-full shrink-0 items-center gap-2 px-3 text-[11px] font-semibold tracking-wide text-nav-ink-muted uppercase">
-        <Icon aria-hidden="true" className="size-4" />
+        <Icon aria-hidden="true" className={cn("size-4", tone)} />
         {label}
       </div>
       <div className="flex flex-col gap-1">{children}</div>
@@ -145,38 +150,38 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewFinance ? (
-        <NavGroup label={<span>Keuangan</span>} icon={CircleDollarSign}>
-          {financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+        <NavGroup label={<span>Keuangan</span>} icon={Banknote} tone="text-nav-tone-finance">
+          {financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-finance" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewCrm ? (
-        <NavGroup label={<span>CRM</span>} icon={KanbanSquare}>
-          {crmItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+        <NavGroup label={<span>CRM</span>} icon={KanbanSquare} tone="text-nav-tone-crm">
+          {crmItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-crm" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
-      {canViewCrm ? prospectItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
-      {canViewCrm ? customerItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
       {canViewCrm ? (
-        <NavGroup label={<span>WhatsApp</span>} icon={MessageCircle}>
-          {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested onNavigate={onNavigate} />)}
+        <NavGroup label={<span>WhatsApp</span>} icon={MessageCircle} tone="text-nav-tone-whatsapp">
+          {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested tone="text-nav-tone-whatsapp" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
-      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/campaigns", label: "Campaign promo", icon: Megaphone }} onNavigate={onNavigate} /> : null}
-      {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/produksi", label: "Produksi", icon: Factory }} onNavigate={onNavigate} /> : null}
-      {canViewProduction ? <NavLink pathname={pathname} item={{ href: "/detail-desain", label: "Detail Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
-      {canViewDesign ? <NavLink pathname={pathname} item={{ href: "/desain", label: "Upload Desain", icon: Palette }} onNavigate={onNavigate} /> : null}
+      {canViewProduction || canViewDesign ? (
+        <NavGroup label={<span>Produksi</span>} icon={Factory} tone="text-nav-tone-production">
+          {canViewProduction ? productionItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />) : null}
+          {canViewDesign ? designItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />) : null}
+        </NavGroup>
+      ) : null}
       {canViewAnalytics ? (
-        <NavGroup label={<span>Analytics</span>} icon={BarChart3}>
-          {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+        <NavGroup label={<span>Analytics</span>} icon={BarChart3} tone="text-nav-tone-analytics">
+          {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-analytics" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canManageMasterData ? (
-        <NavGroup label={<span>Data Master</span>} icon={Database}>
-          {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
-          {ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested onNavigate={onNavigate} />)}
+        <NavGroup label={<span>Data Master</span>} icon={Database} tone="text-nav-tone-master">
+          {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
+          {ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
-      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: Settings2 }} onNavigate={onNavigate} /> : null}
+      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: SlidersHorizontal }} onNavigate={onNavigate} /> : null}
     </nav>
   );
 });

@@ -1386,6 +1386,8 @@ export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED" 
 export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
 export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "UNSCHEDULED";
 export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
+export type SalesOrderInvoicePaymentFilter = "all" | "PAID" | "UNPAID";
+export type SalesOrderWoFilter = "all" | "DONE" | "ONGOING" | "NONE";
 export type PurchaseOrderListSort = "purchaseOrderNo" | "productName" | "customer" | "status" | "createdAt" | "deadline";
 export type InvoiceListSort = "invoiceNo" | "customer" | "purchaseOrderNo" | "status" | "total" | "createdAt";
 export type SalesOrderListSort = "salesOrderNo" | "customer" | "purchaseOrderNo" | "invoiceNo" | "status" | "total" | "acceptedAt";
@@ -1443,6 +1445,56 @@ function invoicePaymentWhere(paymentStatus: InvoicePaymentStatus) {
         { salesOrder: { is: { status: "CANCELLED" } } },
       ],
     } satisfies Prisma.InvoiceWhereInput;
+  }
+
+  return {};
+}
+
+function salesOrderInvoicePaymentWhere(invoicePayment: SalesOrderInvoicePaymentFilter) {
+  if (invoicePayment === "PAID") {
+    return {
+      payment: { is: { outstandingAmount: 0 } },
+    } satisfies Prisma.SalesOrderWhereInput;
+  }
+
+  if (invoicePayment === "UNPAID") {
+    return {
+      OR: [
+        { payment: { is: { outstandingAmount: { gt: 0 } } } },
+        { payment: null },
+      ],
+    } satisfies Prisma.SalesOrderWhereInput;
+  }
+
+  return {};
+}
+
+function salesOrderWoWhere(woStatus: SalesOrderWoFilter) {
+  if (woStatus === "DONE") {
+    return {
+      productionWorkOrder: {
+        is: {
+          OR: [{ status: "COMPLETED" }, { currentStage: "SELESAI" }],
+        },
+      },
+    } satisfies Prisma.SalesOrderWhereInput;
+  }
+
+  if (woStatus === "ONGOING") {
+    return {
+      productionWorkOrder: {
+        is: {
+          status: { not: "COMPLETED" },
+          currentStage: { not: "SELESAI" },
+        },
+      },
+    } satisfies Prisma.SalesOrderWhereInput;
+  }
+
+  if (woStatus === "NONE") {
+    return {
+      productionWorkOrder: null,
+    } satisfies Prisma.SalesOrderWhereInput;
   }
 
   return {};
@@ -1647,12 +1699,14 @@ export async function getInvoices({
 }
 
 const getCachedSalesOrders = unstable_cache(
-  async ({ query, status, start, end, page, pageSize, sort, direction }: {
-    query: string; status: SalesOrderListStatus; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
+  async ({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction }: {
+    query: string; status: SalesOrderListStatus; invoicePayment: SalesOrderInvoicePaymentFilter; woStatus: SalesOrderWoFilter; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
   }) => {
     const normalizedQuery = query.trim().slice(0, 80);
     const where = {
       ...(status === "all" ? {} : { status }),
+      ...salesOrderInvoicePaymentWhere(invoicePayment),
+      ...salesOrderWoWhere(woStatus),
       ...(start && end ? { acceptedAt: { gte: start, lt: end } } : {}),
       ...(normalizedQuery ? { OR: [
         { salesOrderNo: { contains: normalizedQuery, mode: "insensitive" as const } },
@@ -1664,20 +1718,38 @@ const getCachedSalesOrders = unstable_cache(
     } satisfies Prisma.SalesOrderWhereInput;
     const prisma = getPrismaClient();
     const [items, total] = await Promise.all([
-      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrder: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
       prisma.salesOrder.count({ where }),
     ]);
-    return { items: items.map((item) => ({ ...item, total: item.total.toString() })), total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+    return {
+      items: items.map((item) => {
+        const workOrder = item.productionWorkOrder;
+        return {
+          ...item,
+          total: item.total.toString(),
+          invoicePayment: item.payment && item.payment.outstandingAmount.equals(0)
+            ? "PAID" as const
+            : "UNPAID" as const,
+          woStatus: !workOrder
+            ? "NONE" as const
+            : workOrder.status === "COMPLETED" || workOrder.currentStage === "SELESAI"
+              ? "DONE" as const
+              : "ONGOING" as const,
+        };
+      }),
+      total,
+      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    };
   },
   ["sales-orders"],
   { tags: ["sales-orders"], revalidate: 30 },
 );
 
-export async function getSalesOrders({ query, status, start, end, page, pageSize, sort, direction }: {
-  query: string; status: SalesOrderListStatus; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
+export async function getSalesOrders({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction }: {
+  query: string; status: SalesOrderListStatus; invoicePayment: SalesOrderInvoicePaymentFilter; woStatus: SalesOrderWoFilter; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
 }) {
   await requireActor();
-  return getCachedSalesOrders({ query, status, start, end, page, pageSize, sort, direction });
+  return getCachedSalesOrders({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction });
 }
 
 export async function getSalesOrderDocumentDetail(salesOrderId: string) {
@@ -1698,6 +1770,7 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
       purchaseOrderNo: true,
       customerReference: true,
       productName: true,
+      garmentType: true,
       productCategory: { select: { name: true } },
       material: true,
       color: true,

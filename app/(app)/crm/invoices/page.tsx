@@ -78,9 +78,10 @@ function parsePaymentStatus(value: string | string[] | undefined): InvoicePaymen
 
 function InvoicePaymentBadge({ status }: { status: InvoicePaymentStatus }) {
   if (status === "PAID") return <Badge variant="success">Lunas</Badge>;
-  if (status === "UNPAID") return <Badge variant="warning">Belum lunas</Badge>;
-  if (status === "PENDING_DP") return <Badge variant="secondary">Menunggu DP</Badge>;
-  if (status === "PENDING_LUNAS") return <Badge variant="secondary">Menunggu Lunas</Badge>;
+  if (status === "UNPAID") return <Badge variant="destructive">Belum lunas</Badge>;
+  if (status === "PENDING_DP") return <Badge variant="info">Menunggu DP</Badge>;
+  if (status === "PENDING_LUNAS") return <Badge variant="warning">Menunggu Lunas</Badge>;
+  if (status === "NO_SALES_ORDER") return <Badge variant="secondary">Menunggu pembayaran awal</Badge>;
   return <Badge variant="secondary">Jadwal belum diatur</Badge>;
 }
 
