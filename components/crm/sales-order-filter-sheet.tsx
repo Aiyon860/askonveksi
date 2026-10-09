@@ -18,11 +18,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import type { SalesOrderListSort, SalesOrderListStatus, SortDirection } from "@/lib/crm/data";
+import type { SalesOrderInvoicePaymentFilter, SalesOrderListSort, SalesOrderListStatus, SalesOrderWoFilter, SortDirection } from "@/lib/crm/data";
 
 type SalesOrderFilterSheetProps = {
   query: string;
   status: SalesOrderListStatus;
+  invoicePayment: SalesOrderInvoicePaymentFilter;
+  woStatus: SalesOrderWoFilter;
   from: string;
   to: string;
   today: string;
@@ -36,6 +38,8 @@ type SalesOrderFilterSheetProps = {
 export function SalesOrderFilterSheet({
   query,
   status,
+  invoicePayment,
+  woStatus,
   from,
   to,
   today,
@@ -54,11 +58,15 @@ export function SalesOrderFilterSheet({
     const formData = new FormData(event.currentTarget);
     const params = new URLSearchParams();
     const nextStatus = String(formData.get("status") ?? "all");
+    const nextInvoicePayment = String(formData.get("inv") ?? "all");
+    const nextWoStatus = String(formData.get("wo") ?? "all");
     const nextFrom = String(formData.get("from") ?? "");
     const nextTo = String(formData.get("to") ?? "");
 
     if (query) params.set("q", query);
     if (nextStatus !== "all") params.set("status", nextStatus);
+    if (nextInvoicePayment !== "all") params.set("inv", nextInvoicePayment);
+    if (nextWoStatus !== "all") params.set("wo", nextWoStatus);
     if (nextFrom) params.set("from", nextFrom);
     if (nextTo) params.set("to", nextTo);
     if (sort) params.set("sort", sort);
@@ -110,11 +118,28 @@ export function SalesOrderFilterSheet({
             {order ? <input type="hidden" name="order" value={order} /> : null}
             <FieldGroup className="gap-5">
               <Field className="gap-1.5">
-                <FieldLabel htmlFor="so-status">Status Sales Order</FieldLabel>
+                <FieldLabel htmlFor="so-status">Status SO</FieldLabel>
                 <NativeSelect id="so-status" name="status" defaultValue={status} className="w-full">
-                  <NativeSelectOption value="all">Semua status</NativeSelectOption>
+                  <NativeSelectOption value="all">Semua status SO</NativeSelectOption>
                   <NativeSelectOption value="ACTIVE">Aktif</NativeSelectOption>
                   <NativeSelectOption value="CANCELLED">Dibatalkan</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field className="gap-1.5">
+                <FieldLabel htmlFor="so-invoice-payment">Status Invoice</FieldLabel>
+                <NativeSelect id="so-invoice-payment" name="inv" defaultValue={invoicePayment} className="w-full">
+                  <NativeSelectOption value="all">Semua status invoice</NativeSelectOption>
+                  <NativeSelectOption value="PAID">Lunas</NativeSelectOption>
+                  <NativeSelectOption value="UNPAID">Belum Lunas</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <Field className="gap-1.5">
+                <FieldLabel htmlFor="so-wo">Status WO</FieldLabel>
+                <NativeSelect id="so-wo" name="wo" defaultValue={woStatus} className="w-full">
+                  <NativeSelectOption value="all">Semua status WO</NativeSelectOption>
+                  <NativeSelectOption value="DONE">Selesai</NativeSelectOption>
+                  <NativeSelectOption value="ONGOING">Belum Selesai</NativeSelectOption>
+                  <NativeSelectOption value="NONE">Belum ada WO</NativeSelectOption>
                 </NativeSelect>
               </Field>
               <div className="grid gap-3 sm:grid-cols-2">

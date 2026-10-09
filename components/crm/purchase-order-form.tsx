@@ -92,7 +92,15 @@ export function PurchaseOrderForm({
   });
   const selectedCategory = categoryOptions?.find((category) => category.id === productCategoryId);
   const effectiveGarmentType = hasCategoryOptions ? selectedCategory?.garmentType ?? "" : garmentType;
+  const isAccessory = effectiveGarmentType === "AKSESORI";
   const legacyCategory = hasCategoryOptions && Boolean(values?.garmentType) && !selectedCategory;
+  const accessorySizeId = values?.sizes.length === 1 && values.sizes[0].sizeId
+    ? values.sizes[0].sizeId
+    : sizeOptions[0]?.id ?? "";
+  const [accessoryQuantity, setAccessoryQuantity] = useState(() => {
+    const total = (values?.sizes ?? []).reduce((sum, item) => sum + Math.max(0, Math.trunc(item.quantity)), 0);
+    return total > 0 ? String(total) : "";
+  });
   const [selectedOrderDate, setSelectedOrderDate] = useState(orderDate);
   const [deadline, setDeadline] = useState(values?.deadline ?? "");
   const [deadlineMode, setDeadlineMode] = useState<"PRESET" | "CUSTOM">(() => (
@@ -182,6 +190,20 @@ export function PurchaseOrderForm({
     () => sizeOptions.reduce((total, size) => total + (matrix[`PENDEK:${size.id}`] ?? 0) + (matrix[`PANJANG:${size.id}`] ?? 0), 0),
     [matrix, sizeOptions],
   );
+
+  function updateAccessoryQuantity(rawValue: string) {
+    if (rawValue === "") {
+      setAccessoryQuantity("");
+      return;
+    }
+    if (!/^\d+$/.test(rawValue.trim())) return;
+    setAccessoryQuantity(String(Math.min(10_000_000, Math.max(0, Number(rawValue.trim())))));
+  }
+
+  useEffect(() => {
+    if (!isAccessory || accessoryQuantity !== "" || rosterTotal <= 0) return;
+    setAccessoryQuantity(String(rosterTotal));
+  }, [isAccessory, accessoryQuantity, rosterTotal]);
 
   useEffect(() => {
     if (formState.ok || !failedSubmissionRef.current || !formRef.current) return;
@@ -288,6 +310,37 @@ export function PurchaseOrderForm({
           </div>
         </FieldSet>
 
+        {isAccessory ? (
+          <FieldSet>
+            <FieldLegend>Jumlah produk</FieldLegend>
+            <FieldDescription>Aksesoris tidak memakai ukuran dan roster. Isi total jumlah produk yang dipesan.</FieldDescription>
+            <div className="grid gap-4 sm:max-w-xs">
+              <Field>
+                <FieldLabel htmlFor={`po-accessory-quantity-${fieldKey}`} required>Jumlah produk</FieldLabel>
+                <input type="hidden" name="sizeId" value={accessorySizeId} />
+                <input type="hidden" name="sleeveLength" value="PENDEK" />
+                <input type="hidden" name="rosterMode" value="none" />
+                <Input
+                  id={`po-accessory-quantity-${fieldKey}`}
+                  name="sizeQuantity"
+                  type="number"
+                  min={1}
+                  max={10_000_000}
+                  step={1}
+                  inputMode="numeric"
+                  required
+                  value={accessoryQuantity}
+                  onFocus={(event) => event.currentTarget.select()}
+                  onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }}
+                  onChange={(event) => updateAccessoryQuantity(event.currentTarget.value)}
+                  aria-label="Jumlah produk aksesoris"
+                  className="w-full text-center font-mono tabular-nums"
+                />
+              </Field>
+            </div>
+          </FieldSet>
+        ) : (
+          <>
         <FieldSet>
           <FieldLegend>Matriks ukuran dan jumlah</FieldLegend>
           <FieldDescription>Isi nol untuk kombinasi yang tidak dipesan. Total roster, jika ada, harus sama per ukuran.</FieldDescription>
@@ -329,8 +382,10 @@ export function PurchaseOrderForm({
           {rosterMode === "excel" ? <div className="mt-4 flex flex-col gap-3">
             <Button size="sm" variant="outline" className="self-start" render={<Link href="/api/crm/roster-template" />} nativeButton={false}><FileDown data-icon="inline-start" aria-hidden="true" />Unduh template Excel</Button>
             <Field><FieldLabel htmlFor={`po-roster-file-${fieldKey}`}>File roster</FieldLabel><FilePicker key={formState.ok ? "ready" : "validation-error"} id={`po-roster-file-${fieldKey}`} name="rosterFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Isi sheet Roster sesuai contoh; formula ditolak.</FieldDescription></Field>
-          </div> : null}
+            </div> : null}
         </FieldSet>
+          </>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field><FieldLabel htmlFor={`po-design-${fieldKey}`}>Catatan desain</FieldLabel><Textarea id={`po-design-${fieldKey}`} name="designNotes" maxLength={4000} rows={4} defaultValue={values?.designNotes ?? ""} /></Field>
@@ -339,7 +394,7 @@ export function PurchaseOrderForm({
         {formState.ok === false && formState.message ? (
           <Alert variant="destructive">
             <AlertTitle>PO belum tersimpan</AlertTitle>
-            <AlertDescription>{formState.message} Periksa matriks ukuran dan roster, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
+            <AlertDescription>{formState.message} {isAccessory ? "Periksa jumlah produk, lalu simpan ulang." : "Periksa matriks ukuran dan roster, lalu simpan ulang."} Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
         <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? "Buat draft PO"}</SubmitButton>

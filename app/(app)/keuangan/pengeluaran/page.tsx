@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Check, Download, ReceiptText, Trash2 } from "lucide-react";
 
 import { deleteExpenseAction, reimburseExpenseAction } from "@/app/actions/finance";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
@@ -56,6 +57,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
   const exportParams = new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
 
   return <>
+    <AutoRefresh />
     <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<a href={`/api/keuangan/pengeluaran/export?${exportParams}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Export Excel</Button><ExpenseForm methods={methods} /></div>} />
     <PageMessage />
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
@@ -89,7 +91,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
               <TableCell>{item.purpose}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{item.paymentMethod.name}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell>
               <TableCell>{reimbursable ? item.reimbursedAt ? <span className="text-success">Diganti {formatDate(item.reimbursedAt, true)}</span> : "Belum diganti" : "-"}</TableCell>
               <TableCell className="text-right">{canManage && !item.reimbursedAt ? <div className="flex justify-end gap-2">
-                {reimbursable ? <form action={reimburseExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="outline" pendingLabel="Memproses..." confirmTitle="Tandai uang sudah diganti?" confirmDescription="Pengeluaran ini tidak dapat diedit atau dihapus setelah ditandai." confirmLabel="Ya, sudah diganti"><Check data-icon="inline-start" aria-hidden="true" />Sudah diganti</ConfirmSubmitButton></form> : null}
+                {reimbursable ? <form action={reimburseExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="success" pendingLabel="Memproses..." confirmTitle="Tandai uang sudah diganti?" confirmDescription="Pengeluaran ini tidak dapat diedit atau dihapus setelah ditandai." confirmLabel="Ya, sudah diganti"><Check data-icon="inline-start" aria-hidden="true" />Reimburse</ConfirmSubmitButton></form> : null}
                 <ExpenseForm methods={methods} expense={item} />{own ? <form action={deleteExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="destructive" pendingLabel="Menghapus..." confirmTitle="Hapus pengeluaran?" confirmDescription="Catatan pengeluaran ini akan dihapus." confirmLabel="Ya, hapus"><Trash2 data-icon="inline-start" aria-hidden="true" />Hapus</ConfirmSubmitButton></form> : null}
               </div> : "-"}</TableCell>
             </TableRow>;

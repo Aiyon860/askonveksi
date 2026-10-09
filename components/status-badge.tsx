@@ -31,6 +31,16 @@ export function SalesOrderStatusBadge({ status }: { status: SalesOrderStatus }) 
   return <Badge variant={status === "ACTIVE" ? "success" : "destructive"}>{SALES_ORDER_STATUS_LABEL[status]}</Badge>;
 }
 
+export function SalesOrderInvoicePaymentBadge({ status }: { status: "PAID" | "UNPAID" }) {
+  return <Badge variant={status === "PAID" ? "success" : "destructive"}>{status === "PAID" ? "Lunas" : "Belum Lunas"}</Badge>;
+}
+
+export function SalesOrderWoStatusBadge({ status }: { status: "DONE" | "ONGOING" | "NONE" }) {
+  if (status === "DONE") return <Badge variant="success">Selesai</Badge>;
+  if (status === "ONGOING") return <Badge variant="warning">Belum Selesai</Badge>;
+  return <Badge variant="secondary">Belum ada WO</Badge>;
+}
+
 export function CustomerActivityBadge({
   status,
   archived = false,

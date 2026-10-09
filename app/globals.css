@@ -42,6 +42,12 @@
   --color-nav-ink: var(--nav-ink);
   --color-nav-ink-muted: var(--nav-ink-muted);
   --color-nav-active-ink: var(--nav-active-ink);
+  --color-nav-tone-finance: var(--nav-tone-finance);
+  --color-nav-tone-crm: var(--nav-tone-crm);
+  --color-nav-tone-whatsapp: var(--nav-tone-whatsapp);
+  --color-nav-tone-production: var(--nav-tone-production);
+  --color-nav-tone-analytics: var(--nav-tone-analytics);
+  --color-nav-tone-master: var(--nav-tone-master);
   --color-accent-surface: var(--accent-surface);
   --color-accent-surface-line: var(--accent-surface-line);
   --color-accent-chip: var(--accent-chip);
@@ -182,6 +188,17 @@
   --nav-ink: oklch(0.985 0.005 256);
   --nav-ink-muted: oklch(0.87 0.02 256);
   --nav-active-ink: oklch(0.27 0.06 262);
+  /*
+    Warna identitas grup navigasi. Selalu duduk di atas navy gelap pada kedua
+    tema, sehingga nilainya dibuat terang di sini maupun di tema gelap. Hanya
+    untuk ikon dekoratif — teks navigasi tetap memakai nav-ink.
+  */
+  --nav-tone-finance: oklch(0.84 0.14 75);
+  --nav-tone-crm: oklch(0.78 0.12 240);
+  --nav-tone-whatsapp: oklch(0.8 0.13 155);
+  --nav-tone-production: oklch(0.76 0.14 55);
+  --nav-tone-analytics: oklch(0.78 0.13 295);
+  --nav-tone-master: oklch(0.78 0.02 256);
   --accent-surface: oklch(0.47 0.19 258);
   --accent-surface-line: oklch(0.58 0.16 258);
   --accent-chip: oklch(0.58 0.17 258);
@@ -425,6 +442,12 @@
   --nav-ink: oklch(0.96 0.01 256);
   --nav-ink-muted: oklch(0.76 0.03 256);
   --nav-active-ink: oklch(0.99 0 0);
+  --nav-tone-finance: oklch(0.86 0.13 75);
+  --nav-tone-crm: oklch(0.8 0.11 235);
+  --nav-tone-whatsapp: oklch(0.82 0.12 155);
+  --nav-tone-production: oklch(0.79 0.13 55);
+  --nav-tone-analytics: oklch(0.8 0.12 295);
+  --nav-tone-master: oklch(0.72 0.02 256);
   --accent-surface: oklch(0.44 0.16 259);
   --accent-surface-line: oklch(0.56 0.14 259);
   --accent-chip: oklch(0.57 0.15 259);

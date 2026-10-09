@@ -15,6 +15,7 @@ type PurchaseOrder = {
   id: string;
   purchaseOrderNo: string;
   productName: string;
+  garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   sizes: Array<{ id: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
 };
 

@@ -124,6 +124,23 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     y -= 4;
   }
 
+  const isAccessory = data.garmentType === "AKSESORI";
+  const totalQuantity = data.sizes.reduce((sum, item) => sum + item.quantity, 0);
+  if (isAccessory) {
+    if (y < 100) {
+      pageNumber += 1;
+      page = document.addPage([A4.width, A4.height]);
+      decorate(page, pageNumber);
+      y = A4.height - margin;
+    }
+    const totalWidth = A4.width - margin * 2;
+    page.drawRectangle({ x: margin, y: y - 22, width: totalWidth, height: 22, color: rgb(0.12, 0.12, 0.12) });
+    page.drawText("JUMLAH PRODUK", { x: margin + 7, y: y - 14, size: 7, font: bold, color: rgb(1, 1, 1) });
+    y -= 22;
+    page.drawRectangle({ x: margin, y: y - 22, width: totalWidth, height: 22, borderWidth: 0.5, borderColor: rgb(0.75, 0.75, 0.75) });
+    page.drawText(String(totalQuantity), { x: margin + 7, y: y - 14, size: 8, font: bold });
+    y -= 32;
+  } else {
   const sizeNames = [...new Set(data.sizes.map((item) => item.size))];
   const chunks: string[][] = [];
   for (let index = 0; index < sizeNames.length; index += 8) chunks.push(sizeNames.slice(index, index + 8));
@@ -156,8 +173,9 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     }
     y -= 10;
   }
-  page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y, size: 9, font: bold });
-  page.drawText(`Total: ${data.sizes.reduce((sum, item) => sum + item.quantity, 0)}`, { x: A4.width - margin - 70, y, size: 9, font: bold });
+  }
+  if (!isAccessory) page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y, size: 9, font: bold });
+  if (!isAccessory) page.drawText(`Total: ${totalQuantity}`, { x: A4.width - margin - 70, y, size: 9, font: bold });
   y -= 18;
   page.drawText(`Catatan desain: ${safe(data.designNotes ?? "-")}`, { x: margin, y, size: 8, font: regular });
   y -= 14;

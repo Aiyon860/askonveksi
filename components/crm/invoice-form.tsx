@@ -16,6 +16,7 @@ type PurchaseOrder = {
   id: string;
   purchaseOrderNo: string;
   productName: string;
+  garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   sizes: Array<{ id: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
 };
 
@@ -45,6 +46,7 @@ export function InvoiceForm({
   const [formState, formAction] = useActionState(serverAction, initialFormActionState);
   const values = initialValues;
   const fieldKey = sourceInvoiceId ?? "new";
+  const isAccessory = purchaseOrder.garmentType === "AKSESORI";
   const byKey = new Map(values?.items.map((item) => [`${item.sleeveLength ?? "PANJANG"}:${item.size.toLocaleLowerCase("id-ID")}`, item]));
   return (
     <form action={formAction}>
@@ -53,15 +55,15 @@ export function InvoiceForm({
       {sourceInvoiceId ? <input type="hidden" name="sourceInvoiceId" value={sourceInvoiceId} /> : null}
       <FieldGroup>
         <Table containerClassName="rounded-lg border">
-          <TableHeader><TableRow><TableHead>Produk / deskripsi</TableHead><TableHead>Model</TableHead><TableHead>Ukuran</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Produk / deskripsi</TableHead>{isAccessory ? null : <TableHead>Model</TableHead>}{isAccessory ? null : <TableHead>Ukuran</TableHead>}<TableHead className="text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead></TableRow></TableHeader>
           <TableBody>{purchaseOrder.sizes.map((poItem) => {
             const key = `${poItem.sleeveLength}:${poItem.size.toLocaleLowerCase("id-ID")}`;
             const item = byKey.get(key);
-            const description = `${purchaseOrder.productName} ${poItem.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poItem.size}`;
+            const description = isAccessory ? purchaseOrder.productName : `${purchaseOrder.productName} ${poItem.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poItem.size}`;
             return <TableRow key={poItem.id}>
-              <TableCell className="min-w-64"><p className="font-medium">{purchaseOrder.productName}</p><p className="text-xs text-muted-foreground">{description}</p><input type="hidden" name="itemPurchaseOrderSizeId" value={poItem.id} /><input type="hidden" name="itemProductName" value={purchaseOrder.productName} /><input type="hidden" name="itemDescription" value={description} /></TableCell>
-              <TableCell>{poItem.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}<input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /></TableCell>
-              <TableCell>{poItem.size}<input type="hidden" name="itemSize" value={poItem.size} /></TableCell>
+              <TableCell className="min-w-64"><p className="font-medium">{purchaseOrder.productName}</p>{isAccessory ? null : <p className="text-xs text-muted-foreground">{description}</p>}<input type="hidden" name="itemPurchaseOrderSizeId" value={poItem.id} /><input type="hidden" name="itemProductName" value={purchaseOrder.productName} /><input type="hidden" name="itemDescription" value={description} />{isAccessory ? <input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /> : null}{isAccessory ? <input type="hidden" name="itemSize" value={poItem.size} /> : null}</TableCell>
+              {isAccessory ? null : <TableCell>{poItem.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}<input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /></TableCell>}
+              {isAccessory ? null : <TableCell>{poItem.size}<input type="hidden" name="itemSize" value={poItem.size} /></TableCell>}
               <TableCell className="text-right font-mono tabular-nums">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
               <TableCell><MoneyInput name="itemUnitPrice" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${description}`} /></TableCell>
             </TableRow>;
