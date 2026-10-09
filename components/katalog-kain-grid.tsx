@@ -19,7 +19,7 @@ export function KatalogKainGrid() {
         </LandingReveal>
 
         <ComingSoonOverlay pageName="Katalog Kain">
-          <LandingStagger className="mt-10 grid grid-cols-3 gap-2 sm:gap-3 lg:mt-12 lg:gap-4">
+          <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
           {Array.from({ length: PLACEHOLDER_COUNT }, (_, index) => (
             <div
               key={`placeholder-${index + 1}`}

@@ -128,7 +128,7 @@ export function ProductDetailGrid({ product }: { product: LandingProduct }) {
         </LandingReveal>
 
         {detailImages ? (
-          <LandingStagger className="mt-10 grid grid-cols-3 gap-2 sm:gap-3 lg:mt-12 lg:gap-4">
+          <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
             {detailImages.map((image) => (
               <div
                 key={image.src}
@@ -138,7 +138,7 @@ export function ProductDetailGrid({ product }: { product: LandingProduct }) {
                   src={image.src}
                   alt={image.alt}
                   fill
-                  sizes="(max-width: 640px) 30vw, (max-width: 1024px) 28vw, 26vw"
+                  sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 26vw"
                   className="object-cover"
                 />
               </div>
@@ -146,7 +146,7 @@ export function ProductDetailGrid({ product }: { product: LandingProduct }) {
           </LandingStagger>
         ) : (
           <ComingSoonOverlay pageName={product.name}>
-            <LandingStagger className="mt-10 grid grid-cols-3 gap-2 sm:gap-3 lg:mt-12 lg:gap-4">
+            <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
               {Array.from({ length: PLACEHOLDER_COUNT }, (_, index) => (
                 <div
                   key={`placeholder-${index + 1}`}
