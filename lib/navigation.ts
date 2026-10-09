@@ -52,6 +52,7 @@ export const LANDING_PRODUCT_MENU = [
       { label: "Raglan", href: "/produk/kaos-raglan" },
     ],
   },
+  { label: "Jersey", href: "/produk/jersey" },
   { label: "Jacket", href: "/produk/jacket" },
   { label: "Lanyard", href: "/produk/lanyard" },
   { label: "Rompi / Vest / Apron", href: "/produk/rompi-vest-apron" },

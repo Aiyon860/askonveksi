@@ -1,6 +1,7 @@
 import { ImageIcon } from "lucide-react";
 
 import { LandingReveal, LandingStagger } from "@/components/landing-motion";
+import { ComingSoonOverlay } from "@/components/coming-soon-overlay";
 import { PORTFOLIO_ITEMS } from "@/lib/portfolio";
 
 export function PortfolioGrid() {
@@ -20,7 +21,8 @@ export function PortfolioGrid() {
           </p>
         </LandingReveal>
 
-        <LandingStagger className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:mt-12 lg:grid-cols-3 lg:gap-6">
+        <ComingSoonOverlay pageName="Portofolio">
+          <LandingStagger className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:mt-12 lg:grid-cols-3 lg:gap-6">
           {PORTFOLIO_ITEMS.map((item) => (
             <article
               key={item.name}
@@ -41,6 +43,7 @@ export function PortfolioGrid() {
             </article>
           ))}
         </LandingStagger>
+        </ComingSoonOverlay>
       </div>
     </section>
   );

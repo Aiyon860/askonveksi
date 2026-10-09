@@ -6,7 +6,7 @@
 --     Invoice (+item), SalesOrder (+item/cost), ProductionWorkOrder (+step/
 --     activity), DealPayment (+term/transaction), PendingDealPayment (+term)
 --  2. Hapus SEMUA keuangan: Expense (+ DealPayment chain di atas)
---  3. Hapus 14 CUSTOMER DEMO saja (by customerNo eksplisit), customer asli aman
+--  3. Hapus 20 CUSTOMER DEMO saja (by customerNo eksplisit), customer asli aman
 --  4. JANGAN hapus master: CustomerType, LeadSource, GarmentSize,
 --     PaymentMethod, ProductCategory
 --  5. Hapus SEMUA desain: DesignTask -> DesignRevision -> DesignAttachment
@@ -42,10 +42,11 @@ BEGIN;
 CREATE TEMP TABLE _demo_customer_nos ("customerNo" TEXT PRIMARY KEY);
 INSERT INTO _demo_customer_nos ("customerNo") VALUES
   ('DEMO-CUS-PRODUCTION'),
+  ('CUS-000001'), ('CUS-000002'), ('CUS-000003'),
   ('CUS-000004'), ('CUS-000005'), ('CUS-000006'), ('CUS-000007'),
   ('CUS-000008'), ('CUS-000009'), ('CUS-000010'), ('CUS-000011'),
   ('CUS-000012'), ('CUS-000013'), ('CUS-000014'), ('CUS-000015'),
-  ('CUS-000016');
+  ('CUS-000016'), ('CUS-000017'), ('CUS-000018'), ('CUS-000019');
 
 -- ----------------------------------------------------------------------------
 -- PENJAGA: snapshot data yang WAJIB utuh (master + perusahaan + lain-lain)
