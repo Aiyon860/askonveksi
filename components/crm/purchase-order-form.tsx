@@ -200,10 +200,13 @@ export function PurchaseOrderForm({
     setAccessoryQuantity(String(Math.min(10_000_000, Math.max(0, Number(rawValue.trim())))));
   }
 
-  useEffect(() => {
-    if (!isAccessory || accessoryQuantity !== "" || rosterTotal <= 0) return;
-    setAccessoryQuantity(String(rosterTotal));
-  }, [isAccessory, accessoryQuantity, rosterTotal]);
+  function handleCategoryChange(nextId: string) {
+    setProductCategoryId(nextId);
+    const next = categoryOptions?.find((category) => category.id === nextId);
+    if (next?.garmentType === "AKSESORI" && accessoryQuantity === "" && rosterTotal > 0) {
+      setAccessoryQuantity(String(rosterTotal));
+    }
+  }
 
   useEffect(() => {
     if (formState.ok || !failedSubmissionRef.current || !formRef.current) return;
@@ -229,7 +232,7 @@ export function PurchaseOrderForm({
             {hasCategoryOptions ? (
               <Field>
                 <FieldLabel htmlFor={`po-category-${fieldKey}`} required>Kategori produk</FieldLabel>
-                <NativeSelect id={`po-category-${fieldKey}`} name="productCategoryId" required value={productCategoryId} onChange={(event) => setProductCategoryId(event.currentTarget.value)}>
+                <NativeSelect id={`po-category-${fieldKey}`} name="productCategoryId" required value={productCategoryId} onChange={(event) => handleCategoryChange(event.currentTarget.value)}>
                   <NativeSelectOption value="" disabled>Pilih kategori produk</NativeSelectOption>
                   {categoryOptions?.map((category) => (
                     <NativeSelectOption key={category.id} value={category.id}>{category.name}</NativeSelectOption>

@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Bukti adalah unggahan user berdimensi tak tentu via API route; <img> disengaja agar tidak memaksa width/height dan optimasi Next. */
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, X } from "lucide-react";
