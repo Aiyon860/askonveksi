@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Skrip vendor milik AI-agent skills (pihak ketiga, bukan kode aplikasi):
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".gemini/**",
+    ".github/skills/**",
+    ".opencode/**",
   ]),
 ]);
 
