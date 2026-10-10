@@ -291,11 +291,15 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
                   discountPercent: invoice.discountValue.toString(),
+                  taxPercent: invoice.taxPercent?.toString() ?? "0",
                   items: invoice.items.map((item) => ({
+                    productName: item.productName ?? "",
+                    description: item.description,
                     size: item.size,
                     sleeveLength: item.sleeveLength,
                     quantity: item.quantity,
                     unitPrice: item.unitPrice.toString(),
+                    discountPercent: item.discountPercent?.toString() ?? invoice.discountValue.toString(),
                   })),
                 };
                 return (

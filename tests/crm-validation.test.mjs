@@ -264,10 +264,14 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
 
   const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
-  assert.match(invoiceFormSource, /discountPercent[^\n]*defaultValue=\{values\?\.discountPercent \?\? ""\}/);
+  assert.match(invoiceFormSource, /name="itemDiscountPercent"/);
+  assert.match(invoiceFormSource, /name="taxPercent"/);
+  assert.match(invoiceFormSource, /name="itemProductName"/);
+  assert.match(invoiceFormSource, /name="itemDescription"/);
   assert.doesNotMatch(invoiceFormSource, /profitPercent/);
   assert.doesNotMatch(actionSource, /profitPercent: formValue/);
-  assert.match(actionSource, /discountPercent: formValue\(formData, "discountPercent"\) \|\| "0"/);
+  assert.match(actionSource, /discountPercent/);
+  assert.match(actionSource, /taxPercent: formValue\(formData, "taxPercent"\)/);
 });
 
 test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () => {
@@ -730,7 +734,7 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.match(pageSource, /parseOptionalFinanceDateRange/);
   assert.doesNotMatch(pageSource, /parseFinanceDateRange/);
   assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
-  assert.doesNotMatch(pageSource.toLocaleLowerCase("id-ID"), /pajak/);
+  assert.match(pageSource, /Pajak/);
 });
 
 test("flash message tidak membocorkan isi notifikasi ke URL", async () => {

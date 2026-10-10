@@ -121,6 +121,7 @@ export function parseOpportunityDetailTab(value: string | string[] | undefined):
 export const PAYMENT_KIND_LABEL = {
   LUNAS: "Lunas",
   DP: "DP",
+  DEPOSIT: "Deposit",
 } as const;
 
 export const SALES_ORDER_STATUS_LABEL = {

@@ -191,12 +191,16 @@ export const addCommunicationActivitySchema = z
 
 export const invoiceItemSchema = z.object({
   purchaseOrderSizeId: entityIdSchema,
-  productName: z.string().trim().min(2).max(120),
+  productName: z.string().trim().min(2, "Produk minimal 2 karakter.").max(120),
   size: z.string().trim().min(1).max(40),
   sleeveLength: z.enum(["PENDEK", "PANJANG"]),
-  description: z.string().trim().min(2).max(240),
+  description: z.string().trim().min(2, "Deskripsi minimal 2 karakter.").max(240),
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
+  discountPercent: z.preprocess(
+    (v) => (v === undefined || v === null || v === "" ? "0" : v),
+    z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Diskon per item tidak valid."),
+  ),
 });
 
 export const invoiceDraftSchema = z.object({
@@ -206,6 +210,10 @@ export const invoiceDraftSchema = z.object({
   version: requiredVersion.optional(),
   dueAt: optionalText(10),
   discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
+  taxPercent: z.preprocess(
+    (v) => (v === undefined || v === null || v === "" ? "0" : v),
+    z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persen pajak tidak valid."),
+  ),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
 });
@@ -303,7 +311,7 @@ export const completeDealSchema = z.object({
   purchaseOrderId: entityIdSchema,
   invoiceId: entityIdSchema,
   invoiceVersion: requiredVersion,
-  kind: z.enum(["LUNAS", "DP"]),
+  kind: z.enum(["LUNAS", "DP", "DEPOSIT"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
 }).superRefine((value, context) => {
@@ -319,6 +327,7 @@ export const completeDealSchema = z.object({
 export const payPendingInitialPaymentSchema = z.object({
   invoiceId: entityIdSchema,
   paymentMethodId: entityIdSchema,
+  paidAt: optionalText(32),
   reference: optionalText(120),
   note: optionalText(1000),
 });
@@ -360,6 +369,7 @@ export const payInvoicePaymentTermSchema = z.object({
   salesOrderId: entityIdSchema,
   paymentTermId: entityIdSchema,
   paymentMethodId: entityIdSchema,
+  paidAt: optionalText(32),
 });
 
 export const recordInitialPaymentSchema = z.object({
@@ -396,6 +406,12 @@ export const businessProfileSchema = z.object({
     z.email("Format email perusahaan tidak valid.").trim().max(320).optional(),
   ),
   address: optionalText(2000),
+  bankName: optionalText(120),
+  bankAccountNumber: optionalText(60),
+  bankAccountHolder: optionalText(160),
+  signatureName: optionalText(160),
+  signatureTitle: optionalText(120),
+  invoiceNotes: optionalText(2000),
 });
 
 export const loginSchema = z.object({

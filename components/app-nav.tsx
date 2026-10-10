@@ -15,7 +15,7 @@ const mainItems = [
 ] as const;
 
 const financeItems = [
-  { href: "/keuangan/pemasukan", label: "Pemasukan", icon: Wallet },
+  { href: "/keuangan/pemasukan", label: "Project", icon: Wallet },
   { href: "/keuangan/pengeluaran", label: "Pengeluaran", icon: CircleDollarSign },
   { href: "/keuangan/laporan", label: "Laporan", icon: FileText },
 ] as const;

@@ -860,6 +860,12 @@ export async function updateBusinessProfileAction(formData: FormData) {
       phone: formData.get("phone"),
       email: formData.get("email"),
       address: formData.get("address"),
+      bankName: formData.get("bankName"),
+      bankAccountNumber: formData.get("bankAccountNumber"),
+      bankAccountHolder: formData.get("bankAccountHolder"),
+      signatureName: formData.get("signatureName"),
+      signatureTitle: formData.get("signatureTitle"),
+      invoiceNotes: formData.get("invoiceNotes"),
     });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
@@ -889,13 +895,19 @@ export async function updateBusinessProfileAction(formData: FormData) {
             phone: parsed.data.phone,
             email: parsed.data.email?.toLowerCase(),
             address: parsed.data.address,
+            bankName: parsed.data.bankName,
+            bankAccountNumber: parsed.data.bankAccountNumber,
+            bankAccountHolder: parsed.data.bankAccountHolder,
+            signatureName: parsed.data.signatureName,
+            signatureTitle: parsed.data.signatureTitle,
+            invoiceNotes: parsed.data.invoiceNotes,
             ...(uploadedPath ? { logoPath: uploadedPath } : {}),
             version: { increment: 1 },
           },
         });
         if (updated.count !== 1) throw new UserFacingError("Profil perusahaan sudah berubah. Muat ulang halaman.");
         await tx.auditEvent.create({
-          data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", ...(uploadedPath ? ["logoPath"] : [])] },
+          data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "bankName", "bankAccountNumber", "bankAccountHolder", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedPath ? ["logoPath"] : [])] },
         });
       });
     } catch (error) {

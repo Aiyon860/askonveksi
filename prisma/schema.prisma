@@ -143,6 +143,7 @@ enum InvoiceStatus {
 enum PaymentKind {
   LUNAS
   DP
+  DEPOSIT
 }
 
 enum ExpenseCategory {
@@ -164,6 +165,7 @@ enum ExpenseCategory {
   LEMBUR
   LOKER
   DLL
+  PROJECT
 }
 
 enum PaymentValueType {
@@ -302,6 +304,7 @@ model AppUser {
   createdWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignCreatedBy")
   updatedWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignUpdatedBy")
   expenses                  Expense[]
+  deletedExpenses           Expense[]                 @relation("ExpenseDeletedBy")
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -322,14 +325,24 @@ model Expense {
   proofSize       Int?
   createdById     String
   reimbursedAt    DateTime?            @db.Timestamptz(3)
+  salesOrderId    String?
+  customerName    String?              @db.VarChar(160)
+  deletedAt       DateTime?            @db.Timestamptz(3)
+  deletedById     String?
+  deleteReason    String?              @db.Text
   paymentMethod   PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
   createdBy       AppUser              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  deletedBy       AppUser?             @relation("ExpenseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  salesOrder      SalesOrder?          @relation("ExpenseSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
   createdAt       DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
 
   @@index([createdById, spentAt])
   @@index([paymentMethodId, spentAt])
   @@index([category, spentAt])
+  @@index([deletedAt, spentAt])
+  @@index([salesOrderId])
+  @@index([customerName])
 }
 
 model CustomerType {
@@ -409,6 +422,12 @@ model BusinessProfile {
   email                  String?  @db.VarChar(320)
   address                String?  @db.Text
   logoPath               String?  @db.VarChar(500)
+  bankName               String?  @db.VarChar(120)
+  bankAccountNumber      String?  @db.VarChar(60)
+  bankAccountHolder      String?  @db.VarChar(160)
+  signatureName          String?  @db.VarChar(160)
+  signatureTitle         String?  @db.VarChar(120)
+  invoiceNotes           String?  @db.Text
   invoiceReminderOffsets Int[]    @default([-3, 0, 3])
   repeatOrderIntervals   Int[]    @default([6, 5])
   version                Int      @default(1)
@@ -703,10 +722,17 @@ model Invoice {
   snapshotBusinessEmail    String?                 @db.VarChar(320)
   snapshotBusinessAddress  String?                 @db.Text
   snapshotBusinessLogoPath String?                 @db.VarChar(500)
+  snapshotBankName         String?                 @db.VarChar(120)
+  snapshotBankAccountNumber String?                @db.VarChar(60)
+  snapshotBankAccountHolder String?                @db.VarChar(160)
+  snapshotSignatureName    String?                 @db.VarChar(160)
+  snapshotSignatureTitle   String?                 @db.VarChar(120)
   discountType             DiscountType            @default(NONE)
   discountValue            Decimal                 @default(0) @db.Decimal(7, 4)
   subtotal                 Decimal                 @db.Decimal(18, 2)
   totalDiscount            Decimal                 @default(0) @db.Decimal(18, 2)
+  taxPercent               Decimal                 @default(0) @db.Decimal(7, 4)
+  taxAmount                Decimal                 @default(0) @db.Decimal(18, 2)
   totalProfit              Decimal                 @default(0) @db.Decimal(18, 2)
   total                    Decimal                 @db.Decimal(18, 2)
   issuedAt                 DateTime?               @db.Timestamptz(3)
@@ -776,6 +802,9 @@ model SalesOrder {
   discountType         DiscountType
   discountValue        Decimal              @db.Decimal(7, 4)
   subtotal             Decimal              @db.Decimal(18, 2)
+  totalDiscount        Decimal              @default(0) @db.Decimal(18, 2)
+  taxPercent           Decimal              @default(0) @db.Decimal(7, 4)
+  taxAmount            Decimal              @default(0) @db.Decimal(18, 2)
   total                Decimal              @db.Decimal(18, 2)
   acceptedAt           DateTime             @db.Timestamptz(3)
   createdById          String
@@ -792,6 +821,7 @@ model SalesOrder {
   customerReminders    CustomerReminder[]   @relation("CustomerReminderSourceOrder")
   productionWorkOrder  ProductionWorkOrder?
   cost                 SalesOrderCost?
+  expenses             Expense[]            @relation("ExpenseSalesOrder")
   createdAt            DateTime             @default(now()) @db.Timestamptz(3)
 
   @@index([opportunityId, status])
