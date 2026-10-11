@@ -43,9 +43,10 @@ test("workflow Produksi memiliki dua jalur yang disepakati", () => {
 
 test("Work Order dibuat otomatis dan idempoten dari pembayaran serta data PO", () => {
   assert.match(service, /export async function ensureProductionWorkOrder/);
-  assert.match(service, /productionWorkOrder: \{ select:/);
+  assert.match(service, /productionWorkOrders: \{ select:/);
   assert.match(service, /purchaseOrder\.garmentType/);
-  assert.match(service, /purchaseOrder\.sizes\.reduce/);
+  assert.match(service, /existingByItem/);
+  assert.match(service, /purchaseOrderItemId/);
   assert.match(crmActions, /await ensureProductionWorkOrder\(tx, actor, created\.id\)/);
   assert.match(crmActions, /export async function editPaymentTransactionAction/);
   assert.match(crmActions, /newTotal\.gt\(payment\.salesOrder\.total\)/);
@@ -54,8 +55,10 @@ test("Work Order dibuat otomatis dan idempoten dari pembayaran serta data PO", (
   assert.match(schema, /model PaymentTransaction[\s\S]*version\s+Int\s+@default\(1\)/);
 });
 
-test("Work Order satu-ke-satu dengan Sales Order dan menyimpan urutan tahap", () => {
-  assert.match(schema, /salesOrderId\s+String\s+@unique/);
+test("Work Order satu-ke-banyak dengan Sales Order per item PO dan menyimpan urutan tahap", () => {
+  assert.match(schema, /model ProductionWorkOrder[\s\S]*?salesOrderId\s+String(?!\s+@unique)/);
+  assert.match(schema, /purchaseOrderItemId\s+String\?/);
+  assert.match(schema, /itemName\s+String\?/);
   assert.match(schema, /stageSequence\s+ProductionStage\[\]/);
   assert.match(schema, /model ProductionStep[\s\S]*@@unique\(\[workOrderId, stage\]\)/);
 });

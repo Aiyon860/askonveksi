@@ -17,7 +17,8 @@ type PurchaseOrder = {
   purchaseOrderNo: string;
   productName: string;
   garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
-  sizes: Array<{ id: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
+  items?: Array<{ id: string; name: string }>;
+  sizes: Array<{ id: string; itemId?: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
 };
 
 type DraftItem = {
@@ -50,6 +51,8 @@ export function InvoiceForm({
   const values = initialValues;
   const fieldKey = sourceInvoiceId ?? "new";
   const isAccessory = purchaseOrder.garmentType === "AKSESORI";
+  const itemNameById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.name]));
+  const rowProductName = (poItem: { itemId?: string }) => (poItem.itemId && itemNameById.get(poItem.itemId)) || purchaseOrder.productName;
   const byKey = new Map(values?.items.map((item) => [`${item.sleeveLength ?? "PANJANG"}:${item.size.toLocaleLowerCase("id-ID")}`, item]));
   return (
     <form action={formAction}>
@@ -62,13 +65,14 @@ export function InvoiceForm({
           <TableBody>{purchaseOrder.sizes.map((poItem) => {
             const key = `${poItem.sleeveLength}:${poItem.size.toLocaleLowerCase("id-ID")}`;
             const item = byKey.get(key);
-            const defaultDescription = isAccessory ? purchaseOrder.productName : `${purchaseOrder.productName} ${poItem.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poItem.size}`;
+            const rowName = rowProductName(poItem);
+            const defaultDescription = isAccessory ? rowName : `${rowName} ${poItem.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poItem.size}`;
             return <TableRow key={poItem.id}>
-              <TableCell className="min-w-40"><Input name="itemProductName" required minLength={2} maxLength={120} defaultValue={item?.productName ?? purchaseOrder.productName} aria-label={`Produk ${defaultDescription}`} /><input type="hidden" name="itemPurchaseOrderSizeId" value={poItem.id} /><input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /><input type="hidden" name="itemSize" value={poItem.size} /></TableCell>
-              <TableCell className="min-w-56"><Textarea name="itemDescription" required minLength={2} maxLength={240} rows={2} defaultValue={item?.description ?? defaultDescription} aria-label={`Deskripsi ${defaultDescription}`} /></TableCell>
-              <TableCell className="text-right font-mono tabular-nums">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
-              <TableCell><MoneyInput name="itemUnitPrice" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${defaultDescription}`} /></TableCell>
-              <TableCell><Input name="itemDiscountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={item?.discountPercent ?? values?.discountPercent ?? "0"} aria-label={`Diskon ${defaultDescription}`} /></TableCell>
+              <TableCell className="min-w-40 align-top"><Input name="itemProductName" required minLength={2} maxLength={120} defaultValue={item?.productName ?? rowName} aria-label={`Produk ${defaultDescription}`} /><input type="hidden" name="itemPurchaseOrderSizeId" value={poItem.id} /><input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /><input type="hidden" name="itemSize" value={poItem.size} /></TableCell>
+              <TableCell className="min-w-56 align-top"><Textarea name="itemDescription" maxLength={240} rows={1} defaultValue={item?.description ?? ""} placeholder="Deskripsi opsional..." aria-label={`Deskripsi ${defaultDescription}`} className="min-h-9 resize-y" /></TableCell>
+              <TableCell className="text-right font-mono tabular-nums align-top">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
+              <TableCell className="align-top"><MoneyInput name="itemUnitPrice" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${defaultDescription}`} /></TableCell>
+              <TableCell className="align-top"><Input name="itemDiscountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={item?.discountPercent ?? values?.discountPercent ?? "0"} aria-label={`Diskon ${defaultDescription}`} /></TableCell>
             </TableRow>;
           })}</TableBody>
         </Table>

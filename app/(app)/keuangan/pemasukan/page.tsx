@@ -3,7 +3,7 @@ import { Download, ReceiptText } from "lucide-react";
 
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
-import { SalesOrderCostForm } from "@/components/finance/sales-order-cost-form";
+import { SalesOrderCostForm, type HppProjectPrefill } from "@/components/finance/sales-order-cost-form";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
-import { getIncome } from "@/lib/finance/expense";
+import { getIncome, getProjectExpensesBySalesOrders } from "@/lib/finance/expense";
 import { parseOptionalFinanceDateRange } from "@/lib/finance/date-range";
 import { getActivePaymentMethods } from "@/lib/master-data";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
@@ -25,6 +25,14 @@ function sumMoney(values: Array<string | null | undefined>) {
   return values.reduce((sum, value) => sum + Number(value ?? 0), 0);
 }
 
+const HPP_KEY_BY_LABEL: Record<string, string> = { Kain: "kain", Zipper: "zipper", Jahit: "jahit", Pres: "pres", "DTF/Plastisol": "dtfPlastisol", Bordir: "bordir", "Lain-lain": "lainnya" };
+
+function projectPrefillKey(row: { hppKey: string | null; purpose: string }) {
+  if (row.hppKey) return row.hppKey;
+  const match = row.purpose.match(/^HPP (.+?) ·/);
+  return (match && HPP_KEY_BY_LABEL[match[1]]) || "";
+}
+
 export default async function IncomePage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const query = (first(params.q) ?? "").trim().slice(0, 80);
@@ -35,6 +43,15 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
   const page = parsePageParam(params.page);
   const pageSize = parsePageSizeParam(params.pageSize);
   const [data, methods] = await Promise.all([getIncome({ query, from: range.start, to: range.end, status, hppStatus, page, pageSize }), getActivePaymentMethods()]);
+  const projectRows = await getProjectExpensesBySalesOrders(data.items.map((item) => item.id));
+  const projectPrefill = new Map(data.items.map((item) => {
+    const prefill: Partial<Record<string, HppProjectPrefill>> = {};
+    for (const row of projectRows.get(item.id) ?? []) {
+      const key = projectPrefillKey(row);
+      if (key && !prefill[key]) prefill[key] = { id: row.id, spentAt: row.spentAt, paymentMethodId: row.paymentMethodId, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType };
+    }
+    return [item.id, prefill] as const;
+  }));
   const persistent = { q: query || undefined, from: range.from || undefined, to: range.to || undefined, status: status === "all" ? undefined : status, hppStatus: hppStatus === "all" ? undefined : hppStatus, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   const exportParams = new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   // Total dihitung dari seluruh baris data yang dimuat halaman ini (data.items).
@@ -78,7 +95,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
         </form>
       </div>
       {data.items.length ? <div className="flex min-h-112 flex-1 flex-col">
-        <Table className="min-w-[180rem]" containerClassName="min-h-0 flex-1 overflow-auto"><TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead>Tanggal</TableHead><TableHead>Customer</TableHead><TableHead>Nama order</TableHead><TableHead>Jenis busana</TableHead><TableHead className="text-right">Total QTY</TableHead>{["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Harga Asli", "Diskon", "Pajak", "Total Invoice", "Laba Bersih", "Margin %", "DP", "Lunas"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}<TableHead>Keterangan</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader><TableBody>{data.items.map((item) => <TableRow key={item.id}><TableCell>{item.paidAt ? formatDate(item.paidAt) : "-"}</TableCell><TableCell>{item.customer}</TableCell><TableCell>{item.orderName}</TableCell><TableCell>{item.garmentType}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell>{[item.kain, item.zipper, item.jahit, item.pres, item.dtfPlastisol, item.bordir, item.lainnya, item.hpp, item.originalPrice, item.discount, item.tax, item.totalInvoice, item.netProfit].map((value, index) => <TableCell key={index} className="text-right font-mono tabular-nums">{value === null ? "-" : formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell><TableCell>{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell><TableCell>{item.hppStatus === "COMPLETE" ? "Lengkap" : "Belum Lengkap"}</TableCell><TableCell className="text-right">{item.costVersion !== null ? <SalesOrderCostForm item={{ ...item, costVersion: item.costVersion }} methods={methods} /> : "-"}</TableCell></TableRow>)}</TableBody><TableFooter><TableRow className="border-t bg-muted hover:bg-muted"><TableCell colSpan={3} className="font-medium">Total</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>{numericTotals.map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDp)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalSettled)}</TableCell><TableCell /><TableCell /><TableCell /></TableRow></TableFooter></Table>
+        <Table className="min-w-[180rem]" containerClassName="min-h-0 flex-1 overflow-auto"><TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead>Tanggal</TableHead><TableHead>Customer</TableHead><TableHead>Nama order</TableHead><TableHead>Jenis busana</TableHead><TableHead className="text-right">Total QTY</TableHead>{["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Harga Asli", "Diskon", "Pajak", "Total Invoice", "Laba Bersih", "Margin %", "DP", "Lunas"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}<TableHead>Keterangan</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader><TableBody>{data.items.map((item) => <TableRow key={item.id}><TableCell>{item.paidAt ? formatDate(item.paidAt) : "-"}</TableCell><TableCell>{item.customer}</TableCell><TableCell>{item.orderName}</TableCell><TableCell>{item.garmentType}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell>{[item.kain, item.zipper, item.jahit, item.pres, item.dtfPlastisol, item.bordir, item.lainnya, item.hpp, item.originalPrice, item.discount, item.tax, item.totalInvoice, item.netProfit].map((value, index) => <TableCell key={index} className="text-right font-mono tabular-nums">{value === null ? "-" : formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell><TableCell>{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell><TableCell>{item.hppStatus === "COMPLETE" ? "Lengkap" : "Belum Lengkap"}</TableCell><TableCell className="text-right">{item.costVersion !== null ? <SalesOrderCostForm item={{ ...item, costVersion: item.costVersion }} methods={methods} projectExpenses={projectPrefill.get(item.id)} /> : "-"}</TableCell></TableRow>)}</TableBody><TableFooter><TableRow className="border-t bg-muted hover:bg-muted"><TableCell colSpan={4} className="font-medium">Total</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>{numericTotals.map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDp)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalSettled)}</TableCell><TableCell /><TableCell /><TableCell /></TableRow></TableFooter></Table>
         <DataPagination pathname="/keuangan/pemasukan" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
       </div> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada project</EmptyTitle><EmptyDescription>Invoice dengan pembayaran aktif akan tampil di sini.</EmptyDescription></EmptyHeader></Empty>}
     </section>

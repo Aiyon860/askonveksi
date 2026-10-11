@@ -275,14 +275,10 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
 });
 
 test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () => {
-  const valid = {
-    opportunityId: "cm123456789012",
-    garmentType: "JERSEY",
-    decorationMethod: "NONE",
-    productName: "Jersey tim",
-    material: "Dry fit",
-    deadline: "2026-09-30",
-    designDeadline: "2026-09-20",
+  const itemBase = {
+    key: "item-1",
+    name: "Jersey home",
+    decorationMethods: ["NONE"],
     sizes: [
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
       { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 },
@@ -293,6 +289,16 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
       { memberId: "G-2", name: "Siti", sizeId: "garment-size-m", sleeveLength: "PANJANG" },
     ],
   };
+  const valid = {
+    opportunityId: "cm123456789012",
+    garmentType: "JERSEY",
+    instansi: "SMA Negeri 1",
+    pola: "Jersey tim",
+    material: "Dry fit",
+    deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
+    items: [itemBase],
+  };
   assert.equal(purchaseOrderDraftSchema.safeParse(valid).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, orderDate: "2026-03-15", designDeadline: "2026-03-15" }).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, orderDate: "2026-03-15", designDeadline: "2026-03-14" }).success, false);
@@ -301,10 +307,14 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   assert.equal(missingDeadline.error.issues[0]?.message, "Deadline produksi wajib dipilih.");
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, designDeadline: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "none", roster: [] }).success, true);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "excel", roster: [] }).success, true);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, rosterMode: "excel" }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, instansi: "" }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, pola: "" }).success, false);
+  const dupSizes = { ...itemBase, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] };
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [dupSizes] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "none", roster: [] }] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "excel", roster: [] }] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "excel" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [] }).success, false);
 });
 
 test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan tanggal tersimpan", () => {
@@ -369,47 +379,64 @@ test("deadline produksi mengenali preset dan nilai kustom", () => {
 });
 
 test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesanan", () => {
-  const base = {
-    opportunityId: "cm123456789012",
-    garmentType: "NON_JERSEY",
-    decorationMethod: "SABLON",
-    productName: "Kaos komunitas",
-    material: "Cotton combed",
-    deadline: "2026-09-30",
-    designDeadline: "2026-09-20",
+  const baseItem = {
+    key: "item-1",
+    name: "Kaos home",
+    decorationMethods: ["SABLON_PLASTISOL"],
     rosterMode: "none",
     roster: [],
   };
+  const base = {
+    opportunityId: "cm123456789012",
+    garmentType: "NON_JERSEY",
+    instansi: "Komunitas Lari",
+    pola: "Kaos komunitas",
+    material: "Cotton combed",
+    deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
+    items: [{ ...baseItem }],
+  };
+  const withSizes = (sizes) => ({ ...base, items: [{ ...baseItem, sizes }] });
   const size = { sizeId: "garment-size-m", sleeveLength: "PENDEK" };
 
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: 1 }] }).success, true);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "" }] }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: -1 }] }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: 1.5 }] }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "1.5" }] }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "1e3" }] }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: "abc" }] }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, sizes: [{ ...size, quantity: 0 }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: 1 }])).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: "" }])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: -1 }])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: 1.5 }])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: "1.5" }])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: "1e3" }])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: "abc" }])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withSizes([{ ...size, quantity: 0 }])).success, false);
 });
 
 test("PO hanya menerima metode dekorasi yang tersedia", () => {
-  const base = {
-    opportunityId: "cm123456789012",
-    garmentType: "JERSEY",
-    productName: "Jersey tim",
-    material: "Dry fit",
-    deadline: "2026-09-30",
-    designDeadline: "2026-09-20",
+  const itemBase = {
+    key: "item-1",
+    name: "Jersey tim",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
     roster: [],
   };
+  const base = {
+    opportunityId: "cm123456789012",
+    garmentType: "JERSEY",
+    instansi: "SMA Negeri 1",
+    pola: "Jersey tim",
+    material: "Dry fit",
+    deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
+    items: [{ ...itemBase, decorationMethods: ["NONE"] }],
+  };
+  const withMethods = (decorationMethods) => ({ ...base, items: [{ ...itemBase, decorationMethods }] });
 
-  for (const decorationMethod of ["NONE", "TINTA", "SABLON", "BORDIR"]) {
-    assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod }).success, true);
+  for (const decorationMethods of [["NONE"], ["PRINTING"], ["SABLON_DTF", "SABLON_RUBBER"], ["BORDIR"], ["PRINTING", "BORDIR"]]) {
+    assert.equal(purchaseOrderDraftSchema.safeParse(withMethods(decorationMethods)).success, true);
   }
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod: "Bordir komputer bebas" }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, decorationMethod: "" }).success, false);
+  // Tinta dihapus dari opsi (data lama tetap terbaca lewat label lawas).
+  assert.equal(purchaseOrderDraftSchema.safeParse(withMethods(["TINTA"])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withMethods(["SABLON"])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withMethods(["Bordir komputer bebas"])).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse(withMethods([])).success, false);
 });
 
 test("owner menjadi role tertinggi pada permission aplikasi", () => {
@@ -439,7 +466,9 @@ test("aksi pindah status dari detail peluang tidak fallback ke board", async () 
   const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
   assert.match(actionSource, /function opportunityRedirectPath[\s\S]+const fallback = opportunityTabFallback\(formData, "peluang"\)/);
   assert.match(actionSource, /export async function moveOpportunityStageAction[\s\S]+const redirectPath = opportunityRedirectPath\(formData\)/);
-  assert.match(detailPageSource, /redirectTo=\{`\/crm\/peluang\/\$\{opportunity\.id\}\?tab=peluang`\}/);
+  // Panel Status pipeline dihapus dari semua tab detail peluang; pindah status hanya via board.
+  assert.doesNotMatch(detailPageSource, /Status pipeline/);
+  assert.doesNotMatch(detailPageSource, /OpportunityStageForm/);
 });
 
 test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
@@ -803,7 +832,9 @@ test("migration dokumen CRM v2 menjaga nilai invoice dan relasi pembayaran", asy
   assert.doesNotMatch(sql, /(?:DELETE|INSERT|UPDATE)\s+(?:FROM\s+)?storage\./i);
   assert.doesNotMatch(actionSource, /productionRoute/);
   assert.match(actionSource, /salesOrder:\s*\{ status: "ACTIVE" \}/);
-  assert.match(actionSource, /data\.rosterMode === "excel" \? fileRoster : data\.rosterMode === "manual" \? manualRoster : \[\]/);
+  assert.match(actionSource, /item\.rosterMode === "excel" \? fileRoster : item\.rosterMode === "manual" \? manualRoster : \[\]/);
+  assert.match(actionSource, /preparePoItems/);
+  assert.match(actionSource, /legacyDecorationMethod/);
   assert.match(rosterSource, /XLSX_MAX_UNCOMPRESSED_BYTES/);
   assert.match(rosterSource, /Header roster harus memuat kolom ID, Nama, Ukuran, dan Panjang Lengan/);
   assert.match(rosterSource, /sleeveLength !== "PENDEK" && sleeveLength !== "PANJANG"/);
@@ -961,4 +992,75 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   assert.match(actionSource, /function revalidateInvoiceList\(\) \{\s*revalidatePath\("\/crm\/invoices"\);\s*revalidateTag\("invoices", \{ expire: 0 \}\);/);
   const paymentPaths = actionSource.slice(actionSource.indexOf("function revalidatePaymentMutationPaths"), actionSource.indexOf("async function paymentProof"));
   assert.match(paymentPaths, /revalidateInvoiceList\(\)/);
+});
+
+test("PO multi-produk: instansi, pola, dekorasi multi, dan item", () => {
+  const base = {
+    opportunityId: "cm123456789012",
+    garmentType: "JERSEY",
+    instansi: "SMA Negeri 1",
+    pola: "Jersey tim",
+    material: "Dry fit",
+    deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
+  };
+  const item = (overrides = {}) => ({
+    key: "item-1",
+    name: "Jersey home",
+    decorationMethods: ["SABLON_DTF"],
+    sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
+    rosterMode: "none",
+    roster: [],
+    ...overrides,
+  });
+  // Dua produk satu warna dalam satu PO lolos; beda warna tetap beda PO (satu warna per form).
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away" }) }] }).success, true);
+  // Tiap produk boleh beda kategori (2 jenis produk berbeda dalam 1 PO).
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Kemeja", productCategoryId: "cm123456789012" }) }] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), productCategoryId: "x" }] }).success, false);
+  // Tiap produk wajib ada isi matriks sendiri.
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 0 }] }] }).success, false);
+  // Kunci produk tidak boleh duplikat.
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), item()] }).success, false);
+});
+
+test("kesepakatan PO memakai konfirmasi customer, bukan gate desain", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  const agreementSource = await readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8");
+  assert.match(actionSource, /export async function markPurchaseOrderDesignSentAction/);
+  assert.match(actionSource, /export async function confirmPurchaseOrderCustomerAction/);
+  assert.match(actionSource, /PURCHASE_ORDER_DESIGN_SENT/);
+  assert.match(actionSource, /PURCHASE_ORDER_CUSTOMER_CONFIRMED/);
+  assert.match(actionSource, /if \(!purchaseOrder\.customerConfirmedAt\) throw new UserFacingError/);
+  assert.doesNotMatch(actionSource, /Desain harus diunggah dan disetujui Owner atau Admin sebelum PO disepakati/);
+  assert.match(detailPageSource, /poDraft\??\.customerConfirmedAt/);
+  assert.match(agreementSource, /Kirim 1 set PDF/);
+  assert.match(agreementSource, /Konfirmasi customer/);
+  // Revisi dari PO disepakati dibuka untuk mitigasi H-1.
+  assert.match(actionSource, /source\.status !== "DRAFT" && source\.status !== "AGREED"/);
+  assert.match(actionSource, /Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati/);
+});
+
+test("PDF PO punya varian customer dan penjahit dengan deadline merah", async () => {
+  const routeSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/pdf/route.ts", import.meta.url), "utf8");
+  const pdfSource = await readFile(new URL("../lib/crm/purchase-order-pdf.ts", import.meta.url), "utf8");
+  const buttonSource = await readFile(new URL("../components/crm/purchase-order-pdf-download-button.tsx", import.meta.url), "utf8");
+  assert.match(routeSource, /variant.*penjahit.*customer/);
+  assert.match(pdfSource, /PurchaseOrderPdfVariant/);
+  assert.match(pdfSource, /OVERDUE_RED/);
+  assert.match(pdfSource, /drawModelTable/);
+  assert.match(buttonSource, /PDF Customer/);
+  assert.match(buttonSource, /PDF Penjahit/);
+});
+
+test("pratinjau roster mengisi matriks otomatis", async () => {
+  const routeSource = await readFile(new URL("../app/api/crm/roster-preview/route.ts", import.meta.url), "utf8");
+  const rosterSource = await readFile(new URL("../lib/crm/roster-import.ts", import.meta.url), "utf8");
+  const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
+  assert.match(routeSource, /aggregateRosterToMatrix/);
+  assert.match(rosterSource, /export function aggregateRosterToMatrix/);
+  assert.match(formSource, /\/api\/crm\/roster-preview/);
+  assert.match(formSource, /po-draft-v2/);
+  assert.match(formSource, /Tambah produk/);
 });

@@ -14,7 +14,16 @@ import { deletePaymentProof, uploadPaymentProof } from "@/lib/payment-proof";
 const expenseSchema = z.object({ id: z.string().cuid().optional(), purpose: z.string().trim().min(2, "Keperluan minimal 2 karakter.").max(500), spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid."), amount: z.coerce.number().finite().positive("Nominal harus lebih dari 0."), category: z.enum(EXPENSE_CATEGORIES), paymentMethodId: z.string().trim().min(1, "Metode pembayaran wajib dipilih.").max(40), isReimbursable: z.boolean(), customerName: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().trim().max(160).optional()), salesOrderId: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().cuid().optional()) });
 const idSchema = z.string().cuid();
 const deleteExpenseSchema = z.object({ id: z.string().cuid(), reason: z.string().trim().max(500).optional() });
-const salesOrderCostSchema = z.object({ salesOrderId: z.string().cuid(), version: z.coerce.number().int().positive(), kain: z.coerce.number().finite().nonnegative(), zipper: z.coerce.number().finite().nonnegative(), jahit: z.coerce.number().finite().nonnegative(), pres: z.coerce.number().finite().nonnegative(), dtfPlastisol: z.coerce.number().finite().nonnegative(), bordir: z.coerce.number().finite().nonnegative(), lainnya: z.coerce.number().finite().nonnegative(), expenseSpentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal pengeluaran tidak valid.").optional(), expensePaymentMethodId: z.string().trim().max(40).optional(), syncToExpense: z.preprocess((v) => v === "on" || v === "true", z.boolean().optional()) });
+const HPP_KEYS = ["kain", "zipper", "jahit", "pres", "dtfPlastisol", "bordir", "lainnya"] as const;
+const optionalHppDate = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal pengeluaran tidak valid.").optional(),
+);
+const optionalHppMethod = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.string().trim().max(40).optional(),
+);
+const salesOrderCostSchema = z.object({ salesOrderId: z.string().cuid(), version: z.coerce.number().int().positive(), kain: z.coerce.number().finite().nonnegative(), zipper: z.coerce.number().finite().nonnegative(), jahit: z.coerce.number().finite().nonnegative(), pres: z.coerce.number().finite().nonnegative(), dtfPlastisol: z.coerce.number().finite().nonnegative(), bordir: z.coerce.number().finite().nonnegative(), lainnya: z.coerce.number().finite().nonnegative(), expenseMethodKain: optionalHppMethod, expenseMethodZipper: optionalHppMethod, expenseMethodJahit: optionalHppMethod, expenseMethodPres: optionalHppMethod, expenseMethodDtfPlastisol: optionalHppMethod, expenseMethodBordir: optionalHppMethod, expenseMethodLainnya: optionalHppMethod, expenseSpentAtKain: optionalHppDate, expenseSpentAtZipper: optionalHppDate, expenseSpentAtJahit: optionalHppDate, expenseSpentAtPres: optionalHppDate, expenseSpentAtDtfPlastisol: optionalHppDate, expenseSpentAtBordir: optionalHppDate, expenseSpentAtLainnya: optionalHppDate });
 const PATH = "/keuangan/pengeluaran";
 
 function input(formData: FormData) { const id = formData.get("id"); return { id: typeof id === "string" && id ? id : undefined, purpose: formData.get("purpose"), spentAt: formData.get("spentAt"), amount: formData.get("amount"), category: formData.get("category"), paymentMethodId: formData.get("paymentMethodId"), isReimbursable: formData.get("isReimbursable") === "on", customerName: formData.get("customerName"), salesOrderId: formData.get("salesOrderId") }; }
@@ -99,56 +108,73 @@ export async function updateSalesOrderCostAction(formData: FormData) {
     const actor = await requireActor(FINANCE_ROLES);
     const parsed = salesOrderCostSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Biaya HPP tidak valid.");
-    const { salesOrderId, version, expenseSpentAt, expensePaymentMethodId, syncToExpense, ...costs } = parsed.data;
-    const wantSync = Boolean(syncToExpense);
-    let proof: Awaited<ReturnType<typeof uploadPaymentProof>> = null;
-    let expenseDateValue: Date | null = null;
-    if (wantSync) {
-      if (!expenseSpentAt) throw new UserFacingError("Tanggal pengeluaran wajib diisi untuk masuk ke Pengeluaran.");
-      if (!expensePaymentMethodId) throw new UserFacingError("Metode pembayaran wajib dipilih untuk masuk ke Pengeluaran.");
-      await assertPaymentMethod(expensePaymentMethodId);
-      proof = await uploadPaymentProof(formData.get("expenseProof"), actor.id);
-      if (!proof) throw new UserFacingError("Bukti TF wajib dilampirkan untuk masuk ke Pengeluaran.");
-      expenseDateValue = date(expenseSpentAt);
+    const { salesOrderId, version, expenseMethodKain, expenseMethodZipper, expenseMethodJahit, expenseMethodPres, expenseMethodDtfPlastisol, expenseMethodBordir, expenseMethodLainnya, expenseSpentAtKain, expenseSpentAtZipper, expenseSpentAtJahit, expenseSpentAtPres, expenseSpentAtDtfPlastisol, expenseSpentAtBordir, expenseSpentAtLainnya, ...costs } = parsed.data;
+    const costValues = Object.fromEntries(HPP_KEYS.map((key) => [key, Number((costs as Record<string, unknown>)[key] ?? 0)])) as Record<(typeof HPP_KEYS)[number], number>;
+    const costDates: Record<(typeof HPP_KEYS)[number], string | undefined> = { kain: expenseSpentAtKain, zipper: expenseSpentAtZipper, jahit: expenseSpentAtJahit, pres: expenseSpentAtPres, dtfPlastisol: expenseSpentAtDtfPlastisol, bordir: expenseSpentAtBordir, lainnya: expenseSpentAtLainnya };
+    const costMethods: Record<(typeof HPP_KEYS)[number], string | undefined> = { kain: expenseMethodKain, zipper: expenseMethodZipper, jahit: expenseMethodJahit, pres: expenseMethodPres, dtfPlastisol: expenseMethodDtfPlastisol, bordir: expenseMethodBordir, lainnya: expenseMethodLainnya };
+    const entries = HPP_KEYS.filter((key) => costValues[key] > 0);
+    for (const key of entries) {
+      if (!costDates[key]) throw new UserFacingError(`Tanggal pembayaran ${HPP_LABEL[key]} wajib diisi.`);
+      if (!costMethods[key]) throw new UserFacingError(`Metode pembayaran ${HPP_LABEL[key]} wajib dipilih.`);
+    }
+    await Promise.all([...new Set(entries.map((key) => costMethods[key] as string))].map((methodId) => assertPaymentMethod(methodId)));
+    const prisma = getPrismaClient();
+    const previous = await prisma.expense.findMany({ where: { salesOrderId, category: "PROJECT", deletedAt: null }, select: { hppKey: true, purpose: true, proofPath: true, proofFileName: true, proofMimeType: true, proofSize: true } });
+    const previousByKey = (key: string) => previous.find((row) => row.hppKey === key || row.purpose.startsWith(`HPP ${HPP_LABEL[key]} ·`));
+    const uploadedPaths: string[] = [];
+    const proofs = {} as Record<(typeof HPP_KEYS)[number], { proofPath: string; proofFileName: string; proofMimeType: string; proofSize: number }>;
+    try {
+      for (const key of entries) {
+        const itemProof = await uploadPaymentProof(formData.get(`expenseProof_${key}`), actor.id);
+        if (itemProof) {
+          proofs[key] = itemProof;
+          uploadedPaths.push(itemProof.proofPath);
+          continue;
+        }
+        const old = previousByKey(key);
+        if (!old?.proofPath || !old.proofFileName || !old.proofMimeType || old.proofSize == null) throw new UserFacingError(`Bukti TF ${HPP_LABEL[key]} wajib dilampirkan.`);
+        proofs[key] = { proofPath: old.proofPath, proofFileName: old.proofFileName, proofMimeType: old.proofMimeType, proofSize: old.proofSize };
+      }
+    } catch (error) {
+      for (const path of uploadedPaths) await deletePaymentProof(path);
+      throw error;
     }
     try {
-      const updated = await getPrismaClient().$transaction(async (tx) => {
+      const updated = await prisma.$transaction(async (tx) => {
         const order = await tx.salesOrder.findUnique({
           where: { id: salesOrderId },
           select: { id: true, status: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } },
         });
         if (!order || order.status !== "ACTIVE") throw new UserFacingError("Order tidak aktif.");
-        const result = await tx.salesOrderCost.updateMany({ where: { salesOrderId, version, salesOrder: { status: "ACTIVE" } }, data: { ...Object.fromEntries(Object.entries(costs).map(([key, value]) => [key, new Prisma.Decimal(value as number)])), version: { increment: 1 } } });
+        const result = await tx.salesOrderCost.updateMany({ where: { salesOrderId, version, salesOrder: { status: "ACTIVE" } }, data: { ...Object.fromEntries(HPP_KEYS.map((key) => [key, new Prisma.Decimal(costValues[key])])), version: { increment: 1 } } });
         if (result.count !== 1) throw new UserFacingError("Data HPP sudah berubah atau order tidak aktif. Muat ulang halaman.");
-        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrder", entityId: salesOrderId, action: "SALES_ORDER_HPP_UPDATED", changedFields: Object.keys(costs) } });
-        if (wantSync && proof && expenseDateValue && expensePaymentMethodId) {
-          const customerName = order.snapshotCompanyName ?? order.snapshotCustomerName;
-          await tx.expense.updateMany({ where: { salesOrderId, category: "PROJECT", deletedAt: null }, data: { deletedAt: new Date(), deletedById: actor.id, deleteReason: "Digantikan sinkronisasi HPP terbaru." } });
-          const entries = (Object.entries(costs) as Array<[string, number]>).filter(([, value]) => Number(value) > 0);
-          for (const [key, value] of entries) {
-            const item = await tx.expense.create({
-              data: {
-                purpose: `HPP ${HPP_LABEL[key] ?? key} · ${customerName} · ${order.purchaseOrder.productName} · ${order.invoiceNo}`,
-                spentAt: expenseDateValue,
-                amount: new Prisma.Decimal(value),
-                category: "PROJECT",
-                paymentMethodId: expensePaymentMethodId,
-                isReimbursable: false,
-                customerName,
-                salesOrderId,
-                ...proof,
-                createdById: actor.id,
-              },
-            });
-            await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: item.id, action: "EXPENSE_CREATED", changedFields: ["purpose", "spentAt", "amount", "category", "salesOrderId", "proofPath"] } });
-          }
+        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrder", entityId: salesOrderId, action: "SALES_ORDER_HPP_UPDATED", changedFields: [...HPP_KEYS] } });
+        const customerName = order.snapshotCompanyName ?? order.snapshotCustomerName;
+        await tx.expense.updateMany({ where: { salesOrderId, category: "PROJECT", deletedAt: null }, data: { deletedAt: new Date(), deletedById: actor.id, deleteReason: "Digantikan sinkronisasi HPP terbaru." } });
+        for (const key of entries) {
+          const item = await tx.expense.create({
+            data: {
+              purpose: `HPP ${HPP_LABEL[key] ?? key} · ${customerName} · ${order.purchaseOrder.productName} · ${order.invoiceNo}`,
+              spentAt: date(costDates[key] as string),
+              amount: new Prisma.Decimal(costValues[key]),
+              category: "PROJECT",
+              paymentMethodId: costMethods[key] as string,
+              isReimbursable: false,
+              customerName,
+              salesOrderId,
+              hppKey: key,
+              ...proofs[key],
+              createdById: actor.id,
+            },
+          });
+          await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: item.id, action: "EXPENSE_CREATED", changedFields: ["purpose", "spentAt", "amount", "category", "salesOrderId", "proofPath"] } });
         }
         return result;
       });
       if (updated.count) { revalidatePath("/keuangan/pemasukan"); revalidatePath("/keuangan/pengeluaran"); }
-      return flashMessagePath("/keuangan/pemasukan", "notice", wantSync ? "Biaya HPP diperbarui dan masuk ke Pengeluaran (kategori Project)." : "Biaya HPP berhasil diperbarui.");
+      return flashMessagePath("/keuangan/pemasukan", "notice", entries.length ? "Biaya HPP diperbarui dan otomatis masuk ke Pengeluaran (kategori Project)." : "Biaya HPP berhasil diperbarui.");
     } catch (error) {
-      await deletePaymentProof(proof?.proofPath);
+      for (const path of uploadedPaths) await deletePaymentProof(path);
       throw error;
     }
   });

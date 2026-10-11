@@ -53,17 +53,37 @@ export async function getExpenses(state: ExpenseListState) {
     prisma.expense.aggregate({ where, _sum: { amount: true } }),
   ]);
   const pageDates = dates.slice((bounded.page - 1) * bounded.pageSize, bounded.page * bounded.pageSize).map((item) => item.spentAt);
-  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, salesOrderId: true, customerName: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
+  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, salesOrderId: true, customerName: true, hppKey: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } }, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
   const grouped = new Map(pageDates.map((spentAt) => [spentAt.getTime(), { spentAt, items: [] as typeof items }]));
   items.forEach((item) => grouped.get(item.spentAt.getTime())?.items.push(item));
-  return { groups: [...grouped.values()].map((group) => ({ ...group, items: group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory })) })), total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / bounded.pageSize)), totalAmount: (totalAgg._sum.amount ?? new Prisma.Decimal(0)).toString() };
+  const groups = [...grouped.values()].map((group) => {
+    const mapped = group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory }));
+    const operasional = mapped.filter((item) => item.category !== "PROJECT");
+    const byProject = new Map<string, typeof mapped>();
+    mapped.filter((item) => item.category === "PROJECT").forEach((item) => {
+      const key = item.salesOrderId ?? "none";
+      byProject.set(key, [...(byProject.get(key) ?? []), item]);
+    });
+    const projects = [...byProject.entries()].map(([key, projectItems]) => {
+      const subtotal = projectItems.reduce((sum, item) => sum.add(new Prisma.Decimal(item.amount)), new Prisma.Decimal(0)).toString();
+      return { key, label: projectGroupLabel(projectItems[0].salesOrder, projectItems[0].customerName), subtotal, items: projectItems };
+    });
+    return { spentAt: group.spentAt, operasional, projects };
+  });
+  return { groups, total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / bounded.pageSize)), totalAmount: (totalAgg._sum.amount ?? new Prisma.Decimal(0)).toString() };
+}
+
+export function projectGroupLabel(salesOrder: { invoiceNo: string; snapshotCustomerName: string; snapshotCompanyName: string | null; purchaseOrder: { productName: string } } | null, customerName: string | null) {
+  if (!salesOrder) return customerName ? `Tanpa project · ${customerName}` : "Tanpa project";
+  const customer = salesOrder.snapshotCompanyName ?? salesOrder.snapshotCustomerName;
+  return `${customer} · ${salesOrder.purchaseOrder.productName} · ${salesOrder.invoiceNo}`;
 }
 
 export async function getExpensesForExport(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
   await requireActor(FINANCE_ROLES);
   // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
-  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, createdBy: { select: { name: true } }, reimbursedAt: true, customerName: true }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], take: 5000 });
-  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory }));
+  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, createdBy: { select: { name: true } }, reimbursedAt: true, customerName: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], take: 5000 });
+  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory, project: row.category === "PROJECT" ? projectGroupLabel(row.salesOrder, row.customerName) : "" }));
 }
 
 export async function getDeletedExpenses(page: number, pageSize: number) {
@@ -144,6 +164,25 @@ export async function getIncome(state: IncomeListState) {
 
 export async function getIncomeForExport(state: Omit<IncomeListState, "page" | "pageSize">) {
   await requireActor(FINANCE_ROLES);
-  // Fix: sebelumnya pageSize 1 sehingga export hanya 1 baris. Cap 5000 agar muat 600M.
+  // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
   return (await getIncomeOrders(incomeWhere(state), 0, 5000)).map(mapIncome);
+}
+
+export type ProjectExpensePrefill = { id: string; hppKey: string | null; purpose: string; spentAt: string; paymentMethodId: string; proofPath: string | null; proofFileName: string | null; proofMimeType: string | null };
+
+export async function getProjectExpensesBySalesOrders(salesOrderIds: string[]) {
+  await requireActor(FINANCE_ROLES);
+  if (!salesOrderIds.length) return new Map<string, ProjectExpensePrefill[]>();
+  const rows = await getPrismaClient().expense.findMany({
+    where: { salesOrderId: { in: salesOrderIds }, category: "PROJECT", deletedAt: null },
+    select: { id: true, salesOrderId: true, hppKey: true, purpose: true, spentAt: true, paymentMethodId: true, proofPath: true, proofFileName: true, proofMimeType: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const grouped = new Map<string, ProjectExpensePrefill[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.salesOrderId ?? "") ?? [];
+    list.push({ id: row.id, hppKey: row.hppKey, purpose: row.purpose, spentAt: row.spentAt.toISOString().slice(0, 10), paymentMethodId: row.paymentMethodId, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType });
+    grouped.set(row.salesOrderId ?? "", list);
+  }
+  return grouped;
 }

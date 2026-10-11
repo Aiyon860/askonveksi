@@ -683,22 +683,30 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           productCategoryId: true,
           productCategory: { select: { name: true } },
           productName: true,
+          instansi: true,
+          pola: true,
           material: true,
           color: true,
           baseColor: true,
           variationColor: true,
           decorationMethod: true,
+          decorationMethods: true,
           orderDate: true,
           sampleSize: true,
           designNotes: true,
           notes: true,
           deadline: true,
           agreedAt: true,
+          designSentAt: true,
+          designSentBy: { select: { name: true } },
+          customerConfirmedAt: true,
+          customerConfirmedBy: { select: { name: true } },
           version: true,
           createdAt: true,
           createdBy: { select: { name: true } },
-          sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
+          items: { select: { id: true, position: true, name: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true }, orderBy: { position: "asc" } },
+          sizes: { select: { id: true, position: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+          rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
           designTask: { select: { deadline: true, revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
         },
@@ -1379,7 +1387,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
         },
         orderBy: { position: "asc" },
       },
-      productionWorkOrder: { select: { id: true, workOrderNo: true, status: true, currentStage: true } },
+      productionWorkOrders: { select: { id: true, workOrderNo: true, itemName: true, status: true, currentStage: true }, orderBy: { createdAt: "asc" as const } },
     },
   });
 }
@@ -1471,21 +1479,23 @@ function salesOrderInvoicePaymentWhere(invoicePayment: SalesOrderInvoicePaymentF
   return {};
 }
 
+const WO_DONE_CONDITION: Prisma.ProductionWorkOrderWhereInput = { OR: [{ status: "COMPLETED" }, { currentStage: "SELESAI" }] };
+
 function salesOrderWoWhere(woStatus: SalesOrderWoFilter) {
   if (woStatus === "DONE") {
+    // Punya WO dan semuanya selesai.
     return {
-      productionWorkOrder: {
-        is: {
-          OR: [{ status: "COMPLETED" }, { currentStage: "SELESAI" }],
-        },
-      },
+      AND: [
+        { productionWorkOrders: { some: {} } },
+        { productionWorkOrders: { every: WO_DONE_CONDITION } },
+      ],
     } satisfies Prisma.SalesOrderWhereInput;
   }
 
   if (woStatus === "ONGOING") {
     return {
-      productionWorkOrder: {
-        is: {
+      productionWorkOrders: {
+        some: {
           status: { not: "COMPLETED" },
           currentStage: { not: "SELESAI" },
         },
@@ -1495,7 +1505,7 @@ function salesOrderWoWhere(woStatus: SalesOrderWoFilter) {
 
   if (woStatus === "NONE") {
     return {
-      productionWorkOrder: null,
+      productionWorkOrders: { none: {} },
     } satisfies Prisma.SalesOrderWhereInput;
   }
 
@@ -1722,21 +1732,22 @@ const getCachedSalesOrders = unstable_cache(
     } satisfies Prisma.SalesOrderWhereInput;
     const prisma = getPrismaClient();
     const [items, total] = await Promise.all([
-      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrder: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrders: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
       prisma.salesOrder.count({ where }),
     ]);
     return {
       items: items.map((item) => {
-        const workOrder = item.productionWorkOrder;
+        const workOrders = item.productionWorkOrders;
+        const isDone = (wo: (typeof workOrders)[number]) => wo.status === "COMPLETED" || wo.currentStage === "SELESAI";
         return {
           ...item,
           total: item.total.toString(),
           invoicePayment: item.payment && item.payment.outstandingAmount.equals(0)
             ? "PAID" as const
             : "UNPAID" as const,
-          woStatus: !workOrder
+          woStatus: !workOrders.length
             ? "NONE" as const
-            : workOrder.status === "COMPLETED" || workOrder.currentStage === "SELESAI"
+            : workOrders.every(isDone)
               ? "DONE" as const
               : "ONGOING" as const,
         };
@@ -1774,16 +1785,20 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
       purchaseOrderNo: true,
       customerReference: true,
       productName: true,
+      instansi: true,
+      pola: true,
       garmentType: true,
       productCategory: { select: { name: true } },
       material: true,
       color: true,
       deadline: true,
       status: true,
+      decorationMethods: true,
       designNotes: true,
       notes: true,
       createdAt: true,
-      sizes: { select: { id: true, size: true, quantity: true }, orderBy: { position: "asc" } },
+      items: { select: { id: true, position: true, name: true, decorationMethods: true }, orderBy: { position: "asc" } },
+      sizes: { select: { id: true, itemId: true, size: true, quantity: true }, orderBy: { position: "asc" } },
       attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
       opportunity: { select: { id: true, opportunityNo: true, customer: { select: { name: true, companyName: true } } } },
     },

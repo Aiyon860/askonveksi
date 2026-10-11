@@ -36,7 +36,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   total: string;
   issuedAt: string;
 }) {
-  const [kind, setKind] = useState<"LUNAS" | "DP" | "DEPOSIT">("LUNAS");
+  const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
   const [initialValue, setInitialValue] = useState("");
   const [terms, setTerms] = useState<Term[]>([{ key: "term-0", value: "", dueAt: "" }]);
   const initialDueAt = addJakartaDays(issuedAt, 7);
@@ -84,7 +84,6 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
             <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} className="w-full">
               <NativeSelectOption value="LUNAS">Lunas</NativeSelectOption>
               <NativeSelectOption value="DP">DP</NativeSelectOption>
-              <NativeSelectOption value="DEPOSIT">Deposit (saat Desain)</NativeSelectOption>
             </NativeSelect>
           </Field>
         </div>

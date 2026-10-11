@@ -89,11 +89,23 @@ export const PURCHASE_ORDER_STATUS_LABEL = {
   CANCELLED: "Dibatalkan",
 } as const;
 
-export const DECORATION_METHODS = ["NONE", "TINTA", "SABLON", "BORDIR"] as const;
+export const DECORATION_METHODS = ["NONE", "PRINTING", "SABLON_DTF", "SABLON_PLASTISOL", "SABLON_RUBBER", "BORDIR"] as const;
+
+// Nilai lawas tetap dikenali agar data lama tampil benar (termasuk Tinta yang sudah dihapus dari opsi).
+const LEGACY_DECORATION_METHODS = ["NONE", "TINTA", "SABLON", "BORDIR"] as const;
 
 export type DecorationMethod = (typeof DECORATION_METHODS)[number];
 
 export const DECORATION_METHOD_LABEL: Record<DecorationMethod, string> = {
+  NONE: "Tanpa dekorasi",
+  PRINTING: "Printing",
+  SABLON_DTF: "Sablon DTF",
+  SABLON_PLASTISOL: "Sablon Plastisol",
+  SABLON_RUBBER: "Sablon Rubber",
+  BORDIR: "Bordir",
+};
+
+const LEGACY_DECORATION_METHOD_LABEL: Record<string, string> = {
   NONE: "Tanpa dekorasi",
   TINTA: "Tinta",
   SABLON: "Sablon",
@@ -102,9 +114,19 @@ export const DECORATION_METHOD_LABEL: Record<DecorationMethod, string> = {
 
 export function decorationMethodLabel(value: string | null | undefined) {
   if (!value) return "-";
-  return DECORATION_METHODS.includes(value as DecorationMethod)
-    ? DECORATION_METHOD_LABEL[value as DecorationMethod]
-    : value;
+  if (DECORATION_METHODS.includes(value as DecorationMethod)) return DECORATION_METHOD_LABEL[value as DecorationMethod];
+  if ((LEGACY_DECORATION_METHODS as readonly string[]).includes(value)) return LEGACY_DECORATION_METHOD_LABEL[value] ?? value;
+  return value;
+}
+
+export function decorationMethodsLabel(values: Array<string> | null | undefined) {
+  if (!values?.length) return "-";
+  return values.map((value) => decorationMethodLabel(value)).join(", ");
+}
+
+// Printing memakai tarif/bucket Tinta.
+export function decorationCostBucket(value: string | null | undefined) {
+  return value === "PRINTING" ? "TINTA" : value;
 }
 
 export const OPPORTUNITY_DETAIL_TABS = ["peluang", "po", "invoice", "deal", "aktivitas"] as const;
