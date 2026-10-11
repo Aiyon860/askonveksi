@@ -22,16 +22,23 @@ import {
 import type { Actor } from "@/lib/auth/session";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 
-export function MobileAppNav({ actor }: { actor: Actor }) {
+export function MobileAppNav({
+  actor,
+  logoSrc = "/new-logo.webp",
+  logoUnoptimized = false,
+}: {
+  actor: Actor;
+  logoSrc?: string;
+  logoUnoptimized?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
     <header className="nav-surface sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-nav-line px-4 text-nav-ink lg:hidden">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-white p-1 ring-1 ring-nav-line">
-          <Image src="/brand/askonveksi-mark.png" alt="" width={48} height={48} className="size-full object-contain" priority />
+        <span className="flex h-9 items-center rounded-lg bg-white px-2 py-1 ring-1 ring-nav-line">
+          <Image src={logoSrc} alt="ASKonveksi" width={1920} height={1080} className="h-7 w-auto object-contain" priority unoptimized={logoUnoptimized} />
         </span>
-        <p className="truncate text-sm font-semibold text-nav-ink">ASKonveksi</p>
       </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
@@ -50,8 +57,8 @@ export function MobileAppNav({ actor }: { actor: Actor }) {
         <SheetContent side="left" className="nav-surface gap-0 text-nav-ink" showCloseButton={false}>
           <SheetHeader className="flex-row items-center justify-between gap-3 border-b border-nav-line p-4">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-white p-1 ring-1 ring-nav-line">
-                <Image src="/brand/askonveksi-mark.png" alt="" width={48} height={48} className="size-full object-contain" />
+              <span className="flex h-9 items-center rounded-lg bg-white px-2 py-1 ring-1 ring-nav-line">
+                <Image src={logoSrc} alt="ASKonveksi" width={1920} height={1080} className="h-7 w-auto object-contain" unoptimized={logoUnoptimized} />
               </span>
               <div className="min-w-0">
                 <SheetTitle className="text-nav-ink">Menu utama</SheetTitle>

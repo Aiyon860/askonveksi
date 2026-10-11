@@ -4,8 +4,8 @@ import { ContactCta } from "@/components/contact-cta";
 import { ContactFaqForm } from "@/components/contact-faq-form";
 import { ContactHeader, ContactInfo } from "@/components/contact-info";
 import { ContactMap } from "@/components/contact-map";
-import { LandingFooter } from "@/components/landing-footer";
-import { LandingNavbar } from "@/components/landing-navbar";
+import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
+import { LandingWhatsAppFab } from "@/components/landing-whatsapp-fab";
 
 export const metadata: Metadata = {
   title: "Kontak Kami",
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default function ContactPage() {
   return (
     <main className="flex min-h-dvh flex-col bg-white">
-      <LandingNavbar />
+      <SiteNavbar />
       <div className="flex-1">
         <ContactHeader />
         <ContactInfo />
@@ -23,7 +23,8 @@ export default function ContactPage() {
         <ContactMap />
         <ContactCta />
       </div>
-      <LandingFooter />
+      <SiteFooter />
+        <LandingWhatsAppFab />
     </main>
   );
 }

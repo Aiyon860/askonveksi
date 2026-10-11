@@ -10,7 +10,15 @@ const PRODUCT_SINGLES = LANDING_PRODUCT_MENU.filter((entry) => !("children" in e
 const footerLinkClassName =
   "inline-flex min-h-10 items-center text-sm text-white/70 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 
-export function LandingFooter() {
+export function LandingFooter({
+  logoSrc = "/new-logo.webp",
+  brandName = "Askonveksi",
+  logoUnoptimized = false,
+}: {
+  logoSrc?: string;
+  brandName?: string;
+  logoUnoptimized?: boolean;
+}) {
   return (
     <footer className="bg-[#071d32] text-white">
       <div className="mx-auto w-[90%] py-10 sm:py-12">
@@ -18,19 +26,18 @@ export function LandingFooter() {
           <div className="flex flex-col gap-5">
             <Link
               href="/#beranda"
-              aria-label="Askonveksi, kembali ke beranda"
+              aria-label={`${brandName}, kembali ke beranda`}
               className="flex w-fit items-center gap-3 rounded-landing-control outline-none focus-visible:ring-2 focus-visible:ring-white/80"
             >
-              <Image
-                src="/brand/askonveksi-mark.png"
-                alt=""
-                width={494}
-                height={410}
-                className="h-10 w-auto object-contain"
-              />
-              <span className="leading-none">
-                <span className="block text-base font-semibold tracking-[-0.02em]">Askonveksi</span>
-                <span className="mt-1 block text-sm text-white/60">Custom Uniform &amp; Apparel</span>
+              <span className="rounded-2xl bg-white px-3 py-2">
+                <Image
+                  src={logoSrc}
+                  alt={brandName}
+                  width={1920}
+                  height={1080}
+                  className="h-10 w-auto object-contain"
+                  unoptimized={logoUnoptimized}
+                />
               </span>
             </Link>
             <p className="max-w-xs text-sm leading-6 text-white/60">
@@ -75,7 +82,12 @@ export function LandingFooter() {
                 {PRODUCT_GROUPS.map((entry) =>
                   "children" in entry ? (
                     <li key={entry.label}>
-                      <p className="text-sm font-semibold text-white">{entry.label}</p>
+                      <Link
+                        href={entry.href}
+                        className="text-sm font-semibold text-white underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                      >
+                        {entry.label}
+                      </Link>
                       <ul className="mt-1.5 flex flex-col">
                         {entry.children.map((child) => (
                           <li key={child.href}>

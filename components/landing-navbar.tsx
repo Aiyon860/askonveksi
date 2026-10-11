@@ -28,9 +28,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { LANDING_CONTACT_HREF, LANDING_NAV_LINKS, LANDING_PRODUCT_MENU } from "@/lib/navigation";
 
 const linkClassName =
-  "flex min-h-11 items-center rounded-landing-control px-3 text-sm font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30";
+  "flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-landing-control px-2.5 text-[13px] font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30 2xl:px-3 2xl:text-sm";
 
-export function LandingNavbar() {
+export function LandingNavbar({
+  logoSrc = "/new-logo.webp",
+  brandName = "Askonveksi",
+  logoUnoptimized = false,
+}: {
+  logoSrc?: string;
+  brandName?: string;
+  logoUnoptimized?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
   const [openSub, setOpenSub] = useState<string | null>(null);
@@ -53,29 +61,24 @@ export function LandingNavbar() {
         aria-label="Navigasi Askonveksi"
         className="h-16 w-full border-b border-landing-border bg-landing-card"
       >
-        <div className="mx-auto flex h-full w-[90%] items-center justify-between gap-3">
+        <div className="mx-auto flex h-full w-[90%] items-center justify-between gap-2">
           <Link
             href="/#beranda"
-            className="flex min-h-11 min-w-0 items-center gap-2 rounded-landing-control text-landing-text outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 sm:gap-3"
-            aria-label="Askonveksi, kembali ke beranda"
+            className="flex min-h-11 min-w-0 shrink-0 items-center gap-2 rounded-landing-control text-landing-text outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 sm:gap-3"
+            aria-label={`${brandName}, kembali ke beranda`}
           >
             <Image
-              src="/brand/askonveksi-mark.png"
-              alt=""
-              width={494}
-              height={410}
+              src={logoSrc}
+              alt={brandName}
+              width={1920}
+              height={1080}
               className="h-9 w-auto shrink-0 object-contain sm:h-10"
               priority
+              unoptimized={logoUnoptimized}
             />
-            <span className="min-w-0 leading-none">
-              <span className="block truncate text-sm font-semibold tracking-[-0.02em] sm:text-base">Askonveksi</span>
-              <span className="mt-1 hidden text-sm font-medium uppercase tracking-[0.08em] text-landing-muted sm:block">
-                Custom Uniform &amp; Apparel
-              </span>
-            </span>
           </Link>
 
-          <div className="hidden items-center gap-1 lg:flex xl:gap-2">
+          <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 xl:flex 2xl:gap-2">
             {/* Dropdown Produk duduk setelah Portofolio, sebelum Size Chart. */}
             {LANDING_NAV_LINKS.slice(0, 4).map((link) => (
               <Link key={link.href} href={link.href} className={linkClassName}>
@@ -87,7 +90,7 @@ export function LandingNavbar() {
                 render={
                   <button
                     type="button"
-                    className="flex min-h-11 items-center gap-1.5 rounded-landing-control px-3 text-sm font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent"
+                    className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-landing-control px-2.5 text-[13px] font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30 2xl:px-3 2xl:text-sm aria-expanded:text-landing-accent"
                   >
                     Produk
                     <ChevronDown aria-hidden="true" className="size-4 transition-transform duration-200 aria-expanded:rotate-180" />
@@ -104,12 +107,14 @@ export function LandingNavbar() {
                   "children" in entry ? (
                     <DropdownMenuSub key={entry.label}>
                       <DropdownMenuSubTrigger className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-popup-open:bg-landing-fog data-popup-open:text-landing-accent">
-                        {entry.label}
+                        <Link
+                          href={entry.href}
+                          className="rounded-landing-control outline-none hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                        >
+                          {entry.label}
+                        </Link>
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent className="w-56 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]">
-                        <p aria-hidden="true" className="px-3 py-1.5 text-xs font-medium text-landing-muted">
-                          {entry.label}
-                        </p>
                         {entry.children.map((child) => (
                           <DropdownMenuItem
                             key={child.href}
@@ -142,7 +147,7 @@ export function LandingNavbar() {
 
           <a
             href={LANDING_CONTACT_HREF}
-            className="hidden min-h-11 shrink-0 items-center gap-2 rounded-landing-control bg-landing-accent px-5 text-sm font-semibold text-white outline-none transition-[background-color,transform] hover:bg-landing-accent/90 focus-visible:ring-3 focus-visible:ring-landing-accent/30 active:translate-y-px lg:inline-flex"
+            className="hidden min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-landing-control bg-landing-accent px-4 text-[13px] font-semibold text-white outline-none transition-[background-color,transform] hover:bg-landing-accent/90 focus-visible:ring-3 focus-visible:ring-landing-accent/30 active:translate-y-px xl:inline-flex 2xl:px-5 2xl:text-sm"
           >
             <MessageCircle aria-hidden="true" className="size-4" />
             Hubungi Kami
@@ -154,14 +159,14 @@ export function LandingNavbar() {
                 <Button
                   variant="ghost"
                   size="icon-lg"
-                  className="size-11 rounded-landing-control lg:hidden"
+                   className="size-11 rounded-landing-control xl:hidden"
                   aria-label="Buka menu utama"
                 />
               }
             >
               <Menu aria-hidden="true" />
             </SheetTrigger>
-            <SheetContent side="right" className="gap-0 overflow-y-auto bg-landing-card text-landing-text lg:hidden">
+            <SheetContent side="right" className="gap-0 overflow-y-auto bg-landing-card text-landing-text xl:hidden">
               <SheetHeader className="border-b border-landing-border p-5 pr-14">
                 <SheetTitle>Navigasi utama</SheetTitle>
                 <SheetDescription className="sr-only">
@@ -198,13 +203,24 @@ export function LandingNavbar() {
                             open={openSub === entry.label}
                             onOpenChange={(next) => setOpenSub(next ? entry.label : null)}
                           >
-                            <CollapsibleTrigger className="flex min-h-10 w-full items-center rounded-landing-control px-3 text-left text-sm font-medium text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent">
-                              {entry.label}
-                              <ChevronDown
-                                aria-hidden="true"
-                                className="ml-auto size-4 transition-transform duration-200 aria-expanded:rotate-180"
-                              />
-                            </CollapsibleTrigger>
+                            <div className="flex min-h-10 items-center gap-1">
+                              <Link
+                                href={entry.href}
+                                className="flex min-h-10 flex-1 items-center rounded-landing-control px-3 text-left text-sm font-medium text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                                onClick={closeMobileNav}
+                              >
+                                {entry.label}
+                              </Link>
+                              <CollapsibleTrigger
+                                aria-label={`Tampilkan sub-produk ${entry.label}`}
+                                className="flex size-10 shrink-0 items-center justify-center rounded-landing-control text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent"
+                              >
+                                <ChevronDown
+                                  aria-hidden="true"
+                                  className="size-4 transition-transform duration-200 aria-expanded:rotate-180"
+                                />
+                              </CollapsibleTrigger>
+                            </div>
                             <CollapsibleContent>
                               <div className="ml-3 mt-0.5 flex flex-col border-l border-landing-border pl-3">
                                 {entry.children.map((child) => (

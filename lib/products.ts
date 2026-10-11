@@ -115,7 +115,7 @@ export const LANDING_PRODUCTS: LandingProduct[] = [
     name: "Jersey",
     tagline: "Performa di lapangan, desain bebas",
     description:
-      "Jersey custom dengan bahan performance yang ringan, menyerap keringat, dan cepat kering. Desain bebas full print: nama, nomor punggung, hingga logo sponsor untuk tampil solid di lapangan.",
+      "Jersey custom dengan bahan performance yang ringan, menyerap keringat, dan cepat kering. Tersedia dalam model kerah dan oblong, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor untuk tampil solid di lapangan.",
     gallery: [
       { src: "/product/jersey.png", alt: "Produk Jersey Askonveksi" },
       { src: "/jersey.jpeg", alt: "Detail jersey produksi Askonveksi" },
@@ -126,11 +126,60 @@ export const LANDING_PRODUCTS: LandingProduct[] = [
     })),
     features: [
       "Bahan microfiber yang ringan dan adem",
+      "Model kerah dan oblong sesuai kebutuhan",
       "Sablon full print / sublim yang tidak pecah",
       "Nama, nomor punggung, dan logo sponsor",
       "Tersedia setelan lengkap dengan celana",
     ],
     useCases: ["Tim futsal & sepak bola", "Komunitas sepeda", "Turnamen"],
+  },
+  {
+    slug: "jersey-kerah",
+    name: "Jersey Kerah",
+    tagline: "Rapi dengan kerah, performa tetap maksimal",
+    description:
+      "Jersey kerah custom dengan bahan performance yang ringan, menyerap keringat, dan cepat kering. Model berkerah memberi kesan rapi semi-formal, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor.",
+    gallery: [
+      { src: "/product/jersey.png", alt: "Produk Jersey Kerah Askonveksi" },
+      { src: "/jersey.jpeg", alt: "Detail jersey kerah produksi Askonveksi" },
+    ],
+    bento: Array.from({ length: 7 }, (_, i) => ({
+      src: "/product/jersey.png",
+      alt: `Galeri Jersey Kerah Askonveksi ${i + 1}`,
+    })),
+    features: [
+      "Bahan microfiber yang ringan dan adem",
+      "Kerah rib yang tidak melar",
+      "Sablon full print / sublim yang tidak pecah",
+      "Nama, nomor punggung, dan logo sponsor",
+      "Tersedia setelan lengkap dengan celana",
+    ],
+    useCases: ["Tim futsal & sepak bola", "Komunitas sepeda", "Turnamen"],
+    hideFromCatalog: true,
+  },
+  {
+    slug: "jersey-oblong",
+    name: "Jersey Oblong",
+    tagline: "Ringan tanpa kerah, bebas bergerak",
+    description:
+      "Jersey oblong custom dengan leher O tanpa kerah untuk tampilan sporty yang simpel. Diproduksi dari bahan performance yang ringan, menyerap keringat, dan cepat kering, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor.",
+    gallery: [
+      { src: "/product/jersey.png", alt: "Produk Jersey Oblong Askonveksi" },
+      { src: "/jersey.jpeg", alt: "Detail jersey oblong produksi Askonveksi" },
+    ],
+    bento: Array.from({ length: 7 }, (_, i) => ({
+      src: "/product/jersey.png",
+      alt: `Galeri Jersey Oblong Askonveksi ${i + 1}`,
+    })),
+    features: [
+      "Bahan microfiber yang ringan dan adem",
+      "Leher O oblong dengan rib yang nyaman",
+      "Sablon full print / sublim yang tidak pecah",
+      "Nama, nomor punggung, dan logo sponsor",
+      "Tersedia setelan lengkap dengan celana",
+    ],
+    useCases: ["Tim futsal & sepak bola", "Komunitas sepeda", "Turnamen"],
+    hideFromCatalog: true,
   },
   {
     slug: "kaos",
@@ -495,6 +544,29 @@ export const LANDING_PRODUCTS: LandingProduct[] = [
       "Mulai dari jumlah kecil",
     ],
     useCases: ["Souvenir event", "Seminar kit", "Merchandise komunitas"],
+    hideFromCatalog: true,
+  },
+  {
+    slug: "stiker",
+    name: "Stiker",
+    tagline: "Label dan branding kecil yang menempel kuat",
+    description:
+      "Stiker custom untuk label produk, kemasan, dan promosi brand. Tersedia dalam bahan vinyl, chromo, dan transparan dengan potongan kiss-cut atau die-cut mengikuti bentuk desain, lengkap dengan pilihan finishing laminasi glossy atau doff.",
+    gallery: [
+      { src: "/product/kaos.png", alt: "Produk Stiker Askonveksi" },
+      { src: "/kaos.jpeg", alt: "Detail stiker produksi Askonveksi" },
+    ],
+    bento: Array.from({ length: 7 }, (_, i) => ({
+      src: "/product/kaos.png",
+      alt: `Galeri Stiker Askonveksi ${i + 1}`,
+    })),
+    features: [
+      "Bahan vinyl, chromo, dan transparan",
+      "Potongan kiss-cut atau die-cut bentuk bebas",
+      "Finishing laminasi glossy atau doff",
+      "Ukuran dan jumlah custom sesuai kebutuhan",
+    ],
+    useCases: ["Label produk", "Kemasan UMKM", "Promosi brand"],
     hideFromCatalog: true,
   },
 ];

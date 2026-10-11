@@ -35,7 +35,7 @@ export default async function BusinessProfilePage() {
               <Field>
                 <FieldLabel htmlFor="business-logo">Logo</FieldLabel>
                 <div className="flex flex-col gap-4 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-center">
-                  <Image src={profile.logoPath ? "/api/master-data/business-profile/logo" : "/brand/askonveksi-logo.png"} alt={`Logo ${profile.name}`} width={180} height={64} className="h-14 w-auto object-contain" unoptimized={Boolean(profile.logoPath)} />
+                  <Image src={profile.logoPath ? "/api/master-data/business-profile/logo" : "/new-logo.webp"} alt={`Logo ${profile.name}`} width={1920} height={1080} className="h-14 w-auto object-contain" unoptimized={Boolean(profile.logoPath)} />
                   <Input id="business-logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" />
                 </div>
                 <FieldDescription>PNG, JPG, atau WebP, maksimal 2 MB. Logo disimpan pada bucket privat.</FieldDescription>

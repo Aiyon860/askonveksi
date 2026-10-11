@@ -2,7 +2,7 @@
 
 import { Prisma, type GarmentType } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
 import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
@@ -22,6 +22,7 @@ import {
   type MasterDataExcelRow,
 } from "@/lib/master-data-excel";
 import { getPrismaClient } from "@/lib/prisma";
+import { SITE_LOGO_CACHE_TAG } from "@/lib/site-logo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function fields(formData: FormData) {
@@ -903,6 +904,7 @@ export async function updateBusinessProfileAction(formData: FormData) {
       throw error;
     }
     revalidatePath("/master-data/business-profile");
+    revalidateTag(SITE_LOGO_CACHE_TAG, { expire: 0 });
     return flashMessagePath("/master-data/business-profile", "notice", "Profil perusahaan berhasil diperbarui.");
   });
 }

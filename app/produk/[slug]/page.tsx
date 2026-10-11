@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { LandingFooter } from "@/components/landing-footer";
-import { LandingNavbar } from "@/components/landing-navbar";
+import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
+import { LandingWhatsAppFab } from "@/components/landing-whatsapp-fab";
 import { ProductDetailGrid } from "@/components/product-detail-grid";
+import { getProductChildSlugs, ProductParentGrid } from "@/components/product-parent-grid";
 import { LANDING_PRODUCTS, getLandingProduct } from "@/lib/products";
 
 export const dynamic = "force-static";
@@ -36,13 +37,20 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     notFound();
   }
 
+  const childSlugs = getProductChildSlugs(slug);
+
   return (
     <main className="flex min-h-dvh flex-col bg-white">
-      <LandingNavbar />
+      <SiteNavbar />
       <div className="flex-1">
-        <ProductDetailGrid product={product} />
+        {childSlugs.length > 0 ? (
+          <ProductParentGrid product={product} childSlugs={childSlugs} />
+        ) : (
+          <ProductDetailGrid product={product} />
+        )}
       </div>
-      <LandingFooter />
+      <SiteFooter />
+      <LandingWhatsAppFab />
     </main>
   );
 }

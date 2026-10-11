@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
-import { LandingFooter } from "@/components/landing-footer";
-import { LandingNavbar } from "@/components/landing-navbar";
+import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
+import { LandingWhatsAppFab } from "@/components/landing-whatsapp-fab";
 import { SizeChartGrid } from "@/components/size-chart-grid";
 
 export const metadata: Metadata = {
@@ -12,11 +12,12 @@ export const metadata: Metadata = {
 export default function SizeChartPage() {
   return (
     <main className="flex min-h-dvh flex-col bg-white">
-      <LandingNavbar />
+      <SiteNavbar />
       <div className="flex-1">
         <SizeChartGrid />
       </div>
-      <LandingFooter />
+      <SiteFooter />
+        <LandingWhatsAppFab />
     </main>
   );
 }
