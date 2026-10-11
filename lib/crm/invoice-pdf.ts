@@ -19,6 +19,15 @@ type PdfInvoice = {
   snapshotBusinessEmail: string | null;
   snapshotBusinessAddress: string | null;
   snapshotBusinessLogoPath: string | null;
+  snapshotBankName: string | null;
+  snapshotBankAccountNumber: string | null;
+  snapshotBankAccountHolder: string | null;
+  snapshotSignatureName: string | null;
+  snapshotSignatureTitle: string | null;
+  subtotal: { toString(): string };
+  totalDiscount: { toString(): string };
+  taxPercent: { toString(): string };
+  taxAmount: { toString(): string };
   total: { toString(): string };
   createdAt: Date;
   issuedAt: Date | null;
@@ -31,9 +40,11 @@ type PdfInvoice = {
     description: string;
     quantity: number;
     unitPrice: { toString(): string };
+    discountPercent?: { toString(): string } | string | null;
+    discountAmount?: { toString(): string } | string | null;
     total: { toString(): string };
   }>;
-  salesOrder: { payment: { transactions: Array<{ amount: { toString(): string }; status: string }> } | null } | null;
+  salesOrder: { payment: { kind?: string; transactions: Array<{ amount: { toString(): string }; status: string }> } | null } | null;
 };
 
 const A4 = { width: 595.28, height: 841.89 };
@@ -172,11 +183,23 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
     page.drawLine({ start: { x: margin, y: y + 6 }, end: { x: A4.width - margin, y: y + 6 }, thickness: 0.5, color: rgb(0.86, 0.86, 0.86) });
   });
 
-  ensure(100);
+  ensure(140);
   y -= 8;
   const summaryX = 340;
   y -= 22;
   page.drawLine({ start: { x: summaryX, y: y + 12 }, end: { x: A4.width - margin, y: y + 12 }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
+  text("Subtotal", summaryX, 9);
+  rightText(currency(invoice.subtotal), columns.totalRight, 9);
+  y -= 16;
+  text("Diskon", summaryX, 9);
+  rightText(currency(invoice.totalDiscount), columns.totalRight, 9);
+  const taxPct = Number(invoice.taxPercent?.toString() ?? "0");
+  if (taxPct > 0) {
+    y -= 16;
+    text(`Pajak (${taxPct}%)`, summaryX, 9);
+    rightText(currency(invoice.taxAmount), columns.totalRight, 9);
+  }
+  y -= 18;
   text("TOTAL", summaryX, 11, bold);
   rightText(currency(invoice.total), columns.totalRight, 11, bold);
   const totalPaid = invoice.salesOrder?.payment?.transactions.filter((item) => item.status === "ACTIVE").reduce((sum, item) => sum + Number(item.amount.toString()), 0) ?? 0;
@@ -186,13 +209,38 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
   y -= 18;
   text("Sisa tagihan", summaryX, 9, bold);
   rightText(currency({ toString: () => String(Math.max(0, Number(invoice.total.toString()) - totalPaid)) }), columns.totalRight, 9, bold);
-  y -= 52;
+  y -= 28;
+  ensure(80);
+  const bankLine = [invoice.snapshotBankName, invoice.snapshotBankAccountNumber].filter(Boolean).join(" · ");
+  if (bankLine) {
+    text("Rekening pembayaran", margin, 9, bold);
+    y -= 14;
+    page.drawText(safeText(bankLine), { x: margin, y, size: 10, font: bold });
+    y -= 14;
+    if (invoice.snapshotBankAccountHolder) {
+      text(`a.n. ${safeText(invoice.snapshotBankAccountHolder)}`, margin, 9, bold);
+      y -= 16;
+    } else {
+      y -= 4;
+    }
+  }
   ensure(56);
   text("Catatan", margin, 9, bold);
   y -= 16;
   for (const line of wrap(invoice.notes ?? "Invoice ini dibuat berdasarkan PO yang telah disepakati. Mohon periksa ukuran, jumlah, dan harga sebelum melakukan pembayaran.", regular, 9, A4.width - margin * 2)) {
     text(line, margin, 9, regular, rgb(0.35, 0.35, 0.35));
     y -= 12;
+  }
+  if (invoice.snapshotSignatureName) {
+    y -= 20;
+    ensure(60);
+    const signX = A4.width - margin - 180;
+    text("Hormat kami,", signX, 9, regular, rgb(0.35, 0.35, 0.35));
+    y -= 28;
+    page.drawText(safeText(invoice.snapshotSignatureName), { x: signX, y, size: 11, font: bold });
+    y -= 14;
+    text(safeText(invoice.snapshotSignatureTitle ?? ""), signX, 8, regular, rgb(0.35, 0.35, 0.35));
+    y -= 10;
   }
 
   document.setTitle(`Invoice ${invoice.invoiceNo}`);

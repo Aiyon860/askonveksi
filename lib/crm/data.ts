@@ -53,12 +53,12 @@ export type PipelineOpportunity = {
     version: number;
     total: string;
     issuedAt: string | null;
-    pendingPayment: { kind: "LUNAS" | "DP"; initialDueAt: string } | null;
+    pendingPayment: { kind: "LUNAS" | "DP" | "DEPOSIT"; initialDueAt: string } | null;
   } | null;
   salesOrder: {
     id: string;
     salesOrderNo: string;
-    paymentKind: "LUNAS" | "DP" | null;
+    paymentKind: "LUNAS" | "DP" | "DEPOSIT" | null;
   } | null;
 };
 
@@ -683,22 +683,30 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           productCategoryId: true,
           productCategory: { select: { name: true } },
           productName: true,
+          instansi: true,
+          pola: true,
           material: true,
           color: true,
           baseColor: true,
           variationColor: true,
           decorationMethod: true,
+          decorationMethods: true,
           orderDate: true,
           sampleSize: true,
           designNotes: true,
           notes: true,
           deadline: true,
           agreedAt: true,
+          designSentAt: true,
+          designSentBy: { select: { name: true } },
+          customerConfirmedAt: true,
+          customerConfirmedBy: { select: { name: true } },
           version: true,
           createdAt: true,
           createdBy: { select: { name: true } },
-          sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
+          items: { select: { id: true, position: true, name: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true }, orderBy: { position: "asc" } },
+          sizes: { select: { id: true, position: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+          rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
           designTask: { select: { deadline: true, revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
         },
@@ -714,6 +722,8 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           discountValue: true,
           subtotal: true,
           totalDiscount: true,
+          taxPercent: true,
+          taxAmount: true,
           totalProfit: true,
           total: true,
           issuedAt: true,
@@ -1377,14 +1387,14 @@ export async function getSalesOrderDetail(salesOrderId: string) {
         },
         orderBy: { position: "asc" },
       },
-      productionWorkOrder: { select: { id: true, workOrderNo: true, status: true, currentStage: true } },
+      productionWorkOrders: { select: { id: true, workOrderNo: true, itemName: true, status: true, currentStage: true }, orderBy: { createdAt: "asc" as const } },
     },
   });
 }
 
 export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
 export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
-export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "UNSCHEDULED";
+export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "PENDING_DEPOSIT" | "UNSCHEDULED";
 export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
 export type SalesOrderInvoicePaymentFilter = "all" | "PAID" | "UNPAID";
 export type SalesOrderWoFilter = "all" | "DONE" | "ONGOING" | "NONE";
@@ -1469,21 +1479,23 @@ function salesOrderInvoicePaymentWhere(invoicePayment: SalesOrderInvoicePaymentF
   return {};
 }
 
+const WO_DONE_CONDITION: Prisma.ProductionWorkOrderWhereInput = { OR: [{ status: "COMPLETED" }, { currentStage: "SELESAI" }] };
+
 function salesOrderWoWhere(woStatus: SalesOrderWoFilter) {
   if (woStatus === "DONE") {
+    // Punya WO dan semuanya selesai.
     return {
-      productionWorkOrder: {
-        is: {
-          OR: [{ status: "COMPLETED" }, { currentStage: "SELESAI" }],
-        },
-      },
+      AND: [
+        { productionWorkOrders: { some: {} } },
+        { productionWorkOrders: { every: WO_DONE_CONDITION } },
+      ],
     } satisfies Prisma.SalesOrderWhereInput;
   }
 
   if (woStatus === "ONGOING") {
     return {
-      productionWorkOrder: {
-        is: {
+      productionWorkOrders: {
+        some: {
           status: { not: "COMPLETED" },
           currentStage: { not: "SELESAI" },
         },
@@ -1493,7 +1505,7 @@ function salesOrderWoWhere(woStatus: SalesOrderWoFilter) {
 
   if (woStatus === "NONE") {
     return {
-      productionWorkOrder: null,
+      productionWorkOrders: { none: {} },
     } satisfies Prisma.SalesOrderWhereInput;
   }
 
@@ -1663,7 +1675,9 @@ const getCachedInvoices = unstable_cache(
             ? "PENDING_DP" as const
             : item.pendingPayment?.kind === "LUNAS"
               ? "PENDING_LUNAS" as const
-              : "UNSCHEDULED" as const,
+              : item.pendingPayment?.kind === "DEPOSIT"
+                ? "PENDING_DEPOSIT" as const
+                : "UNSCHEDULED" as const,
       })),
       total,
       pageCount: Math.max(1, Math.ceil(total / pageSize)),
@@ -1718,21 +1732,22 @@ const getCachedSalesOrders = unstable_cache(
     } satisfies Prisma.SalesOrderWhereInput;
     const prisma = getPrismaClient();
     const [items, total] = await Promise.all([
-      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrder: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrders: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
       prisma.salesOrder.count({ where }),
     ]);
     return {
       items: items.map((item) => {
-        const workOrder = item.productionWorkOrder;
+        const workOrders = item.productionWorkOrders;
+        const isDone = (wo: (typeof workOrders)[number]) => wo.status === "COMPLETED" || wo.currentStage === "SELESAI";
         return {
           ...item,
           total: item.total.toString(),
           invoicePayment: item.payment && item.payment.outstandingAmount.equals(0)
             ? "PAID" as const
             : "UNPAID" as const,
-          woStatus: !workOrder
+          woStatus: !workOrders.length
             ? "NONE" as const
-            : workOrder.status === "COMPLETED" || workOrder.currentStage === "SELESAI"
+            : workOrders.every(isDone)
               ? "DONE" as const
               : "ONGOING" as const,
         };
@@ -1770,16 +1785,20 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
       purchaseOrderNo: true,
       customerReference: true,
       productName: true,
+      instansi: true,
+      pola: true,
       garmentType: true,
       productCategory: { select: { name: true } },
       material: true,
       color: true,
       deadline: true,
       status: true,
+      decorationMethods: true,
       designNotes: true,
       notes: true,
       createdAt: true,
-      sizes: { select: { id: true, size: true, quantity: true }, orderBy: { position: "asc" } },
+      items: { select: { id: true, position: true, name: true, decorationMethods: true }, orderBy: { position: "asc" } },
+      sizes: { select: { id: true, itemId: true, size: true, quantity: true }, orderBy: { position: "asc" } },
       attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
       opportunity: { select: { id: true, opportunityNo: true, customer: { select: { name: true, companyName: true } } } },
     },
@@ -1801,6 +1820,8 @@ export async function getInvoiceDetail(invoiceId: string) {
       discountValue: true,
       subtotal: true,
       totalDiscount: true,
+      taxPercent: true,
+      taxAmount: true,
       totalProfit: true,
       total: true,
       issuedAt: true,
@@ -1810,7 +1831,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       opportunity: { select: { id: true, opportunityNo: true } },
       purchaseOrder: { select: { purchaseOrderNo: true, deadline: true } },
       pendingPayment: { select: { kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true }, orderBy: { position: "asc" } } } },
-      items: { select: { id: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
+      items: { select: { id: true, productName: true, size: true, description: true, quantity: true, unitPrice: true, discountPercent: true, discountAmount: true, subtotal: true, total: true }, orderBy: { position: "asc" } },
       salesOrder: {
         select: {
           id: true,
@@ -1853,9 +1874,11 @@ export async function getInvoiceDetail(invoiceId: string) {
     discountValue: invoice.discountValue.toString(),
     subtotal: invoice.subtotal.toString(),
     totalDiscount: invoice.totalDiscount.toString(),
+    taxPercent: invoice.taxPercent.toString(),
+    taxAmount: invoice.taxAmount.toString(),
     totalProfit: invoice.totalProfit.toString(),
     total: invoice.total.toString(),
-    items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), subtotal: item.subtotal.toString() })),
+    items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), discountPercent: item.discountPercent.toString(), discountAmount: item.discountAmount.toString(), total: item.total.toString(), subtotal: item.subtotal.toString() })),
     canRecordPayment: hasRole(actor.role, DEAL_ROLES),
     paymentMethods,
     salesOrder: invoice.salesOrder?.payment ? {

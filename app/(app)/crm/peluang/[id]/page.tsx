@@ -11,7 +11,6 @@ import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceWorkflowSection } from "@/components/crm/invoice-workflow-section";
 import { OpportunityFields } from "@/components/crm/opportunity-fields";
 import { OpportunityProcessPanel, OpportunityProcessTabs } from "@/components/crm/opportunity-process-tabs";
-import { OpportunityStageForm } from "@/components/crm/opportunity-stage-form";
 import { IssueInvoiceAction } from "@/components/crm/issue-invoice-action";
 import { PurchaseOrderAgreementAction } from "@/components/crm/purchase-order-agreement-action";
 import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
@@ -29,7 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CRM_OPERATOR_ROLES, DEAL_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
-import { decorationMethodLabel, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { decorationMethodsLabel, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
 import { getActiveGarmentSizes, getActiveProductCategories, getCustomerFormOptions } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
@@ -66,12 +65,9 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
       </div>
       <PageMessage />
 
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="flex min-w-0 max-w-full flex-col">
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>
           <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} />
-        </Suspense>
-        <Suspense fallback={<Skeleton className="h-64 w-full rounded-lg border" />}>
-          <OpportunitySidebar id={id} />
         </Suspense>
       </div>
     </div>
@@ -130,8 +126,8 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const dealTabStatus = opportunity.stage === "DEAL" ? "Selesai" : opportunity.stage === "LOST" ? "Lost" : readyForDeal ? "Siap" : "Belum siap";
   const canShowPurchaseOrderAgreement = canOperate && inNegotiation && (Boolean(poDraft) || opportunity.purchaseOrders.length === 0);
   const designRevisionStatus = poDraft?.designTask?.revisions[0]?.status;
-  const designMessage = !poDraft?.designTask ? "Tugas desain belum tersedia." : designRevisionStatus === "APPROVED" ? null : designRevisionStatus === "PENDING_REVIEW" ? "Desain sedang menunggu persetujuan Owner atau Admin." : designRevisionStatus === "REJECTED" ? "Desain ditolak. Unggah revisi baru sebelum menyepakati PO." : "Unggah desain lalu minta persetujuan Owner atau Admin.";
-  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && designRevisionStatus === "APPROVED");
+  const designMessage = !poDraft?.designTask ? "Tugas desain belum tersedia." : designRevisionStatus === "APPROVED" ? null : designRevisionStatus === "PENDING_REVIEW" ? "Desain sedang menunggu persetujuan Owner atau Admin (tidak mengunci kesepakatan)." : designRevisionStatus === "REJECTED" ? "Desain ditolak. Unggah revisi baru." : "Unggah desain bila sudah tersedia.";
+  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && poDraft.customerConfirmedAt);
 
   return (
     <OpportunityProcessTabs
@@ -186,6 +182,9 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   revisionLabel={documentRevisionLabel(poDraft.revision)}
                   canAgree={canAgreePurchaseOrderDraft}
                   designMessage={designMessage}
+                  designSentAt={poDraft.designSentAt}
+                  designSentByName={poDraft.designSentBy?.name ?? null}
+                  customerConfirmedAt={poDraft.customerConfirmedAt}
                 />
               ) : (
                 <Button variant="outline" className="w-full sm:w-auto" disabled>
@@ -222,31 +221,69 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     inNegotiation={inNegotiation}
                     sizeOptions={sizeOptions}
                     categoryOptions={categoryOptions}
-                    draftValues={{
-                      purchaseOrderNo: purchaseOrder.purchaseOrderNo,
-                      garmentType: purchaseOrder.garmentType,
-                      productCategoryId: purchaseOrder.productCategoryId,
-                      productName: purchaseOrder.productName,
-                      material: purchaseOrder.material,
-                      baseColor: purchaseOrder.baseColor ?? purchaseOrder.color ?? "",
-                      variationColor: purchaseOrder.variationColor ?? "",
-                      decorationMethod: purchaseOrder.decorationMethod ?? "",
-                      orderDate: dateInputValue(purchaseOrder.orderDate),
-                      sampleSize: purchaseOrder.sampleSize ?? "",
-                      designNotes: purchaseOrder.designNotes ?? "",
-                      notes: purchaseOrder.notes ?? "",
-                      deadline: dateInputValue(purchaseOrder.deadline),
-                      designDeadline: dateInputValue(purchaseOrder.designTask?.deadline ?? null),
-                      sizes: purchaseOrder.sizes,
-                      roster: purchaseOrder.rosterEntries,
-                    }}
+                    draftValues={(() => {
+                      const poItems = purchaseOrder.items.length ? purchaseOrder.items : [{
+                        id: "",
+                        position: 0,
+                        name: purchaseOrder.productName,
+                        productCategoryId: purchaseOrder.productCategoryId,
+                        decorationMethods: purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []),
+                        designNotes: purchaseOrder.designNotes ?? "",
+                      }];
+                      return {
+                        purchaseOrderNo: purchaseOrder.purchaseOrderNo,
+                        garmentType: purchaseOrder.garmentType,
+                        productCategoryId: purchaseOrder.productCategoryId,
+                        instansi: purchaseOrder.instansi ?? "",
+                        pola: purchaseOrder.pola ?? purchaseOrder.productName,
+                        material: purchaseOrder.material,
+                        baseColor: purchaseOrder.baseColor ?? purchaseOrder.color ?? "",
+                        variationColor: purchaseOrder.variationColor ?? "",
+                        orderDate: dateInputValue(purchaseOrder.orderDate),
+                        sampleSize: purchaseOrder.sampleSize ?? "",
+                        designNotes: purchaseOrder.designNotes ?? "",
+                        notes: purchaseOrder.notes ?? "",
+                        deadline: dateInputValue(purchaseOrder.deadline),
+                        designDeadline: dateInputValue(purchaseOrder.designTask?.deadline ?? null),
+                        items: poItems.map((poItem, itemIndex) => {
+                          const itemSizes = purchaseOrder.sizes.filter((size) => !purchaseOrder.items.length || size.itemId === poItem.id);
+                          const itemRoster = purchaseOrder.rosterEntries.filter((entry) => !purchaseOrder.items.length || entry.itemId === poItem.id);
+                          const matrix: Record<string, number> = {};
+                          for (const row of itemSizes) {
+                            const key = `${row.sleeveLength}:${row.sizeId ?? row.size.toLocaleLowerCase("id-ID")}`;
+                            matrix[key] = Math.max(0, Math.trunc(row.quantity));
+                          }
+                          const accessoryQuantity = purchaseOrder.garmentType === "AKSESORI"
+                            ? String(itemSizes.reduce((sum, row) => sum + Math.max(0, Math.trunc(row.quantity)), 0) || "")
+                            : "";
+                          return {
+                            key: poItem.id || `saved-${itemIndex}`,
+                            name: poItem.name,
+                            productCategoryId: poItem.productCategoryId ?? "",
+                            decorationMethods: poItem.decorationMethods,
+                            designNotes: poItem.designNotes ?? "",
+                            matrix,
+                            rosterMode: (itemRoster.length ? "manual" : "none") as "none" | "manual" | "excel",
+                            roster: itemRoster.map((entry, entryIndex) => ({
+                              key: `saved-${entryIndex}-${entry.memberId}`,
+                              memberId: entry.memberId,
+                              name: entry.name,
+                              sizeId: entry.sizeId ?? "",
+                              sleeveLength: entry.sleeveLength,
+                            })),
+                            accessoryQuantity,
+                          };
+                        }),
+                      };
+                    })()}
                     purchaseOrderNoPreview={purchaseOrderNoPreview}
+                    defaultInstansi={opportunity.customer.companyName ?? opportunity.customer.name}
                   >
                     <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
                   </PurchaseOrderWorkflowSection>
                 </section>
               ))}
-              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} categoryOptions={categoryOptions} purchaseOrderNoPreview={purchaseOrderNoPreview} /> : null}
+              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} categoryOptions={categoryOptions} purchaseOrderNoPreview={purchaseOrderNoPreview} defaultInstansi={opportunity.customer.companyName ?? opportunity.customer.name} /> : null}
             </div>
           )}
         </CardContent>
@@ -291,11 +328,15 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
                   discountPercent: invoice.discountValue.toString(),
+                  taxPercent: invoice.taxPercent?.toString() ?? "0",
                   items: invoice.items.map((item) => ({
+                    productName: item.productName ?? "",
+                    description: item.description,
                     size: item.size,
                     sleeveLength: item.sleeveLength,
                     quantity: item.quantity,
                     unitPrice: item.unitPrice.toString(),
+                    discountPercent: item.discountPercent?.toString() ?? invoice.discountValue.toString(),
                   })),
                 };
                 return (
@@ -407,35 +448,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   );
 }
 
-async function OpportunitySidebar({ id }: { id: string }) {
-  const [opportunity, actor] = await Promise.all([
-    getOpportunityDetail(id),
-    getCurrentActor(),
-  ]);
-  if (!opportunity || !actor) notFound();
-
-  const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
-
-  return (
-    <aside className="flex flex-col self-start gap-5 2xl:mt-[4.75rem]">
-      {canOperate ? (
-        <Card>
-          <CardHeader><CardTitle>Status pipeline</CardTitle><CardDescription>Tentukan langkah kerja berikutnya.</CardDescription></CardHeader>
-          <CardContent>
-            <OpportunityStageForm
-              opportunityId={opportunity.id}
-              version={opportunity.version}
-              initialStage={opportunity.stage}
-              cancelReason={opportunity.cancelReason}
-              redirectTo={`/crm/peluang/${opportunity.id}?tab=peluang`}
-            />
-          </CardContent>
-        </Card>
-      ) : null}
-    </aside>
-  );
-}
-
 function OpportunityReadOnly({ opportunity }: { opportunity: OpportunityDetail }) {
   return (
     <dl className="grid gap-4 text-sm sm:grid-cols-2">
@@ -457,11 +469,12 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1">{PURCHASE_ORDER_STATUS_LABEL[purchaseOrder.status]}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Jenis pakaian</dt><dd className="mt-1">{purchaseOrder.garmentType ? GARMENT_TYPE_LABEL[purchaseOrder.garmentType] : "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Kategori</dt><dd className="mt-1">{purchaseOrder.productCategory?.name ?? "-"}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Produk atau pola</dt><dd className="mt-1">{purchaseOrder.productName}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Instansi</dt><dd className="mt-1">{purchaseOrder.instansi ?? "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Pola</dt><dd className="mt-1">{purchaseOrder.pola ?? purchaseOrder.productName}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Bahan</dt><dd className="mt-1">{purchaseOrder.material}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Warna variasi</dt><dd className="mt-1">{purchaseOrder.variationColor ?? "-"}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Metode dekorasi</dt><dd className="mt-1">{decorationMethodLabel(purchaseOrder.decorationMethod)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Metode dekorasi</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${decorationMethodsLabel(poItem.decorationMethods)}`).join(" · ") : decorationMethodsLabel(purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []))}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1">{formatDate(purchaseOrder.deadline)}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Total jumlah</dt><dd className="mt-1 font-mono">{total}</dd></div>
         <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Catatan desain</dt><dd className="mt-1 whitespace-pre-wrap">{purchaseOrder.designNotes ?? "-"}</dd></div>

@@ -17,17 +17,21 @@ type PurchaseOrder = {
   purchaseOrderNo: string;
   productName: string;
   garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
-  sizes: Array<{ id: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
+  items?: Array<{ id: string; name: string }>;
+  sizes: Array<{ id: string; itemId?: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
 };
 
 type DraftItem = {
+  productName?: string;
+  description?: string;
   size: string;
   sleeveLength: "PENDEK" | "PANJANG" | null;
   quantity: number;
   unitPrice: string;
+  discountPercent?: string;
 };
 
-type InvoiceFormValues = { notes: string; discountPercent: string; items: DraftItem[] };
+type InvoiceFormValues = { notes: string; discountPercent: string; taxPercent?: string; items: DraftItem[] };
 
 export function InvoiceForm({
   opportunityId,
@@ -47,6 +51,8 @@ export function InvoiceForm({
   const values = initialValues;
   const fieldKey = sourceInvoiceId ?? "new";
   const isAccessory = purchaseOrder.garmentType === "AKSESORI";
+  const itemNameById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.name]));
+  const rowProductName = (poItem: { itemId?: string }) => (poItem.itemId && itemNameById.get(poItem.itemId)) || purchaseOrder.productName;
   const byKey = new Map(values?.items.map((item) => [`${item.sleeveLength ?? "PANJANG"}:${item.size.toLocaleLowerCase("id-ID")}`, item]));
   return (
     <form action={formAction}>
@@ -55,25 +61,27 @@ export function InvoiceForm({
       {sourceInvoiceId ? <input type="hidden" name="sourceInvoiceId" value={sourceInvoiceId} /> : null}
       <FieldGroup>
         <Table containerClassName="rounded-lg border">
-          <TableHeader><TableRow><TableHead>Produk / deskripsi</TableHead>{isAccessory ? null : <TableHead>Model</TableHead>}{isAccessory ? null : <TableHead>Ukuran</TableHead>}<TableHead className="text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead><TableHead className="min-w-24">Diskon %</TableHead></TableRow></TableHeader>
           <TableBody>{purchaseOrder.sizes.map((poItem) => {
             const key = `${poItem.sleeveLength}:${poItem.size.toLocaleLowerCase("id-ID")}`;
             const item = byKey.get(key);
-            const description = isAccessory ? purchaseOrder.productName : `${purchaseOrder.productName} ${poItem.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poItem.size}`;
+            const rowName = rowProductName(poItem);
+            const defaultDescription = isAccessory ? rowName : `${rowName} ${poItem.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poItem.size}`;
             return <TableRow key={poItem.id}>
-              <TableCell className="min-w-64"><p className="font-medium">{purchaseOrder.productName}</p>{isAccessory ? null : <p className="text-xs text-muted-foreground">{description}</p>}<input type="hidden" name="itemPurchaseOrderSizeId" value={poItem.id} /><input type="hidden" name="itemProductName" value={purchaseOrder.productName} /><input type="hidden" name="itemDescription" value={description} />{isAccessory ? <input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /> : null}{isAccessory ? <input type="hidden" name="itemSize" value={poItem.size} /> : null}</TableCell>
-              {isAccessory ? null : <TableCell>{poItem.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}<input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /></TableCell>}
-              {isAccessory ? null : <TableCell>{poItem.size}<input type="hidden" name="itemSize" value={poItem.size} /></TableCell>}
-              <TableCell className="text-right font-mono tabular-nums">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
-              <TableCell><MoneyInput name="itemUnitPrice" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${description}`} /></TableCell>
+              <TableCell className="min-w-40 align-top"><Input name="itemProductName" required minLength={2} maxLength={120} defaultValue={item?.productName ?? rowName} aria-label={`Produk ${defaultDescription}`} /><input type="hidden" name="itemPurchaseOrderSizeId" value={poItem.id} /><input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /><input type="hidden" name="itemSize" value={poItem.size} /></TableCell>
+              <TableCell className="min-w-56 align-top"><Textarea name="itemDescription" maxLength={240} rows={1} defaultValue={item?.description ?? ""} placeholder="Deskripsi opsional..." aria-label={`Deskripsi ${defaultDescription}`} className="min-h-9 resize-y" /></TableCell>
+              <TableCell className="text-right font-mono tabular-nums align-top">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
+              <TableCell className="align-top"><MoneyInput name="itemUnitPrice" required min={0} step="0.01" defaultValue={item?.unitPrice ?? ""} aria-label={`Harga ${defaultDescription}`} /></TableCell>
+              <TableCell className="align-top"><Input name="itemDiscountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={item?.discountPercent ?? values?.discountPercent ?? "0"} aria-label={`Diskon ${defaultDescription}`} /></TableCell>
             </TableRow>;
           })}</TableBody>
         </Table>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel htmlFor={`invoice-discount-${fieldKey}`}>Diskon %</FieldLabel><Input id={`invoice-discount-${fieldKey}`} name="discountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.discountPercent ?? ""} aria-label="Diskon keseluruhan invoice" /></Field>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field><FieldLabel htmlFor={`invoice-discount-${fieldKey}`}>Diskon default %</FieldLabel><Input id={`invoice-discount-${fieldKey}`} name="discountPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.discountPercent ?? "0"} aria-label="Diskon default invoice" /><FieldDescription>Jadi acuan bila diskon per item kosong.</FieldDescription></Field>
+          <Field><FieldLabel htmlFor={`invoice-tax-${fieldKey}`}>Pajak % (opsional)</FieldLabel><Input id={`invoice-tax-${fieldKey}`} name="taxPercent" type="number" min={0} max={100} step="0.0001" defaultValue={values?.taxPercent ?? "0"} aria-label="Pajak invoice" /></Field>
           <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
         </div>
-        <FieldDescription>Harga akhir = jumlah harga satuan × qty, dikurangi diskon, lalu dibulatkan ke kelipatan Rp500 terdekat.</FieldDescription>
+        <FieldDescription>Harga akhir = jumlah harga satuan × qty, dikurangi diskon per item, ditambah pajak, lalu dibulatkan ke kelipatan Rp500 terdekat.</FieldDescription>
         {formState.ok === false && formState.message ? (
           <Alert variant="destructive">
             <AlertTitle>Invoice belum tersimpan</AlertTitle>

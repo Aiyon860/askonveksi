@@ -133,3 +133,17 @@ export async function parseRosterFile(file: File): Promise<ImportedRosterRow[]> 
   });
   return rowsFromGrid(rows);
 }
+
+// Agregasi roster menjadi jumlah matriks per ukuran (pratinjau form & impor).
+export function aggregateRosterToMatrix(rows: ImportedRosterRow[]) {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const key = `${row.sleeveLength}:${row.size.toLocaleLowerCase("id-ID")}`;
+    totals.set(key, (totals.get(key) ?? 0) + 1);
+  }
+  return [...totals.entries()].map(([key, quantity]) => {
+    const [sleeveLength, size] = key.split(":");
+    return { sleeveLength: sleeveLength as "PENDEK" | "PANJANG", size, quantity };
+  });
+}
+

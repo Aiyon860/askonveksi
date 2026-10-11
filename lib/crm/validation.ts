@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DECORATION_METHODS } from "./constants.ts";
+
 const optionalText = (max: number) =>
   z.preprocess(
     (value) => (value === null || (typeof value === "string" && value.trim() === "") ? undefined : value),
@@ -191,12 +193,16 @@ export const addCommunicationActivitySchema = z
 
 export const invoiceItemSchema = z.object({
   purchaseOrderSizeId: entityIdSchema,
-  productName: z.string().trim().min(2).max(120),
+  productName: z.string().trim().min(2, "Produk minimal 2 karakter.").max(120),
   size: z.string().trim().min(1).max(40),
   sleeveLength: z.enum(["PENDEK", "PANJANG"]),
-  description: z.string().trim().min(2).max(240),
+  description: z.string().trim().max(240),
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
+  discountPercent: z.preprocess(
+    (v) => (v === undefined || v === null || v === "" ? "0" : v),
+    z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Diskon per item tidak valid."),
+  ),
 });
 
 export const invoiceDraftSchema = z.object({
@@ -206,6 +212,10 @@ export const invoiceDraftSchema = z.object({
   version: requiredVersion.optional(),
   dueAt: optionalText(10),
   discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
+  taxPercent: z.preprocess(
+    (v) => (v === undefined || v === null || v === "" ? "0" : v),
+    z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persen pajak tidak valid."),
+  ),
   notes: optionalText(2000),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
 });
@@ -238,50 +248,62 @@ const purchaseOrderRosterSchema = z.object({
   sleeveLength: z.enum(["PENDEK", "PANJANG"], { message: "Panjang lengan roster wajib dipilih." }),
 });
 
+const purchaseOrderItemSchema = z.object({
+  key: z.string().trim().min(1).max(40),
+  name: z.string().trim().min(2, "Nama produk wajib diisi.").max(120),
+  productCategoryId: optionalEntityId,
+  decorationMethods: z.array(z.enum(DECORATION_METHODS)).min(1, "Pilih minimal satu metode dekorasi.").max(7),
+  designNotes: optionalText(4000),
+  sizes: z.array(purchaseOrderSizeSchema).max(400),
+  rosterMode: z.enum(["none", "manual", "excel"], { message: "Pilih cara mengisi roster." }),
+  roster: z.array(purchaseOrderRosterSchema).max(5_000),
+});
+
 export const purchaseOrderDraftSchema = z.object({
   opportunityId: entityIdSchema,
   purchaseOrderId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
   garmentType: z.enum(["JERSEY", "NON_JERSEY", "AKSESORI"], { message: "Jenis pakaian wajib dipilih." }),
   productCategoryId: entityIdSchema.optional(),
-  productName: z.string().trim().min(2, "Nama produk atau pola wajib diisi.").max(120),
+  instansi: z.string().trim().min(2, "Instansi wajib diisi.").max(160),
+  pola: z.string().trim().min(2, "Pola wajib diisi.").max(120),
   material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
   baseColor: optionalText(120),
   variationColor: optionalText(240),
-  decorationMethod: z.enum(["NONE", "TINTA", "SABLON", "BORDIR"], {
-    message: "Metode dekorasi wajib dipilih.",
-  }),
   orderDate: optionalText(10),
   sampleSize: optionalText(40),
   designNotes: optionalText(4000),
   notes: optionalText(4000),
   deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
   designDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline desain wajib dipilih."),
-  sizes: z.array(purchaseOrderSizeSchema).min(1, "Matriks ukuran belum tersedia.").max(400),
-  rosterMode: z.enum(["none", "manual", "excel"], { message: "Pilih cara mengisi roster." }),
-  roster: z.array(purchaseOrderRosterSchema).max(5_000),
+  items: z.array(purchaseOrderItemSchema).min(1, "Tambahkan minimal satu produk.").max(10),
 }).superRefine((value, context) => {
   if (value.orderDate && value.designDeadline < value.orderDate) {
     context.addIssue({ code: "custom", path: ["designDeadline"], message: "Deadline desain tidak boleh lebih awal dari tanggal order." });
   }
-  const positiveSizes = value.sizes.filter((item) => item.quantity > 0);
-  if (!positiveSizes.length) {
-    context.addIssue({ code: "custom", path: ["sizes"], message: "Isi minimal satu jumlah pada matriks ukuran." });
+  const keys = value.items.map((item) => item.key);
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({ code: "custom", path: ["items"], message: "Produk tidak boleh duplikat." });
   }
-  const matrixKeys = value.sizes.map((item) => `${item.sleeveLength}:${item.sizeId}`);
-  if (new Set(matrixKeys).size !== matrixKeys.length) {
-    context.addIssue({ code: "custom", path: ["sizes"], message: "Baris matriks ukuran tidak boleh duplikat." });
-  }
-  const rosterIds = value.roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
-  if (new Set(rosterIds).size !== rosterIds.length) {
-    context.addIssue({ code: "custom", path: ["roster"], message: "ID anggota roster tidak boleh duplikat." });
-  }
-  if (value.rosterMode === "manual" && !value.roster.length) {
-    context.addIssue({ code: "custom", path: ["roster"], message: "Tambahkan minimal satu pemakai atau pilih Tanpa roster." });
-  }
-  if (value.rosterMode !== "manual" && value.roster.length) {
-    context.addIssue({ code: "custom", path: ["roster"], message: "Roster manual hanya boleh diisi pada mode Ketik manual." });
-  }
+  value.items.forEach((item, index) => {
+        if (!item.sizes.some((size) => size.quantity > 0)) {
+      context.addIssue({ code: "custom", path: ["items", index, "sizes"], message: `Isi minimal satu jumlah pada matriks ${item.name || `produk ${index + 1}`}.` });
+    }
+    const matrixKeys = item.sizes.map((size) => `${size.sleeveLength}:${size.sizeId}`);
+    if (new Set(matrixKeys).size !== matrixKeys.length) {
+      context.addIssue({ code: "custom", path: ["items", index, "sizes"], message: `Baris matriks ${item.name || `produk ${index + 1}`} tidak boleh duplikat.` });
+    }
+    const rosterIds = item.roster.map((row) => row.memberId.toLocaleLowerCase("id-ID"));
+    if (new Set(rosterIds).size !== rosterIds.length) {
+      context.addIssue({ code: "custom", path: ["items", index, "roster"], message: `ID anggota roster ${item.name || `produk ${index + 1}`} tidak boleh duplikat.` });
+    }
+    if (item.rosterMode === "manual" && !item.roster.length) {
+      context.addIssue({ code: "custom", path: ["items", index, "roster"], message: `Tambahkan minimal satu pemakai ${item.name || `produk ${index + 1}`} atau pilih Tanpa roster.` });
+    }
+    if (item.rosterMode !== "manual" && item.roster.length) {
+      context.addIssue({ code: "custom", path: ["items", index, "roster"], message: "Roster manual hanya boleh diisi pada mode Ketik manual." });
+    }
+  });
 });
 
 export const purchaseOrderIdSchema = z.object({
@@ -319,6 +341,7 @@ export const completeDealSchema = z.object({
 export const payPendingInitialPaymentSchema = z.object({
   invoiceId: entityIdSchema,
   paymentMethodId: entityIdSchema,
+  paidAt: optionalText(32),
   reference: optionalText(120),
   note: optionalText(1000),
 });
@@ -360,6 +383,7 @@ export const payInvoicePaymentTermSchema = z.object({
   salesOrderId: entityIdSchema,
   paymentTermId: entityIdSchema,
   paymentMethodId: entityIdSchema,
+  paidAt: optionalText(32),
 });
 
 export const recordInitialPaymentSchema = z.object({
@@ -396,6 +420,12 @@ export const businessProfileSchema = z.object({
     z.email("Format email perusahaan tidak valid.").trim().max(320).optional(),
   ),
   address: optionalText(2000),
+  bankName: optionalText(120),
+  bankAccountNumber: optionalText(60),
+  bankAccountHolder: optionalText(160),
+  signatureName: optionalText(160),
+  signatureTitle: optionalText(120),
+  invoiceNotes: optionalText(2000),
 });
 
 export const loginSchema = z.object({

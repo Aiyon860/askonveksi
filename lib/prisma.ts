@@ -18,8 +18,10 @@ function createPrismaClient() {
   const adapter = new PrismaPg({
     connectionString,
     max: 5,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    // DNS lambat (±5 dtk) membuat handshake ke pooler ±7 dtk; beri ruang agar
+    // checkout antrean (mis. 13 query paralel dashboard) tidak timeout.
+    idleTimeoutMillis: 60_000,
+    connectionTimeoutMillis: 30_000,
   });
   return new PrismaClient({ adapter });
 }

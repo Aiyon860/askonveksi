@@ -229,7 +229,9 @@ function invoiceInput(formData: FormData) {
   const descriptions = formData.getAll("itemDescription");
   const quantities = formData.getAll("itemQuantity");
   const unitPrices = formData.getAll("itemUnitPrice");
+  const itemDiscounts = formData.getAll("itemDiscountPercent");
   const length = Math.max(purchaseOrderSizeIds.length, sizes.length, unitPrices.length);
+  const fallbackDiscount = formValue(formData, "discountPercent") || "0";
   const items = Array.from({ length }, (_, index) => ({
     purchaseOrderSizeId: purchaseOrderSizeIds[index],
     productName: productNames[index],
@@ -238,6 +240,7 @@ function invoiceInput(formData: FormData) {
     description: descriptions[index],
     quantity: quantities[index],
     unitPrice: unitPrices[index],
+    discountPercent: itemDiscounts[index] || fallbackDiscount,
   }));
 
   return {
@@ -246,49 +249,62 @@ function invoiceInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId") || undefined,
     version: formValue(formData, "version") || undefined,
     dueAt: formValue(formData, "dueAt"),
-    discountPercent: formValue(formData, "discountPercent") || "0",
+    discountPercent: fallbackDiscount,
+    taxPercent: formValue(formData, "taxPercent") || "0",
     notes: formValue(formData, "notes"),
     items,
   };
 }
 
 function purchaseOrderInput(formData: FormData) {
-  const sizeIds = formData.getAll("sizeId");
-  const sleeveLengths = formData.getAll("sleeveLength");
-  const quantities = formData.getAll("sizeQuantity");
-  const rosterMemberIds = formData.getAll("rosterMemberId");
-  const rosterNames = formData.getAll("rosterName");
-  const rosterSizeIds = formData.getAll("rosterSizeId");
-  const rosterSleeveLengths = formData.getAll("rosterSleeveLength");
+  const itemKeys = formData.getAll("itemKey").map((value) => String(value));
+  const items = itemKeys.map((key, position) => {
+    const prefix = `item-${position}-`;
+    const sizeIds = formData.getAll(`${prefix}sizeId`);
+    const sleeveLengths = formData.getAll(`${prefix}sleeveLength`);
+    const quantities = formData.getAll(`${prefix}sizeQuantity`);
+    const rosterMemberIds = formData.getAll(`${prefix}rosterMemberId`);
+    const rosterNames = formData.getAll(`${prefix}rosterName`);
+    const rosterSizeIds = formData.getAll(`${prefix}rosterSizeId`);
+    const rosterSleeveLengths = formData.getAll(`${prefix}rosterSleeveLength`);
+    return {
+      key,
+      name: formValue(formData, `${prefix}name`),
+      productCategoryId: formValue(formData, `${prefix}productCategoryId`) || undefined,
+      decorationMethods: formData.getAll(`${prefix}decorationMethod`).map((value) => String(value)),
+      designNotes: formValue(formData, `${prefix}designNotes`),
+      rosterMode: formValue(formData, `${prefix}rosterMode`),
+      sizes: Array.from({ length: Math.max(sizeIds.length, quantities.length) }, (_, index) => ({
+        sizeId: sizeIds[index],
+        sleeveLength: sleeveLengths[index],
+        quantity: quantities[index],
+      })),
+      roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
+        memberId: rosterMemberIds[index],
+        name: rosterNames[index],
+        sizeId: rosterSizeIds[index],
+        sleeveLength: rosterSleeveLengths[index],
+      })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
+    };
+  });
   return {
     opportunityId: formValue(formData, "opportunityId"),
     purchaseOrderId: formValue(formData, "purchaseOrderId") || undefined,
     version: formValue(formData, "version") || undefined,
     garmentType: formValue(formData, "garmentType"),
     productCategoryId: formValue(formData, "productCategoryId") || undefined,
-    productName: formValue(formData, "productName"),
+    instansi: formValue(formData, "instansi"),
+    pola: formValue(formData, "pola"),
     material: formValue(formData, "material"),
     baseColor: formValue(formData, "baseColor"),
     variationColor: formValue(formData, "variationColor"),
-    decorationMethod: formValue(formData, "decorationMethod"),
     orderDate: formValue(formData, "orderDate"),
     sampleSize: formValue(formData, "sampleSize"),
     designNotes: formValue(formData, "designNotes"),
     notes: formValue(formData, "notes"),
     deadline: formValue(formData, "deadline"),
     designDeadline: formValue(formData, "designDeadline"),
-    rosterMode: formValue(formData, "rosterMode"),
-    sizes: Array.from({ length: Math.max(sizeIds.length, quantities.length) }, (_, index) => ({
-      sizeId: sizeIds[index],
-      sleeveLength: sleeveLengths[index],
-      quantity: quantities[index],
-    })),
-    roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
-      memberId: rosterMemberIds[index],
-      name: rosterNames[index],
-      sizeId: rosterSizeIds[index],
-      sleeveLength: rosterSleeveLengths[index],
-    })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
+    items,
   };
 }
 
@@ -309,8 +325,8 @@ async function resolveOpportunityCategory(reader: Tx, productCategoryId: string 
   return category;
 }
 
-async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "manual" | "excel") {
-  const file = formData.get("rosterFile");
+async function importedPurchaseOrderRoster(formData: FormData, fieldName: string, mode: "none" | "manual" | "excel") {
+  const file = formData.get(fieldName);
   if (mode !== "excel") {
     if (file instanceof File && file.size) throw new UserFacingError("File roster hanya boleh diunggah pada mode Impor Excel.");
     return [];
@@ -319,6 +335,22 @@ async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "m
   const rows = await parseRosterFile(file);
   if (!rows.length) throw new UserFacingError("File Excel roster belum berisi pemakai.");
   return rows;
+}
+
+type ParsedPoItem = {
+  key: string;
+  name: string;
+  productCategoryId?: string;
+  decorationMethods: string[];
+  designNotes?: string | null;
+  sizes: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
+  rosterMode: "none" | "manual" | "excel";
+  roster: Array<{ memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
+};
+
+function legacyDecorationMethod(methods: string[]) {
+  if (methods.length === 1 && methods[0] === "NONE") return "NONE";
+  return methods.find((method) => method === "TINTA" || method === "BORDIR") ?? methods[0] ?? "NONE";
 }
 
 function completeDealInput(formData: FormData) {
@@ -381,23 +413,21 @@ type PurchaseOrderRowReader = {
 
 async function preparePurchaseOrderRows(
   db: PurchaseOrderRowReader,
-  data: {
-    sizes: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-    rosterMode: "none" | "manual" | "excel";
-    roster: Array<{ memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
-  },
-  importedRoster: ImportedRosterRow[],
+  items: Array<ParsedPoItem & { itemId: string; fileRoster: ImportedRosterRow[] }>,
 ) {
-  const requestedIds = new Set([
-    ...data.sizes.map((item) => item.sizeId),
-    ...data.roster.map((item) => item.sizeId),
-  ]);
+  const requestedIds = new Set<string>();
+  const importedNames = new Set<string>();
+  for (const item of items) {
+    item.sizes.forEach((size) => requestedIds.add(size.sizeId));
+    item.roster.forEach((row) => requestedIds.add(row.sizeId));
+    item.fileRoster.forEach((row) => importedNames.add(row.size));
+  }
   const sizeMasters = await db.garmentSize.findMany({
     where: {
       isActive: true,
       OR: [
         ...(requestedIds.size ? [{ id: { in: [...requestedIds] } }] : []),
-        ...(importedRoster.length ? [{ name: { in: importedRoster.map((item) => item.size), mode: "insensitive" as const } }] : []),
+        ...(importedNames.size ? [{ name: { in: [...importedNames], mode: "insensitive" as const } }] : []),
       ],
     },
     select: { id: true, name: true },
@@ -405,77 +435,96 @@ async function preparePurchaseOrderRows(
   const byId = new Map(sizeMasters.map((item) => [item.id, item]));
   const byName = new Map(sizeMasters.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
 
-  const sizes = data.sizes.filter((item) => item.quantity > 0).map((item, position) => {
-    const master = byId.get(item.sizeId);
-    if (!master) throw new UserFacingError("Salah satu ukuran matriks tidak aktif atau tidak ditemukan.");
-    return { ...item, size: master.name, position };
-  });
-  const manualRoster = data.roster.map((item) => {
-    const master = byId.get(item.sizeId);
-    if (!master) throw new UserFacingError("Salah satu ukuran roster tidak aktif atau tidak ditemukan.");
-    return { ...item, size: master.name };
-  });
-  const fileRoster = importedRoster.map((item, index) => {
-    const master = byName.get(item.size.toLocaleLowerCase("id-ID"));
-    if (!master) throw new UserFacingError(`Ukuran ${item.size} pada baris roster ${index + 2} belum tersedia di Data Master.`);
-    return { memberId: item.memberId, name: item.name, sizeId: master.id, size: master.name, sleeveLength: item.sleeveLength };
-  });
-  const roster = data.rosterMode === "excel" ? fileRoster : data.rosterMode === "manual" ? manualRoster : [];
-  const normalizedIds = roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
-  if (new Set(normalizedIds).size !== normalizedIds.length) throw new UserFacingError("ID anggota roster tidak boleh duplikat.");
+  const sizes: Array<{ itemId: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number; size: string; position: number }> = [];
+  const roster: Array<{ itemId: string; memberId: string; name: string; sizeId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; position: number }> = [];
+  for (const item of items) {
+    const itemSizes = item.sizes.filter((size) => size.quantity > 0).map((size) => {
+      const master = byId.get(size.sizeId);
+      if (!master) throw new UserFacingError(`Salah satu ukuran matriks ${item.name} tidak aktif atau tidak ditemukan.`);
+      const row = { itemId: item.itemId, sizeId: size.sizeId, sleeveLength: size.sleeveLength, quantity: size.quantity, size: master.name, position: sizes.length };
+      sizes.push(row);
+      return row;
+    });
+    const manualRoster = item.roster.map((row) => {
+      const master = byId.get(row.sizeId);
+      if (!master) throw new UserFacingError(`Salah satu ukuran roster ${item.name} tidak aktif atau tidak ditemukan.`);
+      return { itemId: item.itemId, memberId: row.memberId, name: row.name, sizeId: row.sizeId, size: master.name, sleeveLength: row.sleeveLength };
+    });
+    const fileRoster = item.fileRoster.map((row, index) => {
+      const master = byName.get(row.size.toLocaleLowerCase("id-ID"));
+      if (!master) throw new UserFacingError(`Ukuran ${row.size} pada baris roster ${index + 2} (${item.name}) belum tersedia di Data Master.`);
+      return { itemId: item.itemId, memberId: row.memberId, name: row.name, sizeId: master.id, size: master.name, sleeveLength: row.sleeveLength };
+    });
+    const itemRoster = item.rosterMode === "excel" ? fileRoster : item.rosterMode === "manual" ? manualRoster : [];
+    const normalizedIds = itemRoster.map((row) => row.memberId.toLocaleLowerCase("id-ID"));
+    if (new Set(normalizedIds).size !== normalizedIds.length) throw new UserFacingError(`ID anggota roster ${item.name} tidak boleh duplikat.`);
 
-  if (roster.length) {
-    const matrixTotals = new Map<string, number>();
-    for (const item of sizes) {
-      const key = `${item.sizeId}:${item.sleeveLength}`;
-      matrixTotals.set(key, (matrixTotals.get(key) ?? 0) + item.quantity);
-    }
-    const rosterTotals = new Map<string, number>();
-    for (const item of roster) {
-      const key = `${item.sizeId}:${item.sleeveLength}`;
-      rosterTotals.set(key, (rosterTotals.get(key) ?? 0) + 1);
-    }
-    const allKeys = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
-    for (const key of allKeys) {
-      if ((matrixTotals.get(key) ?? 0) !== (rosterTotals.get(key) ?? 0)) {
-        const [sizeId, sleeveLength] = key.split(":");
-        const sizeName = byId.get(sizeId)?.name ?? "tidak dikenal";
-        throw new UserFacingError(`Total roster ukuran ${sizeName} lengan ${sleeveLength.toLocaleLowerCase("id-ID")} harus sama dengan jumlah pada matriks.`);
+    if (itemRoster.length) {
+      const matrixTotals = new Map<string, number>();
+      for (const size of itemSizes) {
+        const key = `${size.sizeId}:${size.sleeveLength}`;
+        matrixTotals.set(key, (matrixTotals.get(key) ?? 0) + size.quantity);
+      }
+      const rosterTotals = new Map<string, number>();
+      for (const row of itemRoster) {
+        const key = `${row.sizeId}:${row.sleeveLength}`;
+        rosterTotals.set(key, (rosterTotals.get(key) ?? 0) + 1);
+      }
+      const allKeys = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
+      for (const key of allKeys) {
+        if ((matrixTotals.get(key) ?? 0) !== (rosterTotals.get(key) ?? 0)) {
+          const [sizeId, sleeveLength] = key.split(":");
+          const sizeName = byId.get(sizeId)?.name ?? "tidak dikenal";
+          throw new UserFacingError(`Total roster ${item.name} ukuran ${sizeName} lengan ${sleeveLength.toLocaleLowerCase("id-ID")} harus sama dengan jumlah pada matriks.`);
+        }
       }
     }
+    itemRoster.forEach((row) => roster.push({ ...row, position: roster.length }));
   }
 
-  return {
-    sizes,
-    roster: roster.map((item, position) => ({ ...item, position })),
-  };
+  return { sizes, roster };
+}
+
+async function preparePoItems(formData: FormData, items: ParsedPoItem[]) {
+  return Promise.all(items.map(async (item, index) => ({
+    ...item,
+    itemId: randomUUID(),
+    fileRoster: await importedPurchaseOrderRoster(formData, `item-${index}-rosterFile`, item.rosterMode),
+  })));
 }
 
 function calculateInvoiceForPurchaseOrder(
   purchaseOrder: {
     productName: string;
-    sizes: Array<{ id: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
+    items?: Array<{ id: string; name: string }>;
+    sizes: Array<{ id: string; itemId: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
   submittedItems: InvoicePricingInput[],
   discountPercent: string,
+  taxPercent = "0",
 ) {
   const submittedById = new Map(submittedItems.map((item) => [String(item.purchaseOrderSizeId), item]));
   if (submittedById.size !== purchaseOrder.sizes.length || submittedItems.length !== purchaseOrder.sizes.length) {
     throw new UserFacingError("Item invoice harus sama dengan seluruh baris matriks PO.");
   }
+  const itemNameById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.name]));
   const calculated = calculateInvoiceLines(purchaseOrder.sizes.map((poRow) => {
     const submitted = submittedById.get(poRow.id);
     if (!submitted) throw new UserFacingError("Salah satu baris PO tidak tersedia pada invoice.");
+    const rowDefault = itemNameById.get(poRow.itemId) ?? purchaseOrder.productName;
+    const productName = String(submitted.productName || rowDefault).trim() || rowDefault;
+    const description = String(submitted.description || "").trim() || `${productName} ${poRow.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poRow.size}`;
     return {
       purchaseOrderSizeId: poRow.id,
-      productName: purchaseOrder.productName,
+      productName,
       size: poRow.size,
       sleeveLength: poRow.sleeveLength,
-      description: `${purchaseOrder.productName} ${poRow.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poRow.size}`,
+      description,
       quantity: poRow.quantity,
       unitPrice: String(submitted.unitPrice),
+      discountPercent: String((submitted as { discountPercent?: string }).discountPercent ?? discountPercent ?? "0"),
     };
-  }), discountPercent);
+  }), discountPercent, taxPercent);
   return {
     ...calculated,
     items: calculated.items.map(({ purchaseOrderSizeId, ...item }) => ({
@@ -1304,13 +1353,13 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
-    timer.mark("roster");
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
+    const preparedItems = await preparePoItems(formData, parsed.data.items);
+    const rows = await preparePurchaseOrderRows(prisma, preparedItems);
     timer.mark("rows");
+    const allDecorationMethods = [...new Set(preparedItems.flatMap((item) => item.decorationMethods))];
     await prisma.$transaction(async (tx) => {
         const opportunity = await tx.opportunity.findUnique({
           where: { id: parsed.data.opportunityId },
@@ -1327,6 +1376,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
         if (opportunity._count.purchaseOrders > 0) throw new UserFacingError("Gunakan aksi Revisi PO dari dokumen sebelumnya.");
 
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
+        const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
@@ -1335,12 +1385,15 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
             revision: 1,
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.productName,
+            productName: parsed.data.pola,
+            instansi: parsed.data.instansi,
+            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
             variationColor: parsed.data.variationColor,
-            decorationMethod: parsed.data.decorationMethod,
+            decorationMethod: legacyDecorationMethod(allDecorationMethods),
+            decorationMethods: allDecorationMethods,
             orderDate: optionalDate(parsed.data.orderDate),
             sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
@@ -1348,13 +1401,24 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
             deadline: optionalDate(parsed.data.deadline),
             designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
+            items: {
+              create: preparedItems.map((item, position) => ({
+                id: item.itemId,
+                position,
+                name: item.name,
+                productCategoryId: itemCategories[position]?.productCategoryId ?? null,
+                garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
+                decorationMethods: [...new Set(item.decorationMethods)],
+                designNotes: item.designNotes,
+              })),
+            },
             sizes: { create: rows.sizes },
             rosterEntries: { create: rows.roster },
           },
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_DRAFT_CREATED", [
-          "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "items", "sizes", "roster",
         ], { opportunityId: parsed.data.opportunityId });
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1376,25 +1440,29 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
       throw new UserFacingError(parsed.success ? "Identitas PO tidak lengkap." : firstValidationMessage(parsed.error));
     }
     timer.mark("parse");
-    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
-    timer.mark("roster");
     const prisma = getPrismaClient();
     const purchaseOrderId = parsed.data.purchaseOrderId;
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
+    const preparedItems = await preparePoItems(formData, parsed.data.items);
+    const rows = await preparePurchaseOrderRows(prisma, preparedItems);
     timer.mark("rows");
+    const allDecorationMethods = [...new Set(preparedItems.flatMap((item) => item.decorationMethods))];
     await prisma.$transaction(async (tx) => {
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
+        const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         const updated = await tx.purchaseOrder.updateMany({
           where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { purchaseOrders: { none: { status: "AGREED" } }, invoices: { none: { status: "ISSUED" } } } },
           data: {
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.productName,
+            productName: parsed.data.pola,
+            instansi: parsed.data.instansi,
+            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
             variationColor: parsed.data.variationColor,
-            decorationMethod: parsed.data.decorationMethod,
+            decorationMethod: legacyDecorationMethod(allDecorationMethods),
+            decorationMethods: allDecorationMethods,
             orderDate: optionalDate(parsed.data.orderDate),
             sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
@@ -1403,16 +1471,20 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
             version: { increment: 1 },
           },
         });
-        if (updated.count !== 1) throw new UserFacingError("Draft PO sudah berubah atau tidak lagi dapat diedit.");
+        if (updated.count !== 1) throw new UserFacingError("Draft sudah berubah atau tidak lagi dapat diedit.");
         await tx.designTask.upsert({ where: { purchaseOrderId }, update: { deadline: optionalDate(parsed.data.designDeadline)! }, create: { purchaseOrderId, deadline: optionalDate(parsed.data.designDeadline)! } });
         await tx.purchaseOrderRosterEntry.deleteMany({ where: { purchaseOrderId } });
         await tx.purchaseOrderSize.deleteMany({ where: { purchaseOrderId } });
+        await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId } });
+        await tx.purchaseOrderItem.createMany({
+          data: preparedItems.map((item, position) => ({ id: item.itemId, purchaseOrderId, position, name: item.name, productCategoryId: itemCategories[position]?.productCategoryId ?? null, garmentType: itemCategories[position]?.garmentType ?? category.garmentType, decorationMethods: [...new Set(item.decorationMethods)], designNotes: item.designNotes ?? null })),
+        });
         await tx.purchaseOrderSize.createMany({
           data: rows.sizes.map((item) => ({ purchaseOrderId, ...item })),
         });
         if (rows.roster.length) await tx.purchaseOrderRosterEntry.createMany({ data: rows.roster.map((item) => ({ purchaseOrderId, ...item })) });
         await audit(tx, actor, "PurchaseOrder", purchaseOrderId, "PURCHASE_ORDER_DRAFT_UPDATED", [
-          "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "items", "sizes", "roster",
         ]);
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1443,6 +1515,8 @@ export async function agreePurchaseOrderAction(formData: FormData) {
           garmentType: true,
           deadline: true,
           designTask: { select: { revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
+          designSentAt: true,
+          customerConfirmedAt: true,
           sizes: { select: { id: true }, take: 1 },
           opportunity: {
             select: {
@@ -1461,7 +1535,7 @@ export async function agreePurchaseOrderAction(formData: FormData) {
       if (purchaseOrder.opportunity.purchaseOrders.length) throw new UserFacingError("PO sudah disepakati dan bersifat final.");
       if (!purchaseOrder.sizes.length) throw new UserFacingError("PO belum memiliki ukuran dan jumlah.");
       if (!purchaseOrder.garmentType || !purchaseOrder.deadline) throw new UserFacingError("Jenis pakaian dan deadline produksi wajib dilengkapi sebelum PO disepakati.");
-      if (purchaseOrder.designTask?.revisions[0]?.status !== "APPROVED") throw new UserFacingError("Desain harus diunggah dan disetujui Owner atau Admin sebelum PO disepakati.");
+      if (!purchaseOrder.customerConfirmedAt) throw new UserFacingError("Kirim 1 set PDF PO ke customer dan tandai konfirmasi tidak ada revisi sebelum menyepakati PO.");
       const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
       const agreedAt = new Date();
@@ -1499,6 +1573,51 @@ export async function agreePurchaseOrderAction(formData: FormData) {
   });
 }
 
+export async function markPurchaseOrderDesignSentAction(formData: FormData) {
+  return runRedirectingAction(opportunityTabFallback(formData, "po"), async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderIdSchema.safeParse({ purchaseOrderId: formValue(formData, "purchaseOrderId"), version: formValue(formData, "version") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const updated = await getPrismaClient().$transaction(async (tx) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({ where: { id: parsed.data.purchaseOrderId }, select: { opportunityId: true, status: true } });
+      if (!purchaseOrder || purchaseOrder.status !== "DRAFT") throw new UserFacingError("Hanya PO draft yang dapat ditandai terkirim.");
+      const result = await tx.purchaseOrder.updateMany({
+        where: { id: parsed.data.purchaseOrderId, status: "DRAFT", version: parsed.data.version },
+        data: { designSentAt: new Date(), designSentById: actor.id },
+      });
+      if (result.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
+      await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_DESIGN_SENT", ["designSentAt", "designSentById"]);
+      return purchaseOrder;
+    });
+    revalidatePath("/crm");
+    revalidatePath(`/crm/peluang/${updated.opportunityId}`);
+    return flashMessagePath(`/crm/peluang/${updated.opportunityId}?tab=po`, "notice", `1 set PDF PO ditandai terkirim oleh ${actor.name}. Minta konfirmasi revisi ke customer.`);
+  });
+}
+
+export async function confirmPurchaseOrderCustomerAction(formData: FormData) {
+  return runRedirectingAction(opportunityTabFallback(formData, "po"), async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderIdSchema.safeParse({ purchaseOrderId: formValue(formData, "purchaseOrderId"), version: formValue(formData, "version") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const updated = await getPrismaClient().$transaction(async (tx) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({ where: { id: parsed.data.purchaseOrderId }, select: { opportunityId: true, status: true, designSentAt: true } });
+      if (!purchaseOrder || purchaseOrder.status !== "DRAFT") throw new UserFacingError("Hanya PO draft yang dapat dikonfirmasi.");
+      if (!purchaseOrder.designSentAt) throw new UserFacingError("Kirim 1 set PDF PO ke customer terlebih dahulu.");
+      const result = await tx.purchaseOrder.updateMany({
+        where: { id: parsed.data.purchaseOrderId, status: "DRAFT", version: parsed.data.version },
+        data: { customerConfirmedAt: new Date(), customerConfirmedById: actor.id },
+      });
+      if (result.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
+      await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_CUSTOMER_CONFIRMED", ["customerConfirmedAt", "customerConfirmedById"]);
+      return purchaseOrder;
+    });
+    revalidatePath("/crm");
+    revalidatePath(`/crm/peluang/${updated.opportunityId}`);
+    return flashMessagePath(`/crm/peluang/${updated.opportunityId}?tab=po`, "notice", "Customer dikonfirmasi tidak ada revisi. PO siap disepakati.");
+  });
+}
+
 export async function createPurchaseOrderRevisionAction(_prevState: FormActionState, formData: FormData): Promise<FormActionState> {
   return runFormAction("create-po-revision", async () => {
     const timer = documentTimer("create-po-revision");
@@ -1509,13 +1628,12 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
-    timer.mark("roster");
-
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
+    const preparedItems = await preparePoItems(formData, parsed.data.items);
+    const rows = await preparePurchaseOrderRows(prisma, preparedItems);
     timer.mark("rows");
+    const allDecorationMethods = [...new Set(preparedItems.flatMap((item) => item.decorationMethods))];
     const opportunityId = await prisma.$transaction(async (tx) => {
         const source = await tx.purchaseOrder.findUnique({
           where: { id: sourcePurchaseOrderId.data },
@@ -1536,18 +1654,27 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             },
           },
         });
-        if (!source || source.status !== "DRAFT") throw new UserFacingError("Revisi hanya dapat dibuat dari draft PO aktif.");
+        if (!source || (source.status !== "DRAFT" && source.status !== "AGREED")) throw new UserFacingError("Revisi hanya dapat dibuat dari PO draft atau disepakati yang aktif.");
         if (source.revision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi PO sudah tercapai.");
         if (source.opportunityId !== parsed.data.opportunityId) throw new UserFacingError("PO sumber tidak sesuai dengan peluang.");
-        if (source.opportunity.purchaseOrders.length || source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("PO atau invoice sudah final dan tidak dapat direvisi.");
         if (source.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Revisi PO hanya dapat dibuat saat Negosiasi.");
-        if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
+        if (source.status === "DRAFT") {
+          if (source.opportunity.purchaseOrders.length || source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("PO atau invoice sudah final dan tidak dapat direvisi.");
+          if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
+        } else {
+          // E3: revisi dari PO yang sudah disepakati (mis. tambah qty H-1).
+          if (source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("Invoice sudah terbit. Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati.");
+          if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
+          const downstream = await tx.salesOrder.findFirst({ where: { purchaseOrderId: source.id, status: "ACTIVE" }, select: { id: true } });
+          if (downstream) throw new UserFacingError("Sales Order sudah terbentuk. Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati.");
+        }
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
+        const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         const locked = await tx.purchaseOrder.updateMany({
-          where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
+          where: { id: source.id, status: source.status, revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
         });
-        if (locked.count !== 1) throw new UserFacingError("Draft PO sudah berubah. Muat ulang halaman.");
+        if (locked.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
@@ -1556,12 +1683,15 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             revision: source.revision + 1,
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.productName,
+            productName: parsed.data.pola,
+            instansi: parsed.data.instansi,
+            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
             variationColor: parsed.data.variationColor,
-            decorationMethod: parsed.data.decorationMethod,
+            decorationMethod: legacyDecorationMethod(allDecorationMethods),
+            decorationMethods: allDecorationMethods,
             orderDate: optionalDate(parsed.data.orderDate),
             sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
@@ -1569,14 +1699,25 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             deadline: optionalDate(parsed.data.deadline),
             designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
+            items: {
+              create: preparedItems.map((item, position) => ({
+                id: item.itemId,
+                position,
+                name: item.name,
+                productCategoryId: itemCategories[position]?.productCategoryId ?? null,
+                garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
+                decorationMethods: [...new Set(item.decorationMethods)],
+                designNotes: item.designNotes,
+              })),
+            },
             sizes: { create: rows.sizes },
             rosterEntries: { create: rows.roster },
           },
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
-          "revision", "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
-        ], { sourcePurchaseOrderId: source.id });
+          "revision", "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "items", "sizes", "roster",
+        ], { sourcePurchaseOrderId: source.id, fromStatus: source.status });
         return source.opportunityId;
     }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     timer.mark("transaction");
@@ -1622,11 +1763,12 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           where: { id: parsed.data.purchaseOrderId, opportunityId: opportunity.id, status: "AGREED" },
           select: {
             productName: true,
-            sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+            items: { select: { id: true, name: true }, orderBy: { position: "asc" } },
+            sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           },
         });
         if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent);
+        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent, parsed.data.taxPercent);
         const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
         const aggregate = await tx.invoice.aggregate({ where: { opportunityId: opportunity.id }, _max: { revision: true } });
@@ -1647,20 +1789,27 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
             snapshotBusinessEmail: business?.email,
             snapshotBusinessAddress: business?.address,
             snapshotBusinessLogoPath: business?.logoPath,
+            snapshotBankName: business?.bankName,
+            snapshotBankAccountNumber: business?.bankAccountNumber,
+            snapshotBankAccountHolder: business?.bankAccountHolder,
+            snapshotSignatureName: business?.signatureName,
+            snapshotSignatureTitle: business?.signatureTitle,
             discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
+            taxPercent: calculated.taxPercent,
+            taxAmount: calculated.taxAmount,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
-            notes: parsed.data.notes,
+            notes: parsed.data.notes ?? business?.invoiceNotes,
             createdById: actor.id,
             items: { create: calculated.items },
           },
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_DRAFT_CREATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ], { opportunityId: opportunity.id });
         return created;
       },
@@ -1692,11 +1841,12 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
       where: { id: parsed.data.purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "AGREED" },
       select: {
         productName: true,
-        sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+        items: { select: { id: true, name: true }, orderBy: { position: "asc" } },
+        sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
       },
     });
     if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent);
+    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent, parsed.data.taxPercent);
     timer.mark("calculate");
 
     await prisma.$transaction(
@@ -1709,6 +1859,8 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
+            taxPercent: calculated.taxPercent,
+            taxAmount: calculated.taxAmount,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1721,7 +1873,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
           data: calculated.items.map((item) => ({ ...item, invoiceId })),
         });
         await audit(tx, actor, "Invoice", invoiceId, "INVOICE_DRAFT_UPDATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ]);
       },
       DOCUMENT_DRAFT_TRANSACTION_OPTIONS,
@@ -1788,6 +1940,11 @@ export async function issueInvoiceAction(formData: FormData) {
           snapshotBusinessEmail: business?.email,
           snapshotBusinessAddress: business?.address,
           snapshotBusinessLogoPath: business?.logoPath,
+          snapshotBankName: business?.bankName,
+          snapshotBankAccountNumber: business?.bankAccountNumber,
+          snapshotBankAccountHolder: business?.bankAccountHolder,
+          snapshotSignatureName: business?.signatureName,
+          snapshotSignatureTitle: business?.signatureTitle,
           version: { increment: 1 },
         },
       });
@@ -1866,7 +2023,8 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
               select: {
                 status: true,
                 productName: true,
-                sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+                items: { select: { id: true, name: true }, orderBy: { position: "asc" } },
+                sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
               },
             },
           },
@@ -1883,7 +2041,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           throw new UserFacingError("Revisi invoice hanya dapat dibuat dari PO aktif saat Negosiasi.");
         }
         if (source.opportunity.purchaseOrders.length) throw new UserFacingError("Sepakati atau selesaikan draft PO sebelum merevisi invoice.");
-        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.discountPercent);
+        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.discountPercent, parsed.data.taxPercent);
         const locked = await tx.invoice.updateMany({
           where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
@@ -1910,6 +2068,8 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
+            taxPercent: calculated.taxPercent,
+            taxAmount: calculated.taxAmount,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1919,7 +2079,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_REVISION_CREATED", [
-          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
+          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ], { sourceInvoiceId: source.id });
         return source.opportunityId;
       },
@@ -2042,12 +2202,14 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
   const parsed = payPendingInitialPaymentSchema.safeParse({
     invoiceId: formValue(formData, "invoiceId"),
     paymentMethodId: formValue(formData, "paymentMethodId"),
+    paidAt: formValue(formData, "paidAt"),
     reference: formValue(formData, "reference"),
     note: formValue(formData, "note"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
   const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
-  const paidAt = new Date();
+  const paidAt = parsed.data.paidAt ? jakartaDateTime(parsed.data.paidAt) ?? new Date() : new Date();
+  if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh maju ke masa depan.");
 
   return runDealTransaction(async (tx) => {
     if (!await tx.paymentMethod.findFirst({ where: { id: parsed.data.paymentMethodId, isActive: true }, select: { id: true } })) throw new UserFacingError("Metode pembayaran tidak tersedia.");
@@ -2068,6 +2230,9 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
         discountType: true,
         discountValue: true,
         subtotal: true,
+        totalDiscount: true,
+        taxPercent: true,
+        taxAmount: true,
         total: true,
         salesOrder: { select: { id: true } },
         purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true } },
@@ -2142,6 +2307,9 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
         discountType: invoice.discountType,
         discountValue: invoice.discountValue,
         subtotal: invoice.subtotal,
+        totalDiscount: invoice.totalDiscount,
+        taxPercent: invoice.taxPercent,
+        taxAmount: invoice.taxAmount,
         total: invoice.total,
         acceptedAt: paidAt,
         createdById: actor.id,
@@ -2230,8 +2398,11 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
     salesOrderId: formValue(formData, "salesOrderId"),
     paymentTermId: formValue(formData, "paymentTermId"),
     paymentMethodId: formValue(formData, "paymentMethodId"),
+    paidAt: formValue(formData, "paidAt"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const resolvedPaidAt = parsed.data.paidAt ? jakartaDateTime(parsed.data.paidAt) ?? paidAt : paidAt;
+  if (resolvedPaidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh maju ke masa depan.");
   const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
   const reference = typeof formValue(formData, "reference") === "string" ? String(formValue(formData, "reference")).trim() || null : null;
   const note = typeof formValue(formData, "note") === "string" ? String(formValue(formData, "note")).trim() || null : null;
@@ -2255,7 +2426,7 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
         paymentTermId: term.id,
         paymentMethodId: parsed.data.paymentMethodId,
         amount: term.amount,
-        paidAt,
+        paidAt: resolvedPaidAt,
         reference,
         note,
         ...(proof ?? {}),
@@ -2629,7 +2800,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
             salesOrderNo: true,
             opportunityId: true,
             opportunity: { select: { stage: true, version: true, customerId: true } },
-            productionWorkOrder: { select: { id: true, status: true, currentStage: true } },
+            productionWorkOrders: { select: { id: true, status: true, currentStage: true } },
           },
         });
         if (!order || order.status !== "ACTIVE") throw new UserFacingError("Sales Order tidak aktif atau tidak ditemukan.");
@@ -2647,21 +2818,22 @@ export async function reverseSalesOrderAction(formData: FormData) {
         });
         if (opportunity.count !== 1) throw new UserFacingError("Peluang sudah berubah.");
 
-        if (order.productionWorkOrder && order.productionWorkOrder.status !== "CANCELLED") {
+        for (const workOrder of order.productionWorkOrders) {
+          if (workOrder.status === "CANCELLED") continue;
           await tx.productionWorkOrder.update({
-            where: { id: order.productionWorkOrder.id },
+            where: { id: workOrder.id },
             data: { status: "CANCELLED", cancelledAt, version: { increment: 1 } },
           });
           await tx.productionActivity.create({
             data: {
-              workOrderId: order.productionWorkOrder.id,
+              workOrderId: workOrder.id,
               actorId: actor.id,
               type: "CANCELLED",
-              fromStage: order.productionWorkOrder.currentStage,
+              fromStage: workOrder.currentStage,
               note: parsed.data.cancelReason,
             },
           });
-          await audit(tx, actor, "ProductionWorkOrder", order.productionWorkOrder.id, "PRODUCTION_WORK_ORDER_CANCELLED", ["status", "cancelledAt"], { salesOrderId: parsed.data.salesOrderId });
+          await audit(tx, actor, "ProductionWorkOrder", workOrder.id, "PRODUCTION_WORK_ORDER_CANCELLED", ["status", "cancelledAt"], { salesOrderId: parsed.data.salesOrderId });
         }
 
         const salesOrderAudit = await audit(tx, actor, "SalesOrder", parsed.data.salesOrderId, "SALES_ORDER_CANCELLED", ["status", "cancelledAt", "cancelledById", "cancelReason"]);

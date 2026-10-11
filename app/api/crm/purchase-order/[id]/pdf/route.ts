@@ -25,7 +25,9 @@ const ATTACHMENT_LABEL: Record<string, string> = {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try { await requireActor(CRM_ROLES); } catch { return new Response("Anda tidak memiliki akses untuk mengunduh PO.", { status: 403 }); }
   const parsed = entityIdSchema.safeParse((await params).id);
-  if (!parsed.success) return new Response("PO tidak ditemukan.", { status: 404 });
+  if (!parsed.success) return new Response("Invoice tidak ditemukan.", { status: 404 });
+  const variant = new URL(request.url).searchParams.get("variant") === "penjahit" ? "penjahit" as const : "customer" as const;
+
   const prisma = getPrismaClient();
   const [purchaseOrder, currentBusiness] = await Promise.all([
     prisma.purchaseOrder.findUnique({
@@ -33,8 +35,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       include: {
         opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
         productCategory: { select: { name: true } },
-        sizes: { select: { size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-        rosterEntries: { select: { memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
+        items: { select: { id: true, name: true, garmentType: true, decorationMethods: true, designNotes: true, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
+        sizes: { select: { itemId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+        rosterEntries: { select: { itemId: true, memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
         attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
         designTask: { select: { revisions: { where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1, select: { attachments: { select: { path: true, kind: true, originalName: true, contentType: true }, orderBy: { createdAt: "asc" } } } } } },
       },
@@ -71,11 +74,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     snapshotBusinessPhone: purchaseOrder.snapshotBusinessPhone ?? profile?.phone ?? null,
     snapshotBusinessEmail: purchaseOrder.snapshotBusinessEmail ?? profile?.email ?? null,
     snapshotBusinessAddress: purchaseOrder.snapshotBusinessAddress ?? profile?.address ?? null,
-  }, logoBytes, assets);
+  }, logoBytes, assets, variant);
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${downloadFilename(`purchase-order-${purchaseOrder.purchaseOrderNo}`, "pdf")}"`,
+      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${downloadFilename(`purchase-order-${purchaseOrder.purchaseOrderNo}${variant === "penjahit" ? "-penjahit" : ""}`, "pdf")}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

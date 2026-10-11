@@ -12,6 +12,8 @@ export async function createProductionWorkOrder(
   actor: { id: string },
   input: {
     salesOrderId: string;
+    purchaseOrderItemId?: string | null;
+    itemName?: string | null;
     route: ProductionRoute;
     productName: string;
     quantity: number;
@@ -24,6 +26,8 @@ export async function createProductionWorkOrder(
     data: {
       workOrderNo: await nextWorkOrderNo(tx),
       salesOrderId: input.salesOrderId,
+      purchaseOrderItemId: input.purchaseOrderItemId ?? null,
+      itemName: input.itemName ?? null,
       route: input.route,
       productName: input.productName,
       quantity: input.quantity,
@@ -66,14 +70,15 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
     select: {
       id: true,
       status: true,
-      productionWorkOrder: { select: { id: true, workOrderNo: true } },
+      productionWorkOrders: { select: { id: true, workOrderNo: true, purchaseOrderItemId: true } },
       purchaseOrder: {
         select: {
           status: true,
           garmentType: true,
           productName: true,
           deadline: true,
-          sizes: { select: { quantity: true } },
+          items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
+          sizes: { select: { itemId: true, quantity: true } },
         },
       },
       invoice: { select: { status: true } },
@@ -81,18 +86,39 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
     },
   });
   if (!order || order.status !== "ACTIVE" || !order.payment?.transactions.length) return null;
-  if (order.productionWorkOrder) return order.productionWorkOrder;
   if (order.purchaseOrder.status !== "AGREED" || order.invoice.status !== "ISSUED" || !order.purchaseOrder.garmentType || !order.purchaseOrder.deadline) {
     throw new Error("PO atau invoice belum memenuhi syarat Work Order otomatis.");
   }
 
-  return createProductionWorkOrder(tx, actor, {
-    salesOrderId: order.id,
-    route: order.purchaseOrder.garmentType === "JERSEY" ? "JERSEY" : "NON_JERSEY",
-    productName: order.purchaseOrder.productName,
-    quantity: order.purchaseOrder.sizes.reduce((sum, item) => sum + item.quantity, 0),
-    deadline: order.purchaseOrder.deadline,
-  });
+  // Satu WO per item PO (itemId "" = PO lawas satu produk). Rute ikut jenis tiap item.
+  const poGarmentType = order.purchaseOrder.garmentType;
+  const items = order.purchaseOrder.items.length
+    ? order.purchaseOrder.items.map((item) => ({ id: item.id, name: item.name, garmentType: item.garmentType ?? poGarmentType }))
+    : [{ id: "", name: order.purchaseOrder.productName, garmentType: poGarmentType }];
+  const existingByItem = new Map(order.productionWorkOrders.map((wo) => [wo.purchaseOrderItemId ?? "", wo]));
+  const created: Array<{ id: string; workOrderNo: string }> = [];
+  for (const item of items) {
+    const key = item.id || "";
+    const existing = existingByItem.get(key);
+    if (existing) {
+      created.push(existing);
+      continue;
+    }
+    const quantity = order.purchaseOrder.sizes
+      .filter((size) => (size.itemId || "") === key)
+      .reduce((sum, size) => sum + size.quantity, 0);
+    if (quantity <= 0) continue;
+    created.push(await createProductionWorkOrder(tx, actor, {
+      salesOrderId: order.id,
+      purchaseOrderItemId: item.id || null,
+      itemName: order.purchaseOrder.items.length ? item.name : null,
+      route: item.garmentType === "JERSEY" ? "JERSEY" : "NON_JERSEY",
+      productName: item.name,
+      quantity,
+      deadline: order.purchaseOrder.deadline,
+    }));
+  }
+  return created;
 }
 
 export function canClaimProductionStep(role: AppRole) {

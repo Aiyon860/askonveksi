@@ -10,21 +10,26 @@ export type InvoicePricingInput = {
   description: string;
   quantity: number;
   unitPrice: string;
+  discountPercent?: string;
 };
 
 export function roundInvoiceTotal(value: Prisma.Decimal) {
   return value.div(500).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_DOWN).mul(500);
 }
 
-export function calculateInvoiceLines(items: InvoicePricingInput[], discountPercent: string) {
-  const orderDiscountPercent = new Prisma.Decimal(discountPercent);
+export function calculateInvoiceLines(items: InvoicePricingInput[], discountPercent: string, taxPercent = "0") {
+  const orderDiscountPercent = new Prisma.Decimal(discountPercent || "0");
   if (orderDiscountPercent.gt(100)) throw new UserFacingError("Diskon maksimal 100%.");
+  const orderTaxPercent = new Prisma.Decimal(taxPercent || "0");
+  if (orderTaxPercent.gt(100)) throw new UserFacingError("Pajak maksimal 100%.");
 
   const calculatedItems = items.map((item, position) => {
     const unitPrice = new Prisma.Decimal(item.unitPrice);
+    const itemDiscountPercent = new Prisma.Decimal(item.discountPercent ?? discountPercent ?? "0");
+    if (itemDiscountPercent.gt(100)) throw new UserFacingError("Diskon per item maksimal 100%.");
 
     const grossAmount = unitPrice.mul(item.quantity).toDecimalPlaces(2);
-    const discountAmount = grossAmount.mul(orderDiscountPercent).div(100).toDecimalPlaces(2);
+    const discountAmount = grossAmount.mul(itemDiscountPercent).div(100).toDecimalPlaces(2);
     const total = grossAmount.sub(discountAmount);
 
     return {
@@ -36,7 +41,7 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], discountPerc
       quantity: item.quantity,
       unitPrice,
       grossAmount,
-      discountPercent: orderDiscountPercent,
+      discountPercent: itemDiscountPercent,
       discountCapAmount: null,
       discountAmount,
       total,
@@ -58,13 +63,17 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], discountPerc
     },
   );
 
-  const total = roundInvoiceTotal(summary.total);
-  const roundingAdjustment = total.sub(summary.total);
+  const taxAmount = summary.total.mul(orderTaxPercent).div(100).toDecimalPlaces(2);
+  const totalBeforeRounding = summary.total.add(taxAmount);
+  const total = roundInvoiceTotal(totalBeforeRounding);
+  const roundingAdjustment = total.sub(totalBeforeRounding);
   return {
     items: calculatedItems,
     subtotal: summary.subtotal,
     totalDiscount: roundingAdjustment.isNegative() ? summary.totalDiscount.add(roundingAdjustment.abs()) : summary.totalDiscount,
     discountPercent: orderDiscountPercent,
+    taxPercent: orderTaxPercent,
+    taxAmount,
     total,
   };
 }

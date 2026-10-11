@@ -19,7 +19,7 @@ export async function getFinanceReport(state: FinanceReportState) {
     payment: { salesOrder: { status: "ACTIVE" as const, invoice: { status: "ISSUED" as const } } },
     ...(state.from && state.to ? { paidAt: { gte: state.from, lt: state.to } } : {}),
   } satisfies Prisma.PaymentTransactionWhereInput;
-  const expenseWhere = state.from && state.to ? { spentAt: { gte: expenseDate(state.from)!, lt: expenseDate(state.to)! } } : {};
+  const expenseWhere = { deletedAt: null, ...(state.from && state.to ? { spentAt: { gte: expenseDate(state.from)!, lt: expenseDate(state.to)! } } : {}) };
   const basePaymentWhere = { status: "ACTIVE" as const, payment: { salesOrder: { status: "ACTIVE" as const, invoice: { status: "ISSUED" as const } } } } satisfies Prisma.PaymentTransactionWhereInput;
   const [payments, expenses, allPaymentTotal, allExpenseTotal] = await Promise.all([
     prisma.paymentTransaction.findMany({
@@ -32,7 +32,7 @@ export async function getFinanceReport(state: FinanceReportState) {
     }),
     prisma.expense.findMany({ where: expenseWhere, select: { id: true, purpose: true, amount: true, spentAt: true }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }] }),
     prisma.paymentTransaction.aggregate({ where: basePaymentWhere, _sum: { amount: true } }),
-    prisma.expense.aggregate({ _sum: { amount: true } }),
+    prisma.expense.aggregate({ where: { deletedAt: null }, _sum: { amount: true } }),
   ]);
   const groups = new Map<string, { date: string; income: { id: string; label: string; query: string; amount: string }[]; expenses: { id: string; label: string; amount: string }[] }>();
   const groupFor = (date: string) => { const current = groups.get(date); if (current) return current; const next = { date, income: [], expenses: [] }; groups.set(date, next); return next; };
