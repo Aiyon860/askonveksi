@@ -92,10 +92,10 @@ test("pembacaan dan penyimpanan kategori produk memakai urutan paksa", () => {
   assert.match(groupOrderMigration, /UPDATE "ProductCategory" AS p/);
 });
 
-test("Broadcast kehilangan filter Kategori Order tanpa menyentuh Campaign", () => {
-  assert.doesNotMatch(broadcastWorkspace, /Kategori Order/);
-  assert.doesNotMatch(broadcastWorkspace, /productCategoryId/);
-  assert.doesNotMatch(broadcastActions, /orderCategory|productCategoryId/);
+test("Broadcast memiliki filter Kategori Order sama dengan Campaign", () => {
+  assert.match(broadcastWorkspace, /Kategori Order/);
+  assert.match(broadcastWorkspace, /productCategoryId/);
+  assert.match(broadcastActions, /productCategoryId/);
   assert.match(campaignDialog, /productCategoryId/);
   assert.match(campaignActions, /productCategoryId/);
 });

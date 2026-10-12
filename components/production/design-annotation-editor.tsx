@@ -470,7 +470,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
   }
 
   return <Card>
-    <CardHeader><CardTitle>{readOnly ? "Desain final" : "Anotasi"}: {attachmentName}</CardTitle><CardDescription id={`annotation-help-${attachmentId}`}>{readOnly ? "Desain sudah masuk Produksi dan hanya dapat dilihat." : "Klik dan tahan lalu tarik di atas gambar untuk membuat panah (klik biasa tidak membuat apa pun). Seret dua titik ujung untuk mengubah arah panah, klik dua kali elemen untuk memunculkan teksnya lalu seret teks itu untuk melepaskannya dari panah. Tombol Tambah teks membuat keterangan teks tanpa panah yang bisa digeser bebas di kanvas, dan klik kanan menghapus keterangan."}</CardDescription></CardHeader>
+    <CardHeader><CardTitle>{readOnly ? "Desain" : "Anotasi"}: {attachmentName}</CardTitle><CardDescription id={`annotation-help-${attachmentId}`}>{readOnly ? "Desain hanya dapat dilihat. Menambah keterangan dan mengirim ke Produksi dilakukan oleh tim Produksi." : "Klik dan tahan lalu tarik di atas gambar untuk membuat panah (klik biasa tidak membuat apa pun). Seret dua titik ujung untuk mengubah arah panah, klik dua kali elemen untuk memunculkan teksnya lalu seret teks itu untuk melepaskannya dari panah. Tombol Tambah teks membuat keterangan teks tanpa panah yang bisa digeser bebas di kanvas, dan klik kanan menghapus keterangan."}</CardDescription></CardHeader>
     <CardContent className="flex flex-col gap-4">
       {!readOnly ? <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
         <label className="flex flex-col gap-1 text-sm font-medium" htmlFor={`font-size-${attachmentId}`}>Ukuran teks<Input id={`font-size-${attachmentId}`} className="w-14" type="number" min={12} max={48} value={fontSize} onChange={(event) => updateFontSize(Number(event.currentTarget.value))} /></label>
@@ -481,7 +481,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
           <Button type="button" variant="outline" onClick={() => uploadInput.current?.click()} disabled={isBusy}>{isUploading ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Upload data-icon="inline-start" />}{isUploading ? "Mengunggah..." : "Upload Desain"}</Button>
           <Button type="button" variant="outline" onClick={reset} disabled={isBusy}>{isResetting ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" />}{isResetting ? "Mereset..." : "Reset perubahan"}</Button>
           <Button type="button" onClick={save} disabled={isBusy || !image}>{isSavingVersion ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}{isSavingVersion ? "Menyimpan..." : "Simpan versi"}</Button>
-          <input ref={uploadInput} type="file" accept=".png,.psd,image/png,image/vnd.adobe.photoshop" className="sr-only" aria-label="Pilih file desain pengganti" onChange={upload} />
+          <input ref={uploadInput} type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" className="sr-only" aria-label="Pilih file desain pengganti" onChange={upload} />
         </div>
       </div> : null}
       <div className="relative">

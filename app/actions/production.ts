@@ -9,6 +9,7 @@ import { flashMessagePath, messageForError, runRedirectingAction, UserFacingErro
 import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { firstValidationMessage } from "@/lib/crm/validation";
+import { designImageContentType, designImageExtensionFor, designImageRejection, sniffImageContentType } from "@/lib/design/image";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -41,24 +42,6 @@ function revalidateProductionBoard() {
 const DESIGN_BUCKET = "crm-po-designs";
 const MAX_DESIGN_BYTES = 5 * 1024 * 1024;
 
-function isPng(bytes: Uint8Array) {
-  return bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value);
-}
-
-function designExtension(name: string) {
-  return /\.([a-z0-9]{1,10})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
-}
-
-function isDesignFile(bytes: Uint8Array, fileExtension: string) {
-  const png = isPng(bytes);
-  const psd = bytes.length >= 4 && bytes[0] === 56 && bytes[1] === 66 && bytes[2] === 80 && bytes[3] === 83;
-  return fileExtension === "png" ? png : fileExtension === "psd" ? psd : false;
-}
-
-function designContentType(fileExtension: string) {
-  return fileExtension === "png" ? "image/png" : "image/vnd.adobe.photoshop";
-}
-
 const designVersionSchema = z.object({ workOrderId: z.string().trim().min(10).max(40), attachmentId: z.string().trim().min(10).max(40) });
 
 export async function saveProductionDesignAction(formData: FormData) {
@@ -73,7 +56,7 @@ export async function saveProductionDesignAction(formData: FormData) {
     if (!parsed.success || !annotations.success || !(file instanceof File)) throw new UserFacingError("Desain atau keterangannya tidak valid.");
     if (!file.size || file.size > MAX_DESIGN_BYTES || file.type !== "image/png") throw new UserFacingError("Hasil desain harus berupa PNG maksimal 5 MB.");
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (!isPng(bytes)) throw new UserFacingError("Isi file desain tidak valid.");
+    if (sniffImageContentType(bytes) !== "image/png") throw new UserFacingError("Isi file desain tidak valid.");
 
     const target = await getPrismaClient().productionWorkOrder.findFirst({
       where: { id: parsed.data.workOrderId, status: "ACTIVE" },
@@ -112,7 +95,9 @@ export async function saveProductionDesignAction(formData: FormData) {
       if (!snapshot.data) {
         const { data: original, error: originalError } = await storage.download(attachment.path);
         if (originalError || !original) throw new UserFacingError("Desain awal tidak dapat dibuka.");
-        const { error: copyError } = await storage.upload(originalPath, new Uint8Array(await original.arrayBuffer()), { contentType: "image/png", upsert: false });
+        const originalBytes = new Uint8Array(await original.arrayBuffer());
+        // Jenis gambar disesuaikan agar pratinjau (nosniff) tidak menolak JPEG yang dilabeli PNG.
+        const { error: copyError } = await storage.upload(originalPath, originalBytes, { contentType: sniffImageContentType(originalBytes) ?? "image/png", upsert: false });
         if (copyError && !(await storage.exists(originalPath)).data) {
           console.error("Gagal menyimpan salinan desain awal.", { status: copyError.status, statusCode: copyError.statusCode });
           throw new UserFacingError("Salinan desain awal belum dapat disimpan.");
@@ -139,10 +124,9 @@ export async function overwriteProductionDesignAction(formData: FormData) {
     const file = formData.get("design");
     if (!parsed.success || !(file instanceof File)) throw new UserFacingError("Desain yang diunggah tidak valid.");
     if (!file.size || file.size > MAX_DESIGN_BYTES) throw new UserFacingError("File desain maksimal 5 MB.");
-    const fileExtension = designExtension(file.name);
-    if (fileExtension !== "png" && fileExtension !== "psd") throw new UserFacingError("Desain hanya boleh berupa PNG atau PSD.");
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (!isDesignFile(bytes, fileExtension)) throw new UserFacingError("Isi file tidak sesuai format PNG atau PSD.");
+    const contentType = designImageContentType(file.name, bytes);
+    if (!contentType) throw new UserFacingError(designImageRejection(file.name));
 
     const target = await getPrismaClient().productionWorkOrder.findFirst({
       where: { id: parsed.data.workOrderId, status: "ACTIVE" },
@@ -172,9 +156,8 @@ export async function overwriteProductionDesignAction(formData: FormData) {
     if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diganti.");
 
     const storage = createAdminClient().storage.from(DESIGN_BUCKET);
-    const contentType = designContentType(fileExtension);
     const folder = attachment.path.includes("/") ? attachment.path.slice(0, attachment.path.lastIndexOf("/")) : "design";
-    const nextPath = `${folder}/${randomUUID()}.${fileExtension}`;
+    const nextPath = `${folder}/${randomUUID()}.${designImageExtensionFor(contentType)}`;
     const { error: uploadError } = await storage.upload(nextPath, bytes, { contentType, upsert: false });
     if (uploadError) throw new UserFacingError("File desain belum dapat disimpan.");
 
@@ -253,17 +236,19 @@ export async function resetProductionDesignAction(formData: FormData) {
     if (!target || !attachment) throw new UserFacingError("File desain yang disetujui tidak ditemukan.");
     if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diubah.");
     let originalSize: number | undefined;
+    let restoredContentType: "image/png" | "image/jpeg" | undefined;
     if (attachment.originalPath) {
       const storage = createAdminClient().storage.from(DESIGN_BUCKET);
       const { data: original, error: downloadError } = await storage.download(attachment.originalPath);
       if (downloadError || !original) throw new UserFacingError("Desain awal tidak dapat dibuka.");
       const originalBytes = new Uint8Array(await original.arrayBuffer());
-      const { error: uploadError } = await storage.upload(attachment.path, originalBytes, { contentType: "image/png", upsert: true });
+      restoredContentType = sniffImageContentType(originalBytes) ?? "image/png";
+      const { error: uploadError } = await storage.upload(attachment.path, originalBytes, { contentType: restoredContentType, upsert: true });
       if (uploadError) throw new UserFacingError("Desain awal belum dapat dipulihkan.");
       originalSize = originalBytes.length;
     }
     await getPrismaClient().$transaction(async (tx) => {
-      await tx.designAttachment.update({ where: { id: attachment.id }, data: { annotations: Prisma.JsonNull, ...(originalSize === undefined ? {} : { contentType: "image/png", sizeBytes: originalSize }) } });
+      await tx.designAttachment.update({ where: { id: attachment.id }, data: { annotations: Prisma.JsonNull, ...(restoredContentType === undefined ? {} : { contentType: restoredContentType, sizeBytes: originalSize }) } });
       await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_RESET", ["annotations"], { attachmentId: attachment.id });
     });
     revalidatePath("/detail-desain");

@@ -165,8 +165,8 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                 canDrop={Boolean(activeOpportunity && activeOpportunity.stage !== stage)}
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
-                  <h2 id={`stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{stage === "DEAL" ? "Deal (SO)" : STAGE_LABEL[stage]}</h2>
-                  <span key={items.length} className="animate-in fade-in-0 duration-150 font-mono text-xs tabular-nums text-muted-foreground">{items.length}</span>
+                  <h2 id={`stage-${stage}`} className={cn("text-sm font-bold tracking-tight", STAGE_TEXT_CLASS[stage])}>{stage === "DEAL" ? "Deal (SO)" : STAGE_LABEL[stage]}</h2>
+                  <span key={items.length} className="animate-in fade-in-0 duration-150 font-mono text-xs font-bold tabular-nums text-foreground/80">{items.length}</span>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
                   <div className="flex flex-col gap-2">
@@ -178,14 +178,14 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       entering={recentMove?.id === opportunity.id && recentMove.stage === stage}
                       previewing={previewMove?.opportunity.id === opportunity.id}
                     >
-                      {(drag) => <Card size="sm" className="cursor-default">
-                      <CardHeader>
-                        <CardTitle>
-                          <Link href={`/crm/peluang/${opportunity.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                      {(drag) => <Card size="sm" className="cursor-default border shadow-xs hover:border-primary/40 transition-colors">
+                      <CardHeader className="gap-1">
+                        <CardTitle className="font-bold text-base leading-tight">
+                          <Link href={`/crm/peluang/${opportunity.id}`} className="font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
                             {opportunity.customer.name}
                           </Link>
                         </CardTitle>
-                        <CardDescription>{opportunity.title}{opportunity.customer.companyName ? ` · ${opportunity.customer.companyName}` : ""}</CardDescription>
+                        <CardDescription className="font-semibold text-foreground/70">{opportunity.title}{opportunity.customer.companyName ? ` · ${opportunity.customer.companyName}` : ""}</CardDescription>
                         {canOperate ? <CardAction>
                           <Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${opportunity.customer.name}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}>
                             <GripVertical aria-hidden="true" />
@@ -194,9 +194,9 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       </CardHeader>
                       <CardContent>
                         <div className="flex flex-wrap items-center gap-2">
-                          {opportunity.stage === "DEAL" ? <Badge variant="success">Deal (SO)</Badge> : <OpportunityStatusBadge stage={opportunity.stage} />}
-                          {opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info">Prospek</Badge> : null}
-                          <span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span>
+                          {opportunity.stage === "DEAL" ? <Badge variant="success" className="font-bold">Deal (SO)</Badge> : <OpportunityStatusBadge stage={opportunity.stage} />}
+                          {opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info" className="font-bold">Prospek</Badge> : null}
+                          <span className="font-mono text-xs font-bold text-muted-foreground">{opportunity.opportunityNo}</span>
                         </div>
                         <dl className="grid gap-2 text-xs text-muted-foreground">
                           {opportunity.nextActionAt ? (

@@ -2,9 +2,13 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { DETAIL_DESIGN_ROLES } from "@/lib/auth/permissions";
+import { DETAIL_DESIGN_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
+import { isStageRole } from "@/lib/production/workflow";
+
+// Gambar desain yang dapat dirender pratinjau: PNG dan JPEG (revisi D2).
+const DESIGN_IMAGE_CONTENT_TYPES = ["image/png", "image/jpeg"];
 
 const designSelect = {
   id: true,
@@ -26,7 +30,7 @@ const designSelect = {
               id: true,
               revisions: {
                 where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
-                select: { attachments: { where: { contentType: "image/png" }, orderBy: { createdAt: "asc" }, select: { id: true, path: true, originalName: true, annotations: true } } },
+                select: { attachments: { where: { contentType: { in: DESIGN_IMAGE_CONTENT_TYPES } }, orderBy: { createdAt: "asc" }, select: { id: true, path: true, originalName: true, annotations: true } } },
               },
             },
           },
@@ -66,7 +70,7 @@ export async function getProductionDesignDetails({
   sort: DesignDetailSort;
   direction: DesignDetailDirection;
 }) {
-  await requireActor(DETAIL_DESIGN_ROLES);
+  const actor = await requireActor(DETAIL_DESIGN_VIEW_ROLES);
   const where = {
     status: { not: "CANCELLED" },
     ...(status === "pending" ? { designCompletedAt: null } : status === "sent" ? { designCompletedAt: { not: null } } : {}),
@@ -94,13 +98,15 @@ export async function getProductionDesignDetails({
     items,
     total,
     pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    canManage: isStageRole(actor.role),
   };
 }
 
 export async function getProductionDesignDetail(workOrderId: string) {
-  await requireActor(DETAIL_DESIGN_ROLES);
-  return getPrismaClient().productionWorkOrder.findFirst({
+  const actor = await requireActor(DETAIL_DESIGN_VIEW_ROLES);
+  const workOrder = await getPrismaClient().productionWorkOrder.findFirst({
     where: { id: workOrderId, status: { not: "CANCELLED" } },
     select: designSelect,
   });
+  return workOrder ? { workOrder, canManage: isStageRole(actor.role) } : null;
 }

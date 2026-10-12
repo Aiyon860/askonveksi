@@ -1,6 +1,6 @@
 # TRACKING REVISI ASKONVEKSI
 
-**Tanggal:** 10 Okt 2026 · **Cabang:** `dev` · **Aturan:** role DEVELOPER tetap full akses di semua fitur.
+**Tanggal:** 11 Okt 2026 · **Cabang utama:** `dev` · **Cabang Sprint 4:** `feat/sprint-4-crm-broadcast` · **Aturan:** role DEVELOPER tetap full akses di semua fitur.
 
 > Cara baca: `[x]` selesai & terverifikasi · `[ ]` belum dikerjakan.
 > Sprint disusun seperti pola A+F: paket yang saling terkait digabung dan dikerjakan bersama.
@@ -42,24 +42,31 @@ Digabung karena E3 (edit PO) dan C2/C5 (struktur PO) mengubah skema PO yang sama
 - [ ] E3 — Edit PO setelah disepakati (kasus tambah qty H-1) + aturan dampak Invoice/SO/WO
 - [ ] E4 — Deadline merah di PDF + tabel MODEL ikut contoh Tasya (butuh file contoh)
 
-## SPRINT 3 — Role & Produksi (D + G) — prioritas 2
+## SPRINT 3 — Role & Produksi (D + G) — `[~] 2/6 SELESAI` — prioritas 2
+
+D2 & G2 terverifikasi: `tsc` bersih, 177/177 tes lolos, `lint` 0 error, `build` sukses.
 
 - [ ] D1 — Role `ADMIN_PO` (hak = Admin Customer) + upload desain langsung detailing
-- [ ] D2 — Gambar hanya PNG/JPG (tolak PDF)
+- [x] D2 — Gambar hanya PNG/JPG/JPEG dan sejenisnya (tolak PDF) → `lib/design/image.ts` validasi ekstensi + isi file (PNG/JPEG); `design.ts` & `production.ts` menolak PDF/PSD dengan pesan jelas; PSD dihapus karena tak bisa dirender; tampilan/anotasi kini menampilkan PNG + JPEG (`design-detail.ts`, `data.ts`, API attachment deteksi tipe isi)
 - [ ] D3 — Detailing desain opsional
 - [ ] G1 — Jalur Aksesori 5 stage: Produksi-QC-Packing-Pengiriman-Selesai
-- [ ] G2 — Admin Customer view-only produksi
+- [x] G2 — Admin Customer view-only produksi → `permissions.ts` `PRODUCTION_VIEW_ROLES` + `DETAIL_DESIGN_VIEW_ROLES`; kanban, detail Work Order, dan detail desain terbuka untuk Admin Customer lewat `canManage: isStageRole(role)`; semua aksi ubah tetap `PRODUCTION_ROLES`; UI menampilkan banner "Mode lihat saja" dan menyembunyikan geser/PIC/catatan/anotasi
 - [ ] G3 — Status Retur setelah Selesai + badge sticky (hilang saat kembali Selesai)
 
-## SPRINT 4 — CRM & Broadcast (B + H) — prioritas 3
+## SPRINT 4 — CRM & Broadcast (B + H) — `[~] 6/7 SELESAI`
 
-- [ ] B1 — Tambah prospek, PIC lock Michelle
-- [ ] B2 — Sumber Lead "Lainnya" bisa custom
-- [ ] B3 — Kanban pipeline font bold (Prospek ke kanan)
-- [ ] B4 — Data Master boleh tambah/edit/hapus oleh Admin Customer
-- [ ] H1 — Import tanggal Excel ke Broadcast (tanpa detail order tidak apa)
-- [ ] H2 — Kategori produk di Broadcast (samakan dengan Campaign)
-- [ ] H3 — Upload PO 2+ gambar/desain jadi 1 file + keputusan N WO (terkait C2)
+Dikerjakan di cabang `feat/sprint-4-crm-broadcast` tanpa mengubah Prisma schema (0 drift). Terverifikasi: `tsc` bersih, 170/170 tes lolos, `build` sukses. H3 ditunda karena terkait Sprint 2 (C2 multi-item PO) yang dikerjakan rekan.
+
+### B — CRM / Pipeline
+- [x] B1 — Tambah prospek, PIC lock Michelle → `customer-fields.tsx` lock Sales/PIC ke Michelle saat `prospect=true`; `crm.ts` resolve `salesPicId` ke Michelle atau fallback `ADMIN_CUSTOMER`
+- [x] B2 — Sumber Lead "Lainnya" bisa custom → `customer-fields.tsx` tampilkan input teks saat pilih "Lainnya"; `crm.ts` find-or-create `LeadSource` dengan teks custom
+- [x] B3 — Kanban pipeline font bold (Prospek ke kanan) → `pipeline-board.tsx` header, count, nama customer, judul kartu, dan badge ditambah `font-bold`
+- [x] B4 — Data Master boleh tambah/edit/hapus oleh Admin Customer → `permissions.ts` tambah `ADMIN_CUSTOMER` ke `MASTER_DATA_ROLES`; `app-nav.tsx` update `canManageMasterData` (menu **Pengguna** tetap khusus Owner/Developer agar Admin Customer tidak melihat tautan tanpa akses)
+
+### H — Broadcast
+- [x] H1 — Import tanggal Excel ke Broadcast → `broadcast-date-excel.ts` parser XLSX + template generator; `route.ts` API download template; `broadcast-workspace.tsx` modal dialog import; `broadcast.ts` action membuat rantai Opportunity → PO → Invoice → SalesOrder + DealPayment per baris
+- [x] H2 — Kategori produk di Broadcast (samakan dengan Campaign) → `broadcast-workspace.tsx` re-enable filter `productCategoryId`; `broadcast.ts` pass filter ke query; `broadcast-content.tsx` kirim `productCategories`
+- [ ] H3 — Upload PO 2+ gambar/desain jadi 1 file + keputusan N WO *(ditunda — terkait C2 Sprint 2 oleh rekan)*
 
 ## SPRINT 5 — Dashboard & Landing (I) — prioritas 4 (polish, bisa diselingi)
 

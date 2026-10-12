@@ -70,7 +70,7 @@ function optionLabel(option: PendingMove) {
   return `Lanjut ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
 }
 
-export function ProductionBoard({ group, items, onRefresh }: { group: ProductionBoardGroup; items: BoardItem[]; onRefresh?: () => Promise<unknown> }) {
+export function ProductionBoard({ group, items, canManage, onRefresh }: { group: ProductionBoardGroup; items: BoardItem[]; canManage: boolean; onRefresh?: () => Promise<unknown> }) {
   const router = useRouter();
   const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage }) => current.map((item) => item.id === move.id ? { ...item, currentStage: move.targetStage } : item));
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -124,7 +124,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
-    if (!event.over) return;
+    if (!canManage || !event.over) return;
     const item = boardItems.find((candidate) => candidate.id === event.active.id);
     if (!item) return;
     const targetStage = event.over.id as ProductionStage;
@@ -175,7 +175,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
                 key={stage}
                 stage={stage}
                 dragging={Boolean(activeItem)}
-                canDrop={Boolean(activeItem && activeItem.currentStage !== stage && stageOptions(activeItem).some((option) => option.targetStage === stage))}
+                canDrop={Boolean(canManage && activeItem && activeItem.currentStage !== stage && stageOptions(activeItem).some((option) => option.targetStage === stage))}
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
                   <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{PRODUCTION_STAGE_LABEL[stage]}</h2>
@@ -185,7 +185,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
                   <div className="flex flex-col gap-2">
                   {stageItems.length ? stageItems.map((item) => {
                     const options = stageOptions(item);
-                    const draggable = !isMoving && !previewMove && item.status === "ACTIVE" && options.length > 0;
+                    const draggable = canManage && !isMoving && !previewMove && item.status === "ACTIVE" && options.length > 0;
                     const overdue = item.status === "ACTIVE" && new Date(item.deadline).getTime() < new Date().setHours(0, 0, 0, 0);
                     return (
                       <DraggableProductionCard
@@ -199,7 +199,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
                         <CardHeader>
                           <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
                           <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
-                          <CardAction><Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${item.workOrderNo}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}><GripVertical aria-hidden="true" /></Button></CardAction>
+                          {canManage ? <CardAction><Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${item.workOrderNo}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}><GripVertical aria-hidden="true" /></Button></CardAction> : null}
                         </CardHeader>
                         <CardContent>
                           <div className="flex flex-wrap gap-2">
@@ -225,7 +225,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
                               <dd className="flex items-center gap-2"><UserRound aria-hidden="true" className="size-3.5" />{item.assignee?.name ?? "Belum ditentukan"}</dd>
                             </div>
                           </dl>
-                          <ProductionObstacle item={item} />
+                          <ProductionObstacle item={item} canManage={canManage} />
                         </CardContent>
                       </Card>}</DraggableProductionCard>
                     );
@@ -274,7 +274,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
   );
 }
 
-function ProductionObstacle({ item }: { item: BoardItem }) {
+function ProductionObstacle({ item, canManage }: { item: BoardItem; canManage: boolean }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const obstacleValue = item.obstacle ?? "";
@@ -289,6 +289,7 @@ function ProductionObstacle({ item }: { item: BoardItem }) {
   }
 
   function save() {
+    if (!canManage) return;
     const formData = new FormData();
     formData.set("workOrderId", item.id);
     formData.set("obstacle", value);
@@ -312,15 +313,17 @@ function ProductionObstacle({ item }: { item: BoardItem }) {
       </div>
       <Textarea
         value={value}
-        readOnly={!isEditing}
+        readOnly={!canManage || !isEditing}
         rows={2}
         maxLength={2000}
         placeholder={isEditing ? "Tuliskan kendala produksi..." : "Belum ada kendala"}
         aria-label={`Kendala ${item.workOrderNo}`}
         onChange={(event) => setValue(event.currentTarget.value)}
-        className={cn("text-xs", !isEditing && "resize-none bg-muted/40")}
+        className={cn("text-xs", (!canManage || !isEditing) && "resize-none bg-muted/40")}
       />
-      {isEditing ? (
+      {!canManage ? (
+        <p className="text-xs text-muted-foreground">Hanya dapat dilihat oleh tim Produksi.</p>
+      ) : isEditing ? (
         <Button type="button" size="sm" className="w-full" disabled={pending} onClick={save}>{pending ? <Spinner data-icon="inline-start" /> : null}{pending ? "Menyimpan..." : "Simpan"}</Button>
       ) : (
         <Button type="button" size="sm" variant="outline" className="w-full" disabled={pending} onClick={() => setIsEditing(true)}>{item.obstacle ? "Edit Kendala" : "Tambahkan Kendala"}</Button>

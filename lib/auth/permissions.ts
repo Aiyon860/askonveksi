@@ -10,13 +10,17 @@ export const ARCHIVE_ROLES = CRM_OPERATOR_ROLES;
 export const REVERSE_DEAL_ROLES = DEAL_ROLES;
 export const USER_ADMIN_ROLES = ["DEVELOPER"] as const satisfies readonly AppRole[];
 export const OWNER_ACTION_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
-export const MASTER_DATA_ROLES = [] as const satisfies readonly AppRole[];
+export const MASTER_DATA_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const WHATSAPP_ACCOUNT_MANAGER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const ANALYTICS_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
 export const FINANCE_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
 export const PRODUCTION_ROLES = ["ADMIN_PRODUCTION"] as const satisfies readonly AppRole[];
 export const PRODUCTION_MANAGEMENT_ROLES = PRODUCTION_ROLES;
 export const DETAIL_DESIGN_ROLES = PRODUCTION_ROLES;
+// G2: Admin Customer boleh melihat modul Produksi (kanban, detail Work Order, detail desain)
+// dalam mode hanya lihat. Semua aksi ubah tetap dibatasi PRODUCTION_ROLES.
+export const PRODUCTION_VIEW_ROLES = [...PRODUCTION_ROLES, "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
+export const DETAIL_DESIGN_VIEW_ROLES = [...DETAIL_DESIGN_ROLES, "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const DESIGN_ROLES = ["DESIGNER"] as const satisfies readonly AppRole[];
 export const DESIGN_VIEW_ROLES = ["DESIGNER", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const DESIGN_APPROVER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];

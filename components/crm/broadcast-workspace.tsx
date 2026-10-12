@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Send } from "lucide-react";
+import { FileSpreadsheet, Search, Send, Upload } from "lucide-react";
 
-import { getBroadcastRecipientsAction, sendTodayFollowUpBroadcastAction } from "@/app/actions/broadcast";
+import { getBroadcastRecipientsAction, importBroadcastDatesAction, sendTodayFollowUpBroadcastAction } from "@/app/actions/broadcast";
 import { BroadcastTable } from "@/components/crm/broadcast-table";
 import { RecipientPagination } from "@/components/recipient-pagination";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,15 +22,17 @@ type RecipientFilters = {
   from: string;
   to: string;
   customerTypeId: string;
+  productCategoryId: string;
 };
 
-const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "" };
+const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "", productCategoryId: "" };
 
 type RecipientResult = {
   items: CampaignRecipientOption[];
   total: number;
   truncated: boolean;
   customerTypes: { id: string; name: string }[];
+  productCategories?: { id: string; name: string }[];
 };
 
 const LOAD_ERROR = "Daftar customer tidak dapat dimuat. Muat ulang halaman untuk mencoba lagi.";
@@ -37,6 +40,7 @@ const LOAD_ERROR = "Daftar customer tidak dapat dimuat. Muat ulang halaman untuk
 export function BroadcastWorkspace({ initial, defaultMessage }: { initial: RecipientResult; defaultMessage: string }) {
   const [rows, setRows] = useState(initial.items);
   const [customerTypes, setCustomerTypes] = useState(initial.customerTypes);
+  const [productCategories, setProductCategories] = useState(initial.productCategories ?? []);
   const [total, setTotal] = useState(initial.total);
   const [truncated, setTruncated] = useState(initial.truncated);
   const [filters, setFilters] = useState<RecipientFilters>(EMPTY_FILTERS);
@@ -45,6 +49,7 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const filtersRef = useRef<RecipientFilters>(EMPTY_FILTERS);
   const initialRef = useRef(initial);
   const searchTimer = useRef<number | null>(null);
@@ -55,6 +60,7 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
     initialRef.current = initial;
     setRows(initial.items);
     setCustomerTypes(initial.customerTypes);
+    setProductCategories(initial.productCategories ?? []);
     setTotal(initial.total);
     setTruncated(initial.truncated);
     setSelected([]);
@@ -75,6 +81,7 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
       if (id !== requestId.current) return;
       setRows(result.items);
       setCustomerTypes(result.customerTypes);
+      if (result.productCategories) setProductCategories(result.productCategories);
       setTotal(result.total);
       setTruncated(result.truncated);
     } catch {
@@ -130,12 +137,60 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] xl:items-start">
       <section className="min-w-0" aria-label="Daftar penerima broadcast">
         <Card>
-          <CardHeader>
-            <CardTitle>Penerima broadcast</CardTitle>
-            <CardDescription>
-              {total} customer aktif{truncated ? `, menampilkan ${rows.length} pertama` : ""}. Centang customer yang
-              akan menerima broadcast Repeat Order lewat WhatsApp.
-            </CardDescription>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1">
+              <CardTitle>Penerima broadcast</CardTitle>
+              <CardDescription>
+                {total} customer aktif{truncated ? `, menampilkan ${rows.length} pertama` : ""}. Centang customer yang
+                akan menerima broadcast Repeat Order lewat WhatsApp.
+              </CardDescription>
+            </div>
+            <Dialog open={importOpen} onOpenChange={setImportOpen}>
+              <DialogTrigger render={<Button variant="outline" size="sm" type="button" />}>
+                <FileSpreadsheet data-icon="inline-start" aria-hidden="true" />
+                Import Tanggal Excel
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Import Tanggal Order Excel</DialogTitle>
+                  <DialogDescription>
+                    Unggah file Excel (.xlsx) berisi data customer dan tanggal order historis untuk broadcast. Tanpa rincian item atau detail order.
+                  </DialogDescription>
+                </DialogHeader>
+                <form action={importBroadcastDatesAction} className="flex flex-col gap-4">
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="broadcast-excel-file" required>File Excel (.xlsx)</FieldLabel>
+                      <Input
+                        id="broadcast-excel-file"
+                        name="file"
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        required
+                      />
+                      <FieldDescription>
+                        Kolom yang didukung: Nama Customer, WhatsApp, Tanggal Order (YYYY-MM-DD atau DD/MM/YYYY).
+                      </FieldDescription>
+                    </Field>
+                    <div className="flex items-center justify-between pt-1">
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0 text-xs text-primary underline-offset-4 hover:underline"
+                        nativeButton={false}
+                        render={<a href="/api/crm/broadcast-date-template" download="template-import-tanggal-broadcast.xlsx" />}
+                      >
+                        Unduh format template Excel
+                      </Button>
+                    </div>
+                    <SubmitButton pendingLabel="Mengimpor tanggal...">
+                      <Upload data-icon="inline-start" aria-hidden="true" />
+                      Mulai Import Tanggal
+                    </SubmitButton>
+                  </FieldGroup>
+                </form>
+              </DialogContent>
+            </Dialog>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex flex-col gap-3">
@@ -152,7 +207,7 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
                   className="pl-8"
                 />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Field className="gap-1.5">
                   <FieldLabel htmlFor="broadcast-from">Tanggal dari</FieldLabel>
                   <Input
@@ -183,6 +238,22 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
                     {customerTypes.map((type) => (
                       <NativeSelectOption key={type.id} value={type.id}>
                         {type.name}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <Field className="gap-1.5">
+                  <FieldLabel htmlFor="broadcast-category">Kategori Order</FieldLabel>
+                  <NativeSelect
+                    id="broadcast-category"
+                    value={filters.productCategoryId}
+                    onChange={(event) => updateFilters({ productCategoryId: event.target.value })}
+                    className="w-full"
+                  >
+                    <NativeSelectOption value="">Semua order</NativeSelectOption>
+                    {productCategories.map((category) => (
+                      <NativeSelectOption key={category.id} value={category.id}>
+                        {category.name}
                       </NativeSelectOption>
                     ))}
                   </NativeSelect>

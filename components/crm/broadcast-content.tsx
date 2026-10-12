@@ -30,6 +30,7 @@ export async function BroadcastContent() {
         total: recipients.total,
         truncated: recipients.truncated,
         customerTypes: recipients.customerTypes,
+        productCategories: recipients.productCategories,
       }}
       defaultMessage={defaultMessage}
     />

@@ -139,11 +139,14 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   }, []);
 
   const isDeveloper = role === "DEVELOPER";
-  const canManageMasterData = isDeveloper || role === "OWNER";
+  const canManageMasterData = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
+  // Pengguna (manajemen akun) tetap Owner/Developer saja; Admin Customer hanya Data Master.
+  const canManageUsers = isDeveloper || role === "OWNER";
   const canViewAnalytics = isDeveloper || role === "OWNER" || role === "KEUANGAN";
   const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
   const canViewDashboard = canViewCrm || role === "KEUANGAN";
-  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
+  // Admin Customer hanya melihat modul Produksi (mode lihat saja); aksi tetap terbatas tim Produksi.
+  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION" || role === "ADMIN_CUSTOMER";
   const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
   const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
   return (
@@ -178,7 +181,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       {canManageMasterData ? (
         <NavGroup label={<span>Data Master</span>} icon={Database} tone="text-nav-tone-master">
           {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
-          {ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
+          {canManageUsers ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />) : null}
         </NavGroup>
       ) : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: SlidersHorizontal }} onNavigate={onNavigate} /> : null}

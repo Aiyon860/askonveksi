@@ -17,6 +17,7 @@ type Revision = { id: string; revision: number; status: "PENDING_REVIEW" | "APPR
 const REVIEW_LABEL = { PENDING_REVIEW: "Menunggu persetujuan", APPROVED: "Disetujui", REJECTED: "Ditolak" } as const;
 const REVIEW_VARIANT = { PENDING_REVIEW: "secondary", APPROVED: "success", REJECTED: "destructive" } as const;
 const MAX_DESIGN_FILE_BYTES = 5 * 1024 * 1024;
+const DESIGN_IMAGE_NAME = /\.(png|jpe?g)$/i;
 
 export function DesignTaskActions({ taskId, purchaseOrderNo, revisions, canUpload, canReview }: { taskId: string; purchaseOrderNo: string; revisions: Revision[]; canUpload: boolean; canReview: boolean }) {
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -27,9 +28,17 @@ export function DesignTaskActions({ taskId, purchaseOrderNo, revisions, canUploa
   const canCreateRevision = canUpload && (!latest || latest.status === "REJECTED") && revisions.length < 4;
 
   function validateDesignFiles(event: ChangeEvent<HTMLInputElement>) {
-    if (!Array.from(event.currentTarget.files ?? []).some((file) => file.size > MAX_DESIGN_FILE_BYTES)) return;
-    event.currentTarget.value = "";
-    toast.add({ title: "File terlalu besar", description: "Setiap file desain maksimal 5 MB.", type: "error" });
+    const files = Array.from(event.currentTarget.files ?? []);
+    if (files.some((file) => file.size > MAX_DESIGN_FILE_BYTES)) {
+      event.currentTarget.value = "";
+      toast.add({ title: "File terlalu besar", description: "Setiap file desain maksimal 5 MB.", type: "error" });
+      return;
+    }
+    const unsupported = files.find((file) => !DESIGN_IMAGE_NAME.test(file.name));
+    if (unsupported) {
+      event.currentTarget.value = "";
+      toast.add({ title: "Format tidak didukung", description: `${unsupported.name} bukan gambar. Gunakan PNG, JPG, atau JPEG.`, type: "error" });
+    }
   }
 
   return <div className="flex flex-wrap justify-end gap-2">
@@ -41,7 +50,7 @@ export function DesignTaskActions({ taskId, purchaseOrderNo, revisions, canUploa
         <form action={uploadDesignRevisionAction} onSubmit={() => setUploadOpen(false)}>
           <input type="hidden" name="designTaskId" value={taskId} />
           <FieldGroup>
-            <Field><FieldLabel htmlFor={`design-files-${taskId}`} required>File desain</FieldLabel><FilePicker id={`design-files-${taskId}`} name="designFiles" required multiple accept=".png,.psd,image/png,image/vnd.adobe.photoshop,application/x-photoshop" onChange={validateDesignFiles} /><FieldDescription>PNG atau PSD, maksimal 5 file dan 5 MB per file.</FieldDescription></Field>
+            <Field><FieldLabel htmlFor={`design-files-${taskId}`} required>File desain</FieldLabel><FilePicker id={`design-files-${taskId}`} name="designFiles" required multiple accept=".png,.jpg,.jpeg,image/png,image/jpeg" onChange={validateDesignFiles} /><FieldDescription>PNG, JPG, atau JPEG, maksimal 5 file dan 5 MB per file.</FieldDescription></Field>
             <Field><FieldLabel htmlFor={`design-notes-${taskId}`}>Catatan revisi</FieldLabel><Textarea id={`design-notes-${taskId}`} name="notes" maxLength={4000} rows={3} placeholder="Contoh: Perubahan warna logo depan." /></Field>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setUploadOpen(false)}>Batal</Button><Button type="submit">Kirim versi {nextRevision} untuk persetujuan</Button></DialogFooter>
           </FieldGroup>

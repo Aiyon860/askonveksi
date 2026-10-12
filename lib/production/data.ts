@@ -3,10 +3,10 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import type { Prisma } from "@prisma/client";
 
-import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
+import { PRODUCTION_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import type { ProductionBoardGroup } from "@/lib/production/workflow";
+import { isStageRole, type ProductionBoardGroup } from "@/lib/production/workflow";
 
 export type ProductionBoardFilter = { group: ProductionBoardGroup; productCategoryId?: string | null };
 
@@ -90,7 +90,7 @@ const getCachedBoardRows = (filter: BoardWhere) =>
 
 export async function getProductionBoard(input: ProductionBoardFilter) {
   const filter: BoardWhere = { group: input.group, productCategoryId: input.productCategoryId ?? null };
-  const actor = await requireActor(PRODUCTION_ROLES);
+  const actor = await requireActor(PRODUCTION_VIEW_ROLES);
   const { rows, total } = await getCachedBoardRows(filter);
 
   return {
@@ -98,11 +98,12 @@ export async function getProductionBoard(input: ProductionBoardFilter) {
     total,
     truncated: total > rows.length,
     actor: { id: actor.id, role: actor.role },
+    canManage: isStageRole(actor.role),
   };
 }
 
 export async function getProductionDetail(id: string) {
-  const actor = await requireActor(PRODUCTION_ROLES);
+  const actor = await requireActor(PRODUCTION_VIEW_ROLES);
   const workOrder = await getPrismaClient().productionWorkOrder.findUnique({
     relationLoadStrategy: "join",
     where: { id },
@@ -144,7 +145,7 @@ export async function getProductionDetail(id: string) {
                     take: 1,
                     select: {
                       attachments: {
-                        where: { contentType: "image/png" },
+                        where: { contentType: { in: ["image/png", "image/jpeg"] } },
                         orderBy: { createdAt: "asc" },
                         select: { id: true, originalName: true, contentType: true },
                       },
@@ -184,5 +185,5 @@ export async function getProductionDetail(id: string) {
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });
 
-  return { workOrder, users, actor: { id: actor.id, role: actor.role } };
+  return { workOrder, users, actor: { id: actor.id, role: actor.role }, canManage: isStageRole(actor.role) };
 }

@@ -7,6 +7,7 @@ import { flashMessagePath, UserFacingError, runRedirectingAction } from "@/lib/a
 import { DESIGN_APPROVER_ROLES, DESIGN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { entityIdSchema } from "@/lib/crm/validation";
+import { designImageContentType, designImageExtensionFor, designImageRejection } from "@/lib/design/image";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -14,16 +15,6 @@ const BUCKET = "crm-po-designs";
 const MAX_FILES = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_REVISIONS = 4;
-
-function extension(name: string) {
-  return /\.([a-z0-9]{1,10})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
-}
-
-function isDesignFile(bytes: Uint8Array, fileExtension: string) {
-  const png = bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value);
-  const psd = bytes.length >= 4 && bytes[0] === 56 && bytes[1] === 66 && bytes[2] === 80 && bytes[3] === 83;
-  return fileExtension === "png" ? png : fileExtension === "psd" ? psd : false;
-}
 
 export async function uploadDesignRevisionAction(formData: FormData) {
   return runRedirectingAction("/desain", async () => {
@@ -36,16 +27,15 @@ export async function uploadDesignRevisionAction(formData: FormData) {
 
     const attachments = await Promise.all(files.map(async (file) => {
       if (file.size > MAX_BYTES) throw new UserFacingError("Setiap file desain maksimal 5 MB.");
-      const fileExtension = extension(file.name);
-      if (fileExtension !== "png" && fileExtension !== "psd") throw new UserFacingError("Desain hanya boleh berupa PNG atau PSD.");
       const bytes = new Uint8Array(await file.arrayBuffer());
-      if (!isDesignFile(bytes, fileExtension)) throw new UserFacingError("Isi file tidak sesuai format PNG atau PSD.");
+      const contentType = designImageContentType(file.name, bytes);
+      if (!contentType) throw new UserFacingError(designImageRejection(file.name));
       return {
         bytes,
         originalName: file.name.slice(0, 255),
         sizeBytes: file.size,
-        contentType: fileExtension === "png" ? "image/png" : "image/vnd.adobe.photoshop",
-        path: `design/${taskId.data}/${randomUUID()}.${fileExtension}`,
+        contentType,
+        path: `design/${taskId.data}/${randomUUID()}.${designImageExtensionFor(contentType)}`,
       };
     }));
 

@@ -542,16 +542,59 @@ export async function createCustomerAction(formData: FormData) {
 
     await getPrismaClient().$transaction(
       async (tx) => {
+        const rawLeadSourceCustom = formValue(formData, "leadSourceCustom");
+        const leadSourceCustom = typeof rawLeadSourceCustom === "string" ? rawLeadSourceCustom.trim() : "";
+        let resolvedLeadSourceId = parsed.data.leadSourceId;
+
+        if (resolvedLeadSourceId === "custom_other" || (resolvedLeadSourceId && leadSourceCustom)) {
+          if (leadSourceCustom) {
+            const trimmedCustom = leadSourceCustom.slice(0, 80);
+            let customSource = await tx.leadSource.findFirst({
+              where: { name: { equals: trimmedCustom, mode: "insensitive" } },
+              select: { id: true },
+            });
+            if (!customSource) {
+              customSource = await tx.leadSource.create({
+                data: {
+                  name: trimmedCustom,
+                  description: "Sumber lead kustom dari form Customer",
+                  position: 99,
+                  isActive: true,
+                },
+                select: { id: true },
+              });
+            }
+            resolvedLeadSourceId = customSource.id;
+          } else if (resolvedLeadSourceId === "custom_other") {
+            let otherSource = await tx.leadSource.findFirst({
+              where: { name: { equals: "Lainnya", mode: "insensitive" } },
+              select: { id: true },
+            });
+            if (!otherSource) {
+              otherSource = await tx.leadSource.create({
+                data: { name: "Lainnya", description: "Sumber lead lainnya", position: 99, isActive: true },
+                select: { id: true },
+              });
+            }
+            resolvedLeadSourceId = otherSource.id;
+          }
+        }
+
         const [customerType, leadSource, salesPic] = await Promise.all([
           tx.customerType.findUnique({ where: { id: parsed.data.customerTypeId }, select: { id: true } }),
-          parsed.data.leadSourceId ? tx.leadSource.findUnique({ where: { id: parsed.data.leadSourceId }, select: { id: true } }) : null,
+          resolvedLeadSourceId ? tx.leadSource.findUnique({ where: { id: resolvedLeadSourceId }, select: { id: true } }) : null,
           parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
         ]);
         if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
-        if (parsed.data.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
+        if (resolvedLeadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
         if (parsed.data.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
         const created = await tx.customer.create({
-          data: { ...parsed.data, email: parsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+          data: {
+            ...parsed.data,
+            leadSourceId: resolvedLeadSourceId,
+            email: parsed.data.email?.toLowerCase(),
+            customerNo: await nextCustomerNo(tx),
+          },
           select: { id: true },
         });
         await audit(tx, actor, "Customer", created.id, "CUSTOMER_CREATED", [
@@ -962,18 +1005,75 @@ export async function createProspectAction(formData: FormData) {
     if (!customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
 
     await getPrismaClient().$transaction(async (tx) => {
-      const salesPicId = actor.role === "ADMIN_CUSTOMER"
-        ? actor.id
-        : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id;
+      const michelleUser = await tx.appUser.findFirst({
+        where: {
+          isActive: true,
+          OR: [
+            { name: { contains: "Michelle", mode: "insensitive" } },
+            { email: { contains: "michelle", mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      const salesPicId = michelleUser?.id
+        ?? (actor.role === "ADMIN_CUSTOMER"
+          ? actor.id
+          : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id);
       if (!salesPicId) throw new UserFacingError("Admin Customer aktif tidak ditemukan.");
+
+      const rawLeadSourceCustom = formValue(formData, "leadSourceCustom");
+      const leadSourceCustom = typeof rawLeadSourceCustom === "string" ? rawLeadSourceCustom.trim() : "";
+      let resolvedLeadSourceId = customerParsed.data.leadSourceId;
+
+      if (resolvedLeadSourceId === "custom_other" || (resolvedLeadSourceId && leadSourceCustom)) {
+        if (leadSourceCustom) {
+          const trimmedCustom = leadSourceCustom.slice(0, 80);
+          let customSource = await tx.leadSource.findFirst({
+            where: { name: { equals: trimmedCustom, mode: "insensitive" } },
+            select: { id: true },
+          });
+          if (!customSource) {
+            customSource = await tx.leadSource.create({
+              data: {
+                name: trimmedCustom,
+                description: "Sumber lead kustom dari form Prospek",
+                position: 99,
+                isActive: true,
+              },
+              select: { id: true },
+            });
+          }
+          resolvedLeadSourceId = customSource.id;
+        } else if (resolvedLeadSourceId === "custom_other") {
+          let otherSource = await tx.leadSource.findFirst({
+            where: { name: { equals: "Lainnya", mode: "insensitive" } },
+            select: { id: true },
+          });
+          if (!otherSource) {
+            otherSource = await tx.leadSource.create({
+              data: { name: "Lainnya", description: "Sumber lead lainnya", position: 99, isActive: true },
+              select: { id: true },
+            });
+          }
+          resolvedLeadSourceId = otherSource.id;
+        }
+      }
+
       const [customerType, customerLeadSource] = await Promise.all([
         tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
-        customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
+        resolvedLeadSourceId ? tx.leadSource.findFirst({ where: { id: resolvedLeadSourceId, isActive: true }, select: { id: true } }) : null,
       ]);
       if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
-      if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+      if (resolvedLeadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
       const customer = await tx.customer.create({
-        data: { ...customerParsed.data, salesPicId, lifecycle: "PROSPEK", email: customerParsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+        data: {
+          ...customerParsed.data,
+          leadSourceId: resolvedLeadSourceId,
+          salesPicId,
+          lifecycle: "PROSPEK",
+          email: customerParsed.data.email?.toLowerCase(),
+          customerNo: await nextCustomerNo(tx),
+        },
         select: { id: true, name: true, leadSourceId: true },
       });
       await audit(tx, actor, "Customer", customer.id, "CUSTOMER_CREATED", [
