@@ -1,5 +1,8 @@
 import type { GarmentType, OpportunityStage } from "@prisma/client";
 
+// Batas versi desain per produk PO (desain awal + 3 revisi). Dipakai form unggah dan aksi server.
+export const DESIGN_REVISION_LIMIT = 4;
+
 export const GARMENT_TYPE_LABEL: Record<GarmentType, string> = {
   JERSEY: "Jersey",
   NON_JERSEY: "Non-jersey",
@@ -66,7 +69,7 @@ export const ROLE_LABEL = {
   DEVELOPER: "Developer",
   OWNER: "Owner",
   ADMIN_CUSTOMER: "Admin Customer",
-  ADMIN_PRODUCTION: "Admin Produksi",
+  ADMIN_PO: "Admin PO",
   KEUANGAN: "Keuangan",
   ADMIN: "Admin",
   SALES: "Sales",

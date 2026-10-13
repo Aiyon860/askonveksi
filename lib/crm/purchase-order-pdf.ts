@@ -216,7 +216,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     y -= 32;
   }
 
-  const showPerItem = variant === "penjahit" && data.items.length > 1;
+  const showPerItem = data.items.length > 1;
   if (isAccessory) {
     if (showPerItem) {
       for (const item of data.items) {
@@ -229,7 +229,13 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   } else if (showPerItem) {
     for (const item of data.items) {
       const itemKind = item.productCategory?.name ?? (item.garmentType ? GARMENT_TYPE_LABEL[item.garmentType] : null);
-      drawModelTable(data.sizes.filter((row) => row.itemId === item.id), `${item.name}${itemKind ? ` (${itemKind})` : ""} — ${decorationMethodsLabel(item.decorationMethods)}`);
+      const itemRows = data.sizes.filter((row) => row.itemId === item.id);
+      const itemIsAccessory = (item.garmentType ?? data.garmentType) === "AKSESORI";
+      if (itemIsAccessory) {
+        drawAccessoryTotal(itemRows.reduce((sum, row) => sum + row.quantity, 0), `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`);
+      } else {
+        drawModelTable(itemRows, `${item.name}${itemKind ? ` (${itemKind})` : ""} — ${decorationMethodsLabel(item.decorationMethods)}`);
+      }
       if (item.designNotes) {
         page.drawText(`Catatan desain ${safe(item.name)}: ${safe(item.designNotes)}`, { x: margin, y, size: 8, font: regular });
         y -= 14;
@@ -253,7 +259,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   page.drawText(`Catatan: ${safe(data.notes ?? "-")}`, { x: margin, y, size: 8, font: regular });
 
   if (data.rosterEntries.length) {
-    const showProduct = variant === "penjahit" && data.items.length > 1;
+    const showProduct = data.items.length > 1;
     for (let offset = 0; offset < data.rosterEntries.length; offset += 25) {
       pageNumber += 1;
       page = document.addPage([A4.width, A4.height]);

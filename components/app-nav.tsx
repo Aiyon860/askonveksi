@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, ImageUp, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -40,10 +40,6 @@ const whatsAppItems = [
 const productionItems = [
   { href: "/produksi", label: "Produksi", icon: Factory },
   { href: "/detail-desain", label: "Detail Desain", icon: PenTool },
-] as const;
-
-const designItems = [
-  { href: "/desain", label: "Upload Desain", icon: ImageUp },
 ] as const;
 
 const masterItems = [
@@ -141,11 +137,10 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const isDeveloper = role === "DEVELOPER";
   const canManageMasterData = isDeveloper || role === "OWNER";
   const canViewAnalytics = isDeveloper || role === "OWNER" || role === "KEUANGAN";
-  const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
+  const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "ADMIN_PO";
   const canViewDashboard = canViewCrm || role === "KEUANGAN";
-  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
+  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PO" || role === "ADMIN_CUSTOMER";
   const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
-  const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
@@ -164,10 +159,9 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested tone="text-nav-tone-whatsapp" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
-      {canViewProduction || canViewDesign ? (
+      {canViewProduction ? (
         <NavGroup label={<span>Produksi</span>} icon={Factory} tone="text-nav-tone-production">
-          {canViewProduction ? productionItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />) : null}
-          {canViewDesign ? designItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />) : null}
+          {productionItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewAnalytics ? (

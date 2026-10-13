@@ -13,7 +13,7 @@ import { getSiteLogo } from "@/lib/site-logo";
 
 export default async function LoginPage() {
   const actor = await getCurrentActor();
-  if (actor) redirect(actor.role === "ADMIN_PRODUCTION" ? "/produksi" : actor.role === "DESIGNER" ? "/desain" : "/dashboard");
+  if (actor) redirect(actor.role === "ADMIN_PO" ? "/produksi" : "/dashboard");
   const logo = await getSiteLogo();
 
   return (

@@ -3,7 +3,7 @@ import "server-only";
 import { type AppRole, Prisma, type ProductionRoute } from "@prisma/client";
 
 import { nextWorkOrderNo } from "@/lib/crm/numbers";
-import { productionStages } from "@/lib/production/workflow";
+import { AKSESORI_STAGE_SEQUENCE, productionStages } from "@/lib/production/workflow";
 
 type Tx = Prisma.TransactionClient;
 
@@ -15,12 +15,14 @@ export async function createProductionWorkOrder(
     purchaseOrderItemId?: string | null;
     itemName?: string | null;
     route: ProductionRoute;
+    garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
     productName: string;
     quantity: number;
     deadline: Date;
   },
 ) {
-  const sequence = productionStages(input.route);
+  // G1: WO Aksesori memakai 5 stage tanpa migrasi (sequence disimpan per WO).
+  const sequence = input.garmentType === "AKSESORI" ? [...AKSESORI_STAGE_SEQUENCE] : productionStages(input.route);
   const currentStage = sequence[0];
   const created = await tx.productionWorkOrder.create({
     data: {
@@ -113,6 +115,7 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
       purchaseOrderItemId: item.id || null,
       itemName: order.purchaseOrder.items.length ? item.name : null,
       route: item.garmentType === "JERSEY" ? "JERSEY" : "NON_JERSEY",
+      garmentType: item.garmentType ?? poGarmentType,
       productName: item.name,
       quantity,
       deadline: order.purchaseOrder.deadline,
@@ -122,5 +125,5 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
 }
 
 export function canClaimProductionStep(role: AppRole) {
-  return role === "DEVELOPER" || role === "OWNER" || role === "ADMIN_PRODUCTION";
+  return role === "DEVELOPER" || role === "OWNER" || role === "ADMIN_PO";
 }

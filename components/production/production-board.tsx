@@ -20,11 +20,13 @@ import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
 import type { getProductionBoard } from "@/lib/production/data";
 import {
+  boardColumnLabel,
+  boardStagesForGroup,
   nextProductionStage,
-  productionStages,
   PRODUCTION_BOARD_GROUP_LABEL,
-  PRODUCTION_STAGE_LABEL,
-  stageRouteForGroup,
+  RETUR_COLUMN,
+  stageLabelForGroup,
+  type ProductionBoardColumn,
   type ProductionBoardGroup,
 } from "@/lib/production/workflow";
 import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/production/stage-theme";
@@ -32,7 +34,7 @@ import { cn } from "@/lib/utils";
 
 type BoardItem = Awaited<ReturnType<typeof getProductionBoard>>["items"][number];
 type PendingMove = { item: BoardItem; targetStage: ProductionStage; decision: "ADVANCE" | "SKIP" | "SAMPLE_REJECT" | "QC_REJECT" | "REVERT" };
-type RecentMove = { id: string; stage: ProductionStage };
+type RecentMove = { id: string; stage: ProductionBoardColumn };
 
 const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
 // Dipakai ulang tiap render kartu dan tiap polling 60 detik.
@@ -62,15 +64,15 @@ function optionValue(move: PendingMove) {
   return `${move.decision}:${move.targetStage}`;
 }
 
-function optionLabel(option: PendingMove) {
+function optionLabel(option: PendingMove, group: ProductionBoardGroup) {
   if (option.decision === "SAMPLE_REJECT") return "Minta Test Print ulang";
-  if (option.decision === "QC_REJECT") return `Perbaiki di ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
-  if (option.decision === "SKIP") return `Lewati ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
-  if (option.decision === "REVERT") return `Kembalikan ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
-  return `Lanjut ke ${PRODUCTION_STAGE_LABEL[option.targetStage]}`;
+  if (option.decision === "QC_REJECT") return `Perbaiki di ${stageLabelForGroup(option.targetStage, group)}`;
+  if (option.decision === "SKIP") return `Lewati ke ${stageLabelForGroup(option.targetStage, group)}`;
+  if (option.decision === "REVERT") return `Kembalikan ke ${stageLabelForGroup(option.targetStage, group)}`;
+  return `Lanjut ke ${stageLabelForGroup(option.targetStage, group)}`;
 }
 
-export function ProductionBoard({ group, items, onRefresh }: { group: ProductionBoardGroup; items: BoardItem[]; onRefresh?: () => Promise<unknown> }) {
+export function ProductionBoard({ group, items, onRefresh, readOnly = false }: { group: ProductionBoardGroup; items: BoardItem[]; onRefresh?: () => Promise<unknown>; readOnly?: boolean }) {
   const router = useRouter();
   const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage }) => current.map((item) => item.id === move.id ? { ...item, currentStage: move.targetStage } : item));
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -83,8 +85,8 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor),
   );
-  const route = stageRouteForGroup(group);
-  const columns = productionStages(route);
+  // G1: kolom ikut sequence grup (Aksesori 5 stage) + stage legacy kartu lama + kolom Retur.
+  const columns = boardStagesForGroup(group, boardItems.map((item) => item.currentStage));
   const activeItem = activeId ? boardItems.find((item) => item.id === activeId) ?? null : null;
 
   useEffect(() => {
@@ -110,7 +112,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
         toast.add({ title: "Progres tidak berubah", description: result.message, type: "error" });
         return;
       }
-      toast.add({ title: "Progres disimpan", description: `${item.workOrderNo} dipindahkan ke ${PRODUCTION_STAGE_LABEL[move.targetStage]}.`, type: "success" });
+      toast.add({ title: "Progres disimpan", description: `${item.workOrderNo} dipindahkan ke ${stageLabelForGroup(move.targetStage, group)}.`, type: "success" });
       // Tunggu data server terbaru dulu supaya kartu tidak kembali ke kolom lama
       // sebelum refresh selesai (transisi tetap pending selama menunggu).
       await onRefresh?.();
@@ -119,14 +121,18 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
   }
 
   function handleDragStart(event: DragStartEvent) {
+    if (readOnly) return;
     setActiveId(String(event.active.id));
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    if (readOnly) return;
     setActiveId(null);
     if (!event.over) return;
     const item = boardItems.find((candidate) => candidate.id === event.active.id);
     if (!item) return;
+    // Kolom Retur hanya tampilan (diisi via QC-reject / Buka kembali), bukan tujuan drag.
+    if (event.over.id === RETUR_COLUMN) return;
     const targetStage = event.over.id as ProductionStage;
     const options = stageOptions(item);
     const forward = options.find((option) => option.targetStage === targetStage && (option.decision === "ADVANCE" || option.decision === "SKIP"));
@@ -169,23 +175,28 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
             dan melawan auto-scroll dnd-kit, sehingga board tidak maju dan tampak berkedip. */}
         <div className={cn("grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3", !activeItem && "snap-x snap-proximity")} aria-label={`Kanban produksi ${PRODUCTION_BOARD_GROUP_LABEL[group]}`}>
           {columns.map((stage) => {
-            const stageItems = boardItems.filter((item) => (previewMove?.item.id === item.id ? previewMove.targetStage : item.currentStage) === stage);
+            const isReturColumn = stage === RETUR_COLUMN;
+            // Kolom Retur menampung WO ACTIVE bertanda needsRepair; kolom tahap
+            // menyembunyikannya supaya kartu tidak ganda.
+            const stageItems = boardItems.filter((item) => isReturColumn
+              ? item.status === "ACTIVE" && item.needsRepair
+              : (previewMove?.item.id === item.id ? previewMove.targetStage : item.currentStage) === stage && !item.needsRepair);
             return (
               <ProductionStageColumn
                 key={stage}
                 stage={stage}
                 dragging={Boolean(activeItem)}
-                canDrop={Boolean(activeItem && activeItem.currentStage !== stage && stageOptions(activeItem).some((option) => option.targetStage === stage))}
+                canDrop={Boolean(!isReturColumn && activeItem && activeItem.currentStage !== stage && stageOptions(activeItem).some((option) => option.targetStage === stage))}
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
-                  <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{PRODUCTION_STAGE_LABEL[stage]}</h2>
+                  <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{boardColumnLabel(stage, group)}</h2>
                   <span key={stageItems.length} className="animate-in fade-in-0 duration-150 font-mono text-xs tabular-nums text-muted-foreground">{stageItems.length}</span>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
                   <div className="flex flex-col gap-2">
                   {stageItems.length ? stageItems.map((item) => {
                     const options = stageOptions(item);
-                    const draggable = !isMoving && !previewMove && item.status === "ACTIVE" && options.length > 0;
+                    const draggable = !readOnly && !isMoving && !previewMove && item.status === "ACTIVE" && options.length > 0;
                     const overdue = item.status === "ACTIVE" && new Date(item.deadline).getTime() < new Date().setHours(0, 0, 0, 0);
                     return (
                       <DraggableProductionCard
@@ -205,7 +216,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
                           <div className="flex flex-wrap gap-2">
                             <Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge>
                             <Badge variant="secondary">{item.quantity} pcs</Badge>
-                            {item.needsRepair ? <Badge variant="destructive">Perlu Perbaikan</Badge> : null}
+                            {item.needsRepair ? <Badge variant="destructive" className="sticky top-0 z-10">Retur</Badge> : null}
                             {overdue ? <Badge variant="warning">Terlambat</Badge> : null}
                             {item.route === "JERSEY" && item.sampleRevision > 1 ? <Badge variant="warning">Revisi sampel {item.sampleRevision}</Badge> : null}
                           </div>
@@ -229,7 +240,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
                         </CardContent>
                       </Card>}</DraggableProductionCard>
                     );
-                  }) : <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">Belum ada pekerjaan</EmptyTitle><EmptyDescription>Work Order pada tahap ini akan muncul di sini.</EmptyDescription></EmptyHeader></Empty>}
+                  }) : <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">{isReturColumn ? "Belum ada retur" : "Belum ada pekerjaan"}</EmptyTitle><EmptyDescription>{isReturColumn ? "Work Order yang diretur (dari Selesai atau QC) akan muncul di sini." : "Work Order pada tahap ini akan muncul di sini."}</EmptyDescription></EmptyHeader></Empty>}
                   </div>
                 </div>
               </ProductionStageColumn>
@@ -260,7 +271,7 @@ export function ProductionBoard({ group, items, onRefresh }: { group: Production
                       if (previewMove) setPreviewMove(selected);
                     }
                   }}>
-                    {stageOptions(pendingMove.item).map((option) => <NativeSelectOption key={optionValue(option)} value={optionValue(option)}>{optionLabel(option)}</NativeSelectOption>)}
+                    {stageOptions(pendingMove.item).map((option) => <NativeSelectOption key={optionValue(option)} value={optionValue(option)}>{optionLabel(option, group)}</NativeSelectOption>)}
                   </NativeSelect>
                 </Field>
                 <Field><FieldLabel htmlFor="productionMoveNote">Kendala</FieldLabel><Textarea id="productionMoveNote" name="note" maxLength={2000} rows={3} placeholder="Opsional. Tuliskan kendala bila ada." /><p className="text-xs text-muted-foreground">Kendala boleh dikosongkan.</p></Field>
@@ -329,7 +340,7 @@ function ProductionObstacle({ item }: { item: BoardItem }) {
   );
 }
 
-function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: ProductionStage; dragging: boolean; canDrop: boolean; children: React.ReactNode }) {
+function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: ProductionBoardColumn; dragging: boolean; canDrop: boolean; children: React.ReactNode }) {
   const { isOver, setNodeRef } = useDroppable({ id: stage, disabled: !canDrop });
   return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border p-2", !dragging && "snap-start", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }

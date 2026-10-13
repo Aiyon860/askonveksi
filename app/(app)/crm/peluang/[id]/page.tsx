@@ -15,6 +15,7 @@ import { IssueInvoiceAction } from "@/components/crm/issue-invoice-action";
 import { PurchaseOrderAgreementAction } from "@/components/crm/purchase-order-agreement-action";
 import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderWorkflowSection } from "@/components/crm/purchase-order-workflow-section";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,12 +26,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CRM_OPERATOR_ROLES, DEAL_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, DEAL_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
-import { decorationMethodsLabel, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
-import { getActiveGarmentSizes, getActiveProductCategories, getCustomerFormOptions } from "@/lib/master-data";
+import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories, getCustomerFormOptions } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
 type OpportunityDetail = NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>;
@@ -64,6 +65,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
         </Suspense>
       </div>
       <PageMessage />
+      <AutoRefresh />
 
       <div className="flex min-w-0 max-w-full flex-col">
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>
@@ -96,19 +98,22 @@ async function OpportunityHeader({ id }: { id: string }) {
 }
 
 async function OpportunityContent({ id, initialTab, historyPage }: { id: string; initialTab: OpportunityDetailTab; historyPage: number }) {
-  const [opportunity, actor, formOptions, communicationHistory, sizeOptions, categoryOptions] = await Promise.all([
+  const [opportunity, actor, formOptions, communicationHistory, sizeOptions, categoryOptions, paymentMethods] = await Promise.all([
     getOpportunityDetail(id),
     getCurrentActor(),
     getCustomerFormOptions(),
     getCommunicationTimeline({ opportunityId: id, page: historyPage }),
     getActiveGarmentSizes(),
     getActiveProductCategories(),
+    getActivePaymentMethods(),
   ]);
   if (!opportunity || !actor) notFound();
   const purchaseOrderNoPreview = await getPurchaseOrderNoPreview(opportunity.customer);
   if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?tab=aktivitas&historyPage=${communicationHistory.pageCount}#communication-history`);
 
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
+  // D1: Admin PO boleh mengunggah desain langsung (read-only CRM lainnya tetap).
+  const canUploadDesignRole = hasRole(actor.role, DESIGN_UPLOADER_ROLES);
   const canCancelDocuments = hasRole(actor.role, OWNER_ACTION_ROLES);
   const canCompleteDeal = hasRole(actor.role, DEAL_ROLES);
   const inNegotiation = opportunity.stage === "NEGOSIASI";
@@ -125,9 +130,36 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const invoiceTabStatus = invoiceDraft ? "Draft" : issuedInvoice ? "Terbit" : cancelledInvoice ? "Dibatalkan" : opportunity.invoices.length ? `${opportunity.invoices.length} revisi` : "Belum ada";
   const dealTabStatus = opportunity.stage === "DEAL" ? "Selesai" : opportunity.stage === "LOST" ? "Lost" : readyForDeal ? "Siap" : "Belum siap";
   const canShowPurchaseOrderAgreement = canOperate && inNegotiation && (Boolean(poDraft) || opportunity.purchaseOrders.length === 0);
-  const designRevisionStatus = poDraft?.designTask?.revisions[0]?.status;
-  const designMessage = !poDraft?.designTask ? "Tugas desain belum tersedia." : designRevisionStatus === "APPROVED" ? null : designRevisionStatus === "PENDING_REVIEW" ? "Desain sedang menunggu persetujuan Owner atau Admin (tidak mengunci kesepakatan)." : designRevisionStatus === "REJECTED" ? "Desain ditolak. Unggah revisi baru." : "Unggah desain bila sudah tersedia.";
+  // Desain diunggah per produk; PO lama tanpa baris produk memakai satu produk implisit.
+  const designRevisionByItem = new Map<string, number>();
+  for (const revision of poDraft?.designTask?.revisions ?? []) {
+    designRevisionByItem.set(revision.itemId, Math.max(designRevisionByItem.get(revision.itemId) ?? 0, revision.revision));
+  }
+  const designItemSources = poDraft
+    ? poDraft.items.length
+      ? poDraft.items.map((item) => ({ id: item.id, name: item.name }))
+      : [{ id: "", name: poDraft.productName }]
+    : [];
+  const designItems = designItemSources.map((item) => ({ ...item, revisionCount: designRevisionByItem.get(item.id) ?? 0 }));
+  const designUploadedCount = designItems.filter((item) => item.revisionCount > 0).length;
+  const designMessage = !poDraft?.designTask
+    ? "Tugas desain belum tersedia."
+    : designItems.length > 0 && designItems.every((item) => item.revisionCount >= DESIGN_REVISION_LIMIT)
+      ? `Batas ${DESIGN_REVISION_LIMIT} versi desain tercapai. Buat revisi PO untuk membuka versi baru.`
+      : designUploadedCount > 0 && designUploadedCount < designItems.length
+        ? `Desain terunggah untuk ${designUploadedCount}/${designItems.length} produk. Lengkapi sisanya bila sudah siap.`
+        : "Unggah desain bila sudah tersedia.";
   const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && poDraft.customerConfirmedAt);
+  const depositForDraft = poDraft?.deposit
+    ? {
+        amount: poDraft.deposit.amount.toString(),
+        paidAt: poDraft.deposit.paidAt,
+        paymentMethodId: poDraft.deposit.paymentMethodId,
+        reference: poDraft.deposit.reference,
+        note: poDraft.deposit.note,
+        proofFileName: poDraft.deposit.proofFileName,
+      }
+    : null;
 
   return (
     <OpportunityProcessTabs
@@ -185,6 +217,13 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   designSentAt={poDraft.designSentAt}
                   designSentByName={poDraft.designSentBy?.name ?? null}
                   customerConfirmedAt={poDraft.customerConfirmedAt}
+                  designTaskId={poDraft.designTask?.id ?? null}
+                  designItems={designItems}
+                  depositRequired={poDraft.depositRequired}
+                  deposit={depositForDraft}
+                  depositMethods={paymentMethods}
+                  canEditDeposit={canOperate && poDraft.status === "DRAFT"}
+                  canUploadDesign={canUploadDesignRole}
                 />
               ) : (
                 <Button variant="outline" className="w-full sm:w-auto" disabled>
@@ -245,6 +284,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                         notes: purchaseOrder.notes ?? "",
                         deadline: dateInputValue(purchaseOrder.deadline),
                         designDeadline: dateInputValue(purchaseOrder.designTask?.deadline ?? null),
+                        depositRequired: purchaseOrder.depositRequired,
                         items: poItems.map((poItem, itemIndex) => {
                           const itemSizes = purchaseOrder.sizes.filter((size) => !purchaseOrder.items.length || size.itemId === poItem.id);
                           const itemRoster = purchaseOrder.rosterEntries.filter((entry) => !purchaseOrder.items.length || entry.itemId === poItem.id);
@@ -325,6 +365,13 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
               {opportunity.invoices.map((invoice) => {
                 const invoicePo = opportunity.purchaseOrders.find((item) => item.id === invoice.purchaseOrderId);
                 const editableInvoicePo = invoice.purchaseOrderId === agreedPo?.id ? agreedPo : null;
+                // Kwitansi tersedia untuk pembayaran yang sudah dibayar (awal + termin).
+                const invoiceReceipts = invoice.salesOrder?.payment
+                  ? [
+                      ...(invoice.salesOrder.payment.transactions[0] ? [{ id: invoice.salesOrder.payment.transactions[0].id, label: "Unduh Kwitansi" }] : []),
+                      ...invoice.salesOrder.payment.terms.flatMap((term) => (term.transactions[0] ? [{ id: term.transactions[0].id, label: `Kwitansi Termin ${term.position + 1}` }] : [])),
+                    ]
+                  : [];
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
                   discountPercent: invoice.discountValue.toString(),
@@ -356,6 +403,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       draftValues={invoiceDraftValues}
                       salesOrderHref={invoice.salesOrder ? `/sales-orders/${invoice.salesOrder.id}` : undefined}
                       salesOrderLabel={invoice.salesOrder ? `Lihat ${invoice.salesOrder.salesOrderNo}` : undefined}
+                      receipts={invoiceReceipts}
                     >
                       <InvoiceSnapshot invoice={invoice} />
                     </InvoiceWorkflowSection>
@@ -396,7 +444,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                 <AlertDescription>Pembayaran awal {scheduledPayment.kind === "LUNAS" ? "Lunas" : "DP"} sudah dijadwalkan. Catat pembayaran awal dari Detail Invoice untuk membentuk Sales Order dan Work Order.</AlertDescription>
               </Alert>
             ) : canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
-              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} issuedAt={issuedInvoice.issuedAt!.toISOString()} />
+              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} depositAmount={agreedPo.deposit?.amount.toString() ?? "0"} issuedAt={issuedInvoice.issuedAt!.toISOString()} />
             ) : readyForDeal ? (
               <Alert>
                 <AlertTitle>Menunggu konfirmasi Admin</AlertTitle>
@@ -474,6 +522,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <div><dt className="text-xs text-muted-foreground">Bahan</dt><dd className="mt-1">{purchaseOrder.material}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Warna variasi</dt><dd className="mt-1">{purchaseOrder.variationColor ?? "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Deposit</dt><dd className="mt-1">{purchaseOrder.depositRequired ? "Perlu deposit" : "Tanpa deposit"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Metode dekorasi</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${decorationMethodsLabel(poItem.decorationMethods)}`).join(" · ") : decorationMethodsLabel(purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []))}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1">{formatDate(purchaseOrder.deadline)}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Total jumlah</dt><dd className="mt-1 font-mono">{total}</dd></div>
@@ -484,13 +533,38 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div><dt className="text-xs text-muted-foreground">Jumlah produk</dt><dd className="mt-1 font-mono">{total.toLocaleString("id-ID")}</dd></div>
         </dl>
+      ) : purchaseOrder.items.length > 1 ? (
+        <div className="flex flex-col gap-4">
+          {purchaseOrder.items.map((poItem) => {
+            const itemSizes = purchaseOrder.sizes.filter((row) => row.itemId === poItem.id);
+            const itemSizeNames = [...new Set(itemSizes.map((row) => row.size))];
+            const itemTotal = itemSizes.reduce((sum, row) => sum + row.quantity, 0);
+            const itemIsAccessory = (poItem.garmentType ?? purchaseOrder.garmentType) === "AKSESORI";
+            return (
+              <div key={poItem.id} className="rounded-lg border-2 border-primary/25 bg-primary/[0.04] p-3">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">{poItem.name}</span>
+                  <span className="text-xs text-muted-foreground">{decorationMethodsLabel(poItem.decorationMethods)} · Total {itemTotal.toLocaleString("id-ID")}</span>
+                </div>
+                {itemIsAccessory ? (
+                  <p className="text-sm">Jumlah produk: <span className="font-mono">{itemTotal.toLocaleString("id-ID")}</span></p>
+                ) : (
+                <Table containerClassName="rounded-lg border">
+                  <TableHeader><TableRow><TableHead>Model</TableHead>{itemSizeNames.map((size) => <TableHead key={size} className="text-center">{size}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
+                  <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = itemSizes.filter((row) => row.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{itemSizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((row) => row.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className="text-right font-mono">{rows.reduce((sum, row) => sum + row.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
+                </Table>
+                )}
+              </div>
+            );
+          })}
+        </div>
       ) : (
       <Table containerClassName="rounded-lg border">
         <TableHeader><TableRow><TableHead>Model</TableHead>{sizeNames.map((size) => <TableHead key={size} className="text-center">{size}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
         <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = purchaseOrder.sizes.filter((item) => item.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{sizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((item) => item.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className="text-right font-mono">{rows.reduce((sum, item) => sum + item.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
       </Table>
       )}
-      {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead><TableHead>Ukuran</TableHead><TableHead>Lengan</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell><TableCell>{entry.size}</TableCell><TableCell>{entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
+      {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead>{purchaseOrder.items.length > 1 ? <TableHead>Produk</TableHead> : null}<TableHead>Ukuran</TableHead><TableHead>Lengan</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell>{purchaseOrder.items.length > 1 ? <TableCell>{purchaseOrder.items.find((poItem) => poItem.id === entry.itemId)?.name ?? "-"}</TableCell> : null}<TableCell>{entry.size}</TableCell><TableCell>{entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
       {purchaseOrder.attachments.length ? (
         <div className="grid gap-2 sm:grid-cols-2">
           {purchaseOrder.attachments.map((attachment) => (

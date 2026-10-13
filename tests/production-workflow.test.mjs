@@ -4,9 +4,11 @@ import test from "node:test";
 
 import { moveProductionSchema, updateProductionObstacleSchema } from "../lib/production/validation.ts";
 import {
+  boardStagesForGroup,
   parseProductionBoardGroup,
   PRODUCTION_BOARD_GROUPS,
   PRODUCTION_BOARD_GROUP_LABEL,
+  RETUR_COLUMN,
   stageRouteForGroup,
 } from "../lib/production/workflow.ts";
 
@@ -135,7 +137,7 @@ test("tahap mundur pada kanban memakai pop-up konfirmasi dan kendala opsional", 
   assert.equal(moveProductionSchema.safeParse({ ...revert, note: "Sablon belum rata" }).success, true);
   assert.match(board, /decision: "REVERT" as const/);
   assert.match(board, /activeItem\.currentStage !== stage/);
-  assert.match(board, /Kembalikan ke \$\{PRODUCTION_STAGE_LABEL\[option\.targetStage\]\}/);
+  assert.match(board, /Kembalikan ke \$\{stageLabelForGroup\(option\.targetStage, group\)\}/);
   assert.match(schema, /enum ProductionActivityType[\s\S]*STAGE_REVERTED/);
   assert.match(revertMigration, /ProductionActivityType[\s\S]*STAGE_REVERTED/);
 });
@@ -190,6 +192,17 @@ test("kanban Produksi punya tiga jalur bertingkat dengan filter kategori produk 
   assert.match(data, /\["production-board", filter\.group, filter\.productCategoryId \?\? ""\]/);
 });
 
+test("semua jalur kanban punya kolom Retur virtual di paling kanan", () => {
+  assert.equal(RETUR_COLUMN, "RETUR");
+  for (const group of PRODUCTION_BOARD_GROUPS) {
+    const columns = boardStagesForGroup(group, []);
+    assert.equal(columns[columns.length - 1], "RETUR");
+  }
+  assert.match(board, /event\.over\.id === RETUR_COLUMN/);
+  assert.match(board, /item\.status === "ACTIVE" && item\.needsRepair/);
+  assert.match(summary, /RETUR_COLUMN/);
+});
+
 test("halaman Produksi menampilkan tab jalur dan chip kategori dengan pilihan pertama otomatis", () => {
   assert.match(productionPage, /aria-label="Filter jalur produksi"/);
   assert.match(productionPage, /PRODUCTION_BOARD_GROUPS\.map\(\(target\) =>/);
@@ -208,7 +221,7 @@ test("halaman detail kembali ke kanban pada grup dan kategori yang sama", () => 
   assert.match(productionDetail, /const boardGroup = purchaseOrder\?\.garmentType \?\? workOrder\.route/);
   assert.match(productionDetail, /`\/produksi\?jalur=\$\{boardGroup\}&kategori=\$\{purchaseOrder\.productCategoryId\}`/);
   assert.match(productionDetail, /PRODUCTION_BOARD_GROUP_LABEL\[boardGroup\]/);
-  assert.match(summary, /stageRouteForGroup\(group\)/);
+  assert.match(summary, /productionStagesForGroup\(group\)/);
 });
 
 test("backfill kategori produk PO lama hanya mengisi PO yang masih kosong", () => {

@@ -10,9 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getActiveProductCategories } from "@/lib/master-data";
 import {
   parseProductionBoardGroup,
-  productionStages,
+  productionStagesForGroup,
   PRODUCTION_BOARD_GROUPS,
   PRODUCTION_BOARD_GROUP_LABEL,
+  RETUR_COLUMN,
   stageRouteForGroup,
   type ProductionBoardGroup,
 } from "@/lib/production/workflow";
@@ -67,11 +68,12 @@ export default async function ProductionPage({
           ))}
         </div>
         {categories.length ? (
-          <div className="flex flex-wrap gap-2" aria-label="Filter kategori produk">
+          <div className="-mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1" aria-label="Filter kategori produk">
             {categories.map((category) => (
               <Button
                 key={category.id}
                 size="sm"
+                className="shrink-0"
                 variant={kategoriId === category.id ? "default" : "outline"}
                 render={<Link href={`/produksi?jalur=${group}&kategori=${category.id}`} />}
                 nativeButton={false}
@@ -83,15 +85,15 @@ export default async function ProductionPage({
           </div>
         ) : null}
       </div>
-      <Suspense fallback={<ProductionSkeleton route={stageRoute} />} key={`${group}:${kategoriId ?? ""}`}>
+      <Suspense fallback={<ProductionSkeleton group={group} route={stageRoute} />} key={`${group}:${kategoriId ?? ""}`}>
         <ProductionBoardSection group={group} productCategoryId={kategoriId} />
       </Suspense>
     </>
   );
 }
 
-function ProductionSkeleton({ route }: { route: ProductionRoute }) {
-  const stages = productionStages(route);
+function ProductionSkeleton({ group, route }: { group: ProductionBoardGroup; route: ProductionRoute }) {
+  const stages = [...productionStagesForGroup(group), RETUR_COLUMN];
 
   return (
     <div aria-hidden="true" className="grid gap-3">

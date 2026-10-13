@@ -422,7 +422,8 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
   function save() {
     commitInline();
     const annotations = copy(notesRef.current);
-    if (!stage.current || !annotations.length) return setError("Tambahkan minimal satu keterangan.");
+    // D3: detailing opsional — tanpa coretan sama sekali pun bisa disimpan.
+    if (!stage.current) return setError("Gambar desain belum dapat dibuat.");
     setError(null);
     window.requestAnimationFrame(() => {
       const currentStage = stage.current;
@@ -528,7 +529,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
         </div>
       </div>
 
-      {!readOnly ? <div className="mt-2 flex flex-wrap items-center justify-end gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button><Button type="button" variant="success" onClick={() => setConfirming(true)} disabled={isBusy || !savedAnnotations.length}><Send data-icon="inline-start" />Kirim ke Produksi</Button></div> : <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button></div>}
+      {!readOnly ? <div className="mt-2 flex flex-wrap items-center justify-end gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button><Button type="button" variant="success" onClick={() => setConfirming(true)} disabled={isBusy}><Send data-icon="inline-start" />Kirim ke Produksi</Button></div> : <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button></div>}
       {!readOnly ? <p className="text-xs text-muted-foreground">Unduhan berisi versi terakhir yang tersimpan; simpan dulu bila ada keterangan baru.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </CardContent>

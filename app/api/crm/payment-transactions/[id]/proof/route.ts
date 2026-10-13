@@ -1,3 +1,4 @@
+import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { PAYMENT_PROOF_BUCKET } from "@/lib/payment-proof";
@@ -7,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try { await requireActor(); } catch { return new Response("Anda harus masuk.", { status: 401 }); }
+  try { await requireActor(CRM_VIEW_ROLES); } catch { return new Response("Anda harus masuk.", { status: 401 }); }
   const id = entityIdSchema.safeParse((await params).id);
   if (!id.success) return new Response("Bukti tidak ditemukan.", { status: 404 });
   const proof = await getPrismaClient().paymentTransaction.findUnique({ where: { id: id.data }, select: { proofPath: true, proofFileName: true, proofMimeType: true } });

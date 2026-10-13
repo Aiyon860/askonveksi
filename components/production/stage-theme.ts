@@ -36,7 +36,7 @@ const PHASE_BADGE_VARIANT = {
   DONE: "success",
 } as const;
 
-export const STAGE_SURFACE_CLASS: Record<ProductionStage, string> = {
+export const STAGE_SURFACE_CLASS: Record<ProductionStage | "RETUR", string> = {
   TEST_PRINT: PHASE_SURFACE_CLASS.DESIGN,
   PERSETUJUAN_SAMPEL: PHASE_SURFACE_CLASS.DESIGN,
   LAYOUT_PRODUKSI: PHASE_SURFACE_CLASS.DESIGN,
@@ -51,9 +51,10 @@ export const STAGE_SURFACE_CLASS: Record<ProductionStage, string> = {
   PACKING: PHASE_SURFACE_CLASS.OUTBOUND,
   PENGIRIMAN: PHASE_SURFACE_CLASS.OUTBOUND,
   SELESAI: PHASE_SURFACE_CLASS.DONE,
+  RETUR: "border-destructive/40 bg-destructive/5",
 };
 
-export const STAGE_TEXT_CLASS: Record<ProductionStage, string> = {
+export const STAGE_TEXT_CLASS: Record<ProductionStage | "RETUR", string> = {
   TEST_PRINT: PHASE_TEXT_CLASS.DESIGN,
   PERSETUJUAN_SAMPEL: PHASE_TEXT_CLASS.DESIGN,
   LAYOUT_PRODUKSI: PHASE_TEXT_CLASS.DESIGN,
@@ -68,6 +69,7 @@ export const STAGE_TEXT_CLASS: Record<ProductionStage, string> = {
   PACKING: PHASE_TEXT_CLASS.OUTBOUND,
   PENGIRIMAN: PHASE_TEXT_CLASS.OUTBOUND,
   SELESAI: PHASE_TEXT_CLASS.DONE,
+  RETUR: "text-destructive",
 };
 
 export const STAGE_SUMMARY_CLASS: Record<ProductionStage, string> = {
@@ -87,7 +89,7 @@ export const STAGE_SUMMARY_CLASS: Record<ProductionStage, string> = {
   SELESAI: PHASE_SUMMARY_CLASS.DONE,
 };
 
-export const STAGE_BADGE_VARIANT: Record<ProductionStage, "outline" | "default" | "warning" | "info" | "success"> = {
+export const STAGE_BADGE_VARIANT: Record<ProductionStage | "RETUR", "outline" | "default" | "warning" | "info" | "success" | "destructive"> = {
   TEST_PRINT: PHASE_BADGE_VARIANT.DESIGN,
   PERSETUJUAN_SAMPEL: PHASE_BADGE_VARIANT.DESIGN,
   LAYOUT_PRODUKSI: PHASE_BADGE_VARIANT.DESIGN,
@@ -102,4 +104,5 @@ export const STAGE_BADGE_VARIANT: Record<ProductionStage, "outline" | "default" 
   PACKING: PHASE_BADGE_VARIANT.OUTBOUND,
   PENGIRIMAN: PHASE_BADGE_VARIANT.OUTBOUND,
   SELESAI: PHASE_BADGE_VARIANT.DONE,
+  RETUR: "destructive",
 };

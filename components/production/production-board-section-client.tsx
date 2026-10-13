@@ -47,10 +47,18 @@ export function ProductionBoardSectionClient({
   }, [initialData, mutate]);
 
   const board = data ?? initialData;
+  const readOnly = board.actor?.role === "ADMIN_CUSTOMER";
 
   return (
     <>
       <ProductionSummary group={group} items={board.items} total={board.total} />
+
+      {readOnly ? (
+        <Alert>
+          <AlertTitle>Mode lihat saja</AlertTitle>
+          <AlertDescription>Admin Customer hanya dapat memantau progres produksi.</AlertDescription>
+        </Alert>
+      ) : null}
 
       {board.truncated ? (
         <Alert>
@@ -59,7 +67,7 @@ export function ProductionBoardSectionClient({
         </Alert>
       ) : null}
 
-      <ProductionBoard group={group} items={board.items} onRefresh={() => mutate()} />
+      <ProductionBoard group={group} items={board.items} onRefresh={() => mutate()} readOnly={readOnly} />
     </>
   );
 }

@@ -31,9 +31,9 @@ const textAnnotationSchema = z.object({
   ...baseFields,
 });
 
+// D3: detailing opsional — menyimpan tanpa coretan/keterangan pun sah (maksimal 50).
 export const designAnnotationsSchema = z
   .array(z.union([arrowAnnotationSchema, calloutAnnotationSchema, textAnnotationSchema]))
-  .min(1, "Tambahkan minimal satu keterangan.")
   .max(50);
 
 export type DesignArrow = z.infer<typeof arrowAnnotationSchema>;

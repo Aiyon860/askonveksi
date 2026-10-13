@@ -11,7 +11,7 @@ enum AppRole {
   DEVELOPER
   OWNER
   ADMIN_CUSTOMER
-  ADMIN_PRODUCTION
+  ADMIN_PO
   KEUANGAN
   ADMIN
   SALES
@@ -285,6 +285,7 @@ model AppUser {
   communicationActivities   CommunicationActivity[]
   customerReminderReceipts  CustomerReminderReceipt[]
   purchaseOrders            PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
+  purchaseOrderDeposits     PurchaseOrderDeposit[]    @relation("PurchaseOrderDepositCreatedBy")
   purchaseOrdersDesignSent PurchaseOrder[]        @relation("PurchaseOrderDesignSentBy")
   purchaseOrdersConfirmed PurchaseOrder[]        @relation("PurchaseOrderCustomerConfirmedBy")
   designRevisions           DesignRevision[]          @relation("DesignRevisionCreatedBy")
@@ -398,6 +399,7 @@ model PaymentMethod {
   position            Int                  @default(0)
   isActive            Boolean              @default(true)
   paymentTransactions PaymentTransaction[]
+  purchaseOrderDeposits PurchaseOrderDeposit[]
   expenses            Expense[]
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
@@ -586,6 +588,8 @@ model PurchaseOrder {
   designNotes              String?                    @db.Text
   notes                    String?                    @db.Text
   deadline                 DateTime?                  @db.Date
+  // Gate tombol Isi Deposit di tab PO: hanya PO yang memerlukan deposit yang menampilkan aksi tersebut.
+  depositRequired          Boolean                    @default(false)
   agreedAt                 DateTime?                  @db.Timestamptz(3)
   designSentAt             DateTime?                  @db.Timestamptz(3)
   designSentById           String?
@@ -608,6 +612,7 @@ model PurchaseOrder {
   rosterEntries            PurchaseOrderRosterEntry[]
   attachments              PurchaseOrderAttachment[]
   designTask               DesignTask?
+  deposit                  PurchaseOrderDeposit?
   invoices                 Invoice[]
   salesOrder               SalesOrder?
   createdAt                DateTime                   @default(now()) @db.Timestamptz(3)
@@ -617,6 +622,29 @@ model PurchaseOrder {
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
   @@index([productCategoryId])
+}
+
+model PurchaseOrderDeposit {
+  id              String         @id @default(cuid())
+  purchaseOrderId String         @unique
+  amount          Decimal        @db.Decimal(18, 2)
+  paidAt          DateTime       @db.Timestamptz(3)
+  paymentMethodId String?
+  reference       String?        @db.VarChar(120)
+  note            String?        @db.VarChar(1000)
+  proofPath       String?        @db.VarChar(500)
+  proofFileName   String?        @db.VarChar(255)
+  proofMimeType   String?        @db.VarChar(100)
+  proofSize       Int?
+  createdById     String
+  purchaseOrder   PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  createdBy       AppUser       @relation("PurchaseOrderDepositCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@index([paidAt])
+  @@index([createdById, createdAt])
 }
 
 model DesignTask {
@@ -634,6 +662,8 @@ model DesignTask {
 model DesignRevision {
   id           String               @id @default(cuid())
   designTaskId String
+  // Desain diunggah per produk PO (satu revisi = satu produk). String kosong = data lama sebelum desain dipisah per produk.
+  itemId       String               @default("") @db.VarChar(40)
   revision     Int
   status       DesignRevisionStatus @default(PENDING_REVIEW)
   notes        String?              @db.Text
@@ -647,9 +677,10 @@ model DesignRevision {
   attachments  DesignAttachment[]
   createdAt    DateTime             @default(now()) @db.Timestamptz(3)
 
-  @@unique([designTaskId, revision])
+  @@unique([designTaskId, itemId, revision])
   @@index([createdById, createdAt])
   @@index([designTaskId, status, revision])
+  @@index([itemId])
   @@index([reviewedById, reviewedAt])
 }
 

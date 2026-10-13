@@ -32,24 +32,24 @@ Digabung karena sama-sama menyentuh uang, HPP, dan penagihan. Terverifikasi: `ts
 
 Digabung karena E3 (edit PO) dan C2/C5 (struktur PO) mengubah skema PO yang sama. Blocker produksi H-1.
 
-- [ ] C1 — Dekorasi multi-select; Sablon dipecah DTF/Plastisol/Rubber; Tinta = Printing
-- [ ] C2 — Multi-matriks/produk dalam 1 PO (syarat: 1 warna; beda warna = beda PO)
-- [ ] C3 — Upload Excel Roster → matriks terisi otomatis
-- [ ] C4 — Autosave draft PO (anti hilang saat lag/keluar)
-- [ ] C5 — Form PO: 2 field **Instansi** + **Pola** (ganti `productName` tunggal)
-- [ ] E1 — PDF PO 2 varian: customer + penjahit (`?variant=customer|penjahit`)
-- [ ] E2 — Hapus gate APPROVED → tombol Kirim 1 set PDF + checkbox konfirmasi customer
-- [ ] E3 — Edit PO setelah disepakati (kasus tambah qty H-1) + aturan dampak Invoice/SO/WO
-- [ ] E4 — Deadline merah di PDF + tabel MODEL ikut contoh Tasya (butuh file contoh)
+- [x] C1 — Dekorasi multi-select; Sablon dipecah DTF/Plastisol/Rubber; Tinta = Printing
+- [x] C2 — Multi-matriks/produk dalam 1 PO (syarat: 1 warna; beda warna = beda PO)
+- [x] C3 — Upload Excel Roster → matriks terisi otomatis
+- [x] C4 — Autosave draft PO (anti hilang saat lag/keluar)
+- [x] C5 — Form PO: 2 field **Instansi** + **Pola** (ganti `productName` tunggal)
+- [x] E1 — PDF PO 2 varian: customer + penjahit (`?variant=customer|penjahit`)
+- [x] E2 — Hapus gate APPROVED → tombol Kirim 1 set PDF + checkbox konfirmasi customer
+- [x] E3 — Edit PO setelah disepakati (kasus tambah qty H-1) + aturan dampak Invoice/SO/WO
+- [ ] E4 — Deadline merah di PDF + tabel MODEL ikut contoh Tasya (butuh file contoh) — DITUNDA sesuai permintaan
 
 ## SPRINT 3 — Role & Produksi (D + G) — prioritas 2
 
-- [ ] D1 — Role `ADMIN_PO` (hak = Admin Customer) + upload desain langsung detailing
-- [ ] D2 — Gambar hanya PNG/JPG (tolak PDF)
-- [ ] D3 — Detailing desain opsional
-- [ ] G1 — Jalur Aksesori 5 stage: Produksi-QC-Packing-Pengiriman-Selesai
-- [ ] G2 — Admin Customer view-only produksi
-- [ ] G3 — Status Retur setelah Selesai + badge sticky (hilang saat kembali Selesai)
+- [x] D1 — Role `ADMIN_PO` (hak = Admin Customer) + upload desain langsung detailing
+- [x] D2 — Gambar hanya PNG/JPG (tolak PDF)
+- [x] D3 — Detailing desain opsional
+- [x] G1 — Jalur Aksesori 5 stage: Produksi-QC-Packing-Pengiriman-Selesai
+- [x] G2 — Admin Customer view-only produksi
+- [x] G3 — Status Retur setelah Selesai + badge sticky (hilang saat kembali Selesai)
 
 ## SPRINT 4 — CRM & Broadcast (B + H) — prioritas 3
 

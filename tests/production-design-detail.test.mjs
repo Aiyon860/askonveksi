@@ -19,6 +19,13 @@ const [schema, migration, board, detail, designList, productionDetailPage, actio
   readFile(new URL("../app/(app)/detail-desain/[workOrderId]/page.tsx", import.meta.url), "utf8"),
 ]);
 
+test("D3: detailing opsional — simpan dan kirim tanpa anotasi pun sah", () => {
+  assert.equal(designAnnotationsSchema.safeParse([]).success, true);
+  assert.doesNotMatch(editor, /!annotations\.length/);
+  assert.doesNotMatch(editor, /disabled=\{isBusy \|\| !savedAnnotations\.length\}/);
+  assert.doesNotMatch(actions, /minimal satu keterangan/);
+});
+
 test("WO menunggu anotasi produksi sebelum masuk kanban", () => {
   assert.match(schema, /designCompletedAt\s+DateTime\?/);
   assert.match(migration, /ADD COLUMN "designCompletedAt"/);

@@ -53,7 +53,8 @@ test("query dashboard tetap memeriksa aktor sebelum membaca data", () => {
 });
 
 test("Keuangan dapat membuka Dashboard tanpa membuka CRM", () => {
-  assert.match(permissionsSource, /DASHBOARD_ROLES = \[\.\.\.CRM_ROLES, "KEUANGAN"\]/);
+  // D1: dashboard ikut CRM_VIEW_ROLES sehingga Admin PO (read-only) juga bisa membuka.
+  assert.match(permissionsSource, /DASHBOARD_ROLES = \[\.\.\.CRM_VIEW_ROLES, "KEUANGAN"\]/);
   assert.match(navSource, /const canViewDashboard = canViewCrm \|\| role === "KEUANGAN"/);
   assert.match(navSource, /\{canViewDashboard \? mainItems\.map/);
   assert.doesNotMatch(loginSource, /role === "KEUANGAN" \? "\/keuangan"/);

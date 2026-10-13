@@ -3,12 +3,14 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import type { Prisma } from "@prisma/client";
 
-import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
+import { PRODUCTION_ROLES, PRODUCTION_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import type { ProductionBoardGroup } from "@/lib/production/workflow";
 
 export type ProductionBoardFilter = { group: ProductionBoardGroup; productCategoryId?: string | null };
+
+const DESIGN_REVISION_ORDER_BY: Prisma.DesignRevisionOrderByWithRelationInput[] = [{ revision: "desc" }, { createdAt: "desc" }];
 
 type BoardWhere = { group: ProductionBoardGroup; productCategoryId: string | null };
 
@@ -90,7 +92,7 @@ const getCachedBoardRows = (filter: BoardWhere) =>
 
 export async function getProductionBoard(input: ProductionBoardFilter) {
   const filter: BoardWhere = { group: input.group, productCategoryId: input.productCategoryId ?? null };
-  const actor = await requireActor(PRODUCTION_ROLES);
+  const actor = await requireActor(PRODUCTION_VIEW_ROLES);
   const { rows, total } = await getCachedBoardRows(filter);
 
   return {
@@ -102,13 +104,14 @@ export async function getProductionBoard(input: ProductionBoardFilter) {
 }
 
 export async function getProductionDetail(id: string) {
-  const actor = await requireActor(PRODUCTION_ROLES);
+  const actor = await requireActor(PRODUCTION_VIEW_ROLES);
   const workOrder = await getPrismaClient().productionWorkOrder.findUnique({
     relationLoadStrategy: "join",
     where: { id },
     select: {
       id: true,
       workOrderNo: true,
+      purchaseOrderItemId: true,
       route: true,
       productName: true,
       quantity: true,
@@ -138,13 +141,13 @@ export async function getProductionDetail(id: string) {
               designTask: {
                 select: {
                   id: true,
+                  // Desain disimpan per produk PO; work order memakai revisi produknya sendiri.
                   revisions: {
-                    where: { status: "APPROVED" },
-                    orderBy: { revision: "desc" },
-                    take: 1,
+                    orderBy: DESIGN_REVISION_ORDER_BY,
                     select: {
-                      attachments: {
-                        where: { contentType: "image/png" },
+                      itemId: true,
+                        attachments: {
+                        where: { contentType: { in: ["image/png", "image/jpeg"] } },
                         orderBy: { createdAt: "asc" },
                         select: { id: true, originalName: true, contentType: true },
                       },
@@ -177,12 +180,29 @@ export async function getProductionDetail(id: string) {
     },
   });
   if (!workOrder) return null;
+  // Sisakan hanya revisi desain produk work order ini agar gambar acuan produksi tidak tertukar.
+  const designTask = workOrder.salesOrder.purchaseOrder?.designTask;
+  const designRevision = designTask
+    ? (designTask.revisions.find((revision) => revision.itemId === workOrder.purchaseOrderItemId) ?? designTask.revisions[0])
+    : undefined;
+  const workOrderWithDesign = {
+    ...workOrder,
+    salesOrder: {
+      ...workOrder.salesOrder,
+      purchaseOrder: workOrder.salesOrder.purchaseOrder
+        ? {
+            ...workOrder.salesOrder.purchaseOrder,
+            designTask: designTask ? { ...designTask, revisions: designRevision ? [designRevision] : [] } : null,
+          }
+        : null,
+    },
+  };
 
   const users = await getPrismaClient().appUser.findMany({
-    where: { isActive: true, role: "ADMIN_PRODUCTION" },
+    where: { isActive: true, role: "ADMIN_PO" },
     select: { id: true, name: true, role: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });
 
-  return { workOrder, users, actor: { id: actor.id, role: actor.role } };
+  return { workOrder: workOrderWithDesign, users, actor: { id: actor.id, role: actor.role } };
 }
