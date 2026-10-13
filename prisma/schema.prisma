@@ -844,11 +844,25 @@ model InvoiceItem {
   subtotal          Decimal       @db.Decimal(18, 2)
   invoice           Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   garmentSize       GarmentSize?  @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  addons            InvoiceItemAddon[]
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
 
   @@unique([invoiceId, position])
   @@index([invoiceId])
   @@index([sizeId])
+}
+
+model InvoiceItemAddon {
+  id            String      @id @default(cuid())
+  invoiceItemId String
+  position      Int
+  label         String      @db.VarChar(120)
+  unitAmount    Decimal     @db.Decimal(18, 2)
+  invoiceItem   InvoiceItem @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@unique([invoiceItemId, position])
+  @@index([invoiceItemId])
 }
 
 model SalesOrder {
@@ -928,8 +942,11 @@ model ProductionWorkOrder {
   currentStage      ProductionStage
   status            ProductionWorkOrderStatus @default(ACTIVE)
   sampleRevision    Int                       @default(1)
+  /// true = kartu sedang parkir di kolom Retur kanban; dilepas saat Admin menyeretnya keluar.
   needsRepair       Boolean                   @default(false)
+  /// Penanda status Retur (badge + alasan di kartu); menempel permanen, hanya diganti saat Retur berikutnya.
   repairReason      String?                   @db.Text
+  /// Waktu Retur dicatat; tetap tersimpan sebagai riwayat walau kartu sudah Selesai.
   repairRequestedAt DateTime?                 @db.Timestamptz(3)
   obstacle          String?                   @db.VarChar(2000)
   obstacleUpdatedAt DateTime?                 @db.Timestamptz(3)

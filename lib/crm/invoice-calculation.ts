@@ -2,6 +2,11 @@ import { Prisma } from "@prisma/client";
 
 import { UserFacingError } from "../actions/errors.ts";
 
+export type InvoiceAddonInput = {
+  label: string;
+  unitAmount: string;
+};
+
 export type InvoicePricingInput = {
   purchaseOrderSizeId: string;
   productName: string;
@@ -11,10 +16,16 @@ export type InvoicePricingInput = {
   quantity: number;
   unitPrice: string;
   discountPercent?: string;
+  addons?: InvoiceAddonInput[];
 };
 
 export function roundInvoiceTotal(value: Prisma.Decimal) {
   return value.div(500).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_DOWN).mul(500);
+}
+
+export function defaultInvoiceItemDescription(productName: string, sleeveLength: "PENDEK" | "PANJANG", size: string, isAccessory: boolean) {
+  if (isAccessory) return productName;
+  return `${productName} ${sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${size}`;
 }
 
 export function calculateInvoiceLines(items: InvoicePricingInput[], discountPercent: string, taxPercent = "0") {
@@ -27,8 +38,20 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], discountPerc
     const unitPrice = new Prisma.Decimal(item.unitPrice);
     const itemDiscountPercent = new Prisma.Decimal(item.discountPercent ?? discountPercent ?? "0");
     if (itemDiscountPercent.gt(100)) throw new UserFacingError("Diskon per item maksimal 100%.");
+    const addons = (item.addons ?? []).map((addon, addonPosition) => {
+      const addonUnit = new Prisma.Decimal(addon.unitAmount);
+      if (addonUnit.isNegative()) throw new UserFacingError("Harga add on tidak boleh negatif.");
+      return {
+        position: addonPosition,
+        label: addon.label.trim(),
+        unitAmount: addonUnit,
+        total: addonUnit.mul(item.quantity).toDecimalPlaces(2),
+      };
+    });
 
-    const grossAmount = unitPrice.mul(item.quantity).toDecimalPlaces(2);
+    const baseGross = unitPrice.mul(item.quantity).toDecimalPlaces(2);
+    const addonGross = addons.reduce((sum, addon) => sum.add(addon.total), new Prisma.Decimal(0));
+    const grossAmount = baseGross.add(addonGross).toDecimalPlaces(2);
     const discountAmount = grossAmount.mul(itemDiscountPercent).div(100).toDecimalPlaces(2);
     const total = grossAmount.sub(discountAmount);
 
@@ -40,6 +63,8 @@ export function calculateInvoiceLines(items: InvoicePricingInput[], discountPerc
       description: item.description,
       quantity: item.quantity,
       unitPrice,
+      addons,
+      addonGross,
       grossAmount,
       discountPercent: itemDiscountPercent,
       discountCapAmount: null,

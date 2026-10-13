@@ -11,7 +11,7 @@ import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/sess
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
-import { calculateInvoiceLines, roundInvoiceTotal, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
+import { calculateInvoiceLines, defaultInvoiceItemDescription, roundInvoiceTotal, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
 import {
@@ -233,16 +233,25 @@ function invoiceInput(formData: FormData) {
   const itemDiscounts = formData.getAll("itemDiscountPercent");
   const length = Math.max(purchaseOrderSizeIds.length, sizes.length, unitPrices.length);
   const fallbackDiscount = formValue(formData, "discountPercent") || "0";
-  const items = Array.from({ length }, (_, index) => ({
-    purchaseOrderSizeId: purchaseOrderSizeIds[index],
-    productName: productNames[index],
-    size: sizes[index],
-    sleeveLength: sleeveLengths[index],
-    description: descriptions[index],
-    quantity: quantities[index],
-    unitPrice: unitPrices[index],
-    discountPercent: itemDiscounts[index] || fallbackDiscount,
-  }));
+  const items = Array.from({ length }, (_, index) => {
+    const addonLabels = formData.getAll(`item-${index}-addon-label`);
+    const addonAmounts = formData.getAll(`item-${index}-addon-amount`);
+    const addons = Array.from({ length: Math.max(addonLabels.length, addonAmounts.length) }, (_, addonIndex) => ({
+      label: addonLabels[addonIndex],
+      unitAmount: addonAmounts[addonIndex],
+    }));
+    return {
+      purchaseOrderSizeId: purchaseOrderSizeIds[index],
+      productName: productNames[index],
+      size: sizes[index],
+      sleeveLength: sleeveLengths[index],
+      description: descriptions[index],
+      quantity: quantities[index],
+      unitPrice: unitPrices[index],
+      discountPercent: itemDiscounts[index] || fallbackDiscount,
+      addons,
+    };
+  });
 
   return {
     opportunityId: formValue(formData, "opportunityId"),
@@ -500,7 +509,8 @@ async function preparePoItems(formData: FormData, items: ParsedPoItem[]) {
 function calculateInvoiceForPurchaseOrder(
   purchaseOrder: {
     productName: string;
-    items?: Array<{ id: string; name: string }>;
+    garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
+    items?: Array<{ id: string; name: string; garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null }>;
     sizes: Array<{ id: string; itemId: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
   submittedItems: InvoicePricingInput[],
@@ -512,12 +522,14 @@ function calculateInvoiceForPurchaseOrder(
     throw new UserFacingError("Item invoice harus sama dengan seluruh baris matriks PO.");
   }
   const itemNameById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.name]));
+  const itemGarmentById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.garmentType ?? purchaseOrder.garmentType]));
   const calculated = calculateInvoiceLines(purchaseOrder.sizes.map((poRow) => {
     const submitted = submittedById.get(poRow.id);
     if (!submitted) throw new UserFacingError("Salah satu baris PO tidak tersedia pada invoice.");
     const rowDefault = itemNameById.get(poRow.itemId) ?? purchaseOrder.productName;
     const productName = String(submitted.productName || rowDefault).trim() || rowDefault;
-    const description = String(submitted.description || "").trim() || `${productName} ${poRow.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poRow.size}`;
+    const rowIsAccessory = (itemGarmentById.get(poRow.itemId) ?? purchaseOrder.garmentType) === "AKSESORI";
+    const description = String(submitted.description || "").trim() || defaultInvoiceItemDescription(productName, poRow.sleeveLength, poRow.size, rowIsAccessory);
     return {
       purchaseOrderSizeId: poRow.id,
       productName,
@@ -527,13 +539,18 @@ function calculateInvoiceForPurchaseOrder(
       quantity: poRow.quantity,
       unitPrice: String(submitted.unitPrice),
       discountPercent: String((submitted as { discountPercent?: string }).discountPercent ?? discountPercent ?? "0"),
+      addons: ((submitted as { addons?: Array<{ label: unknown; unitAmount: unknown }> }).addons ?? []).map((addon) => ({
+        label: String(addon.label ?? ""),
+        unitAmount: String(addon.unitAmount ?? ""),
+      })),
     };
   }), discountPercent, taxPercent);
   return {
     ...calculated,
-    items: calculated.items.map(({ purchaseOrderSizeId, ...item }) => ({
+    items: calculated.items.map(({ purchaseOrderSizeId, addons, addonGross, ...item }) => ({
       ...item,
       sizeId: purchaseOrder.sizes.find((row) => row.id === purchaseOrderSizeId)?.sizeId ?? null,
+      addons: { create: addons.map((addon) => ({ position: addon.position, label: addon.label, unitAmount: addon.unitAmount })) },
     })),
   };
 }
@@ -1852,7 +1869,8 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           where: { id: parsed.data.purchaseOrderId, opportunityId: opportunity.id, status: "AGREED" },
           select: {
             productName: true,
-            items: { select: { id: true, name: true }, orderBy: { position: "asc" } },
+            garmentType: true,
+            items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
             sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           },
         });
@@ -1898,7 +1916,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_DRAFT_CREATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "addons", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ], { opportunityId: opportunity.id });
         return created;
       },
@@ -1930,7 +1948,8 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
       where: { id: parsed.data.purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "AGREED" },
       select: {
         productName: true,
-        items: { select: { id: true, name: true }, orderBy: { position: "asc" } },
+        garmentType: true,
+        items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
         sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
       },
     });
@@ -1958,11 +1977,19 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
         });
         if (updated.count !== 1) throw new UserFacingError("Draft sudah berubah atau tidak lagi dapat diedit.");
         await tx.invoiceItem.deleteMany({ where: { invoiceId } });
-        await tx.invoiceItem.createMany({
-          data: calculated.items.map((item) => ({ ...item, invoiceId })),
+        const createdItems = await tx.invoiceItem.createManyAndReturn({
+          data: calculated.items.map(({ addons: _addons, ...item }) => ({ ...item, invoiceId })),
+          select: { id: true, position: true },
         });
+        const itemIdByPosition = new Map(createdItems.map((item) => [item.position, item.id]));
+        const addonRows = calculated.items.flatMap((item) => {
+          const invoiceItemId = itemIdByPosition.get(item.position);
+          if (!invoiceItemId) throw new UserFacingError("Item invoice gagal disimpan. Muat ulang halaman.");
+          return item.addons.create.map((addon) => ({ ...addon, invoiceItemId }));
+        });
+        if (addonRows.length) await tx.invoiceItemAddon.createMany({ data: addonRows });
         await audit(tx, actor, "Invoice", invoiceId, "INVOICE_DRAFT_UPDATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "addons", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ]);
       },
       DOCUMENT_DRAFT_TRANSACTION_OPTIONS,
@@ -2112,7 +2139,8 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
               select: {
                 status: true,
                 productName: true,
-                items: { select: { id: true, name: true }, orderBy: { position: "asc" } },
+                garmentType: true,
+                items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
                 sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
               },
             },
@@ -2168,7 +2196,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_REVISION_CREATED", [
-          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
+          "revision", "purchaseOrderId", "items", "addons", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ], { sourceInvoiceId: source.id });
         return source.opportunityId;
       },

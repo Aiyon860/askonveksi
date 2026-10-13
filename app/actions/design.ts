@@ -126,7 +126,10 @@ export async function uploadDesignRevisionAction(formData: FormData) {
     try {
       await Promise.all(uploads.flatMap((upload) => upload.attachments).map(async (attachment) => {
         const { error } = await storage.upload(attachment.path, attachment.bytes, { contentType: attachment.contentType, upsert: false });
-        if (error) throw new UserFacingError("File desain belum dapat disimpan.");
+        if (error) {
+          console.error("Gagal mengunggah file desain PO.", { path: attachment.path, sizeBytes: attachment.bytes.length, status: error.status, statusCode: error.statusCode, message: error.message });
+          throw new UserFacingError("File desain belum dapat disimpan.");
+        }
         uploaded.push(attachment.path);
       }));
 

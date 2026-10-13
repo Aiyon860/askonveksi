@@ -31,6 +31,7 @@ type InvoiceDraftValues = {
     quantity: number;
     unitPrice: string;
     discountPercent?: string;
+    addons?: Array<{ label?: string; amount?: string }>;
   }>;
 };
 

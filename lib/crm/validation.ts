@@ -191,6 +191,11 @@ export const addCommunicationActivitySchema = z
     }
   });
 
+export const invoiceAddonSchema = z.object({
+  label: z.string().trim().min(2, "Keterangan add on minimal 2 karakter.").max(120),
+  unitAmount: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga add on tidak valid."),
+});
+
 export const invoiceItemSchema = z.object({
   purchaseOrderSizeId: entityIdSchema,
   productName: z.string().trim().min(2, "Produk minimal 2 karakter.").max(120),
@@ -203,6 +208,7 @@ export const invoiceItemSchema = z.object({
     (v) => (v === undefined || v === null || v === "" ? "0" : v),
     z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Diskon per item tidak valid."),
   ),
+  addons: z.array(invoiceAddonSchema).max(5, "Maksimal 5 add on per baris.").default([]),
 });
 
 export const invoiceDraftSchema = z.object({

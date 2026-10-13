@@ -34,6 +34,8 @@ export async function createProductionWorkOrder(
       productName: input.productName,
       quantity: input.quantity,
       deadline: input.deadline,
+      // Halaman Detail Desain disembunyikan: WO langsung masuk Produksi saat dibuat.
+      designCompletedAt: new Date(),
       stageSequence: sequence,
       currentStage,
       stageEnteredAt: new Date(),
@@ -59,7 +61,7 @@ export async function createProductionWorkOrder(
       entityType: "ProductionWorkOrder",
       entityId: created.id,
       action: "PRODUCTION_WORK_ORDER_CREATED",
-      changedFields: ["route", "productName", "quantity", "deadline", "stageSequence", "currentStage"],
+      changedFields: ["route", "productName", "quantity", "deadline", "designCompletedAt", "stageSequence", "currentStage"],
       metadata: { salesOrderId: input.salesOrderId, workOrderNo: created.workOrderNo },
     },
   });

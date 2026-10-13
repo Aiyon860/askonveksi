@@ -63,9 +63,10 @@ export function productionStages(route: ProductionRoute): ProductionStage[] {
 export const AKSESORI_STAGE_SEQUENCE: ProductionStage[] = ["JAHIT", "QC", "PACKING", "PENGIRIMAN", "SELESAI"];
 
 /**
- * Kolom virtual "Retur": bukan ProductionStage DB, melainkan tampilan untuk
- * WO berstatus ACTIVE yang ditandai needsRepair (retur setelah Selesai maupun
- * reject QC). Muncul di semua jalur kanban.
+ * Kolom "Retur": bukan ProductionStage DB, melainkan rumah khusus untuk WO
+ * ACTIVE yang ditandai needsRepair. Kartu Retur berdiam di kolom ini sampai
+ * Admin menyeretnya keluar ke kolom tahap mana pun; badge Retur di kartu
+ * (repairReason) tetap menempel walaupun kartu sudah Selesai.
  */
 export const RETUR_COLUMN = "RETUR" as const;
 export type ProductionBoardColumn = ProductionStage | typeof RETUR_COLUMN;
@@ -78,9 +79,10 @@ export function productionStagesForGroup(group: ProductionBoardGroup): Productio
 }
 
 /**
+ * Kolom kanban per grup. AKSESORI = 5 stage (G1).
  * Kolom efektif = sequence grup + stage legacy yang masih dipakai kartu lama,
  * supaya WO Aksesori lama (9 stage) tidak hilang dari board — plus kolom
- * virtual RETUR di paling kanan untuk semua grup.
+ * Retur di paling kanan sebagai pantauan khusus.
  */
 export function boardStagesForGroup(group: ProductionBoardGroup, usedStages: readonly ProductionStage[]): ProductionBoardColumn[] {
   const base = productionStagesForGroup(group);

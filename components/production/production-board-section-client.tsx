@@ -67,7 +67,7 @@ export function ProductionBoardSectionClient({
         </Alert>
       ) : null}
 
-      <ProductionBoard group={group} items={board.items} onRefresh={() => mutate()} readOnly={readOnly} />
+      <ProductionBoard group={group} items={board.items} onRefresh={() => mutate()} readOnly={readOnly} canReturCompleted={board.actor?.role === "DEVELOPER" || board.actor?.role === "OWNER" || board.actor?.role === "ADMIN_PO"} />
     </>
   );
 }

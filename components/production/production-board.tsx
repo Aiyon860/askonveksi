@@ -33,7 +33,7 @@ import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/production/s
 import { cn } from "@/lib/utils";
 
 type BoardItem = Awaited<ReturnType<typeof getProductionBoard>>["items"][number];
-type PendingMove = { item: BoardItem; targetStage: ProductionStage; decision: "ADVANCE" | "SKIP" | "SAMPLE_REJECT" | "QC_REJECT" | "REVERT" };
+type PendingMove = { item: BoardItem; targetStage: ProductionStage; decision: "ADVANCE" | "SKIP" | "SAMPLE_REJECT" | "TO_RETUR" | "RELEASE_RETUR" };
 type RecentMove = { id: string; stage: ProductionBoardColumn };
 
 const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
@@ -41,7 +41,13 @@ const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" 
 const DATE_FORMAT = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" });
 const DATE_TIME_FORMAT = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" });
 
-function stageOptions(item: BoardItem) {
+function stageOptions(item: BoardItem, canReturCompleted: boolean) {
+  // Mundur hanya lewat Retur (alasan wajib); maju/lewati/lingkaran sampel seperti semula.
+  if (item.status === "COMPLETED") {
+    return canReturCompleted
+      ? item.stageSequence.filter((stage) => stage !== "SELESAI").map((targetStage) => ({ item, targetStage, decision: "TO_RETUR" as const }))
+      : [];
+  }
   const currentIndex = item.stageSequence.indexOf(item.currentStage);
   const next = nextProductionStage(item.stageSequence, item.currentStage);
   const options: PendingMove[] = next ? [{ item, targetStage: next, decision: "ADVANCE" }] : [];
@@ -50,13 +56,7 @@ function stageOptions(item: BoardItem) {
     options.push(...item.stageSequence.slice(nextIndex + 1).map((targetStage) => ({ item, targetStage, decision: "SKIP" as const })));
   }
   if (item.currentStage === "PERSETUJUAN_SAMPEL") options.push({ item, targetStage: "TEST_PRINT", decision: "SAMPLE_REJECT" });
-  if (item.currentStage === "QC") {
-    const qcIndex = item.stageSequence.indexOf("QC");
-    options.push(...item.stageSequence.slice(0, qcIndex).map((targetStage) => ({ item, targetStage, decision: "QC_REJECT" as const })));
-  } else if (item.currentStage !== "PERSETUJUAN_SAMPEL") {
-    // Mundur ke tahap sebelumnya: pop-up konfirmasi dengan Kendala opsional.
-    options.push(...item.stageSequence.slice(0, Math.max(0, currentIndex)).map((targetStage) => ({ item, targetStage, decision: "REVERT" as const })));
-  }
+  options.push(...item.stageSequence.slice(0, Math.max(0, currentIndex)).map((targetStage) => ({ item, targetStage, decision: "TO_RETUR" as const })));
   return options;
 }
 
@@ -64,19 +64,36 @@ function optionValue(move: PendingMove) {
   return `${move.decision}:${move.targetStage}`;
 }
 
+/** Kartu sedang berparkir di kolom Retur sampai Admin menyeretnya keluar. */
+function isReturParked(item: BoardItem) {
+  return item.status === "ACTIVE" && item.needsRepair;
+}
+
+/** Kolom kartu: parkir di Retur, mengikuti pratinjau dialog, atau kolom tahapnya. */
+function itemColumn(item: BoardItem, preview: PendingMove | null): ProductionBoardColumn {
+  if (preview?.item.id === item.id) return preview.decision === "TO_RETUR" ? RETUR_COLUMN : preview.targetStage;
+  return isReturParked(item) ? RETUR_COLUMN : item.currentStage;
+}
+
 function optionLabel(option: PendingMove, group: ProductionBoardGroup) {
   if (option.decision === "SAMPLE_REJECT") return "Minta Test Print ulang";
-  if (option.decision === "QC_REJECT") return `Perbaiki di ${stageLabelForGroup(option.targetStage, group)}`;
   if (option.decision === "SKIP") return `Lewati ke ${stageLabelForGroup(option.targetStage, group)}`;
-  if (option.decision === "REVERT") return `Kembalikan ke ${stageLabelForGroup(option.targetStage, group)}`;
+  if (option.decision === "TO_RETUR") return `Masuk Retur, kembali ke ${stageLabelForGroup(option.targetStage, group)}`;
   return `Lanjut ke ${stageLabelForGroup(option.targetStage, group)}`;
 }
 
-export function ProductionBoard({ group, items, onRefresh, readOnly = false }: { group: ProductionBoardGroup; items: BoardItem[]; onRefresh?: () => Promise<unknown>; readOnly?: boolean }) {
+export function ProductionBoard({ group, items, onRefresh, readOnly = false, canReturCompleted = false }: { group: ProductionBoardGroup; items: BoardItem[]; onRefresh?: () => Promise<unknown>; readOnly?: boolean; canReturCompleted?: boolean }) {
   const router = useRouter();
-  const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage }) => current.map((item) => item.id === move.id ? { ...item, currentStage: move.targetStage } : item));
+  const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage; needsRepair?: boolean; repairReason?: string }) => current.map((item) => item.id === move.id ? {
+    ...item,
+    currentStage: move.targetStage,
+    ...(move.needsRepair !== undefined ? { needsRepair: move.needsRepair } : {}),
+    ...(move.repairReason !== undefined ? { repairReason: move.repairReason } : {}),
+  } : item));
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [previewMove, setPreviewMove] = useState<PendingMove | null>(null);
+  // Drop ke kolom Retur pasti masuk Retur: dialog langsung isi alasan tanpa pilihan Perubahan.
+  const [returLocked, setReturLocked] = useState(false);
   const [isMoving, startMoving] = useTransition();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
@@ -103,8 +120,15 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
     formData.set("decision", move.decision);
     if (note && note.trim()) formData.set("note", note.trim());
     startMoving(async () => {
-      setRecentMove({ id: item.id, stage: move.targetStage });
-      moveOptimistically({ id: item.id, targetStage: move.targetStage });
+      setRecentMove({ id: item.id, stage: move.decision === "TO_RETUR" ? RETUR_COLUMN : move.targetStage });
+      moveOptimistically({
+        id: item.id,
+        targetStage: move.targetStage,
+        // Masuk Retur langsung parkir di kolom Retur; keluar Retur/melewati
+        // proses melepas kartu dari kolom Retur. Badge Retur tetap menempel.
+        needsRepair: move.decision === "TO_RETUR" ? true : item.needsRepair ? false : undefined,
+        repairReason: move.decision === "TO_RETUR" ? note?.trim() : undefined,
+      });
       setPreviewMove(null);
       const result = await moveProductionOptimisticAction(formData);
       if (!result.ok) {
@@ -112,7 +136,12 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
         toast.add({ title: "Progres tidak berubah", description: result.message, type: "error" });
         return;
       }
-      toast.add({ title: "Progres disimpan", description: `${item.workOrderNo} dipindahkan ke ${stageLabelForGroup(move.targetStage, group)}.`, type: "success" });
+      const description = move.decision === "RELEASE_RETUR"
+        ? `${item.workOrderNo} keluar dari kolom Retur, kembali ke ${stageLabelForGroup(move.targetStage, group)}.`
+        : move.decision === "TO_RETUR"
+          ? `${item.workOrderNo} masuk Retur dan parkir di kolom Retur (kembali ke ${stageLabelForGroup(move.targetStage, group)}).`
+          : `${item.workOrderNo} dipindahkan ke ${stageLabelForGroup(move.targetStage, group)}.`;
+      toast.add({ title: "Progres disimpan", description, type: "success" });
       // Tunggu data server terbaru dulu supaya kartu tidak kembali ke kolom lama
       // sebelum refresh selesai (transisi tetap pending selama menunggu).
       await onRefresh?.();
@@ -131,10 +160,25 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
     if (!event.over) return;
     const item = boardItems.find((candidate) => candidate.id === event.active.id);
     if (!item) return;
-    // Kolom Retur hanya tampilan (diisi via QC-reject / Buka kembali), bukan tujuan drag.
-    if (event.over.id === RETUR_COLUMN) return;
+    // Kolom Retur: tujuan drop untuk masuk Retur (alasan wajib di dialog).
+    if (event.over.id === RETUR_COLUMN) {
+      // Kartu yang sudah parkir tidak perlu diparkir ulang; seret ke kolom tahap untuk keluar.
+      if (isReturParked(item)) return;
+      const returOptions = stageOptions(item, canReturCompleted).filter((option) => option.decision === "TO_RETUR");
+      if (!returOptions.length) return;
+      const fallback = returOptions[returOptions.length - 1];
+      setPreviewMove(fallback);
+      setPendingMove(fallback);
+      setReturLocked(true);
+      return;
+    }
     const targetStage = event.over.id as ProductionStage;
-    const options = stageOptions(item);
+    // Keluar dari Retur: drop ke kolom tahapnya sendiri, langsung tanpa dialog.
+    if (isReturParked(item) && targetStage === item.currentStage) {
+      runMove(item, { item, targetStage, decision: "RELEASE_RETUR" });
+      return;
+    }
+    const options = stageOptions(item, canReturCompleted);
     const forward = options.find((option) => option.targetStage === targetStage && (option.decision === "ADVANCE" || option.decision === "SKIP"));
     if (forward) {
       runMove(item, forward);
@@ -144,19 +188,28 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
     if (backward) {
       setPreviewMove(backward);
       setPendingMove(backward);
+      setReturLocked(false);
     }
+  }
+
+  function closeMoveDialog() {
+    setPendingMove(null);
+    setPreviewMove(null);
+    setReturLocked(false);
   }
 
   function confirmMove(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!pendingMove) return;
     const formData = new FormData(event.currentTarget);
-    const selected = String(formData.get("moveOption") ?? "");
-    const [decision, targetStage] = selected.split(":") as [PendingMove["decision"], ProductionStage];
+    const rawOption = String(formData.get("moveOption") ?? "");
+    const selected = rawOption
+      ? stageOptions(pendingMove.item, canReturCompleted).find((option) => optionValue(option) === rawOption)
+      : pendingMove;
+    const [decision, targetStage] = selected ? [selected.decision, selected.targetStage] : [pendingMove.decision, pendingMove.targetStage];
     const note = String(formData.get("note") ?? "");
     const move: PendingMove = { ...pendingMove, decision, targetStage };
-    setPendingMove(null);
-    setPreviewMove(null);
+    closeMoveDialog();
     runMove(move.item, move, note);
   }
 
@@ -176,17 +229,17 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
         <div className={cn("grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3", !activeItem && "snap-x snap-proximity")} aria-label={`Kanban produksi ${PRODUCTION_BOARD_GROUP_LABEL[group]}`}>
           {columns.map((stage) => {
             const isReturColumn = stage === RETUR_COLUMN;
-            // Kolom Retur menampung WO ACTIVE bertanda needsRepair; kolom tahap
-            // menyembunyikannya supaya kartu tidak ganda.
-            const stageItems = boardItems.filter((item) => isReturColumn
-              ? item.status === "ACTIVE" && item.needsRepair
-              : (previewMove?.item.id === item.id ? previewMove.targetStage : item.currentStage) === stage && !item.needsRepair);
+            // Kolom Retur adalah rumah kartu Retur sampai Admin menyeretnya keluar;
+            // kolom tahap hanya menampilkan kartu yang tidak parkir di Retur.
+            const stageItems = boardItems.filter((item) => itemColumn(item, previewMove) === stage);
             return (
               <ProductionStageColumn
                 key={stage}
                 stage={stage}
                 dragging={Boolean(activeItem)}
-                canDrop={Boolean(!isReturColumn && activeItem && activeItem.currentStage !== stage && stageOptions(activeItem).some((option) => option.targetStage === stage))}
+                canDrop={Boolean(activeItem && (isReturColumn
+                  ? !isReturParked(activeItem) && stageOptions(activeItem, canReturCompleted).some((option) => option.decision === "TO_RETUR")
+                  : stageOptions(activeItem, canReturCompleted).some((option) => option.targetStage === stage) || (isReturParked(activeItem) && activeItem.currentStage === stage)))}
               >
                 <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
                   <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{boardColumnLabel(stage, group)}</h2>
@@ -195,8 +248,8 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
                   <div className="flex flex-col gap-2">
                   {stageItems.length ? stageItems.map((item) => {
-                    const options = stageOptions(item);
-                    const draggable = !readOnly && !isMoving && !previewMove && item.status === "ACTIVE" && options.length > 0;
+                    const options = stageOptions(item, canReturCompleted);
+                    const draggable = !readOnly && !isMoving && !previewMove && (item.status === "ACTIVE" || (item.status === "COMPLETED" && canReturCompleted)) && options.length > 0;
                     const overdue = item.status === "ACTIVE" && new Date(item.deadline).getTime() < new Date().setHours(0, 0, 0, 0);
                     return (
                       <DraggableProductionCard
@@ -206,41 +259,13 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
                         entering={recentMove?.id === item.id && recentMove.stage === stage}
                         previewing={previewMove?.item.id === item.id}
                       >
-                        {(drag) => <Card size="sm" className={cn("cursor-default", item.needsRepair && "border-destructive/50 bg-destructive/5")}>
-                        <CardHeader>
-                          <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
-                          <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
-                          <CardAction><Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${item.workOrderNo}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}><GripVertical aria-hidden="true" /></Button></CardAction>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge>
-                            <Badge variant="secondary">{item.quantity} pcs</Badge>
-                            {item.needsRepair ? <Badge variant="destructive" className="sticky top-0 z-10">Retur</Badge> : null}
-                            {overdue ? <Badge variant="warning">Terlambat</Badge> : null}
-                            {item.route === "JERSEY" && item.sampleRevision > 1 ? <Badge variant="warning">Revisi sampel {item.sampleRevision}</Badge> : null}
-                          </div>
-                          {item.needsRepair ? <p className="line-clamp-2 text-xs leading-5 text-destructive"><AlertTriangle aria-hidden="true" className="mr-1 inline size-3.5" />{item.repairReason}</p> : null}
-                          <dl className="grid gap-2 text-xs text-muted-foreground">
-                            <div className="flex items-center justify-between gap-3"><dt>Sales Order</dt><dd className="font-mono text-foreground">{item.salesOrder.salesOrderNo}</dd></div>
-                            <div className="flex items-center justify-between gap-3">
-                              <dt>Deadline produksi</dt>
-                              <dd className={cn("flex items-center gap-2", overdue && "font-medium text-destructive")}><CalendarClock aria-hidden="true" className="size-3.5" />{DATE_FORMAT.format(new Date(item.deadline))}</dd>
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                              <dt>Masuk Pada</dt>
-                              <dd className="flex items-center gap-2"><Clock aria-hidden="true" className="size-3.5" />{item.stageEnteredAt ? DATE_TIME_FORMAT.format(new Date(item.stageEnteredAt)) : "-"}</dd>
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                              <dt>PIC</dt>
-                              <dd className="flex items-center gap-2"><UserRound aria-hidden="true" className="size-3.5" />{item.assignee?.name ?? "Belum ditentukan"}</dd>
-                            </div>
-                          </dl>
-                          <ProductionObstacle item={item} />
-                        </CardContent>
-                      </Card>}</DraggableProductionCard>
+                        {(drag) => <ProductionCardView item={item} overdue={overdue} action={<Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${item.workOrderNo}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}><GripVertical aria-hidden="true" /></Button>} />}</DraggableProductionCard>
                     );
-                  }) : <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">{isReturColumn ? "Belum ada retur" : "Belum ada pekerjaan"}</EmptyTitle><EmptyDescription>{isReturColumn ? "Work Order yang diretur (dari Selesai atau QC) akan muncul di sini." : "Work Order pada tahap ini akan muncul di sini."}</EmptyDescription></EmptyHeader></Empty>}
+                  }) : isReturColumn ? (
+                    <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">Belum ada retur</EmptyTitle><EmptyDescription>Seret kartu ke sini untuk masuk Retur. Semua Work Order retur berkumpul di kolom ini sampai dipindahkan.</EmptyDescription></EmptyHeader></Empty>
+                  ) : (
+                    <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">Belum ada pekerjaan</EmptyTitle><EmptyDescription>Work Order pada tahap ini akan muncul di sini.</EmptyDescription></EmptyHeader></Empty>
+                  )}
                   </div>
                 </div>
               </ProductionStageColumn>
@@ -251,30 +276,32 @@ export function ProductionBoard({ group, items, onRefresh, readOnly = false }: {
         </DndContext>
       </div>
 
-      <Dialog open={Boolean(pendingMove)} onOpenChange={(open) => { if (!open) { setPendingMove(null); setPreviewMove(null); } }}>
+      <Dialog open={Boolean(pendingMove)} onOpenChange={(open) => { if (!open) closeMoveDialog(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Perbarui tahap produksi</DialogTitle>
-            <DialogDescription>{pendingMove ? `${pendingMove.item.workOrderNo} · ${pendingMove.item.productName}` : "Pilih perubahan tahap."}</DialogDescription>
+            <DialogTitle>{returLocked ? "Masuk Retur" : "Perbarui tahap produksi"}</DialogTitle>
+            <DialogDescription>{pendingMove ? `${pendingMove.item.workOrderNo} · ${pendingMove.item.productName}${returLocked ? ` · kembali ke ${stageLabelForGroup(pendingMove.targetStage, group)}` : ""}` : "Pilih perubahan tahap."}</DialogDescription>
           </DialogHeader>
           {pendingMove ? (
             <form onSubmit={confirmMove}>
               <input type="hidden" name="workOrderId" value={pendingMove.item.id} />
               <input type="hidden" name="version" value={pendingMove.item.version} />
               <FieldGroup>
+                {returLocked ? null : (
                 <Field>
                   <FieldLabel htmlFor="moveOption" required>Perubahan</FieldLabel>
                   <NativeSelect id="moveOption" name="moveOption" defaultValue={optionValue(pendingMove)} className="w-full" onChange={(event) => {
-                    const selected = stageOptions(pendingMove.item).find((option) => optionValue(option) === event.target.value);
+                    const selected = stageOptions(pendingMove.item, canReturCompleted).find((option) => optionValue(option) === event.target.value);
                     if (selected) {
                       setPendingMove(selected);
                       if (previewMove) setPreviewMove(selected);
                     }
                   }}>
-                    {stageOptions(pendingMove.item).map((option) => <NativeSelectOption key={optionValue(option)} value={optionValue(option)}>{optionLabel(option, group)}</NativeSelectOption>)}
+                    {stageOptions(pendingMove.item, canReturCompleted).map((option) => <NativeSelectOption key={optionValue(option)} value={optionValue(option)}>{optionLabel(option, group)}</NativeSelectOption>)}
                   </NativeSelect>
                 </Field>
-                <Field><FieldLabel htmlFor="productionMoveNote">Kendala</FieldLabel><Textarea id="productionMoveNote" name="note" maxLength={2000} rows={3} placeholder="Opsional. Tuliskan kendala bila ada." /><p className="text-xs text-muted-foreground">Kendala boleh dikosongkan.</p></Field>
+                )}
+                <Field><FieldLabel htmlFor="productionMoveNote">{pendingMove.decision === "TO_RETUR" ? "Alasan retur (wajib)" : "Kendala"}</FieldLabel><Textarea id="productionMoveNote" name="note" maxLength={2000} rows={3} required={pendingMove.decision === "TO_RETUR"} minLength={pendingMove.decision === "TO_RETUR" ? 3 : undefined} placeholder={pendingMove.decision === "TO_RETUR" ? "Wajib diisi, mis. Jahitan lengan tidak rata." : "Opsional. Tuliskan kendala bila ada."} /><p className="text-xs text-muted-foreground">{pendingMove.decision === "TO_RETUR" ? "Alasan wajib minimal 3 karakter dan tampil sebagai badge Retur." : "Kendala boleh dikosongkan."}</p></Field>
                 <Button type="submit" disabled={isMoving}>Simpan progres</Button>
               </FieldGroup>
             </form>
@@ -345,13 +372,54 @@ function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: 
   return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border p-2", !dragging && "snap-start", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }
 
+function ProductionCardView({ item, overdue, action }: { item: BoardItem; overdue: boolean; action?: React.ReactNode }) {
+  // Badge Retur menempel permanen di kartu; warna merah hanya sampai kartu masuk Selesai.
+  const retur = Boolean(item.repairReason);
+  const hot = retur && item.currentStage !== "SELESAI";
+  return <Card size="sm" className={cn("cursor-default", hot && "border-destructive/70 bg-destructive/10")}>
+    <CardHeader>
+      <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
+      <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
+      {action ? <CardAction>{action}</CardAction> : null}
+    </CardHeader>
+    <CardContent>
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge>
+        <Badge variant="secondary">{item.quantity} pcs</Badge>
+        {retur ? <Badge variant="destructive" className="sticky top-0 z-10 font-bold">Retur</Badge> : null}
+        {overdue ? <Badge variant="warning">Terlambat</Badge> : null}
+        {item.route === "JERSEY" && item.sampleRevision > 1 ? <Badge variant="warning">Revisi sampel {item.sampleRevision}</Badge> : null}
+      </div>
+      {retur ? <p className={cn("line-clamp-2 text-xs leading-5", hot ? "text-destructive" : "text-muted-foreground")}><AlertTriangle aria-hidden="true" className="mr-1 inline size-3.5" />{item.repairReason}</p> : null}
+      <dl className="grid gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between gap-3"><dt>Sales Order</dt><dd className="font-mono text-foreground">{item.salesOrder.salesOrderNo}</dd></div>
+        <div className="flex items-center justify-between gap-3">
+          <dt>Deadline produksi</dt>
+          <dd className={cn("flex items-center gap-2", overdue && "font-medium text-destructive")}><CalendarClock aria-hidden="true" className="size-3.5" />{DATE_FORMAT.format(new Date(item.deadline))}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt>Masuk Pada</dt>
+          <dd className="flex items-center gap-2"><Clock aria-hidden="true" className="size-3.5" />{item.stageEnteredAt ? DATE_TIME_FORMAT.format(new Date(item.stageEnteredAt)) : "-"}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <dt>PIC</dt>
+          <dd className="flex items-center gap-2"><UserRound aria-hidden="true" className="size-3.5" />{item.assignee?.name ?? "Belum ditentukan"}</dd>
+        </div>
+      </dl>
+      <ProductionObstacle item={item} />
+    </CardContent>
+  </Card>;
+}
+
 function DraggableProductionCard({ item, draggable, entering, previewing, children }: { item: BoardItem; draggable: boolean; entering: boolean; previewing: boolean; children: (drag: Pick<ReturnType<typeof useDraggable>, "attributes" | "listeners" | "setActivatorNodeRef"> & { draggable: boolean }) => React.ReactNode }) {
   const { attributes, isDragging, listeners, setActivatorNodeRef, setNodeRef } = useDraggable({ id: item.id, disabled: !draggable });
   return <div ref={setNodeRef} className={cn(isDragging && "opacity-35", previewing && "opacity-50", entering && "animate-in fade-in-0 slide-in-from-left-2 duration-200")}>{children({ attributes, listeners, setActivatorNodeRef, draggable })}</div>;
 }
 
 function ProductionDragPreview({ item }: { item: BoardItem }) {
-  return <Card size="sm" className={cn("w-[20rem] scale-[1.02] shadow-lg", item.needsRepair && "border-destructive/50 bg-destructive/5")}><CardHeader><CardTitle>{item.productName}</CardTitle><CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge><Badge variant="secondary">{item.quantity} pcs</Badge></div></CardContent></Card>;
+  const retur = Boolean(item.repairReason);
+  const hot = retur && item.currentStage !== "SELESAI";
+  return <Card size="sm" className={cn("w-[20rem] scale-[1.02] shadow-lg", hot && "border-destructive/70 bg-destructive/10")}><CardHeader><CardTitle>{item.productName}</CardTitle><CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge><Badge variant="secondary">{item.quantity} pcs</Badge>{retur ? <Badge variant="destructive" className="font-bold">Retur</Badge> : null}</div></CardContent></Card>;
 }
 
 function useReducedMotion() {

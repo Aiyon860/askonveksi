@@ -161,7 +161,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewProduction ? (
         <NavGroup label={<span>Produksi</span>} icon={Factory} tone="text-nav-tone-production">
-          {productionItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />)}
+          {productionItems.filter((item) => isDeveloper || item.href !== "/detail-desain").map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewAnalytics ? (

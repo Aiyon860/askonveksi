@@ -43,6 +43,7 @@ type PdfInvoice = {
     discountPercent?: { toString(): string } | string | null;
     discountAmount?: { toString(): string } | string | null;
     total: { toString(): string };
+    addons?: Array<{ label: string; unitAmount: { toString(): string } }>;
   }>;
   salesOrder: { payment: { kind?: string; transactions: Array<{ amount: { toString(): string }; status: string }> } | null } | null;
 };
@@ -180,6 +181,17 @@ export async function createInvoicePdf(invoice: PdfInvoice, customLogoBytes?: Ui
     page.drawText(unitPrice, { x: columns.priceRight - regular.widthOfTextAtSize(unitPrice, 8), y: rowTop, size: 8, font: regular });
     page.drawText(lineTotal, { x: columns.totalRight - regular.widthOfTextAtSize(lineTotal, 8), y: rowTop, size: 8, font: regular });
     y -= rowHeight;
+    for (const addon of item.addons ?? []) {
+      const addonTotal = Number(addon.unitAmount.toString()) * item.quantity;
+      const addonText = `+ ${addon.label} (${item.quantity} x ${currency(addon.unitAmount)})`;
+      const addonLines = wrap(addonText, regular, 8, 190);
+      const addonHeight = addonLines.length * 11 + 4;
+      ensure(addonHeight);
+      addonLines.forEach((line, index) => page.drawText(line, { x: columns.description + 8, y: y - index * 11, size: 8, font: regular, color: rgb(0.35, 0.35, 0.35) }));
+      const addonTotalText = currency({ toString: () => String(addonTotal) });
+      page.drawText(addonTotalText, { x: columns.totalRight - regular.widthOfTextAtSize(addonTotalText, 8), y, size: 8, font: regular, color: rgb(0.35, 0.35, 0.35) });
+      y -= addonHeight;
+    }
     page.drawLine({ start: { x: margin, y: y + 6 }, end: { x: A4.width - margin, y: y + 6 }, thickness: 0.5, color: rgb(0.86, 0.86, 0.86) });
   });
 

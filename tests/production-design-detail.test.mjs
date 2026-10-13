@@ -64,7 +64,7 @@ test("Detail Desain dan PDF memakai gambar desain yang disetujui", () => {
   assert.match(detail, /skip: \(page - 1\) \* pageSize/);
   assert.match(productionDetailPage, /PaymentProofPreview/);
   assert.match(productionDetailPage, /Desain final/);
-  assert.match(productionDetailPage, /hoverLabel="Lihat detail desain"/);
+  assert.match(productionDetailPage, /hoverLabel="Perbesar gambar"/);
   assert.match(pdfRoute, /designTask: \{ select:/);
   assert.match(pdfRoute, /designAttachments/);
   assert.ok(pdf.indexOf("POLA:") < pdf.indexOf("const visibleAssets"));

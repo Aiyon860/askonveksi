@@ -2,8 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { DETAIL_DESIGN_ROLES, DETAIL_DESIGN_VIEW_ROLES } from "@/lib/auth/permissions";
-import { requireActor } from "@/lib/auth/session";
+import { requireDeveloperActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 
 const DESIGN_REVISION_ORDER_BY: Prisma.DesignRevisionOrderByWithRelationInput[] = [{ revision: "desc" }, { createdAt: "desc" }];
@@ -90,7 +89,8 @@ export async function getProductionDesignDetails({
   sort: DesignDetailSort;
   direction: DesignDetailDirection;
 }) {
-  await requireActor(DETAIL_DESIGN_VIEW_ROLES);
+  // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh membukanya.
+  await requireDeveloperActor();
   const where = {
     status: { not: "CANCELLED" },
     ...(status === "pending" ? { designCompletedAt: null } : status === "sent" ? { designCompletedAt: { not: null } } : {}),
@@ -122,7 +122,8 @@ export async function getProductionDesignDetails({
 }
 
 export async function getProductionDesignDetail(workOrderId: string) {
-  await requireActor(DETAIL_DESIGN_VIEW_ROLES);
+  // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh membukanya.
+  await requireDeveloperActor();
   const workOrder = await getPrismaClient().productionWorkOrder.findFirst({
     where: { id: workOrderId, status: { not: "CANCELLED" } },
     select: designSelect,

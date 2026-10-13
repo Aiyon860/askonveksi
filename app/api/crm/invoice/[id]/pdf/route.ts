@@ -70,6 +70,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         select: {
           productName: true, size: true, description: true, quantity: true, unitPrice: true, grossAmount: true,
           discountPercent: true, discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
+          addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } },
         },
         orderBy: { position: "asc" },
       },

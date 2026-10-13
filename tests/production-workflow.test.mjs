@@ -76,8 +76,8 @@ test("perpindahan tahap divalidasi server dan memakai optimistic concurrency", (
   assert.match(actions, /nextStage !== parsed\.data\.targetStage/);
   assert.match(actions, /where: \{ id: order\.id, version: order\.version, status: "ACTIVE", currentStage: order\.currentStage \}/);
   assert.match(actions, /order\.currentStage !== "PERSETUJUAN_SAMPEL"/);
-  assert.match(actions, /order\.currentStage !== "QC"/);
-  assert.match(actions, /parsed\.data\.decision === "REVERT"/);
+  assert.match(actions, /targetStep\.position >= currentStep\.position/);
+  assert.match(actions, /parsed\.data\.decision === "TO_RETUR"/);
   assert.match(actions, /targetStep\.position >= currentStep\.position/);
 });
 
@@ -90,12 +90,13 @@ test("board produksi auto-refresh setelah kartu dipindah", () => {
   assert.match(sectionClient, /onRefresh=\{\(\) => mutate\(\)\}/);
 });
 
-test("Kendala kartu dihapus saat proses maju dan mundur, diisi bila pop-up diisi", () => {
+test("Kendala kartu dihapus saat proses maju, tidak tersentuh saat masuk Retur", () => {
   const move = actions.slice(actions.indexOf("async function moveProduction"), actions.indexOf("export async function moveProductionOptimisticAction"));
   assert.ok(move.length > 0);
   assert.match(move, /obstacleUpdate = null/);
-  // Mundur selalu mengosongkan Kendala kartu; teks pop-up (bila ada) menjadi Kendala baru.
-  assert.match(move, /obstacleUpdate = parsed\.data\.note \? parsed\.data\.note\.slice\(0, 2000\) : null/);
+  // Masuk Retur tidak mengubah Kendala kartu; alasan retur tercatat sebagai repairReason.
+  assert.doesNotMatch(move, /obstacleUpdate = parsed\.data\.note/);
+  assert.match(move, /repairReason = reason\.slice\(0, 2000\)/);
   // Tanggal jejak Kendala ikut hidup saat diisi dan ikut hilang saat dikosongkan.
   assert.match(move, /\.\.\.\(obstacleUpdate !== undefined \? \{ obstacle: obstacleUpdate, obstacleUpdatedAt: obstacleUpdate === null \? null : now \} : \{\}\)/);
   assert.match(actions, /const obstacleUpdatedAt = obstacle \? new Date\(\) : null/);
@@ -131,13 +132,34 @@ test("transaksi perpindahan tahap memakai anggaran waktu yang lebih longgar", ()
   assert.doesNotMatch(actions, /\}, \{ isolationLevel: Prisma\.TransactionIsolationLevel\.Serializable \}\);/);
 });
 
-test("tahap mundur pada kanban memakai pop-up konfirmasi dan kendala opsional", () => {
-  const revert = { workOrderId: "DEMO-WO-NON-JERSEY", version: 2, targetStage: "SABLON", decision: "REVERT" };
-  assert.equal(moveProductionSchema.safeParse(revert).success, true);
-  assert.equal(moveProductionSchema.safeParse({ ...revert, note: "Sablon belum rata" }).success, true);
-  assert.match(board, /decision: "REVERT" as const/);
-  assert.match(board, /activeItem\.currentStage !== stage/);
-  assert.match(board, /Kembalikan ke \$\{stageLabelForGroup\(option\.targetStage, group\)\}/);
+test("mundur hanya lewat Retur dengan alasan wajib; badge Retur menempel permanen", () => {
+  const retur = { workOrderId: "DEMO-WO-NON-JERSEY", version: 2, targetStage: "SABLON", decision: "TO_RETUR", note: "Sablon belum rata" };
+  assert.equal(moveProductionSchema.safeParse(retur).success, true);
+  assert.equal(moveProductionSchema.safeParse({ ...retur, decision: "REVERT" }).success, false);
+  assert.equal(moveProductionSchema.safeParse({ ...retur, decision: "QC_REJECT" }).success, false);
+  // Keluar dari kolom Retur memakai keputusan sendiri dan selalu ke tahap kartu saat ini.
+  assert.equal(moveProductionSchema.safeParse({ workOrderId: retur.workOrderId, version: 2, targetStage: "SABLON", decision: "RELEASE_RETUR" }).success, true);
+  assert.match(board, /decision: "TO_RETUR" as const/);
+  assert.doesNotMatch(board, /"QC_REJECT" as const/);
+  assert.doesNotMatch(board, /"REVERT" as const/);
+  assert.match(board, /Masuk Retur, kembali ke \$\{stageLabelForGroup\(option\.targetStage, group\)\}/);
+  assert.match(board, /Alasan retur \(wajib\)/);
+  assert.match(board, /className="sticky top-0 z-10 font-bold">Retur/);
+  assert.match(actions, /Alasan retur minimal 3 karakter/);
+  assert.match(actions, /needsRepair = true/);
+  // Badge Retur (repairReason) tidak pernah dihapus: tetap menempel walau kartu Selesai.
+  assert.doesNotMatch(actions, /repairReason = null/);
+  assert.doesNotMatch(actions, /repairRequestedAt = null/);
+  assert.match(actions, /parsed\.data\.decision === "RELEASE_RETUR"/);
+  assert.match(actions, /if \(order\.needsRepair\) needsRepair = false/);
+  // Kolom Retur menampung kartu parkir; badge diambil dari repairReason,
+  // warna merahnya hilang hanya saat kartu masuk Selesai.
+  assert.match(board, /function isReturParked\(item: BoardItem\) \{\s+return item\.status === "ACTIVE" && item\.needsRepair;\s+\}/);
+  assert.match(board, /return isReturParked\(item\) \? RETUR_COLUMN : item\.currentStage/);
+  assert.match(board, /const retur = Boolean\(item\.repairReason\)/);
+  assert.match(board, /const hot = retur && item\.currentStage !== "SELESAI"/);
+  // Kartu Retur selalu di atas.
+  assert.match(data, /orderBy: \[\{ needsRepair: "desc" \}, \{ updatedAt: "desc" \}, \{ id: "asc" \}\]/);
   assert.match(schema, /enum ProductionActivityType[\s\S]*STAGE_REVERTED/);
   assert.match(revertMigration, /ProductionActivityType[\s\S]*STAGE_REVERTED/);
 });
@@ -185,21 +207,42 @@ test("kanban Produksi punya tiga jalur bertingkat dengan filter kategori produk 
   assert.equal(stageRouteForGroup("NON_JERSEY"), "NON_JERSEY");
   assert.equal(stageRouteForGroup("JERSEY"), "JERSEY");
 
-  assert.match(data, /if \(group === "AKSESORI"\) purchaseOrderConditions\.push\(\{ garmentType: "AKSESORI" \}\)/);
-  assert.match(data, /else if \(group === "NON_JERSEY"\) purchaseOrderConditions\.push\(\{ OR: \[\{ garmentType: "NON_JERSEY" \}, \{ garmentType: null \}\] \}\)/);
-  assert.match(data, /if \(productCategoryId\) purchaseOrderConditions\.push\(\{ OR: \[\{ productCategoryId \}, \{ productCategoryId: null \}\] \}\)/);
+  // Kanban dikelompokkan per produk WO (jenis + kategori item), bukan atribut level PO,
+  // agar PO multi-produk (mis. Topi + Jaket) tampil pada jalurnya masing-masing.
+  assert.match(data, /purchaseOrderItem: \{ is: \{ garmentType: "AKSESORI" \} \}/);
+  assert.match(data, /purchaseOrderItem: \{ is: \{ garmentType: "NON_JERSEY" \} \}/);
+  assert.match(data, /purchaseOrderItem: \{ is: \{ productCategoryId \} \}/);
+  assert.match(data, /purchaseOrderItem: \{ is: null \}/);
   assert.match(data, /route: group === "JERSEY" \? "JERSEY" : "NON_JERSEY"/);
   assert.match(data, /\["production-board", filter\.group, filter\.productCategoryId \?\? ""\]/);
 });
 
-test("semua jalur kanban punya kolom Retur virtual di paling kanan", () => {
+test("kartu Retur berdiam di kolom Retur sampai dipindahkan, badge bertahan, merah hilang di Selesai", () => {
   assert.equal(RETUR_COLUMN, "RETUR");
   for (const group of PRODUCTION_BOARD_GROUPS) {
     const columns = boardStagesForGroup(group, []);
     assert.equal(columns[columns.length - 1], "RETUR");
   }
+  // Kolom Retur adalah rumah kartu Retur; kartu tidak diduplikasi di kolom tahap.
+  assert.doesNotMatch(board, /!item\.needsRepair/);
+  assert.doesNotMatch(board, /key=\{`\$\{item\.id\}-retur`\}/);
+  assert.match(board, /itemColumn\(item, previewMove\) === stage/);
+  assert.match(board, /Work Order retur/);
+  assert.match(board, /Seret kartu ke sini untuk masuk Retur/);
   assert.match(board, /event\.over\.id === RETUR_COLUMN/);
   assert.match(board, /item\.status === "ACTIVE" && item\.needsRepair/);
+  assert.match(board, /Belum ada retur/);
+  // Drop ke kolom Retur mengunci dialog: langsung isi alasan tanpa pilihan Perubahan.
+  assert.match(board, /setReturLocked\(true\)/);
+  assert.match(board, /\{returLocked \? null : \(/);
+  assert.match(board, /Masuk Retur/);
+  // Keluar dari Retur: seret kartu ke kolom tahap; drop ke kolomnya sendiri
+  // memakai RELEASE_RETUR tanpa dialog, dan kolom Retur tak menerima drop ulang.
+  assert.match(board, /decision: "RELEASE_RETUR"/);
+  assert.match(board, /isReturParked\(item\) && targetStage === item\.currentStage/);
+  assert.match(board, /if \(isReturParked\(item\)\) return;/);
+  // Ringkasan: kartu parkir tidak dihitung ganda di kolom tahapnya.
+  assert.match(summary, /item\.currentStage === stage && !parked\(item\)/);
   assert.match(summary, /RETUR_COLUMN/);
 });
 
