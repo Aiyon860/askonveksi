@@ -16,7 +16,6 @@ export default function robots(): MetadataRoute.Robots {
         "/crm/",
         "/customers/",
         "/dashboard",
-        "/desain",
         "/keuangan/",
         "/login",
         "/master-data/",

@@ -2,7 +2,7 @@ import { entityIdSchema } from "@/lib/crm/validation";
 import { createInvoicePdf } from "@/lib/crm/invoice-pdf";
 import { normalizePdfImage } from "@/lib/crm/pdf-image";
 import { requireActor } from "@/lib/auth/session";
-import { CRM_ROLES } from "@/lib/auth/permissions";
+import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { downloadFilename } from "@/lib/download-filename";
@@ -22,7 +22,7 @@ function workerAuthorized(request: Request) {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!workerAuthorized(request)) {
     try {
-      await requireActor(CRM_ROLES);
+      await requireActor(CRM_VIEW_ROLES);
     } catch {
       return new Response("Anda harus masuk untuk mengunduh invoice.", { status: 401 });
     }

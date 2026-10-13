@@ -284,7 +284,7 @@ export async function sendProductionDesignAction(formData: FormData) {
       },
     });
     const attachment = order?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
-    if (!order || !attachment || order.status !== "ACTIVE" || order.designCompletedAt || !designAnnotationsSchema.safeParse(attachment.annotations).success) throw new UserFacingError("Simpan versi desain dengan minimal satu keterangan sebelum memasukkannya ke Produksi.");
+    if (!order || !attachment || order.status !== "ACTIVE" || order.designCompletedAt || !designAnnotationsSchema.safeParse(attachment.annotations).success) throw new UserFacingError("Simpan versi desain terlebih dahulu sebelum memasukkannya ke Produksi.");
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productionWorkOrder.update({ where: { id: order.id }, data: { designCompletedAt: new Date() } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_DESIGN_SENT", ["designCompletedAt"], { attachmentId: parsed.data.attachmentId });
@@ -354,7 +354,7 @@ async function moveProduction(formData: FormData) {
 
     const currentStep = order.steps.find((step) => step.stage === order.currentStage && step.status === "ACTIVE");
     if (!currentStep) throw new UserFacingError("Tahap aktif tidak valid. Muat ulang halaman.");
-    const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+    const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PO";
     if (!isStageRole(actor.role)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
     if (!manager && currentStep.assigneeId !== actor.id) throw new UserFacingError("Ambil penugasan PIC tahap ini sebelum memperbarui progres.");
 
@@ -426,6 +426,12 @@ async function moveProduction(formData: FormData) {
         data: { status: "COMPLETED", startedAt: now, completedAt: now, attemptCount: { increment: 1 }, ...(completed ? {} : { status: "ACTIVE", completedAt: null }) },
       });
       if (order.currentStage === "QC") {
+        needsRepair = false;
+        repairReason = null;
+        repairRequestedAt = null;
+      }
+      // G3: badge Retur hilang saat WO kembali Selesai.
+      if (completed) {
         needsRepair = false;
         repairReason = null;
         repairRequestedAt = null;
@@ -507,7 +513,7 @@ export async function assignProductionStepAction(formData: FormData) {
         select: { id: true, stage: true, assigneeId: true, workOrder: { select: { status: true } } },
       });
       if (!step || step.workOrder.status !== "ACTIVE") throw new UserFacingError("Tahap produksi tidak aktif atau tidak ditemukan.");
-      const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+      const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PO";
       if (!manager && (parsed.data.assigneeId !== actor.id || step.assigneeId)) throw new UserFacingError("Anda hanya dapat mengambil tahap yang belum memiliki PIC.");
 
       const assignee = await tx.appUser.findFirst({ where: { id: parsed.data.assigneeId, isActive: true }, select: { id: true, role: true, name: true } });
@@ -558,7 +564,7 @@ export async function reopenProductionAction(formData: FormData) {
       const now = new Date();
       await tx.productionStep.updateMany({ where: { workOrderId: order.id, position: { gte: target.position } }, data: { status: "PENDING", startedAt: null, completedAt: null } });
       await tx.productionStep.update({ where: { id: target.id }, data: { status: "ACTIVE", startedAt: now, attemptCount: { increment: 1 } } });
-      const updated = await tx.productionWorkOrder.updateMany({ where: { id: order.id, version: order.version, status: "COMPLETED" }, data: { status: "ACTIVE", currentStage: target.stage, completedAt: null, version: { increment: 1 } } });
+      const updated = await tx.productionWorkOrder.updateMany({ where: { id: order.id, version: order.version, status: "COMPLETED" }, data: { status: "ACTIVE", currentStage: target.stage, completedAt: null, version: { increment: 1 }, needsRepair: true, repairReason: parsed.data.note.slice(0, 2000), repairRequestedAt: now } });
       if (updated.count !== 1) throw new UserFacingError("Work Order sudah berubah.");
       await tx.productionActivity.create({ data: { workOrderId: order.id, actorId: actor.id, type: "REOPENED", fromStage: "SELESAI", toStage: target.stage, note: parsed.data.note } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_REOPENED", ["status", "currentStage", "completedAt"], { to: target.stage });

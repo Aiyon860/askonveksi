@@ -54,7 +54,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
       <PageHeader
         title={workOrder.productName}
         description={`${workOrder.workOrderNo} · ${workOrder.salesOrder.salesOrderNo} · ${workOrder.salesOrder.snapshotCustomerName}`}
-        action={<Badge variant={workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
+        action={<Badge variant={workOrder.needsRepair ? "destructive" : workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{workOrder.needsRepair ? "Retur" : workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
       />
       <PageMessage />
 
@@ -65,7 +65,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
         </Alert>
       ) : null}
 
-      {workOrder.needsRepair ? <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
+      {workOrder.needsRepair ? <div className="sticky top-0 z-10 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Retur — Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
@@ -76,7 +76,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
             <CardContent>
               <ol className="flex flex-col gap-2">
                 {workOrder.steps.map((step) => {
-                  const candidates = users.filter((user) => user.role === "ADMIN_PRODUCTION");
+                  const candidates = users.filter((user) => user.role === "ADMIN_PO");
                   const canClaim = !canManage && !step.assignee && isStageRole(actor.role);
                   return (
                     <li key={step.id} className={cn("grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center", step.status === "ACTIVE" && "border-primary/25 bg-primary/5")}>

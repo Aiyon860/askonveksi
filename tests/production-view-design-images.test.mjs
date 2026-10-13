@@ -23,7 +23,7 @@ const [
   attachmentRoute,
   board,
   sectionClient,
-  designTaskActions,
+  designUpload,
   editor,
   designEditorPage,
   nav,
@@ -36,7 +36,7 @@ const [
   readFile(new URL("../app/api/desain/[taskId]/attachments/[attachmentId]/route.ts", import.meta.url), "utf8"),
   readFile(new URL("../components/production/production-board.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/production/production-board-section-client.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../components/design/design-task-actions.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/production/design-annotation-editor.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/detail-desain/[workOrderId]/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8"),
@@ -85,14 +85,14 @@ test("D2: pratinjau menampilkan PNG dan JPEG", () => {
   assert.match(designDetail, /DESIGN_IMAGE_CONTENT_TYPES = \["image\/png", "image\/jpeg"\]/);
   assert.match(productionData, /contentType: \{ in: \["image\/png", "image\/jpeg"\] \}/);
   assert.match(attachmentRoute, /Content-Type": sniffImageContentType\(bytes\) \?\? attachment\.contentType/);
-  assert.match(designTaskActions, /accept="\.png,\.jpg,\.jpeg,image\/png,image\/jpeg"/);
-  assert.match(designTaskActions, /PNG, JPG, atau JPEG/);
-  assert.doesNotMatch(designTaskActions, /photoshop|PSD/);
+  assert.match(designUpload, /accept="\.png,\.jpg,\.jpeg,image\/png,image\/jpeg"/);
+  assert.match(designUpload, /PNG atau JPG/);
+  assert.doesNotMatch(designUpload, /photoshop|PSD/);
   assert.match(editor, /accept="\.png,\.jpg,\.jpeg,image\/png,image\/jpeg"/);
 });
 
 test("G2: Admin Customer memakai daftar role khusus lihat tanpa hak ubah", () => {
-  assert.match(permissions, /PRODUCTION_ROLES = \["ADMIN_PRODUCTION"\]/);
+  assert.match(permissions, /PRODUCTION_ROLES = \["ADMIN_PO"\]/);
   assert.match(permissions, /PRODUCTION_VIEW_ROLES = \[\.\.\.PRODUCTION_ROLES, "ADMIN_CUSTOMER"\]/);
   assert.match(permissions, /DETAIL_DESIGN_VIEW_ROLES = \[\.\.\.DETAIL_DESIGN_ROLES, "ADMIN_CUSTOMER"\]/);
   // Bacaan memakai daftar lihat, sedangkan aksi tetap PRODUCTION_ROLES.
@@ -108,7 +108,8 @@ test("G2: kanban Produksi menyembunyikan aksi saat hanya lihat", () => {
   assert.match(sectionClient, /Mode lihat saja/);
   assert.match(board, /canManage: boolean/);
   assert.match(board, /const draggable = canManage && !isMoving/);
-  assert.match(board, /if \(!canManage \|\| !event\.over\) return/);
+  assert.match(board, /if \(!canManage\) return;/);
+  assert.match(board, /if \(!event\.over\) return/);
   assert.match(board, /\{canManage \? <CardAction>/);
   assert.match(board, /<ProductionObstacle item=\{item\} canManage=\{canManage\} \/>/);
   assert.match(board, /Hanya dapat dilihat oleh tim Produksi\./);
@@ -116,8 +117,8 @@ test("G2: kanban Produksi menyembunyikan aksi saat hanya lihat", () => {
 
 test("G2: detail Work Order dan detail desain hanya lihat", () => {
   assert.match(designDetail, /canManage: isStageRole\(actor\.role\)/);
-  assert.match(designDetail, /return workOrder \? \{ workOrder, canManage: isStageRole\(actor\.role\) \} : null/);
+  assert.match(designDetail, /return workOrder \? \{ workOrder: withOwnProductDesign\(workOrder\), canManage: isStageRole\(actor\.role\) \} : null/);
   assert.match(designEditorPage, /readOnly=\{!canManage \|\| Boolean\(workOrder\.designCompletedAt\)\}/);
   assert.match(designEditorPage, /Mode lihat saja/);
-  assert.match(nav, /canViewProduction = isDeveloper \|\| role === "OWNER" \|\| role === "ADMIN_PRODUCTION" \|\| role === "ADMIN_CUSTOMER"/);
+  assert.match(nav, /canViewProduction = isDeveloper \|\| role === "OWNER" \|\| role === "ADMIN_PO" \|\| role === "ADMIN_CUSTOMER"/);
 });

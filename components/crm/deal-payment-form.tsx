@@ -27,34 +27,40 @@ function addJakartaDays(value: string, days: number) {
   return new Date(Date.UTC(part("year"), part("month") - 1, part("day") + days)).toISOString().slice(0, 10);
 }
 
-export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, issuedAt }: {
+export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, depositAmount = "0", issuedAt }: {
   opportunityId: string;
   opportunityVersion: number;
   purchaseOrderId: string;
   invoiceId: string;
   invoiceVersion: number;
   total: string;
+  depositAmount?: string;
   issuedAt: string;
 }) {
-  const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
+  const [kind, setKind] = useState<"LUNAS" | "DP" | "DEPOSIT">("LUNAS");
   const [initialValue, setInitialValue] = useState("");
   const [terms, setTerms] = useState<Term[]>([{ key: "term-0", value: "", dueAt: "" }]);
   const initialDueAt = addJakartaDays(issuedAt, 7);
   const totalAmount = Number(total);
+  // Deposit desain yang sudah dibayar pada PO ikut mengurangi sisa yang perlu dijadwalkan.
+  const depositTotal = Number(depositAmount) || 0;
+  const collectibleAmount = Math.max(0, totalAmount - depositTotal);
+  const isDeposit = kind === "DEPOSIT";
   const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount < 0) return 0;
-    return valueType === "PERCENTAGE" ? roundPaymentAmount(totalAmount * amount / 100) : amount;
+    return valueType === "PERCENTAGE" ? roundPaymentAmount(collectibleAmount * amount / 100) : amount;
   };
-  const isLunas = kind === "LUNAS" || Number(initialValue) === 100;
-  const initialAmount = amountFor("PERCENTAGE", isLunas ? "100" : initialValue);
-  const outstandingAmount = totalAmount - initialAmount;
+  const isLunas = kind === "LUNAS" || (!isDeposit && Number(initialValue) === 100);
+  const initialAmount = isDeposit ? amountFor("NOMINAL", initialValue) : amountFor("PERCENTAGE", isLunas ? "100" : initialValue);
+  const outstandingAmount = collectibleAmount - initialAmount;
   const termAmount = (value: string) => {
     const amount = Number(value);
     return !Number.isFinite(amount) || amount < 0 ? 0 : amount;
   };
   const scheduledTermAmount = terms.reduce((sum, term) => sum + termAmount(term.value), 0);
   const scheduleDifference = outstandingAmount - scheduledTermAmount;
+  const paymentBaseLabel = depositTotal > 0 ? "sisa setelah deposit" : "total invoice";
   const datesReady = terms.every((term, index) => term.dueAt >= addJakartaDays(index ? terms[index - 1].dueAt || initialDueAt : initialDueAt, 1));
   const scheduleReady = isLunas || (Math.abs(scheduleDifference) < 0.005 && datesReady);
 
@@ -77,13 +83,22 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Total invoice</p>
           <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(totalAmount)}</p>
+          {depositTotal > 0 ? (
+            <>
+              <p className="mt-2 text-xs text-muted-foreground">Deposit desain sudah dibayar</p>
+              <p className="mt-1 font-mono tabular-nums">{formatCurrency(depositTotal)}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Sisa yang dijadwalkan</p>
+              <p className="mt-1 font-mono tabular-nums">{formatCurrency(collectibleAmount)}</p>
+            </>
+          ) : null}
         </div>
         <div className="grid gap-4">
           <Field>
             <FieldLabel htmlFor={`payment-kind-${invoiceId}`} required>Jenis pembayaran</FieldLabel>
-            <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} className="w-full">
+            <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => { setKind(event.target.value as typeof kind); setInitialValue(""); }} className="w-full">
               <NativeSelectOption value="LUNAS">Lunas</NativeSelectOption>
               <NativeSelectOption value="DP">DP</NativeSelectOption>
+              <NativeSelectOption value="DEPOSIT">Deposit</NativeSelectOption>
             </NativeSelect>
           </Field>
         </div>
@@ -93,6 +108,49 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
             <input type="hidden" name="initialValueType" value="PERCENTAGE" />
             <input type="hidden" name="initialValue" value="100" />
             <FieldDescription>Deadline pembayaran awal otomatis 7 hari setelah invoice diterbitkan. Seluruh total invoice dicatat sebagai pembayaran awal.</FieldDescription>
+          </>
+        ) : isDeposit ? (
+          <>
+            <input type="hidden" name="initialValueType" value="NOMINAL" />
+            <div className="grid gap-4">
+              <Field>
+                <FieldLabel htmlFor={`initial-value-${invoiceId}`} required>Nominal deposit (Rp)</FieldLabel>
+                <MoneyInput id={`initial-value-${invoiceId}`} name="initialValue" required min="0.01" step="0.01" value={initialValue} onChange={(event) => setInitialValue(event.target.value)} />
+              </Field>
+            </div>
+
+            <FieldDescription>Deposit dijadwalkan sebagai pembayaran awal invoice. Sisa invoice dijadwalkan sebagai termin di bawah.</FieldDescription>
+            {initialAmount > 0 && initialAmount < totalAmount ? <p className="text-sm text-muted-foreground">Sisa setelah deposit: <span className="font-mono text-foreground">{formatCurrency(outstandingAmount)}</span></p> : null}
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Termin sisa pembayaran</p>
+                <p className="mt-1 text-xs text-muted-foreground">Total seluruh termin harus tepat sama dengan sisa setelah {isDeposit ? "deposit" : "DP"}.</p>
+              </div>
+              <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => fillTermRemainder(terms[terms.length - 1].key)}>Isi sisa</Button><Button type="button" variant="outline" size="sm" disabled={terms.length >= 12} onClick={() => setTerms((current) => [...current, { key: `term-${Date.now()}-${current.length}`, value: "", dueAt: "" }])}>
+                <Plus data-icon="inline-start" aria-hidden="true" />
+                Tambah termin
+              </Button></div>
+            </div>
+            <div className="flex flex-col gap-3">
+              {terms.map((term, index) => (
+                <div key={term.key} className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
+                  <input type="hidden" name="termValueType" value="NOMINAL" />
+                  <Field>
+                    <FieldLabel htmlFor={`term-value-${term.key}`} required>Nilai termin {index + 1}</FieldLabel>
+                    <MoneyInput id={`term-value-${term.key}`} name="termValue" required min="0.01" step="0.01" value={term.value} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, value: event.target.value } : item))} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`term-date-${term.key}`} required>Deadline Termin {index + 1}</FieldLabel>
+                    <Input id={`term-date-${term.key}`} name="termDueAt" type="date" required min={addJakartaDays(index ? terms[index - 1].dueAt || initialDueAt : initialDueAt, 1)} value={term.dueAt} onChange={(event) => setTerms((current) => current.map((item) => item.key === term.key ? { ...item, dueAt: event.target.value } : item))} />
+                  </Field>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Hapus termin ${index + 1}`} disabled={terms.length === 1} onClick={() => setTerms((current) => current.filter((item) => item.key !== term.key))}>
+                    <Trash2 aria-hidden="true" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            {!datesReady ? <Alert variant="destructive"><AlertTitle>Deadline termin belum berurutan</AlertTitle><AlertDescription>Termin 1 minimal satu hari setelah deadline {isDeposit ? "deposit" : "DP"} ({initialDueAt}); termin berikutnya minimal satu hari setelah termin sebelumnya.</AlertDescription></Alert> : !scheduleReady ? <Alert variant={scheduleDifference < 0 ? "destructive" : "default"}><AlertTitle>{scheduleDifference < 0 ? "Total termin melebihi sisa tagihan" : "Total termin belum menutup sisa tagihan"}</AlertTitle><AlertDescription>{scheduleDifference < 0 ? `Kurangi termin sebesar ${formatCurrency(Math.abs(scheduleDifference))}.` : `Tambahkan termin sebesar ${formatCurrency(scheduleDifference)}.`}</AlertDescription></Alert> : null}
           </>
         ) : (
           <>
@@ -104,7 +162,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
               </Field>
             </div>
 
-            <FieldDescription>Deadline DP otomatis 7 hari setelah invoice diterbitkan. DP minimal 50%; nilai 100% diproses sebagai Lunas.</FieldDescription>
+            <FieldDescription>Deadline DP otomatis 7 hari setelah invoice diterbitkan. DP minimal 50% dari {paymentBaseLabel}; nilai 100% diproses sebagai Lunas.</FieldDescription>
             {initialAmount > 0 && initialAmount < totalAmount ? <p className="text-sm text-muted-foreground">Sisa setelah DP: <span className="font-mono text-foreground">{formatCurrency(outstandingAmount)}</span></p> : null}
 
             <div className="flex items-center justify-between gap-4">

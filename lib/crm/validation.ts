@@ -276,6 +276,8 @@ export const purchaseOrderDraftSchema = z.object({
   notes: optionalText(4000),
   deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
   designDeadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline desain wajib dipilih."),
+  // Checkbox Deposit: hanya PO yang dicentang yang menampilkan tombol Isi Deposit di tab PO.
+  depositRequired: z.boolean(),
   items: z.array(purchaseOrderItemSchema).min(1, "Tambahkan minimal satu produk.").max(10),
 }).superRefine((value, context) => {
   if (value.orderDate && value.designDeadline < value.orderDate) {
@@ -325,16 +327,17 @@ export const completeDealSchema = z.object({
   purchaseOrderId: entityIdSchema,
   invoiceId: entityIdSchema,
   invoiceVersion: requiredVersion,
-  kind: z.enum(["LUNAS", "DP"]),
+  kind: z.enum(["LUNAS", "DP", "DEPOSIT"]),
+  initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
   initialValue: moneyValueSchema,
   terms: z.array(dealPaymentTermSchema).max(12),
 }).superRefine((value, context) => {
-  const isLunas = value.kind === "LUNAS" || Number(value.initialValue) === 100;
+  const isLunas = value.kind === "LUNAS" || (value.initialValueType === "PERCENTAGE" && Number(value.initialValue) === 100);
   if (isLunas && value.terms.length > 0) {
     context.addIssue({ code: "custom", path: ["terms"], message: "Pembayaran lunas tidak memakai termin." });
   }
   if (!isLunas && value.terms.length === 0) {
-    context.addIssue({ code: "custom", path: ["terms"], message: "DP wajib memiliki minimal satu termin." });
+    context.addIssue({ code: "custom", path: ["terms"], message: value.kind === "DEPOSIT" ? "Deposit wajib memiliki minimal satu termin sisa." : "DP wajib memiliki minimal satu termin." });
   }
 });
 
@@ -342,6 +345,15 @@ export const payPendingInitialPaymentSchema = z.object({
   invoiceId: entityIdSchema,
   paymentMethodId: entityIdSchema,
   paidAt: optionalText(32),
+  reference: optionalText(120),
+  note: optionalText(1000),
+});
+
+export const purchaseOrderDepositSchema = z.object({
+  purchaseOrderId: entityIdSchema,
+  amount: moneyValueSchema.refine((value) => Number(value) > 0, "Nominal deposit harus lebih dari 0."),
+  paymentMethodId: entityIdSchema,
+  paidAt: z.string().trim().min(1, "Tanggal deposit wajib diisi."),
   reference: optionalText(120),
   note: optionalText(1000),
 });
@@ -451,7 +463,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "KEUANGAN", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER"]),
   password: strongPasswordSchema,
 });
 
@@ -460,7 +472,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PRODUCTION", "KEUANGAN", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER"]),
   password: z.preprocess(
     (value) => (typeof value === "string" && value === "" ? undefined : value),
     strongPasswordSchema.optional(),

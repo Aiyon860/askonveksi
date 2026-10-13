@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Download, MessageCircle } from "lucide-react";
+import { Copy, Download, MessageCircle, Receipt } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 
@@ -12,7 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-export function InvoiceDeliveryActions({ invoiceId, invoiceNo, compact = false }: { invoiceId: string; invoiceNo: string; compact?: boolean }) {
+/**
+ * Tombol aksi pengiriman invoice. `receipts` diisi bila dialog Detail invoice perlu
+ * tombol Unduh Kwitansi per pembayaran yang sudah dibayar (diletakkan sebelum Unduh Invoice).
+ */
+export function InvoiceDeliveryActions({ invoiceId, invoiceNo, compact = false, receipts = [] }: { invoiceId: string; invoiceNo: string; compact?: boolean; receipts?: Array<{ id: string; label: string }> }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
   const [fallbackOpen, setFallbackOpen] = useState(false);
@@ -49,8 +53,13 @@ export function InvoiceDeliveryActions({ invoiceId, invoiceNo, compact = false }
       <Button type="button" size={compact ? "icon" : "default"} variant={compact ? "ghost" : "outline"} onClick={copyMessage} disabled={pending} aria-label={`Salin pesan ${invoiceNo}`} title="Salin pesan invoice" className={buttonClass}>
         <Copy aria-hidden="true" />{compact ? null : "Salin pesan invoice"}
       </Button>
-      <Button size={compact ? "icon" : "default"} variant={compact ? "ghost" : "outline"} render={<Link href={`/api/crm/invoice/${invoiceId}/pdf`} />} nativeButton={false} aria-label={`Unduh PDF ${invoiceNo}`} title="Unduh PDF" className={buttonClass}>
-        <Download aria-hidden="true" />{compact ? null : "Unduh PDF"}
+      {receipts.map((receipt) => (
+        <Button key={receipt.id} size={compact ? "icon" : "default"} variant={compact ? "ghost" : "success"} render={<Link href={`/api/crm/payment-transactions/${receipt.id}/kwitansi`} />} nativeButton={false} aria-label={`${receipt.label} ${invoiceNo}`} title={receipt.label} className={buttonClass}>
+          <Receipt aria-hidden="true" />{compact ? null : receipt.label}
+        </Button>
+      ))}
+      <Button size={compact ? "icon" : "default"} variant={compact ? "ghost" : "outline"} render={<Link href={`/api/crm/invoice/${invoiceId}/pdf`} />} nativeButton={false} aria-label={`Unduh Invoice ${invoiceNo}`} title="Unduh Invoice" className={buttonClass}>
+        <Download aria-hidden="true" />{compact ? null : "Unduh Invoice"}
       </Button>
       <Dialog open={fallbackOpen} onOpenChange={setFallbackOpen}>
         <DialogContent>

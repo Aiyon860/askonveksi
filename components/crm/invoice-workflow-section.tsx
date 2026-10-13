@@ -49,6 +49,8 @@ type InvoiceWorkflowSectionProps = {
   draftValues: InvoiceDraftValues;
   salesOrderHref?: string;
   salesOrderLabel?: string;
+  /** Tombol Unduh Kwitansi per pembayaran yang sudah dibayar (tab Invoice pada peluang). */
+  receipts?: Array<{ id: string; label: string }>;
   children: ReactNode;
 };
 
@@ -67,6 +69,7 @@ export function InvoiceWorkflowSection({
   draftValues,
   salesOrderHref,
   salesOrderLabel,
+  receipts,
   children,
 }: InvoiceWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
@@ -81,7 +84,7 @@ export function InvoiceWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isCreatingRevision && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} /> : null}
+          {!isCreatingRevision && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
           {!isCreatingRevision && invoiceStatus !== "ISSUED" ? (
             <Button className="w-full sm:w-auto" render={<Link href={`/api/crm/invoice/${invoiceId}/pdf`} />} nativeButton={false}>
               <FileDown data-icon="inline-start" aria-hidden="true" />

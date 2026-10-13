@@ -37,6 +37,7 @@ type PurchaseOrderDraftValues = {
   notes: string;
   deadline: string;
   designDeadline: string;
+  depositRequired: boolean;
   items: PurchaseOrderItemDraftValues[];
 };
 

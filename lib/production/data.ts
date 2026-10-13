@@ -10,6 +10,8 @@ import { isStageRole, type ProductionBoardGroup } from "@/lib/production/workflo
 
 export type ProductionBoardFilter = { group: ProductionBoardGroup; productCategoryId?: string | null };
 
+const DESIGN_REVISION_ORDER_BY: Prisma.DesignRevisionOrderByWithRelationInput[] = [{ revision: "desc" }, { createdAt: "desc" }];
+
 type BoardWhere = { group: ProductionBoardGroup; productCategoryId: string | null };
 
 function boardWhere({ group, productCategoryId }: BoardWhere): Prisma.ProductionWorkOrderWhereInput {
@@ -110,6 +112,7 @@ export async function getProductionDetail(id: string) {
     select: {
       id: true,
       workOrderNo: true,
+      purchaseOrderItemId: true,
       route: true,
       productName: true,
       quantity: true,
@@ -139,11 +142,11 @@ export async function getProductionDetail(id: string) {
               designTask: {
                 select: {
                   id: true,
+                  // Desain disimpan per produk PO; work order memakai revisi produknya sendiri.
                   revisions: {
-                    where: { status: "APPROVED" },
-                    orderBy: { revision: "desc" },
-                    take: 1,
+                    orderBy: DESIGN_REVISION_ORDER_BY,
                     select: {
+                      itemId: true,
                       attachments: {
                         where: { contentType: { in: ["image/png", "image/jpeg"] } },
                         orderBy: { createdAt: "asc" },
@@ -178,12 +181,29 @@ export async function getProductionDetail(id: string) {
     },
   });
   if (!workOrder) return null;
+  // Sisakan hanya revisi desain produk work order ini agar gambar acuan produksi tidak tertukar.
+  const designTask = workOrder.salesOrder.purchaseOrder?.designTask;
+  const designRevision = designTask
+    ? (designTask.revisions.find((revision) => revision.itemId === workOrder.purchaseOrderItemId) ?? designTask.revisions[0])
+    : undefined;
+  const workOrderWithDesign = {
+    ...workOrder,
+    salesOrder: {
+      ...workOrder.salesOrder,
+      purchaseOrder: workOrder.salesOrder.purchaseOrder
+        ? {
+            ...workOrder.salesOrder.purchaseOrder,
+            designTask: designTask ? { ...designTask, revisions: designRevision ? [designRevision] : [] } : null,
+          }
+        : null,
+    },
+  };
 
   const users = await getPrismaClient().appUser.findMany({
-    where: { isActive: true, role: "ADMIN_PRODUCTION" },
+    where: { isActive: true, role: "ADMIN_PO" },
     select: { id: true, name: true, role: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });
 
-  return { workOrder, users, actor: { id: actor.id, role: actor.role }, canManage: isStageRole(actor.role) };
+  return { workOrder: workOrderWithDesign, users, actor: { id: actor.id, role: actor.role }, canManage: isStageRole(actor.role) };
 }

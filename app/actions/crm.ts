@@ -6,7 +6,7 @@ import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
-import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, MASTER_DATA_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
+import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, GATE_OVERRIDE_ROLES, MASTER_DATA_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/session";
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
@@ -38,6 +38,7 @@ import {
   purchaseOrderIdSchema,
   payInvoicePaymentTermSchema,
   payPaymentTermSchema,
+  purchaseOrderDepositSchema,
   payPendingInitialPaymentSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
@@ -304,6 +305,8 @@ function purchaseOrderInput(formData: FormData) {
     notes: formValue(formData, "notes"),
     deadline: formValue(formData, "deadline"),
     designDeadline: formValue(formData, "designDeadline"),
+    // Checkbox Deposit pada form PO (dapat diisi sebelum draft terbuat).
+    depositRequired: formData.get("depositRequired") === "on",
     items,
   };
 }
@@ -364,6 +367,7 @@ function completeDealInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId"),
     invoiceVersion: formValue(formData, "invoiceVersion"),
     kind: formValue(formData, "kind"),
+    initialValueType: formValue(formData, "initialValueType"),
     initialValue: formValue(formData, "initialValue"),
     terms: Array.from({ length: Math.max(valueTypes.length, values.length, dueDates.length) }, (_, index) => ({
       valueType: valueTypes[index],
@@ -1499,6 +1503,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            depositRequired: parsed.data.depositRequired,
             designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
             items: {
@@ -1518,7 +1523,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_DRAFT_CREATED", [
-          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "items", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ], { opportunityId: parsed.data.opportunityId });
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1568,6 +1573,7 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            depositRequired: parsed.data.depositRequired,
             version: { increment: 1 },
           },
         });
@@ -1584,7 +1590,7 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
         });
         if (rows.roster.length) await tx.purchaseOrderRosterEntry.createMany({ data: rows.roster.map((item) => ({ purchaseOrderId, ...item })) });
         await audit(tx, actor, "PurchaseOrder", purchaseOrderId, "PURCHASE_ORDER_DRAFT_UPDATED", [
-          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "items", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ]);
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1614,7 +1620,6 @@ export async function agreePurchaseOrderAction(formData: FormData) {
           status: true,
           garmentType: true,
           deadline: true,
-          designTask: { select: { revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
           designSentAt: true,
           customerConfirmedAt: true,
           sizes: { select: { id: true }, take: 1 },
@@ -1673,20 +1678,103 @@ export async function agreePurchaseOrderAction(formData: FormData) {
   });
 }
 
+/**
+ * Tabel CRM > Purchase order membaca data dari `unstable_cache` bertag "purchase-orders" (30 detik).
+ * Deposit baru harus langsung tampil di kolom Deposit/Tanggal Deposit, jadi tag dikosongkan juga.
+ */
+function revalidatePurchaseOrderList() {
+  revalidatePath("/crm/purchase-orders");
+  revalidateTag("purchase-orders", { expire: 0 });
+}
+
+export async function recordPurchaseOrderDepositAction(formData: FormData) {
+  const fallbackPurchaseOrderId = entityIdSchema.safeParse(formValue(formData, "purchaseOrderId"));
+  const fallbackPath = fallbackPurchaseOrderId.success ? "/crm/purchase-orders" : "/crm";
+  return runRedirectingAction(fallbackPath, async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderDepositSchema.safeParse({
+      purchaseOrderId: formValue(formData, "purchaseOrderId"),
+      amount: formValue(formData, "amount"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
+      paidAt: formValue(formData, "paidAt"),
+      reference: formValue(formData, "reference"),
+      note: formValue(formData, "note"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const paidAt = jakartaDateTime(parsed.data.paidAt) ?? new Date();
+    if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal deposit tidak boleh maju ke masa depan.");
+    // Bukti lama tetap dipakai bila tidak ada file baru, jadi tanda "sudah ada bukti" ikut dikirim.
+    const existingDeposit = await getPrismaClient().purchaseOrderDeposit.findUnique({
+      where: { purchaseOrderId: parsed.data.purchaseOrderId },
+      select: { proofPath: true },
+    });
+    const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId, Boolean(existingDeposit?.proofPath));
+
+    const opportunityId = await getPrismaClient().$transaction(async (tx) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({
+        where: { id: parsed.data.purchaseOrderId },
+        select: { id: true, purchaseOrderNo: true, status: true, opportunityId: true, depositRequired: true, deposit: { select: { id: true } } },
+      });
+      if (!purchaseOrder) throw new UserFacingError("Purchase order tidak ditemukan.");
+      // Deposit hanya untuk PO yang checkbox Deposit-nya dicentang; DEVELOPER/OWNER tetap bisa mengisinya (AGENTS.md).
+      if (!purchaseOrder.depositRequired && !purchaseOrder.deposit && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("PO ini tidak memerlukan deposit. Centang Deposit pada form PO terlebih dahulu.");
+      // Deposit dibuka selama PO masih draft; DEVELOPER/OWNER tetap bisa memperbaikinya (AGENTS.md).
+      if (purchaseOrder.status !== "DRAFT" && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("Deposit hanya dapat diubah saat PO masih draft.");
+      const values = {
+        amount: new Prisma.Decimal(parsed.data.amount),
+        paidAt,
+        paymentMethodId: parsed.data.paymentMethodId,
+        reference: parsed.data.reference ?? null,
+        note: parsed.data.note ?? null,
+        ...(proof ?? {}),
+        createdById: actor.id,
+      };
+      const deposit = purchaseOrder.deposit
+        ? await tx.purchaseOrderDeposit.update({ where: { id: purchaseOrder.deposit.id }, data: values })
+        : await tx.purchaseOrderDeposit.create({ data: { ...values, purchaseOrderId: purchaseOrder.id } });
+      await audit(tx, actor, "PurchaseOrderDeposit", deposit.id, purchaseOrder.deposit ? "PURCHASE_ORDER_DEPOSIT_UPDATED" : "PURCHASE_ORDER_DEPOSIT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
+        purchaseOrderId: purchaseOrder.id,
+        purchaseOrderNo: purchaseOrder.purchaseOrderNo,
+        amount: parsed.data.amount,
+      });
+      return purchaseOrder.opportunityId;
+    });
+
+    revalidatePath("/crm");
+    revalidatePurchaseOrderList();
+    revalidatePath(`/crm/peluang/${opportunityId}`);
+    return flashMessagePath(`/crm/peluang/${opportunityId}?tab=po`, "notice", "Deposit desain tersimpan dan dikurangkan dari sisa tagihan invoicenya.");
+  });
+}
+
 export async function markPurchaseOrderDesignSentAction(formData: FormData) {
   return runRedirectingAction(opportunityTabFallback(formData, "po"), async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
     const parsed = purchaseOrderIdSchema.safeParse({ purchaseOrderId: formValue(formData, "purchaseOrderId"), version: formValue(formData, "version") });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     const updated = await getPrismaClient().$transaction(async (tx) => {
-      const purchaseOrder = await tx.purchaseOrder.findUnique({ where: { id: parsed.data.purchaseOrderId }, select: { opportunityId: true, status: true } });
+      const purchaseOrder = await tx.purchaseOrder.findUnique({
+        where: { id: parsed.data.purchaseOrderId },
+        select: {
+          opportunityId: true,
+          status: true,
+          items: { select: { id: true } },
+          designTask: { select: { revisions: { select: { itemId: true } } } },
+        },
+      });
       if (!purchaseOrder || purchaseOrder.status !== "DRAFT") throw new UserFacingError("Hanya PO draft yang dapat ditandai terkirim.");
+      // PDF dikirim setelah desain SETIAP produk diunggah; DEVELOPER/OWNER selalu boleh melewati gate ini.
+      const uploadedItemIds = new Set((purchaseOrder.designTask?.revisions ?? []).map((revision) => revision.itemId));
+      const designUploaded = purchaseOrder.items.length > 0 && purchaseOrder.items.every((item) => uploadedItemIds.has(item.id));
+      if (!designUploaded && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("Unggah desain terlebih dahulu sebelum mengirim 1 set PDF ke customer.");
+      const customerConfirmed = String(formData.get("customerConfirmed") ?? "") === "yes";
+      const now = new Date();
       const result = await tx.purchaseOrder.updateMany({
         where: { id: parsed.data.purchaseOrderId, status: "DRAFT", version: parsed.data.version },
-        data: { designSentAt: new Date(), designSentById: actor.id },
+        data: { designSentAt: now, designSentById: actor.id, ...(customerConfirmed ? { customerConfirmedAt: now, customerConfirmedById: actor.id } : {}) },
       });
       if (result.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
-      await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_DESIGN_SENT", ["designSentAt", "designSentById"]);
+      await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_DESIGN_SENT", ["designSentAt", "designSentById", ...(customerConfirmed ? ["customerConfirmedAt", "customerConfirmedById"] : [])]);
       return purchaseOrder;
     });
     revalidatePath("/crm");
@@ -1797,6 +1885,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            depositRequired: parsed.data.depositRequired,
             designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
             items: {
@@ -1816,7 +1905,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
-          "revision", "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "items", "sizes", "roster",
+          "revision", "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ], { sourcePurchaseOrderId: source.id, fromStatus: source.status });
         return source.opportunityId;
     }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -2206,7 +2295,7 @@ export async function completeDealAction(formData: FormData) {
         select: {
           id: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true, dueAt: true,
           salesOrder: { select: { id: true } }, pendingPayment: { select: { id: true } },
-          purchaseOrder: { select: { status: true, garmentType: true, deadline: true } },
+          purchaseOrder: { select: { status: true, garmentType: true, deadline: true, deposit: { select: { amount: true } } } },
           opportunity: { select: { stage: true, version: true, purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 }, invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 } } },
         },
       });
@@ -2218,23 +2307,29 @@ export async function completeDealAction(formData: FormData) {
       if (!invoice.issuedAt) throw new UserFacingError("Tanggal terbit invoice tidak tersedia.");
 
       const roundedTotal = invoice.total;
-      const requestedInitialPercent = new Prisma.Decimal(parsed.data.initialValue);
-      if (parsed.data.kind === "DP" && requestedInitialPercent.lt(50)) throw new UserFacingError("DP minimal 50%.");
-      if (requestedInitialPercent.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-      const kind = parsed.data.kind === "LUNAS" || requestedInitialPercent.eq(100) ? "LUNAS" as const : "DP" as const;
+      // Deposit desain yang sudah dibayar dikurangkan dari sisa yang perlu dijadwalkan.
+      const depositAmount = invoice.purchaseOrder.deposit?.amount ?? new Prisma.Decimal(0);
+      const collectibleTotal = roundedTotal.sub(depositAmount);
+      if (collectibleTotal.lte(0)) throw new UserFacingError("Deposit sudah menutup seluruh total invoice. Sesuaikan nominal deposit pada PO terlebih dahulu.");
+      const requestedInitial = new Prisma.Decimal(parsed.data.initialValue);
+      const requestedType = parsed.data.kind === "DEPOSIT" ? ("NOMINAL" as const) : parsed.data.initialValueType;
+      if (parsed.data.kind === "DP" && parsed.data.initialValueType === "PERCENTAGE" && requestedInitial.lt(50)) throw new UserFacingError("DP minimal 50%.");
+      if (parsed.data.initialValueType === "PERCENTAGE" && requestedInitial.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
+      const kind = parsed.data.kind === "LUNAS" || (parsed.data.initialValueType === "PERCENTAGE" && requestedInitial.eq(100)) ? "LUNAS" as const : parsed.data.kind;
       if (kind === "DP" && parsed.data.terms.length === 0) throw new UserFacingError("DP wajib memiliki minimal satu termin.");
+      if (kind === "DEPOSIT" && parsed.data.terms.length === 0) throw new UserFacingError("Deposit wajib memiliki minimal satu termin sisa.");
       if (kind === "LUNAS" && parsed.data.terms.length) throw new UserFacingError("Pembayaran Lunas tidak memakai termin.");
       const initialDueAt = invoice.dueAt ?? addJakartaDays(invoice.issuedAt, 7);
 
       const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
         const decimal = new Prisma.Decimal(value);
         if (valueType === "PERCENTAGE" && decimal.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-        return valueType === "PERCENTAGE" ? roundInvoiceTotal(roundedTotal.mul(decimal).div(100)) : decimal;
+        return valueType === "PERCENTAGE" ? roundInvoiceTotal(collectibleTotal.mul(decimal).div(100)) : decimal;
       };
-      const initialValueType = "PERCENTAGE" as const;
-      const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitialPercent;
-      const initialAmount = amountFor("PERCENTAGE", initialValue.toString());
-      if (initialAmount.lte(0) || initialAmount.gt(roundedTotal)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
+      const initialValueType = kind === "LUNAS" ? ("PERCENTAGE" as const) : requestedType;
+      const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitial;
+      const initialAmount = amountFor(initialValueType, initialValue.toString());
+      if (initialAmount.lte(0) || initialAmount.gt(collectibleTotal)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
 
       let previousDueAt: Date | null = initialDueAt;
       const terms = parsed.data.terms.map((term, position) => {
@@ -2244,9 +2339,9 @@ export async function completeDealAction(formData: FormData) {
         previousDueAt = dueAt;
         return { position, valueType: term.valueType, value: new Prisma.Decimal(term.value), amount: amountFor(term.valueType, term.value), dueAt };
       });
-      const outstandingAmount = roundedTotal.sub(initialAmount);
+      const outstandingAmount = collectibleTotal.sub(initialAmount);
       const termTotal = terms.reduce((sum, term) => sum.add(term.amount), new Prisma.Decimal(0));
-      if (!termTotal.eq(outstandingAmount)) throw new UserFacingError("Total seluruh termin harus sama dengan sisa setelah pembayaran awal.");
+      if (!termTotal.eq(outstandingAmount)) throw new UserFacingError(depositAmount.gt(0) ? "Total seluruh termin harus sama dengan sisa setelah pembayaran awal dan deposit." : "Total seluruh termin harus sama dengan sisa setelah pembayaran awal.");
 
       await tx.pendingDealPayment.create({ data: { invoiceId: invoice.id, kind, initialValueType, initialValue, initialAmount, initialDueAt, createdById: actor.id, terms: { create: terms } } });
       await audit(tx, actor, "Invoice", invoice.id, "PAYMENT_SCHEDULED", ["paymentSchedule"], { kind, initialDueAt, terms: terms.length });
@@ -2335,7 +2430,7 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
         taxAmount: true,
         total: true,
         salesOrder: { select: { id: true } },
-        purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true } },
+        purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true, deposit: { select: { amount: true } } } },
         items: {
           select: {
             position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
@@ -2377,9 +2472,12 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
     const activeOrder = await tx.salesOrder.findFirst({ where: { opportunityId: invoice.opportunityId, status: "ACTIVE" }, select: { id: true } });
     if (activeOrder) throw new UserFacingError("Peluang ini sudah memiliki Sales Order aktif.");
 
+    const depositAmount = invoice.purchaseOrder.deposit?.amount ?? new Prisma.Decimal(0);
     const scheduledTotal = invoice.pendingPayment.terms.reduce((sum, term) => sum.add(term.amount), invoice.pendingPayment.initialAmount);
-    if (!scheduledTotal.eq(invoice.total)) throw new UserFacingError("Jadwal pembayaran tidak sama dengan total invoice.");
-    const outstandingAmount = invoice.total.sub(invoice.pendingPayment.initialAmount);
+    if (!scheduledTotal.eq(invoice.total.sub(depositAmount))) throw new UserFacingError("Jadwal pembayaran tidak sama dengan sisa setelah deposit.");
+    // Deposit desain menyatu ke pembayaran awal supaya sisa tagihan Sales Order langsung berkurang.
+    const initialAmount = invoice.pendingPayment.initialAmount.add(depositAmount);
+    const outstandingAmount = invoice.total.sub(initialAmount);
 
     const opportunityUpdated = await tx.opportunity.updateMany({
       where: { id: invoice.opportunityId, stage: "NEGOSIASI" },
@@ -2421,17 +2519,17 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
             paidAt,
             initialValueType: invoice.pendingPayment.initialValueType,
             initialValue: invoice.pendingPayment.initialValue,
-            initialAmount: invoice.pendingPayment.initialAmount,
+            initialAmount,
             outstandingAmount,
             createdById: actor.id,
             terms: { create: invoice.pendingPayment.terms.map(({ position, valueType, value, amount, dueAt }) => ({ position, valueType, value, amount, dueAt })) },
             transactions: {
               create: {
-                amount: invoice.pendingPayment.initialAmount,
+                amount: initialAmount,
                 paidAt,
                 paymentMethodId: parsed.data.paymentMethodId,
                 reference: parsed.data.reference,
-                note: parsed.data.note,
+                note: depositAmount.gt(0) ? [parsed.data.note, "Termasuk deposit desain"].filter(Boolean).join(" · ") : parsed.data.note,
                 ...(proof ?? {}),
                 createdById: actor.id,
               },

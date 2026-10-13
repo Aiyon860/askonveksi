@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Paperclip } from "lucide-react";
 
 import { purchaseOrderDetailAction } from "@/app/actions/crm-details";
+import { DepositStatus } from "@/components/crm/deposit-status";
 import { DocumentDetailTrigger } from "@/components/crm/document-detail-trigger";
 import { PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -72,11 +73,38 @@ export function PurchaseOrderDetail({
                 <Info label="Warna" value={detail.color ?? "-"} />
                 <Info label="Deadline produksi" value={formatDate(detail.deadline)} />
                 <Info label="Tanggal dibuat" value={formatDate(detail.createdAt)} />
+                <div><dt className="text-xs text-muted-foreground">Deposit</dt><dd className="mt-1"><DepositStatus paid={detail.deposit !== null} amount={detail.deposit?.amount ?? null} /></dd></div>
+                <Info label="Tanggal deposit" value={detail.deposit ? formatDate(detail.deposit.paidAt, true) : "-"} />
+                {detail.deposit?.paymentMethod ? <Info label="Metode deposit" value={detail.deposit.paymentMethod.name} /> : null}
+                {detail.deposit?.reference ? <Info label="Referensi deposit" value={detail.deposit.reference} /> : null}
               </dl>
-              {detail.garmentType === "AKSESORI" ? (
+              {detail.garmentType === "AKSESORI" && !detail.items.length ? (
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <div><dt className="text-xs text-muted-foreground">Jumlah produk</dt><dd className="mt-1 font-mono">{detail.sizes.reduce((sum, item) => sum + item.quantity, 0).toLocaleString("id-ID")}</dd></div>
                 </dl>
+              ) : detail.items.length ? (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-sm font-medium">Ukuran dan jumlah</h3>
+                {detail.items.map((poItem) => {
+                  const itemSizes = detail.sizes.filter((row) => row.itemId === poItem.id);
+                  const itemTotal = itemSizes.reduce((sum, row) => sum + row.quantity, 0);
+                  const itemIsAccessory = (poItem.garmentType ?? detail.garmentType) === "AKSESORI";
+                  return (
+                    <div key={poItem.id} className="rounded-lg border-2 border-primary/25 bg-primary/[0.04] p-3">
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">{poItem.name}</span>
+                        <span className="text-xs text-muted-foreground">Total {itemTotal.toLocaleString("id-ID")}</span>
+                      </div>
+                      {itemIsAccessory ? null : (
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
+                        <TableBody>{itemSizes.map((row) => <TableRow key={row.id}><TableCell>{row.size}</TableCell><TableCell className="text-right font-mono tabular-nums">{row.quantity}</TableCell></TableRow>)}</TableBody>
+                      </Table>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
               ) : (
               <div>
                 <h3 className="mb-2 text-sm font-medium">Ukuran dan jumlah</h3>

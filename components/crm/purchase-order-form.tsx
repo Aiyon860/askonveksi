@@ -53,6 +53,7 @@ type PurchaseOrderFormValues = {
   notes: string;
   deadline: string;
   designDeadline: string;
+  depositRequired: boolean;
   items: PurchaseOrderItemValues[];
 };
 
@@ -111,7 +112,7 @@ function reconcileRoster(prev: RosterRow[], desired: Array<{ sizeId: string; sle
   });
 }
 
-const AUTOSAVE_VERSION = 2;
+const AUTOSAVE_VERSION = 3;
 
 export function PurchaseOrderForm({
   opportunityId,
@@ -174,6 +175,8 @@ export function PurchaseOrderForm({
     values?.deadline && !isProductionDeadlinePreset(values.deadline, orderDate) ? "CUSTOM" : "PRESET"
   ));
   const [designDeadline, setDesignDeadline] = useState(values?.designDeadline ?? "");
+  // Checkbox Deposit: gate tombol Isi Deposit di tab PO; dapat dicentang sebelum draft terbuat.
+  const [depositRequired, setDepositRequired] = useState(values?.depositRequired ?? false);
   const [hasChangedOrderDate, setHasChangedOrderDate] = useState(false);
   const [previewState, setPreviewState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
   const deadlineOptions = useMemo(
@@ -191,7 +194,7 @@ export function PurchaseOrderForm({
     try {
       const raw = localStorage.getItem(autosaveKey);
       if (!raw) return;
-      const saved = JSON.parse(raw) as { v: number; header: typeof header; items: PurchaseOrderItemValues[] };
+      const saved = JSON.parse(raw) as { v: number; header: typeof header; items: PurchaseOrderItemValues[]; depositRequired?: boolean };
       if (saved?.v !== AUTOSAVE_VERSION || !Array.isArray(saved.items) || !saved.items.length) return;
       setHeader((prev) => ({ ...prev, ...saved.header }));
       setItems(saved.items.map((item, index) => ({
@@ -201,6 +204,7 @@ export function PurchaseOrderForm({
         matrix: { ...emptyMatrix(sizeOptions), ...item.matrix },
         roster: (item.roster ?? []).map((row, rowIndex) => ({ ...row, key: row.key || `saved-${rowIndex}-${row.memberId}` })),
       })));
+      setDepositRequired(Boolean(saved.depositRequired));
       setRestoredDraft(true);
     } catch { /* Abaikan draft rusak. */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,6 +221,7 @@ export function PurchaseOrderForm({
         localStorage.setItem(autosaveKey, JSON.stringify({
           v: AUTOSAVE_VERSION,
           header,
+          depositRequired,
           items: items.map(({ key, name, productCategoryId, decorationMethods, designNotes, matrix, rosterMode, roster, accessoryQuantity }) => ({
             key, name, productCategoryId, decorationMethods, designNotes, matrix, rosterMode,
             roster: roster.map(({ key: rowKey, memberId, name: rowName, sizeId, sleeveLength }) => ({ key: rowKey, memberId, name: rowName, sizeId, sleeveLength })),
@@ -226,7 +231,7 @@ export function PurchaseOrderForm({
       } catch { /* Penyimpanan penuh, abaikan. */ }
     }, 800);
     return () => clearTimeout(timer);
-  }, [header, items, formState.ok, autosaveKey]);
+  }, [header, items, depositRequired, formState.ok, autosaveKey]);
 
   function updateItem(key: string, patch: Partial<PurchaseOrderItemValues>) {
     setItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)));
@@ -417,6 +422,15 @@ export function PurchaseOrderForm({
               <FieldDescription>Dihitung dari tanggal order, atau pilih tanggal kustom sesuai kebutuhan.</FieldDescription>
             </Field>
             <Field><FieldLabel htmlFor={`po-design-deadline-${fieldKey}`} required>Deadline upload desain</FieldLabel><Input id={`po-design-deadline-${fieldKey}`} name="designDeadline" type="date" required min={selectedOrderDate || jakartaToday()} value={designDeadline} onChange={(event) => setDesignDeadline(event.currentTarget.value)} /></Field>
+            <Field>
+              <FieldLabel htmlFor={`po-deposit-required-${fieldKey}`}>Deposit</FieldLabel>
+              <label className={cn("flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-sm transition-colors", depositRequired ? "border-primary bg-primary/10 font-medium" : "text-muted-foreground hover:bg-muted/50")}>
+                <Checkbox checked={depositRequired} onCheckedChange={(checked) => setDepositRequired(checked)} aria-label="PO ini memerlukan deposit" />
+                Perlu deposit
+                <input id={`po-deposit-required-${fieldKey}`} type="checkbox" name="depositRequired" checked={depositRequired} readOnly className="sr-only" />
+              </label>
+              <FieldDescription>Centang bila customer membayar deposit desain. Tombol Isi Deposit di tab PO muncul hanya untuk PO yang dicentang.</FieldDescription>
+            </Field>
             {effectiveGarmentType === "JERSEY" ? (
               <Field><FieldLabel htmlFor={`po-sample-size-${fieldKey}`}>Ukuran sampel</FieldLabel><NativeSelect id={`po-sample-size-${fieldKey}`} name="sampleSize" value={header.sampleSize} onChange={(event) => setHeader((prev) => ({ ...prev, sampleSize: event.target.value }))}><NativeSelectOption value="">Tanpa ukuran sampel</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.name}>{size.name}</NativeSelectOption>)}</NativeSelect></Field>
             ) : null}

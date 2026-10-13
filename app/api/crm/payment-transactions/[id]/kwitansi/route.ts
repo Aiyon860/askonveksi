@@ -1,4 +1,4 @@
-import { CRM_ROLES } from "@/lib/auth/permissions";
+import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { createReceiptPdf } from "@/lib/crm/receipt-pdf";
 import { entityIdSchema } from "@/lib/crm/validation";
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireActor(CRM_ROLES);
+    await requireActor(CRM_VIEW_ROLES);
   } catch {
     return new Response("Anda harus masuk.", { status: 401 });
   }
