@@ -31,7 +31,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!parsed.success) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
   const prisma = getPrismaClient();
-  const [invoice, currentBusiness] = await Promise.all([prisma.invoice.findUnique({
+  const [invoice, currentBusiness, paymentMethods, settingPoints] = await Promise.all([prisma.invoice.findUnique({
     where: { id: parsed.data },
     select: {
       invoiceNo: true,
@@ -53,6 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       snapshotBankAccountHolder: true,
       snapshotSignatureName: true,
       snapshotSignatureTitle: true,
+      snapshotSignaturePath: true,
       discountType: true,
       discountValue: true,
       subtotal: true,
@@ -64,22 +65,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       createdAt: true,
       issuedAt: true,
       dueAt: true,
-      notes: true,
       purchaseOrder: { select: { purchaseOrderNo: true } },
       items: {
         select: {
           productName: true, size: true, description: true, quantity: true, unitPrice: true, grossAmount: true,
           discountPercent: true, discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
+          addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } },
         },
         orderBy: { position: "asc" },
       },
       salesOrder: { select: { payment: { select: { transactions: { select: { amount: true, status: true } } } } } },
     },
-  }), prisma.businessProfile.findUnique({ where: { id: "default" } })]);
+  }), prisma.businessProfile.findUnique({ where: { id: "default" } }), prisma.paymentMethod.findMany({ where: { isActive: true }, orderBy: { position: "asc" }, select: { name: true, description: true } }),
+    // Poin master "Pengaturan invoice" dibaca langsung (live), sama seperti daftar metode pembayaran.
+    prisma.invoiceSettingPoint.findMany({ orderBy: [{ section: "asc" }, { position: "asc" }], select: { section: true, text: true, isBold: true } })]);
   if (!invoice) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
-  const profile = invoice.status === "DRAFT" ? currentBusiness : null;
-  const logoPath = invoice.status === "DRAFT" ? profile?.logoPath : invoice.snapshotBusinessLogoPath;
+  // Kop identitas memakai snapshot lebih dulu; kolom snapshot yang masih kosong (invoice lama,
+  // dibuat sebelum profil perusahaan diisi) jatuh ke profil terkini supaya kopnya tidak polos.
+  const logoPath = invoice.status === "DRAFT" ? currentBusiness?.logoPath : invoice.snapshotBusinessLogoPath ?? currentBusiness?.logoPath;
   let logoBytes: Uint8Array | undefined;
   if (logoPath) {
     const { data } = await createAdminClient().storage.from("business-assets").download(logoPath);
@@ -87,19 +91,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { logoBytes = undefined; }
     }
   }
+  const signaturePath = invoice.snapshotSignaturePath ?? currentBusiness?.signaturePath ?? null;
+  let signatureBytes: Uint8Array | undefined;
+  if (signaturePath) {
+    const { data } = await createAdminClient().storage.from("business-assets").download(signaturePath);
+    if (data) {
+      try { signatureBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { signatureBytes = undefined; }
+    }
+  }
   const pdf = await createInvoicePdf({
     ...invoice,
-    snapshotBusinessName: invoice.snapshotBusinessName ?? profile?.name ?? "AS Konveksi",
-    snapshotBusinessPhone: invoice.snapshotBusinessPhone ?? profile?.phone ?? null,
-    snapshotBusinessEmail: invoice.snapshotBusinessEmail ?? profile?.email ?? null,
-    snapshotBusinessAddress: invoice.snapshotBusinessAddress ?? profile?.address ?? null,
-    snapshotBankName: invoice.snapshotBankName ?? profile?.bankName ?? null,
-    snapshotBankAccountNumber: invoice.snapshotBankAccountNumber ?? profile?.bankAccountNumber ?? null,
-    snapshotBankAccountHolder: invoice.snapshotBankAccountHolder ?? profile?.bankAccountHolder ?? null,
-    snapshotSignatureName: invoice.snapshotSignatureName ?? profile?.signatureName ?? null,
-    snapshotSignatureTitle: invoice.snapshotSignatureTitle ?? profile?.signatureTitle ?? null,
-    notes: invoice.notes ?? profile?.invoiceNotes ?? null,
-  }, logoBytes);
+    snapshotBusinessName: invoice.snapshotBusinessName ?? currentBusiness?.name ?? "AS Konveksi",
+    snapshotBusinessPhone: invoice.snapshotBusinessPhone ?? currentBusiness?.phone ?? null,
+    snapshotBusinessEmail: invoice.snapshotBusinessEmail ?? currentBusiness?.email ?? null,
+    snapshotBusinessAddress: invoice.snapshotBusinessAddress ?? currentBusiness?.address ?? null,
+    snapshotSignatureName: invoice.snapshotSignatureName ?? currentBusiness?.signatureName ?? null,
+    snapshotSignatureTitle: invoice.snapshotSignatureTitle ?? currentBusiness?.signatureTitle ?? null,
+  }, { logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints });
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",

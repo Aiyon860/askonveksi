@@ -74,6 +74,21 @@ export const bulkUpdateMasterDataSchema = z
   .min(1, "Minimal satu data harus tersedia.")
   .max(1_000, "Terlalu banyak data untuk diperbarui sekaligus.");
 
+export const INVOICE_SETTING_POINTS_MAX = 20;
+export const INVOICE_SETTING_POINT_TEXT_MAX = 300;
+
+const invoiceSettingPointSchema = z.object({
+  id: optionalEntityId,
+  text: z.string().trim().min(2, "Poin minimal 2 karakter.").max(INVOICE_SETTING_POINT_TEXT_MAX, `Poin maksimal ${INVOICE_SETTING_POINT_TEXT_MAX} karakter.`),
+  bold: z.boolean(),
+});
+
+/** Payload satu form berisi dua kolom master: keterangan dan syarat & ketentuan. */
+export const invoiceSettingsSchema = z.object({
+  keterangan: z.array(invoiceSettingPointSchema).max(INVOICE_SETTING_POINTS_MAX, `Maksimal ${INVOICE_SETTING_POINTS_MAX} poin keterangan.`),
+  syarat: z.array(invoiceSettingPointSchema).max(INVOICE_SETTING_POINTS_MAX, `Maksimal ${INVOICE_SETTING_POINTS_MAX} poin syarat & ketentuan.`),
+});
+
 export const productCategoryFieldsSchema = z.object({
   name: masterDataFieldsSchema.shape.name,
   kind: z.enum(["JERSEY", "NON_JERSEY", "AKSESORI"], { message: "Jenis kategori wajib dipilih." }),
@@ -191,6 +206,11 @@ export const addCommunicationActivitySchema = z
     }
   });
 
+export const invoiceAddonSchema = z.object({
+  label: z.string().trim().min(2, "Keterangan add on minimal 2 karakter.").max(120),
+  unitAmount: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga add on tidak valid."),
+});
+
 export const invoiceItemSchema = z.object({
   purchaseOrderSizeId: entityIdSchema,
   productName: z.string().trim().min(2, "Produk minimal 2 karakter.").max(120),
@@ -203,6 +223,7 @@ export const invoiceItemSchema = z.object({
     (v) => (v === undefined || v === null || v === "" ? "0" : v),
     z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Diskon per item tidak valid."),
   ),
+  addons: z.array(invoiceAddonSchema).max(5, "Maksimal 5 add on per baris.").default([]),
 });
 
 export const invoiceDraftSchema = z.object({
@@ -432,9 +453,6 @@ export const businessProfileSchema = z.object({
     z.email("Format email perusahaan tidak valid.").trim().max(320).optional(),
   ),
   address: optionalText(2000),
-  bankName: optionalText(120),
-  bankAccountNumber: optionalText(60),
-  bankAccountHolder: optionalText(160),
   signatureName: optionalText(160),
   signatureTitle: optionalText(120),
   invoiceNotes: optionalText(2000),

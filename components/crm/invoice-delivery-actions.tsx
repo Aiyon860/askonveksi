@@ -1,7 +1,6 @@
 "use client";
 
 import { Copy, Download, MessageCircle, Receipt } from "lucide-react";
-import Link from "next/link";
 import { useState, useTransition } from "react";
 
 import { getInvoiceWhatsAppMessageAction, sendInvoiceWhatsAppAction } from "@/app/actions/whatsapp";
@@ -54,11 +53,11 @@ export function InvoiceDeliveryActions({ invoiceId, invoiceNo, compact = false, 
         <Copy aria-hidden="true" />{compact ? null : "Salin pesan invoice"}
       </Button>
       {receipts.map((receipt) => (
-        <Button key={receipt.id} size={compact ? "icon" : "default"} variant={compact ? "ghost" : "success"} render={<Link href={`/api/crm/payment-transactions/${receipt.id}/kwitansi`} />} nativeButton={false} aria-label={`${receipt.label} ${invoiceNo}`} title={receipt.label} className={buttonClass}>
+        <Button key={receipt.id} size={compact ? "icon" : "default"} variant={compact ? "ghost" : "success"} render={<a href={`/api/crm/payment-transactions/${receipt.id}/kwitansi`} download />} nativeButton={false} aria-label={`${receipt.label} ${invoiceNo}`} title={receipt.label} className={buttonClass}>
           <Receipt aria-hidden="true" />{compact ? null : receipt.label}
         </Button>
       ))}
-      <Button size={compact ? "icon" : "default"} variant={compact ? "ghost" : "outline"} render={<Link href={`/api/crm/invoice/${invoiceId}/pdf`} />} nativeButton={false} aria-label={`Unduh Invoice ${invoiceNo}`} title="Unduh Invoice" className={buttonClass}>
+      <Button size={compact ? "icon" : "default"} variant={compact ? "ghost" : "outline"} render={<a href={`/api/crm/invoice/${invoiceId}/pdf`} download />} nativeButton={false} aria-label={`Unduh Invoice ${invoiceNo}`} title="Unduh Invoice" className={buttonClass}>
         <Download aria-hidden="true" />{compact ? null : "Unduh Invoice"}
       </Button>
       <Dialog open={fallbackOpen} onOpenChange={setFallbackOpen}>

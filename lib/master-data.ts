@@ -125,6 +125,15 @@ export async function getActiveGarmentSizes() {
   });
 }
 
+/** Poin master "Pengaturan invoice" untuk halaman editor (dua kolom, urutan manual). */
+export async function getInvoiceSettingPoints() {
+  await requireActor(MASTER_DATA_ROLES);
+  return getPrismaClient().invoiceSettingPoint.findMany({
+    select: { id: true, section: true, text: true, isBold: true, position: true },
+    orderBy: [{ section: "asc" }, { position: "asc" }],
+  });
+}
+
 export async function getBusinessProfile() {
   await requireActor(MASTER_DATA_ROLES);
   return getPrismaClient().businessProfile.findUnique({ where: { id: "default" } });

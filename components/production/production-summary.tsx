@@ -30,7 +30,9 @@ export function ProductionSummary({
   const stages: ProductionBoardColumn[] = [...productionStagesForGroup(group), RETUR_COLUMN];
   const today = new Date().setHours(0, 0, 0, 0);
   const overdue = items.filter((item) => item.status === "ACTIVE" && new Date(item.deadline).getTime() < today).length;
-  const needsRepair = items.filter((item) => item.needsRepair).length;
+  // Parkir di kolom Retur: kartu tidak dihitung lagi di kolom tahapnya.
+  const parked = (item: SummaryItem) => item.status === "ACTIVE" && item.needsRepair;
+  const needsRepair = items.filter(parked).length;
   const retur = needsRepair;
 
   return (
@@ -48,7 +50,7 @@ export function ProductionSummary({
             key={stage}
             className="min-h-20 min-w-0 gap-2 p-2.5 sm:p-3 [&_dd]:text-lg [&_dt]:text-xs"
             label={<Badge variant={STAGE_BADGE_VARIANT[stage]} className="max-w-full truncate px-1.5 text-[11px]">{stage === RETUR_COLUMN ? "Retur" : stageLabelForGroup(stage, group)}</Badge>}
-            value={stage === RETUR_COLUMN ? needsRepair : items.filter((item) => item.currentStage === stage).length}
+            value={stage === RETUR_COLUMN ? needsRepair : items.filter((item) => item.currentStage === stage && !parked(item)).length}
           />
         ))}
       </MetricGroup>

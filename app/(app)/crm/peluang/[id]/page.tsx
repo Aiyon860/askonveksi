@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Suspense } from "react";
+import { Fragment, Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CheckCircle2, FileDown, FileText, Paperclip, Save } from "lucide-react";
 
@@ -119,6 +119,18 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const inNegotiation = opportunity.stage === "NEGOSIASI";
   const poDraft = opportunity.purchaseOrders.find((item) => item.status === "DRAFT");
   const agreedPo = opportunity.purchaseOrders.find((item) => item.status === "AGREED");
+  // Objek PO mentah mengandung Decimal (mis. deposit.amount) yang tidak boleh
+  // dikirim sebagai prop ke Client Component; form invoice hanya butuh field ini.
+  const invoicePo = agreedPo
+    ? {
+        id: agreedPo.id,
+        purchaseOrderNo: agreedPo.purchaseOrderNo,
+        productName: agreedPo.productName,
+        garmentType: agreedPo.garmentType,
+        items: agreedPo.items.map((item) => ({ id: item.id, name: item.name, garmentType: item.garmentType })),
+        sizes: agreedPo.sizes.map((size) => ({ id: size.id, itemId: size.itemId, size: size.size, sleeveLength: size.sleeveLength, quantity: size.quantity })),
+      }
+    : undefined;
   const cancelledPo = opportunity.purchaseOrders.find((item) => item.status === "CANCELLED");
   const invoiceDraft = opportunity.invoices.find((item) => item.status === "DRAFT");
   const cancelledInvoice = opportunity.invoices.find((item) => item.status === "CANCELLED");
@@ -356,15 +368,15 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             </Empty>
            ) : (
             <div className="flex min-w-0 max-w-full flex-col gap-6">
-              {canOperate && inNegotiation && agreedPo && !invoiceDraft && !issuedInvoice ? (
+              {canOperate && inNegotiation && agreedPo && invoicePo && !invoiceDraft && !issuedInvoice ? (
                 <InvoiceForm
                   opportunityId={opportunity.id}
-                  purchaseOrder={agreedPo}
+                  purchaseOrder={invoicePo}
                 />
               ) : null}
               {opportunity.invoices.map((invoice) => {
-                const invoicePo = opportunity.purchaseOrders.find((item) => item.id === invoice.purchaseOrderId);
-                const editableInvoicePo = invoice.purchaseOrderId === agreedPo?.id ? agreedPo : null;
+                const invoiceSourcePo = opportunity.purchaseOrders.find((item) => item.id === invoice.purchaseOrderId);
+                const editableInvoicePo = invoice.purchaseOrderId === agreedPo?.id ? (invoicePo ?? null) : null;
                 // Kwitansi tersedia untuk pembayaran yang sudah dibayar (awal + termin).
                 const invoiceReceipts = invoice.salesOrder?.payment
                   ? [
@@ -384,6 +396,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     quantity: item.quantity,
                     unitPrice: item.unitPrice.toString(),
                     discountPercent: item.discountPercent?.toString() ?? invoice.discountValue.toString(),
+                    addons: item.addons.map((addon) => ({ label: addon.label, amount: addon.unitAmount.toString() })),
                   })),
                 };
                 return (
@@ -395,7 +408,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       invoiceRevision={invoice.revision}
                       invoiceStatus={invoice.status}
                       title={`${invoice.invoiceNo} · ${documentRevisionLabel(invoice.revision)}`}
-                      description={`Berdasarkan ${invoicePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
+                      description={`Berdasarkan ${invoiceSourcePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
                       canOperate={canOperate}
                       canCancel={canCancelDocuments}
                       inNegotiation={inNegotiation}
@@ -529,11 +542,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Catatan desain</dt><dd className="mt-1 whitespace-pre-wrap">{purchaseOrder.designNotes ?? "-"}</dd></div>
         <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Catatan lain</dt><dd className="mt-1 whitespace-pre-wrap">{purchaseOrder.notes ?? "-"}</dd></div>
       </dl>
-      {isAccessory ? (
-        <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <div><dt className="text-xs text-muted-foreground">Jumlah produk</dt><dd className="mt-1 font-mono">{total.toLocaleString("id-ID")}</dd></div>
-        </dl>
-      ) : purchaseOrder.items.length > 1 ? (
+      {purchaseOrder.items.length > 1 ? (
         <div className="flex flex-col gap-4">
           {purchaseOrder.items.map((poItem) => {
             const itemSizes = purchaseOrder.sizes.filter((row) => row.itemId === poItem.id);
@@ -558,6 +567,10 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
             );
           })}
         </div>
+      ) : isAccessory ? (
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <div><dt className="text-xs text-muted-foreground">Jumlah produk</dt><dd className="mt-1 font-mono">{total.toLocaleString("id-ID")}</dd></div>
+        </dl>
       ) : (
       <Table containerClassName="rounded-lg border">
         <TableHeader><TableRow><TableHead>Model</TableHead>{sizeNames.map((size) => <TableHead key={size} className="text-center">{size}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
@@ -573,7 +586,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
               size="sm"
               variant="outline"
               className="h-auto min-h-9 max-w-full shrink justify-start whitespace-normal py-2 text-left leading-5"
-              render={<Link href={`/api/crm/purchase-order/${purchaseOrder.id}/attachments/${attachment.id}`} />}
+              render={<a href={`/api/crm/purchase-order/${purchaseOrder.id}/attachments/${attachment.id}`} download />}
               nativeButton={false}
             >
               <Paperclip data-icon="inline-start" aria-hidden="true" />
@@ -591,7 +604,10 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
     <div className="flex flex-col gap-4">
       <Table>
         <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
-        <TableBody>{invoice.items.map((item) => <TableRow key={item.id}><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>)}</TableBody>
+        <TableBody>{invoice.items.map((item) => <Fragment key={item.id}>
+          <TableRow><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>
+          {item.addons.map((addon) => <TableRow key={`${item.id}-${addon.label}`}><TableCell className="pl-6 text-muted-foreground">+ {addon.label}</TableCell><TableCell className="text-muted-foreground">{item.quantity} × {formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{item.quantity}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono text-muted-foreground">-</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(Number(addon.unitAmount.toString()) * item.quantity)}</TableCell></TableRow>)}
+        </Fragment>)}</TableBody>
       </Table>
       <dl className="ml-auto grid w-full max-w-xs gap-2 text-sm">
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-mono">{formatCurrency(invoice.subtotal)}</dd></div>

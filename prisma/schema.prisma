@@ -126,6 +126,12 @@ enum DiscountType {
   PERCENTAGE
 }
 
+// Dua kolom master "Pengaturan invoice": poin keterangan dan poin syarat & ketentuan.
+enum InvoiceSettingSection {
+  KETERANGAN
+  SYARAT_KETENTUAN
+}
+
 enum PurchaseOrderStatus {
   DRAFT
   AGREED
@@ -429,9 +435,7 @@ model BusinessProfile {
   email                  String?  @db.VarChar(320)
   address                String?  @db.Text
   logoPath               String?  @db.VarChar(500)
-  bankName               String?  @db.VarChar(120)
-  bankAccountNumber      String?  @db.VarChar(60)
-  bankAccountHolder      String?  @db.VarChar(160)
+  signaturePath          String?  @db.VarChar(500)
   signatureName          String?  @db.VarChar(160)
   signatureTitle         String?  @db.VarChar(120)
   invoiceNotes           String?  @db.Text
@@ -794,6 +798,7 @@ model Invoice {
   snapshotBankAccountHolder String?                @db.VarChar(160)
   snapshotSignatureName    String?                 @db.VarChar(160)
   snapshotSignatureTitle   String?                 @db.VarChar(120)
+  snapshotSignaturePath    String?                 @db.VarChar(500)
   discountType             DiscountType            @default(NONE)
   discountValue            Decimal                 @default(0) @db.Decimal(7, 4)
   subtotal                 Decimal                 @db.Decimal(18, 2)
@@ -844,11 +849,25 @@ model InvoiceItem {
   subtotal          Decimal       @db.Decimal(18, 2)
   invoice           Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   garmentSize       GarmentSize?  @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  addons            InvoiceItemAddon[]
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
 
   @@unique([invoiceId, position])
   @@index([invoiceId])
   @@index([sizeId])
+}
+
+model InvoiceItemAddon {
+  id            String      @id @default(cuid())
+  invoiceItemId String
+  position      Int
+  label         String      @db.VarChar(120)
+  unitAmount    Decimal     @db.Decimal(18, 2)
+  invoiceItem   InvoiceItem @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@unique([invoiceItemId, position])
+  @@index([invoiceItemId])
 }
 
 model SalesOrder {
@@ -928,8 +947,11 @@ model ProductionWorkOrder {
   currentStage      ProductionStage
   status            ProductionWorkOrderStatus @default(ACTIVE)
   sampleRevision    Int                       @default(1)
+  /// true = kartu sedang parkir di kolom Retur kanban; dilepas saat Admin menyeretnya keluar.
   needsRepair       Boolean                   @default(false)
+  /// Penanda status Retur (badge + alasan di kartu); menempel permanen, hanya diganti saat Retur berikutnya.
   repairReason      String?                   @db.Text
+  /// Waktu Retur dicatat; tetap tersimpan sebagai riwayat walau kartu sudah Selesai.
   repairRequestedAt DateTime?                 @db.Timestamptz(3)
   obstacle          String?                   @db.VarChar(2000)
   obstacleUpdatedAt DateTime?                 @db.Timestamptz(3)
@@ -1342,4 +1364,18 @@ model SequenceCounter {
   key       String   @id @db.VarChar(64)
   value     Int
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// Master "Pengaturan invoice": dua kolom (keterangan & syarat/ketentuan) berisi poin
+// yang dicetak pada PDF invoice, dengan urutan manual dan penanda tebal per poin.
+model InvoiceSettingPoint {
+  id        String                @id @default(cuid())
+  section   InvoiceSettingSection
+  text      String                @db.VarChar(300)
+  isBold    Boolean               @default(false)
+  position  Int                   @default(0)
+  createdAt DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime              @updatedAt @db.Timestamptz(3)
+
+  @@index([section, position])
 }

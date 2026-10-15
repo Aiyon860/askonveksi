@@ -13,6 +13,7 @@ import {
   bulkUpdateProductCategoriesSchema,
   businessProfileSchema,
   firstValidationMessage,
+  invoiceSettingsSchema,
   productCategoryFieldsSchema,
   sortableMasterDataFieldsSchema,
 } from "@/lib/crm/validation";
@@ -745,6 +746,95 @@ async function importProductCategoryRows(actorId: string, rows: MasterDataExcelR
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
+type InvoiceSettingGroups = Array<{ section: "KETERANGAN" | "SYARAT_KETENTUAN"; rows: Array<{ id?: string | undefined; text: string; bold: boolean }> }>;
+
+/**
+ * Simpan dua kolom master "Pengaturan invoice" sekaligus.
+ * Baris yang tidak lagi dikirim form dianggap dihapus user, sisanya diperbarui di
+ * tempat (id tetap) supaya jejak audit per poin tidak hilang.
+ */
+export async function saveInvoiceSettingsAction(formData: FormData) {
+  return runRedirectingAction("/master-data/invoice-settings", async () => {
+    const actor = await requireActor(MASTER_DATA_ROLES);
+    const rawPoints = formData.get("points");
+    if (typeof rawPoints !== "string" || rawPoints.length > 60_000) {
+      throw new UserFacingError("Data pengaturan invoice tidak valid. Muat ulang lalu coba lagi.");
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawPoints);
+    } catch {
+      throw new UserFacingError("Data pengaturan invoice tidak valid. Muat ulang lalu coba lagi.");
+    }
+
+    const parsed = invoiceSettingsSchema.safeParse(payload);
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    const groups: InvoiceSettingGroups = [
+      { section: "KETERANGAN", rows: parsed.data.keterangan },
+      { section: "SYARAT_KETENTUAN", rows: parsed.data.syarat },
+    ];
+    const submittedIds = groups.flatMap((group) => group.rows.flatMap((row) => (row.id ? [row.id] : [])));
+    if (new Set(submittedIds).size !== submittedIds.length) {
+      throw new UserFacingError("Poin pengaturan invoice tidak boleh duplikat. Muat ulang lalu coba lagi.");
+    }
+
+    await getPrismaClient().$transaction(async (tx) => {
+      const currentRows = await tx.invoiceSettingPoint.findMany({
+        select: { id: true, section: true, text: true, isBold: true, position: true },
+      });
+      const currentById = new Map(currentRows.map((row) => [row.id, row]));
+      const keptIds = new Set<string>();
+
+      for (const { section, rows } of groups) {
+        for (const [position, row] of rows.entries()) {
+          const current = row.id ? currentById.get(row.id) : undefined;
+          if (row.id && !current) throw new UserFacingError("Poin pengaturan invoice sudah berubah. Muat ulang lalu coba lagi.");
+          if (!current) {
+            const created = await tx.invoiceSettingPoint.create({
+              data: { section, text: row.text, isBold: row.bold, position },
+              select: { id: true },
+            });
+            keptIds.add(created.id);
+            await tx.auditEvent.create({
+              data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: created.id, action: "INVOICE_SETTING_POINT_CREATED", changedFields: ["section", "text", "isBold", "position"] },
+            });
+            continue;
+          }
+          keptIds.add(current.id);
+          const changedFields = [
+            current.section !== section ? "section" : null,
+            current.text !== row.text ? "text" : null,
+            current.isBold !== row.bold ? "isBold" : null,
+            current.position !== position ? "position" : null,
+          ].filter((field): field is string => field !== null);
+          if (!changedFields.length) continue;
+          await tx.invoiceSettingPoint.update({
+            where: { id: current.id },
+            data: { section, text: row.text, isBold: row.bold, position },
+          });
+          await tx.auditEvent.create({
+            data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: current.id, action: "INVOICE_SETTING_POINT_UPDATED", changedFields },
+          });
+        }
+      }
+
+      for (const row of currentRows) {
+        if (keptIds.has(row.id)) continue;
+        await tx.invoiceSettingPoint.delete({ where: { id: row.id } });
+        await tx.auditEvent.create({
+          data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: row.id, action: "INVOICE_SETTING_POINT_DELETED", changedFields: ["section", "text", "isBold", "position"] },
+        });
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    revalidatePath("/master-data/invoice-settings");
+    revalidatePath("/crm/invoices");
+    return flashMessagePath("/master-data/invoice-settings", "notice", "Pengaturan invoice berhasil disimpan.");
+  });
+}
+
 export async function createProductCategoryAction(formData: FormData) {
   return runRedirectingAction("/master-data/product-categories", async () => {
     const actor = await requireActor(MASTER_DATA_ROLES);
@@ -852,6 +942,17 @@ export async function deleteProductCategoryAction(formData: FormData) {
   });
 }
 
+async function readBusinessImage(file: File, label: string) {
+  if (file.size > 2 * 1024 * 1024) throw new UserFacingError(`${label} maksimal 2 MB.`);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const isPng = file.type === "image/png" && bytes.length >= 8 && bytes.slice(0, 8).every((byte, index) => byte === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index]);
+  const isJpeg = file.type === "image/jpeg" && bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const isWebp = file.type === "image/webp" && bytes.length >= 12 && new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" && new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
+  if (!isPng && !isJpeg && !isWebp) throw new UserFacingError(`${label} harus berupa PNG, JPG, atau WebP yang valid.`);
+  const extension = isPng ? "png" : isWebp ? "webp" : "jpg";
+  return { bytes, type: file.type, extension };
+}
+
 export async function updateBusinessProfileAction(formData: FormData) {
   return runRedirectingAction("/master-data/business-profile", async () => {
     const actor = await requireActor(MASTER_DATA_ROLES);
@@ -861,9 +962,6 @@ export async function updateBusinessProfileAction(formData: FormData) {
       phone: formData.get("phone"),
       email: formData.get("email"),
       address: formData.get("address"),
-      bankName: formData.get("bankName"),
-      bankAccountNumber: formData.get("bankAccountNumber"),
-      bankAccountHolder: formData.get("bankAccountHolder"),
       signatureName: formData.get("signatureName"),
       signatureTitle: formData.get("signatureTitle"),
       invoiceNotes: formData.get("invoiceNotes"),
@@ -871,19 +969,25 @@ export async function updateBusinessProfileAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
     const logo = formData.get("logo");
-    let uploadedPath: string | null = null;
+    let uploadedLogoPath: string | null = null;
     if (logo instanceof File && logo.size) {
-      if (logo.size > 2 * 1024 * 1024) throw new UserFacingError("Logo maksimal 2 MB.");
-      const bytes = new Uint8Array(await logo.arrayBuffer());
-      const isPng = logo.type === "image/png" && bytes.length >= 8 && bytes.slice(0, 8).every((byte, index) => byte === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index]);
-      const isJpeg = logo.type === "image/jpeg" && bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-      const isWebp = logo.type === "image/webp" && bytes.length >= 12 && new TextDecoder().decode(bytes.slice(0, 4)) === "RIFF" && new TextDecoder().decode(bytes.slice(8, 12)) === "WEBP";
-      if (!isPng && !isJpeg && !isWebp) throw new UserFacingError("Logo harus berupa PNG, JPG, atau WebP yang valid.");
-      const extension = isPng ? "png" : isWebp ? "webp" : "jpg";
-      uploadedPath = `business/logo-${randomUUID()}.${extension}`;
-      const { error } = await createAdminClient().storage.from("business-assets").upload(uploadedPath, bytes, { contentType: logo.type, upsert: false });
+      const image = await readBusinessImage(logo, "Logo");
+      uploadedLogoPath = `business/logo-${randomUUID()}.${image.extension}`;
+      const { error } = await createAdminClient().storage.from("business-assets").upload(uploadedLogoPath, image.bytes, { contentType: image.type, upsert: false });
       if (error) throw new UserFacingError("Logo belum dapat disimpan. Pastikan bucket business-assets sudah disiapkan.");
     }
+
+    // Gambar tanda tangan boleh diganti atau dihapus. File lama sengaja tidak
+    // ikut dihapus: path-nya sudah tersimpan di snapshot invoice yang terkunci.
+    const signature = formData.get("signature");
+    let uploadedSignaturePath: string | null = null;
+    if (signature instanceof File && signature.size) {
+      const image = await readBusinessImage(signature, "Gambar tanda tangan");
+      uploadedSignaturePath = `business/signature-${randomUUID()}.${image.extension}`;
+      const { error } = await createAdminClient().storage.from("business-assets").upload(uploadedSignaturePath, image.bytes, { contentType: image.type, upsert: false });
+      if (error) throw new UserFacingError("Gambar tanda tangan belum dapat disimpan. Pastikan bucket business-assets sudah disiapkan.");
+    }
+    const removeSignature = formData.get("removeSignature") === "1" && !uploadedSignaturePath;
 
     try {
       await getPrismaClient().$transaction(async (tx) => {
@@ -896,23 +1000,23 @@ export async function updateBusinessProfileAction(formData: FormData) {
             phone: parsed.data.phone,
             email: parsed.data.email?.toLowerCase(),
             address: parsed.data.address,
-            bankName: parsed.data.bankName,
-            bankAccountNumber: parsed.data.bankAccountNumber,
-            bankAccountHolder: parsed.data.bankAccountHolder,
             signatureName: parsed.data.signatureName,
             signatureTitle: parsed.data.signatureTitle,
             invoiceNotes: parsed.data.invoiceNotes,
-            ...(uploadedPath ? { logoPath: uploadedPath } : {}),
+            ...(uploadedLogoPath ? { logoPath: uploadedLogoPath } : {}),
+            ...(uploadedSignaturePath ? { signaturePath: uploadedSignaturePath } : {}),
+            ...(removeSignature ? { signaturePath: null } : {}),
             version: { increment: 1 },
           },
         });
         if (updated.count !== 1) throw new UserFacingError("Profil perusahaan sudah berubah. Muat ulang halaman.");
         await tx.auditEvent.create({
-          data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "bankName", "bankAccountNumber", "bankAccountHolder", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedPath ? ["logoPath"] : [])] },
+          data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedLogoPath ? ["logoPath"] : []), ...(uploadedSignaturePath || removeSignature ? ["signaturePath"] : [])] },
         });
       });
     } catch (error) {
-      if (uploadedPath) await createAdminClient().storage.from("business-assets").remove([uploadedPath]);
+      if (uploadedLogoPath) await createAdminClient().storage.from("business-assets").remove([uploadedLogoPath]);
+      if (uploadedSignaturePath) await createAdminClient().storage.from("business-assets").remove([uploadedSignaturePath]);
       throw error;
     }
     revalidatePath("/master-data/business-profile");

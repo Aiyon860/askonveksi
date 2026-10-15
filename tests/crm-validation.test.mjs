@@ -275,6 +275,80 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
   assert.match(actionSource, /taxPercent: formValue\(formData, "taxPercent"\)/);
 });
 
+test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", async () => {
+  const itemBase = {
+    purchaseOrderSizeId: "cm123456789012",
+    productName: "Jaket Polirevo",
+    size: "XL",
+    sleeveLength: "PANJANG",
+    description: "",
+    quantity: 2,
+    unitPrice: "100000",
+    discountPercent: "0",
+  };
+  const valid = invoiceDraftSchema.safeParse({
+    opportunityId: "cm123456789012",
+    purchaseOrderId: "cm123456789013",
+    discountPercent: "0",
+    taxPercent: "0",
+    items: [{ ...itemBase, addons: [{ label: "Kerah", unitAmount: "10000" }] }],
+  });
+  assert.equal(valid.success, true);
+  assert.equal(valid.data.items[0].addons.length, 1);
+
+  const withoutAddons = invoiceDraftSchema.safeParse({
+    opportunityId: "cm123456789012",
+    purchaseOrderId: "cm123456789013",
+    discountPercent: "0",
+    taxPercent: "0",
+    items: [{ ...itemBase }],
+  });
+  assert.equal(withoutAddons.success, true);
+  assert.deepEqual(withoutAddons.data.items[0].addons, []);
+
+  const tooMany = invoiceDraftSchema.safeParse({
+    opportunityId: "cm123456789012",
+    purchaseOrderId: "cm123456789013",
+    discountPercent: "0",
+    taxPercent: "0",
+    items: [{ ...itemBase, addons: Array.from({ length: 6 }, (_, index) => ({ label: `Add ${index}`, unitAmount: "1000" })) }],
+  });
+  assert.equal(tooMany.success, false);
+
+  const badLabel = invoiceDraftSchema.safeParse({
+    opportunityId: "cm123456789012",
+    purchaseOrderId: "cm123456789013",
+    discountPercent: "0",
+    taxPercent: "0",
+    items: [{ ...itemBase, addons: [{ label: "X", unitAmount: "1000" }] }],
+  });
+  assert.equal(badLabel.success, false);
+
+  const badAmount = invoiceDraftSchema.safeParse({
+    opportunityId: "cm123456789012",
+    purchaseOrderId: "cm123456789013",
+    discountPercent: "0",
+    taxPercent: "0",
+    items: [{ ...itemBase, addons: [{ label: "Kerah", unitAmount: "-5" }] }],
+  });
+  assert.equal(badAmount.success, false);
+
+  const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  assert.match(invoiceFormSource, /"Panjang"\} · \$\{poItem\.size\}/);
+  assert.match(invoiceFormSource, /item-\$\{rowIndex\}-addon-label/);
+  assert.match(invoiceFormSource, /item-\$\{rowIndex\}-addon-amount/);
+  assert.match(invoiceFormSource, /MAX_ADDONS_PER_ROW/);
+  assert.match(actionSource, /item-\$\{index\}-addon-label/);
+});
+
+test("constraint gross invoice mengizinkan add on sebagai batas bawah", async () => {
+  const migrationSource = await readFile(new URL("../prisma/migrations/20261014010000_invoice_addon_gross/migration.sql", import.meta.url), "utf8");
+  assert.match(migrationSource, /"grossAmount" >= round\(quantity::numeric \* "unitPrice", 2\)/);
+  assert.match(migrationSource, /"total" = "grossAmount" - "discountAmount"/);
+  assert.match(migrationSource, /SalesOrderItem_values_valid/);
+});
+
 test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () => {
   const itemBase = {
     key: "item-1",
@@ -516,6 +590,45 @@ test("Invoice terbit menetapkan deadline awal H+7 dan Deal memakai deadline Invo
   assert.match(actionSource, /const dueAt = addJakartaDays\(issuedAt, 7\)/);
   assert.match(actionSource, /issuedAt,\s*dueAt,/);
   assert.match(actionSource, /const initialDueAt = invoice\.dueAt \?\? addJakartaDays\(invoice\.issuedAt, 7\)/);
+});
+
+test("invoice DP terbayar berstatus Menunggu Pelunasan, bukan Belum Terbayar", async () => {
+  const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  const invoicesPageSource = await readFile(new URL("../app/(app)/crm/invoices/page.tsx", import.meta.url), "utf8");
+  // Mapper membedakan sisa tagihan yang pembayaran awalnya sudah tercatat.
+  assert.match(dataSource, /"PARTIAL" as const/);
+  assert.match(dataSource, /transactions: \{ where: \{ paymentTermId: null, status: "ACTIVE" \}/);
+  assert.match(invoicesPageSource, /Menunggu Pelunasan/);
+  assert.match(invoicesPageSource, /status === "PARTIAL"/);
+  // Tanpa pembayaran awal sama sekali tetap Belum Terbayar.
+  assert.match(invoicesPageSource, /Belum Terbayar/);
+});
+
+test("Detail Desain disembunyikan: hanya DEVELOPER yang bisa akses", async () => {
+  const productionActionSource = await readFile(new URL("../app/actions/production.ts", import.meta.url), "utf8");
+  const designDetailSource = await readFile(new URL("../lib/production/design-detail.ts", import.meta.url), "utf8");
+  const navSource = await readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8");
+  const serviceSource = await readFile(new URL("../lib/production/service.ts", import.meta.url), "utf8");
+  // 4 aksi desain (simpan/timpa/reset/kirim) khusus DEVELOPER; aksi kanban lain tidak ikut terkunci.
+  assert.equal((productionActionSource.match(/requireDeveloperActor\(\)/g) ?? []).length, 4);
+  assert.match(productionActionSource, /requireActor\(PRODUCTION_ROLES\)/);
+  assert.match(designDetailSource, /requireDeveloperActor\(\)/);
+  assert.doesNotMatch(designDetailSource, /DETAIL_DESIGN_VIEW_ROLES/);
+  // Menu hilang untuk selain DEVELOPER, entri tetap ada untuk DEVELOPER.
+  assert.match(navSource, /item\.href !== "\/detail-desain"/);
+  assert.match(navSource, /href: "\/detail-desain"/);
+  // WO langsung masuk Produksi saat dibuat agar kanban tetap terisi.
+  assert.match(serviceSource, /designCompletedAt: new Date\(\)/);
+});
+
+test("prop form invoice disanitasi: tanpa Decimal untuk Client Component", async () => {
+  const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  // Objek PO mentah mengandung Decimal (deposit.amount); form hanya menerima salinan field aman.
+  assert.doesNotMatch(detailPageSource, /purchaseOrder=\{agreedPo\}/);
+  assert.match(detailPageSource, /items: agreedPo\.items\.map\(\(item\) => \(\{/);
+  assert.match(detailPageSource, /sizes: agreedPo\.sizes\.map\(\(size\) => \(\{/);
+  assert.match(detailPageSource, /purchaseOrder=\{invoicePo\}/);
+  assert.match(detailPageSource, /editableInvoicePo = invoice\.purchaseOrderId === agreedPo\?\.id \? \(invoicePo \?\? null\) : null/);
 });
 
 test("Deal mengganti form dengan notifikasi setelah jadwal pembayaran tersimpan", async () => {
@@ -809,6 +922,9 @@ test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", asy
   assert.match(designActionSource, /storage\.from\(BUCKET\)/);
   assert.match(designActionSource, /storage\.upload\(attachment\.path/);
   assert.doesNotMatch(designActionSource, /reviewDesignRevisionAction|APPROVED/);
+  const productionActionSource = await readFile(new URL("../app/actions/production.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(productionActionSource, /status: "APPROVED"/);
+  assert.doesNotMatch(productionActionSource, /disetujui tidak ditemukan/);
 });
 
 test("upload desain menolak file lebih dari 5 MB sebelum dikirim", async () => {
@@ -1082,8 +1198,27 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   const buttonSource = await readFile(new URL("../components/crm/purchase-order-pdf-download-button.tsx", import.meta.url), "utf8");
   assert.match(routeSource, /variant.*penjahit.*customer/);
   assert.match(pdfSource, /PurchaseOrderPdfVariant/);
-  assert.match(pdfSource, /OVERDUE_RED/);
+  // Deadline selalu disorot merah + bold, bukan hanya saat lewat tanggal.
+  assert.match(pdfSource, /DEADLINE_RED/);
+  assert.match(pdfSource, /\{ label: "Deadline", value: formatDate\(data\.deadline\), highlight: true \}/);
+  // Kop ringkas: sel logo + tabel dua kolom, dan judul POLA di tengah bar bergaris.
+  assert.match(pdfSource, /HEADER_LOGO_CELL_WIDTH/);
+  assert.match(pdfSource, /borderColor: BORDER/);
+  assert.match(pdfSource, /x: \(A4\.width - bold\.widthOfTextAtSize\(polaText, 13\)\) \/ 2/);
+  // Size chart menahan ruang di halaman gambar desainnya.
+  assert.match(pdfSource, /drawAssets\(embeddedAssets\.filter\(\(asset\) => asset\.itemId === item\.id\), item\.name, measureModelTable\(rows\)\)/);
   assert.match(pdfSource, /drawModelTable/);
+  // Size chart selalu mencetak seluruh kolom ukuran baku (XS…5XL) + TOTAL/PENDEK/PANJANG/NOTE
+  // walau PO tidak memesan ukuran tersebut; ukuran di luar daftar tetap ditambahkan.
+  assert.match(pdfSource, /const SIZE_LADDER = \["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"\] as const/);
+  assert.match(pdfSource, /return \[\.\.\.SIZE_LADDER, \.\.\.extras\]/);
+  assert.match(pdfSource, /SIZE_CHART_NOTE_HEIGHT/);
+  // Halaman yang tidak terpakai dibuang: PO tidak boleh menyisakan halaman berisi footer saja.
+  assert.match(pdfSource, /const usedPages = new Set<PDFPage>\(\)/);
+  assert.match(pdfSource, /usedPages\.add\(page\)/);
+  assert.match(pdfSource, /document\.removePage\(document\.getPages\(\)\.indexOf\(candidate\)\)/);
+  // Paragraf tidak menyisakan label sendirian di dasar halaman (penyebab halaman kosong lama).
+  assert.match(pdfSource, /const blockHeight = 16 \+ lines\.length \* 16 \+ 6;\n\s*if \(y - blockHeight < margin\) addPage\(\);/);
   assert.match(buttonSource, /PDF Customer/);
   assert.match(buttonSource, /PDF Penjahit/);
 });
@@ -1103,9 +1238,10 @@ test("upload desain per produk menunggu deposit hanya bila PO memerlukannya", as
   const designSource = await readFile(new URL("../app/actions/design.ts", import.meta.url), "utf8");
   const dealFormSource = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
   const agreementSource = await readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8");
-  // Deposit nominal bebas kembali ke jenis jadwal.
-  assert.match(dealFormSource, /value="DEPOSIT"/);
-  assert.match(dealFormSource, /Nominal deposit/);
+  // Deposit dihapus dari dropdown jenis pembayaran Deal; jadwal deposit lama tetap valid di server.
+  assert.doesNotMatch(dealFormSource, /value="DEPOSIT"/);
+  assert.doesNotMatch(dealFormSource, /Nominal deposit/);
+  assert.doesNotMatch(dealFormSource, /isDeposit/);
   // Upload desain hanya menunggu deposit bila PO mencentang "Perlu deposit".
   assert.match(designSource, /assertDepositSettled\(task\.purchaseOrder, actor\.role\)/);
   assert.match(designSource, /if \(!purchaseOrder\.depositRequired \|\| purchaseOrder\.deposit \|\| hasRole\(role, GATE_OVERRIDE_ROLES\)\) return;/);
@@ -1123,6 +1259,9 @@ test("upload desain per produk menunggu deposit hanya bila PO memerlukannya", as
   assert.match(agreementSource, /Upload Desain/);
   assert.match(agreementSource, /Kirim 1 set PDF/);
   assert.match(agreementSource, /Sepakati PO terbaru/);
+  // PDF boleh dikirim berulang: tombol kirim tidak disembunyikan setelah terkirim.
+  assert.doesNotMatch(agreementSource, /\!designSentAt \?/);
+  assert.match(agreementSource, /designSentAt && !customerConfirmedAt/);
 });
 
 test("checkbox Deposit menjadi gate tombol Isi Deposit dan desain disimpan per produk", async () => {

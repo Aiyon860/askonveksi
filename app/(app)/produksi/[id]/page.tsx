@@ -47,6 +47,9 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   const boardHref = purchaseOrder?.productCategoryId
     ? `/produksi?jalur=${boardGroup}&kategori=${purchaseOrder.productCategoryId}`
     : `/produksi?jalur=${boardGroup}`;
+  // Penanda Retur menempel di kartu kanban; status Retur di sini tampil selama
+  // WO masih ACTIVE dan belum kembali Selesai (sama dengan warna merah di board).
+  const returActive = workOrder.status === "ACTIVE" && Boolean(workOrder.repairReason) && workOrder.currentStage !== "SELESAI";
 
   return (
     <>
@@ -54,7 +57,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
       <PageHeader
         title={workOrder.productName}
         description={`${workOrder.workOrderNo} · ${workOrder.salesOrder.salesOrderNo} · ${workOrder.salesOrder.snapshotCustomerName}`}
-        action={<Badge variant={workOrder.needsRepair ? "destructive" : workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{workOrder.needsRepair ? "Retur" : workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
+        action={<Badge variant={returActive ? "destructive" : workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{returActive ? "Retur" : workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
       />
       <PageMessage />
 
@@ -65,11 +68,11 @@ export default async function ProductionDetailPage({ params }: { params: Promise
         </Alert>
       ) : null}
 
-      {workOrder.needsRepair ? <div className="sticky top-0 z-10 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Retur — Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
+      {returActive ? <div className="sticky top-0 z-10 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Retur — Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
-          {designTask && designAttachments.length ? <Card><CardHeader><CardTitle>Desain final</CardTitle><CardDescription>Gunakan gambar ini sebagai acuan produksi. Arahkan kursor ke gambar untuk melihat detail.</CardDescription></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">{designAttachments.map((attachment) => <div key={attachment.id} className="flex min-w-0 flex-col gap-2"><PaymentProofPreview href={`/api/desain/${designTask.id}/attachments/${attachment.id}?inline=1`} mimeType={attachment.contentType} label={`Desain final ${attachment.originalName}`} thumbnailClassName="h-64 w-full bg-muted" imageClassName="object-cover" hoverLabel="Lihat detail desain" /><p className="truncate text-xs text-muted-foreground">{attachment.originalName}</p></div>)}</CardContent></Card> : null}
+          {designTask && designAttachments.length ? <Card><CardHeader><CardTitle>Desain final</CardTitle><CardDescription>Gunakan gambar ini sebagai acuan produksi. Arahkan kursor ke gambar untuk melihat detail.</CardDescription></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">{designAttachments.map((attachment) => <div key={attachment.id} className="flex min-w-0 flex-col gap-2"><PaymentProofPreview href={`/api/desain/${designTask.id}/attachments/${attachment.id}?inline=1`} mimeType={attachment.contentType} label={`Desain final ${attachment.originalName}`} thumbnailClassName="h-64 w-full bg-muted" imageClassName="object-cover" hoverLabel="Perbesar gambar" /><p className="truncate text-xs text-muted-foreground">{attachment.originalName}</p></div>)}</CardContent></Card> : null}
 
           <Card>
             <CardHeader><CardTitle>Tahapan produksi</CardTitle><CardDescription>PIC, percobaan, dan waktu kerja untuk setiap tahap.</CardDescription></CardHeader>

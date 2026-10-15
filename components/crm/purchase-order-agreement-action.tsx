@@ -144,30 +144,30 @@ export function PurchaseOrderAgreementAction({
           </Dialog>
         </>
       ) : null}
-      {!designSentAt ? (
-        <form action={markPurchaseOrderDesignSentAction} className="contents">
-          <input type="hidden" name="opportunityId" value={opportunityId} />
-          <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
-          <input type="hidden" name="version" value={version} />
-          <label className="flex w-auto cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs">
-            <input type="checkbox" name="customerConfirmed" value="yes" required className="h-3.5 w-3.5" />
-            Customer tidak ada revisi
-          </label>
-          <ConfirmSubmitButton
-            className="w-auto"
-            variant="outline"
-            disabled={!canSendPdf || undefined}
-            title={sendPdfBlockedReason ?? "Kirim 1 set PDF ke customer"}
-            pendingLabel="Menandai..."
-            confirmTitle="Kirim 1 set PDF ke customer?"
-            confirmDescription="Unduh PDF PO lalu kirim ke customer. Centang berarti customer menyatakan tidak ada revisi."
-            confirmLabel="Ya, sudah dikirim"
-          >
-            <Send data-icon="inline-start" aria-hidden="true" />
-            Kirim 1 set PDF
-          </ConfirmSubmitButton>
-        </form>
-      ) : !customerConfirmedAt ? (
+      {/* PDF boleh dikirim berulang: tombol kirim selalu tampil selama PO masih draft. */}
+      <form action={markPurchaseOrderDesignSentAction} className="contents">
+        <input type="hidden" name="opportunityId" value={opportunityId} />
+        <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
+        <input type="hidden" name="version" value={version} />
+        <label className="flex w-auto cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs">
+          <input type="checkbox" name="customerConfirmed" value="yes" required className="h-3.5 w-3.5" />
+          Customer tidak ada revisi
+        </label>
+        <ConfirmSubmitButton
+          className="w-auto"
+          variant="outline"
+          disabled={!canSendPdf || undefined}
+          title={sendPdfBlockedReason ?? "Kirim 1 set PDF ke customer"}
+          pendingLabel="Menandai..."
+          confirmTitle="Kirim 1 set PDF ke customer?"
+          confirmDescription="Unduh PDF PO lalu kirim ke customer. Centang berarti customer menyatakan tidak ada revisi."
+          confirmLabel="Ya, sudah dikirim"
+        >
+          <Send data-icon="inline-start" aria-hidden="true" />
+          Kirim 1 set PDF
+        </ConfirmSubmitButton>
+      </form>
+      {designSentAt && !customerConfirmedAt ? (
         <form action={confirmPurchaseOrderCustomerAction} className="contents">
           <input type="hidden" name="opportunityId" value={opportunityId} />
           <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />

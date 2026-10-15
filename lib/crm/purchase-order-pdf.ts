@@ -1,9 +1,10 @@
 import "server-only";
 
 import type { GarmentType } from "@prisma/client";
-import { PDFDocument, StandardFonts, degrees, rgb, type PDFImage, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 
 import { decorationMethodsLabel, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
+import { MIN_FONT_SIZE, clipPdfText, wrapPdfText } from "@/lib/crm/pdf-typography";
 
 export type PurchaseOrderPdfVariant = "customer" | "penjahit";
 
@@ -38,26 +39,62 @@ type PurchaseOrderPdfData = {
   rosterEntries: Array<{ itemId: string; memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
 
-type PdfAsset = { kind: string; label: string; originalName: string; contentType: string; bytes: Uint8Array };
+type PurchaseOrderPdfItem = PurchaseOrderPdfData["items"][number];
+
+// `itemId` mengikat gambar ke produknya; lampiran PO tanpa `itemId` (mis. bukti) tampil di lembar ringkasan.
+type PdfAsset = { kind: string; label: string; originalName: string; contentType: string; bytes: Uint8Array; itemId?: string | null };
 const A4 = { width: 595.28, height: 841.89 };
 const margin = 36;
+const CONTENT_WIDTH = A4.width - margin * 2;
+/** Sel logo di kiri tabel identitas; sisanya dibagi dua kolom data. */
+const HEADER_LOGO_CELL_WIDTH = 100;
+const HEADER_CELL_PADDING = 8;
+const HEADER_ROW_MIN_HEIGHT = 34;
+const HEADER_LINE_HEIGHT = 15;
+const TABLE_ROW_HEIGHT = 26;
+const HEADING_BAR_HEIGHT = 26;
+
+/**
+ * Daftar ukuran tetap pada size chart (sesuai referensi Owner): semua kolom selalu
+ * dicetak lengkap walau PO tidak memesan ukuran tersebut. Ukuran di luar daftar ini
+ * tetap ditambahkan sebagai kolom tambahan supaya jumlahnya tidak pernah hilang.
+ */
+const SIZE_LADDER = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"] as const;
+const SIZE_ALIASES: Record<string, string> = { XXL: "2XL", XXXL: "3XL", "3X": "3XL", XXXXL: "4XL", XXXXXL: "5XL" };
+
+function normalizeSize(name: string) {
+  const upper = name.trim().toUpperCase().replace(/\s+/g, " ");
+  return SIZE_ALIASES[upper] ?? upper;
+}
 
 function safe(value: string) {
-  return value.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\x7e\xa0-\xff]/g, "?");
+  // Tanda hubung panjang (—) WinAnsi valid, tapi lolos dari filter karakter → ubah dulu agar jadi "-".
+  return value.replace(/[\r\n\t]+/g, " ").replace(/—/g, "-").replace(/[^\x20-\x7e\xa0-\xff]/g, "?");
 }
 
+/** Format tanggal PO memakai nama hari, mis. "Sabtu, 29 Agustus 2026". */
 function formatDate(value: Date | null) {
-  return value ? new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeZone: "Asia/Jakarta" }).format(value) : "-";
+  return value ? new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta" }).format(value) : "-";
 }
 
-function jakartaDay(value: Date) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
-}
+/** Merah penyorot baris "Deadline" — selalu dipakai agar deadline ter-highlight. */
+const DEADLINE_RED = rgb(0.78, 0.12, 0.12);
+const BORDER = rgb(0.12, 0.12, 0.12);
+const GRID = rgb(0.72, 0.72, 0.72);
+const BAR_BG = rgb(0.12, 0.16, 0.2);
+const NOTE_BG = rgb(0.9, 0.9, 0.9);
 
-const OVERDUE_RED = rgb(0.78, 0.12, 0.12);
+/** Sel tabel identitas: satu baris "Label : nilai", atau label + beberapa baris tambahan. */
+type HeaderCell = {
+  label: string;
+  value?: string;
+  extraLines?: Array<{ label: string; value: string }>;
+  highlight?: boolean;
+};
+
+type HeaderLine = Array<{ text: string; bold: boolean }>;
 
 export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoBytes: Uint8Array, assets: PdfAsset[], variant: PurchaseOrderPdfVariant = "customer") {
-  const overdue = data.deadline ? jakartaDay(data.deadline) < jakartaDay(new Date()) : false;
   const pola = data.pola || data.productName;
   const poDecoration = data.decorationMethods.length
     ? data.decorationMethods
@@ -80,8 +117,9 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   }
 
   function decorate(page: PDFPage, pageNumber: number) {
-    page.drawText(safe(data.snapshotBusinessName ?? "AS Konveksi"), { x: margin, y: 20, size: 7, font: regular, color: rgb(0.42, 0.42, 0.42) });
-    page.drawText(`${safe(data.purchaseOrderNo)} | Halaman ${pageNumber}`, { x: 420, y: 20, size: 7, font: regular, color: rgb(0.42, 0.42, 0.42) });
+    const footer = `${safe(data.purchaseOrderNo)} | Halaman ${pageNumber}`;
+    page.drawText(safe(data.snapshotBusinessName ?? "AS Konveksi"), { x: margin, y: 22, size: MIN_FONT_SIZE, font: regular, color: rgb(0.42, 0.42, 0.42) });
+    page.drawText(footer, { x: A4.width - margin - regular.widthOfTextAtSize(footer, MIN_FONT_SIZE), y: 22, size: MIN_FONT_SIZE, font: regular, color: rgb(0.42, 0.42, 0.42) });
     if (data.status === "DRAFT") page.drawText("DRAFT", { x: 155, y: 370, size: 82, font: bold, color: rgb(0.9, 0.9, 0.9), rotate: degrees(35), opacity: 0.45 });
   }
 
@@ -89,64 +127,232 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   let page = document.addPage([A4.width, A4.height]);
   decorate(page, pageNumber);
   let y = A4.height - margin;
-  const logoScale = logo.scaleToFit(115, 48);
-  page.drawImage(logo, { x: margin, y: y - logoScale.height, width: logoScale.width, height: logoScale.height });
-  const titleX = variant === "penjahit" ? 290 : 370;
-  page.drawText(variant === "penjahit" ? "PURCHASE ORDER — PENJAHIT" : "PURCHASE ORDER", { x: titleX, y: y - 6, size: 17, font: bold, color: rgb(0.12, 0.12, 0.12) });
-  page.drawText(safe(data.purchaseOrderNo), { x: titleX, y: y - 24, size: 9, font: regular });
-  page.drawText(`Revisi ${data.revision}`, { x: titleX, y: y - 38, size: 8, font: regular });
-  y -= 68;
+  // Halaman yang benar-benar dipakai; sisanya (hanya footer) dibuang di akhir.
+  const usedPages = new Set<PDFPage>();
+  function markUsed() {
+    usedPages.add(page);
+  }
+  // Halaman pertama selalu terpakai karena memuat kop dan judul.
+  markUsed();
 
-  const rows: Array<{ label: string; value: string; alert?: boolean }> = [
-    { label: "Customer", value: data.opportunity.customer.name },
-    { label: "Perusahaan", value: data.opportunity.customer.companyName ?? "-" },
-    { label: "Instansi", value: data.instansi ?? "-" },
-    { label: "Tanggal order", value: formatDate(data.orderDate) },
-    { label: "Deadline produksi", value: formatDate(data.deadline), alert: overdue },
-    { label: "Jenis pakaian", value: data.garmentType ? GARMENT_TYPE_LABEL[data.garmentType] : "-" },
-    { label: "Kategori", value: data.productCategory ?? "-" },
-    { label: "Bahan", value: data.material },
-    { label: "Warna dasar", value: data.baseColor ?? data.color ?? "-" },
-    { label: "Warna variasi", value: data.variationColor ?? "-" },
-    { label: "Metode dekorasi", value: decorationMethodsLabel(poDecoration) },
-  ];
-  rows.forEach(({ label, value, alert }, index) => {
-    const column = index % 2;
-    const row = Math.floor(index / 2);
-    const x = margin + column * 262;
-    const rowY = y - row * 25;
-    page.drawText(label, { x, y: rowY, size: 7, font: bold, color: alert ? OVERDUE_RED : rgb(0.34, 0.34, 0.34) });
-    page.drawText(safe(value), { x, y: rowY - 11, size: 9, font: alert ? bold : regular, color: alert ? OVERDUE_RED : rgb(0.12, 0.12, 0.12) });
-  });
-  y -= Math.ceil(rows.length / 2) * 25 + 10;
-  page.drawRectangle({ x: margin, y: y - 22, width: A4.width - margin * 2, height: 26, color: rgb(0.12, 0.16, 0.2) });
-  page.drawText(`POLA: ${safe(pola.toUpperCase())}`, { x: margin + 10, y: y - 13, size: 11, font: bold, color: rgb(1, 1, 1) });
-  y -= 38;
+  function addPage() {
+    pageNumber += 1;
+    page = document.addPage([A4.width, A4.height]);
+    decorate(page, pageNumber);
+    y = A4.height - margin;
+  }
 
-  const visibleAssets = embeddedAssets;
-  if (visibleAssets.length) {
-    const boxWidth = A4.width - margin * 2;
-    const boxHeight = 300;
-    const rowHeight = boxHeight + 14;
-    for (const asset of visibleAssets) {
-      if (y - rowHeight < 40) {
-        pageNumber += 1;
-        page = document.addPage([A4.width, A4.height]);
-        decorate(page, pageNumber);
-        y = A4.height - margin;
+  /** Titik tengah vertikal sel supaya teks 12 pt terlihat pas di tengah baris. */
+  function cellBaseline(rowTop: number, rowHeight: number) {
+    return rowTop - rowHeight / 2 - 4;
+  }
+
+  function centeredText(value: string, x: number, width: number, rowTop: number, rowHeight: number, font: PDFFont, color = rgb(0.12, 0.12, 0.12)) {
+    page.drawText(value, { x: x + (width - font.widthOfTextAtSize(value, MIN_FONT_SIZE)) / 2, y: cellBaseline(rowTop, rowHeight), size: MIN_FONT_SIZE, font, color });
+  }
+
+  /** Bar judul gelap selebar konten, mis. "JUMLAH PRODUK" pada lembar aksesori. */
+  function drawHeadingBar(label: string) {
+    markUsed();
+    page.drawRectangle({ x: margin, y: y - HEADING_BAR_HEIGHT, width: CONTENT_WIDTH, height: HEADING_BAR_HEIGHT, color: BAR_BG });
+    page.drawText(clipPdfText(safe(label.toUpperCase()), bold, MIN_FONT_SIZE, CONTENT_WIDTH - 16), {
+      x: margin + 8,
+      y: y - HEADING_BAR_HEIGHT + 8,
+      size: MIN_FONT_SIZE,
+      font: bold,
+      color: rgb(1, 1, 1),
+    });
+    y -= HEADING_BAR_HEIGHT;
+  }
+
+/**
+   * Paragraf "Label: nilai". Tinggi blok dihitung lebih dulu supaya label tidak pernah
+   * tertinggal sendirian di dasar halaman (penyebab halaman kosong berikutnya).
+   */
+  function drawParagraph(label: string, value: string) {
+    const lines = wrapPdfText(safe(value), regular, MIN_FONT_SIZE, CONTENT_WIDTH);
+    const blockHeight = 16 + lines.length * 16 + 6;
+    if (y - blockHeight < margin) addPage();
+    markUsed();
+    page.drawText(`${safe(label)}:`, { x: margin, y, size: MIN_FONT_SIZE, font: bold });
+    y -= 16;
+    for (const line of lines) {
+      page.drawText(line, { x: margin, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.28, 0.28, 0.28) });
+      y -= 16;
+    }
+    y -= 6;
+  }
+
+  /** Isi satu sel tabel identitas menjadi baris-baris siap gambar (dipotong sesuai lebar kolom). */
+  function cellLines(cell: HeaderCell, maxWidth: number): HeaderLine[] {
+    if (!cell.extraLines?.length) {
+      return wrapPdfText(safe(`${cell.label} : ${cell.value ?? "-"}`), cell.highlight ? bold : regular, MIN_FONT_SIZE, maxWidth)
+        .slice(0, 2)
+        .map((line) => [{ text: line, bold: false }]);
+    }
+    const lines: HeaderLine[] = [[{ text: `${safe(cell.label)} :`, bold: false }]];
+    for (const extra of cell.extraLines) {
+      const prefix = `${safe(extra.label)}: `;
+      const available = Math.max(20, maxWidth - bold.widthOfTextAtSize(prefix, MIN_FONT_SIZE));
+      lines.push([
+        { text: prefix, bold: true },
+        { text: clipPdfText(safe(extra.value), regular, MIN_FONT_SIZE, available), bold: false },
+      ]);
+    }
+    return lines;
+  }
+
+  /**
+   * Kop ringkas sesuai referensi: sel logo di kiri + tabel dua kolom tiga baris
+   * (Nama/Bahan · Tgl Order/Warna · Deadline/Tinta-Bordir). Baris tambahan hanya
+   * dipakai bila datanya ada, sehingga kop tidak memakan tempat ke bawah.
+   */
+  function drawSheetHeader(item: PurchaseOrderPdfItem | null, freshPage: boolean) {
+    if (freshPage) addPage();
+    markUsed();
+    const title = variant === "penjahit" ? "PURCHASE ORDER — PENJAHIT" : "PURCHASE ORDER";
+    page.drawText(title, { x: margin, y: y - 12, size: 14, font: bold, color: rgb(0.12, 0.12, 0.12) });
+    const meta = `${safe(data.purchaseOrderNo)} · Revisi ${data.revision}`;
+    page.drawText(meta, { x: A4.width - margin - regular.widthOfTextAtSize(meta, MIN_FONT_SIZE), y: y - 12, size: MIN_FONT_SIZE, font: regular, color: rgb(0.3, 0.3, 0.3) });
+    y -= 26;
+    if (item) {
+      page.drawText(clipPdfText(`Produk: ${safe(item.name)}`, regular, MIN_FONT_SIZE, CONTENT_WIDTH), { x: margin, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.3, 0.3, 0.3) });
+      y -= 18;
+    }
+
+    const garmentType = item?.garmentType ?? data.garmentType;
+    const category = item ? item.productCategory?.name ?? "-" : data.productCategory ?? "-";
+    const decoration = item?.decorationMethods.length ? item.decorationMethods : poDecoration;
+    const baseColor = data.baseColor ?? data.color;
+    const variationColor = data.variationColor;
+
+    const rows: Array<[HeaderCell, HeaderCell]> = [
+      [
+        { label: "Nama", value: data.opportunity.customer.name },
+        { label: "Bahan", value: data.material },
+      ],
+      [
+        { label: "Tgl Order", value: formatDate(data.orderDate) },
+        {
+          label: "Warna",
+          extraLines: [
+            ...(baseColor ? [{ label: "Warna Base", value: baseColor }] : []),
+            ...(variationColor ? [{ label: "Warna List", value: variationColor }] : []),
+          ],
+        },
+      ],
+      [
+        { label: "Deadline", value: formatDate(data.deadline), highlight: true },
+        { label: "Tinta / Bordir", value: decorationMethodsLabel(decoration) || "-" },
+      ],
+    ];
+    // Data pelengkap hanya muncul kalau terisi supaya kop tetap ringkas.
+    if (data.opportunity.customer.companyName || data.instansi) {
+      rows.push([
+        { label: "Perusahaan", value: data.opportunity.customer.companyName ?? "-" },
+        { label: "Instansi", value: data.instansi ?? "-" },
+      ]);
+    }
+    if (garmentType || category !== "-") {
+      rows.push([
+        { label: "Jenis pakaian", value: garmentType ? GARMENT_TYPE_LABEL[garmentType] : "-" },
+        { label: "Kategori", value: category },
+      ]);
+    }
+
+    const dataColumnWidth = (CONTENT_WIDTH - HEADER_LOGO_CELL_WIDTH) / 2;
+    const cellTextWidth = dataColumnWidth - HEADER_CELL_PADDING * 2;
+    const cellLinesByRow = rows.map((row) => row.map((cell) => cellLines(cell, cellTextWidth)));
+    // Tinggi tiap baris mengikuti isinya (minimal 34 pt) supaya kop tetap ringkas.
+    const rowHeights = cellLinesByRow.map((cells) => Math.max(HEADER_ROW_MIN_HEIGHT, ...cells.map((lines) => lines.length * HEADER_LINE_HEIGHT + 12)));
+    const tableHeight = rowHeights.reduce((sum, height) => sum + height, 0);
+    if (y - tableHeight - 46 < margin) {
+      addPage();
+      markUsed();
+    }
+    const tableTop = y;
+    const tableBottom = tableTop - tableHeight;
+    const rowTops: number[] = [];
+    let cursorTop = tableTop;
+    for (const height of rowHeights) {
+      rowTops.push(cursorTop);
+      cursorTop -= height;
+    }
+
+    page.drawRectangle({ x: margin, y: tableBottom, width: HEADER_LOGO_CELL_WIDTH, height: tableHeight, borderWidth: 0.8, borderColor: BORDER });
+    const logoScale = logo.scaleToFit(HEADER_LOGO_CELL_WIDTH - 18, tableHeight - 22);
+    page.drawImage(logo, {
+      x: margin + (HEADER_LOGO_CELL_WIDTH - logoScale.width) / 2,
+      y: tableBottom + (tableHeight - logoScale.height) / 2,
+      width: logoScale.width,
+      height: logoScale.height,
+    });
+
+    rows.forEach((row, rowIndex) => {
+      const rowTop = rowTops[rowIndex];
+      const rowHeight = rowHeights[rowIndex];
+      const rowBottom = rowTop - rowHeight;
+      row.forEach((cell, columnIndex) => {
+        const cellX = margin + HEADER_LOGO_CELL_WIDTH + columnIndex * dataColumnWidth;
+        page.drawRectangle({ x: cellX, y: rowBottom, width: dataColumnWidth, height: rowHeight, borderWidth: 0.8, borderColor: BORDER });
+        const lines = cellLinesByRow[rowIndex][columnIndex];
+        const offset = Math.max(4, (rowHeight - lines.length * HEADER_LINE_HEIGHT) / 2);
+        lines.forEach((runs, lineIndex) => {
+          let cursorX = cellX + HEADER_CELL_PADDING;
+          const lineY = rowTop - offset - 12 - lineIndex * HEADER_LINE_HEIGHT;
+          for (const run of runs) {
+            const font = cell.highlight || run.bold ? bold : regular;
+            page.drawText(run.text, { x: cursorX, y: lineY, size: MIN_FONT_SIZE, font, color: cell.highlight ? DEADLINE_RED : rgb(0.12, 0.12, 0.12) });
+            cursorX += font.widthOfTextAtSize(run.text, MIN_FONT_SIZE);
+          }
+        });
+      });
+    });
+    y = tableBottom - 12;
+
+    // Judul POLA: bar bergaris dengan teks di tengah.
+    const polaText = clipPdfText(`POLA : ${safe(pola.toUpperCase())}`, bold, 13, CONTENT_WIDTH - 24);
+    page.drawRectangle({ x: margin, y: y - 28, width: CONTENT_WIDTH, height: 28, borderWidth: 0.8, borderColor: BORDER, color: rgb(1, 1, 1) });
+    page.drawText(polaText, { x: (A4.width - bold.widthOfTextAtSize(polaText, 13)) / 2, y: y - 19, size: 13, font: bold, color: rgb(0.12, 0.12, 0.12) });
+    y -= 40;
+  }
+
+  /**
+   * Gambar desain. `reservedBelow` menahan ruang untuk tabel ukuran supaya size chart
+   * tetap dapat halaman yang sama (gambar dikecilkan bila perlu, sisanya pindah halaman).
+   */
+  function drawAssets(list: typeof embeddedAssets, heading: string | null, reservedBelow = 0) {
+    if (!list.length) return;
+    const boxWidth = CONTENT_WIDTH;
+    let reserve = reservedBelow;
+    for (const asset of list) {
+      let boxHeight = 300;
+      const available = y - (margin + 18) - reserve;
+      if (available < boxHeight + 6) {
+        if (reserve > 0 && available >= 156) {
+          boxHeight = available - 6;
+        } else {
+          addPage();
+          reserve = 0;
+          boxHeight = 300;
+          if (heading) {
+            drawHeadingBar(heading);
+            y -= 12;
+          }
+        }
       }
-      const x = margin;
-      const boxY = y - rowHeight;
-      page.drawRectangle({ x, y: boxY, width: boxWidth, height: boxHeight, borderWidth: 0.75, borderColor: rgb(0.68, 0.68, 0.68) });
+      const boxY = y - boxHeight;
+      markUsed();
+      page.drawRectangle({ x: margin, y: boxY, width: boxWidth, height: boxHeight, borderWidth: 0.75, borderColor: rgb(0.68, 0.68, 0.68) });
       if (asset.image) {
         const scaled = asset.image.scaleToFit(boxWidth - 12, boxHeight - 30);
-        page.drawImage(asset.image, { x: x + (boxWidth - scaled.width) / 2, y: boxY + 6, width: scaled.width, height: scaled.height });
+        page.drawImage(asset.image, { x: margin + (boxWidth - scaled.width) / 2, y: boxY + 6, width: scaled.width, height: scaled.height });
       } else {
-        page.drawText(asset.contentType === "application/pdf" ? "Lampiran PDF" : "Pratinjau tidak tersedia", { x: x + 8, y: boxY + 42, size: 8, font: regular, color: rgb(0.42, 0.42, 0.42) });
-        page.drawText(safe(asset.originalName), { x: x + 8, y: boxY + 28, size: 7, font: regular, color: rgb(0.42, 0.42, 0.42) });
+        page.drawText(asset.contentType === "application/pdf" ? "Lampiran PDF" : "Pratinjau tidak tersedia", { x: margin + 8, y: boxY + 44, size: MIN_FONT_SIZE, font: regular, color: rgb(0.42, 0.42, 0.42) });
+        page.drawText(clipPdfText(safe(asset.originalName), regular, MIN_FONT_SIZE, boxWidth - 16), { x: margin + 8, y: boxY + 24, size: MIN_FONT_SIZE, font: regular, color: rgb(0.42, 0.42, 0.42) });
       }
-      page.drawText(safe(asset.label), { x: x + 6, y: boxY + boxHeight - 13, size: 7, font: bold });
-      y -= rowHeight + 4;
+      page.drawText(clipPdfText(safe(asset.label), bold, MIN_FONT_SIZE, boxWidth - 16), { x: margin + 8, y: boxY + boxHeight - 20, size: MIN_FONT_SIZE, font: bold });
+      y -= boxHeight + 6;
     }
     y -= 4;
   }
@@ -154,138 +360,228 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   const isAccessory = data.garmentType === "AKSESORI";
   const totalQuantity = data.sizes.reduce((sum, item) => sum + item.quantity, 0);
 
-  function drawModelTable(rows: Array<{ size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>, heading: string | null) {
-    if (heading) {
-      if (y < 100) {
-        pageNumber += 1;
-        page = document.addPage([A4.width, A4.height]);
-        decorate(page, pageNumber);
-        y = A4.height - margin;
-      }
-      page.drawRectangle({ x: margin, y: y - 22, width: A4.width - margin * 2, height: 22, color: rgb(0.12, 0.16, 0.2) });
-      page.drawText(safe(heading.toUpperCase()), { x: margin + 7, y: y - 14, size: 9, font: bold, color: rgb(1, 1, 1) });
-      y -= 30;
-    }
-    const sizeNames = [...new Set(rows.map((item) => item.size))];
+  const SIZE_CHART_LABEL_WIDTH = 76;
+  const SIZE_CHART_TOTAL_WIDTH = 62;
+  const SIZE_COLUMNS_PER_CHUNK = 9;
+  const SIZE_CHART_NOTE_HEIGHT = 34;
+
+  /**
+   * Kolom size chart: daftar ukuran tetap (XS…5XL) selalu lengkap sesuai referensi,
+   * ditambah ukuran di luar daftar itu bila PO memakainya supaya jumlah tidak hilang.
+   */
+  function chartColumns(rows: Array<{ size: string }>) {
+    const extras = [...new Set(rows.map((row) => normalizeSize(row.size)))]
+      .filter((size) => size.length > 0 && !(SIZE_LADDER as readonly string[]).includes(size))
+      .sort((left, right) => left.localeCompare(right, "id-ID"));
+    return [...SIZE_LADDER, ...extras];
+  }
+
+  function chartChunks(rows: Array<{ size: string }>) {
+    const columns: string[] = chartColumns(rows);
     const chunks: string[][] = [];
-    for (let index = 0; index < sizeNames.length; index += 8) chunks.push(sizeNames.slice(index, index + 8));
-    for (const sizeChunk of chunks) {
-      if (y < 125) {
-        pageNumber += 1;
-        page = document.addPage([A4.width, A4.height]);
-        decorate(page, pageNumber);
-        y = A4.height - margin;
-      }
-      const labelWidth = 72;
-      const cellWidth = (A4.width - margin * 2 - labelWidth - 52) / sizeChunk.length;
-      const totalWidth = A4.width - margin * 2;
-      page.drawRectangle({ x: margin, y: y - 22, width: totalWidth, height: 22, color: rgb(0.12, 0.12, 0.12) });
-      page.drawText("MODEL", { x: margin + 7, y: y - 14, size: 7, font: bold, color: rgb(1, 1, 1) });
-      sizeChunk.forEach((size, index) => page.drawText(safe(size), { x: margin + labelWidth + index * cellWidth + 5, y: y - 14, size: 7, font: bold, color: rgb(1, 1, 1) }));
-      page.drawText("TOTAL", { x: A4.width - margin - 44, y: y - 14, size: 7, font: bold, color: rgb(1, 1, 1) });
-      y -= 22;
+    for (let index = 0; index < columns.length; index += SIZE_COLUMNS_PER_CHUNK) chunks.push(columns.slice(index, index + SIZE_COLUMNS_PER_CHUNK));
+    return chunks;
+  }
+
+  /** Tinggi satu blok size chart (header + PENDEK + PANJANG + baris NOTE). */
+  function chartBlockHeight() {
+    return TABLE_ROW_HEIGHT * 3 + SIZE_CHART_NOTE_HEIGHT + 12;
+  }
+
+  /** Tinggi tabel ukuran untuk menahan ruang di halaman yang sama dengan gambar desain. */
+  function measureModelTable(rows: Array<{ size: string }>) {
+    return chartChunks(rows).length * chartBlockHeight();
+  }
+
+  /**
+   * Size chart sesuai referensi: kolom label gelap (SIZE/PENDEK/PANJANG), kolom ukuran
+   * di header gelap, total per baris, lalu baris NOTE dengan kotak total di kanan.
+   */
+  function drawModelTable(rows: Array<{ size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>, note: string | null) {
+    const grandTotal = rows.reduce((sum, row) => sum + row.quantity, 0);
+    const quantityFor = (size: string, sleeve: "PENDEK" | "PANJANG") =>
+      rows.filter((row) => normalizeSize(row.size) === size && row.sleeveLength === sleeve).reduce((sum, row) => sum + row.quantity, 0);
+
+    for (const sizeChunk of chartChunks(rows)) {
+      if (y - chartBlockHeight() < margin) addPage();
+      markUsed();
+      const cellWidth = (CONTENT_WIDTH - SIZE_CHART_LABEL_WIDTH - SIZE_CHART_TOTAL_WIDTH) / sizeChunk.length;
+      const totalX = margin + CONTENT_WIDTH - SIZE_CHART_TOTAL_WIDTH;
+      let rowTop = y;
+
+      const labelCell = (text: string) => {
+        page.drawRectangle({ x: margin, y: rowTop - TABLE_ROW_HEIGHT, width: SIZE_CHART_LABEL_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
+        centeredText(text, margin, SIZE_CHART_LABEL_WIDTH, rowTop, TABLE_ROW_HEIGHT, bold, rgb(1, 1, 1));
+      };
+      const sizeCell = (text: string, index: number) => {
+        page.drawRectangle({ x: margin + SIZE_CHART_LABEL_WIDTH + index * cellWidth, y: rowTop - TABLE_ROW_HEIGHT, width: cellWidth, height: TABLE_ROW_HEIGHT, color: BAR_BG });
+        centeredText(clipPdfText(text, bold, MIN_FONT_SIZE, cellWidth - 8), margin + SIZE_CHART_LABEL_WIDTH + index * cellWidth, cellWidth, rowTop, TABLE_ROW_HEIGHT, bold, rgb(1, 1, 1));
+      };
+
+      // Baris header: SIZE | kolom ukuran | TOTAL
+      labelCell("SIZE");
+      sizeChunk.forEach((size, index) => sizeCell(safe(size), index));
+      page.drawRectangle({ x: totalX, y: rowTop - TABLE_ROW_HEIGHT, width: SIZE_CHART_TOTAL_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
+      centeredText("TOTAL", totalX, SIZE_CHART_TOTAL_WIDTH, rowTop, TABLE_ROW_HEIGHT, bold, rgb(1, 1, 1));
+      rowTop -= TABLE_ROW_HEIGHT;
+
       for (const sleeve of ["PENDEK", "PANJANG"] as const) {
-        page.drawRectangle({ x: margin, y: y - 22, width: totalWidth, height: 22, borderWidth: 0.5, borderColor: rgb(0.75, 0.75, 0.75) });
-        page.drawText(sleeve === "PENDEK" ? "Pendek" : "Panjang", { x: margin + 7, y: y - 14, size: 7, font: bold });
+        labelCell(sleeve);
         let total = 0;
         sizeChunk.forEach((size, index) => {
-          const quantity = rows.filter((item) => item.sleeveLength === sleeve && item.size === size).reduce((sum, item) => sum + item.quantity, 0);
+          const quantity = quantityFor(size, sleeve);
           total += quantity;
-          page.drawText(String(quantity), { x: margin + labelWidth + index * cellWidth + 5, y: y - 14, size: 8, font: regular });
+          const cellX = margin + SIZE_CHART_LABEL_WIDTH + index * cellWidth;
+          page.drawRectangle({ x: cellX, y: rowTop - TABLE_ROW_HEIGHT, width: cellWidth, height: TABLE_ROW_HEIGHT, borderWidth: 0.6, borderColor: GRID });
+          if (quantity > 0) centeredText(clipPdfText(String(quantity), bold, MIN_FONT_SIZE, cellWidth - 8), cellX, cellWidth, rowTop, TABLE_ROW_HEIGHT, bold);
         });
-        page.drawText(String(total), { x: A4.width - margin - 35, y: y - 14, size: 8, font: bold });
-        y -= 22;
+        page.drawRectangle({ x: totalX, y: rowTop - TABLE_ROW_HEIGHT, width: SIZE_CHART_TOTAL_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.6, borderColor: GRID });
+        centeredText(String(total), totalX, SIZE_CHART_TOTAL_WIDTH, rowTop, TABLE_ROW_HEIGHT, bold);
+        rowTop -= TABLE_ROW_HEIGHT;
       }
-      y -= 10;
+
+      // Baris NOTE + kotak total keseluruhan.
+      const noteHeight = SIZE_CHART_NOTE_HEIGHT;
+      const noteWidth = CONTENT_WIDTH - SIZE_CHART_TOTAL_WIDTH;
+      page.drawRectangle({ x: margin, y: rowTop - noteHeight, width: noteWidth, height: noteHeight, color: NOTE_BG, borderWidth: 0.8, borderColor: BORDER });
+      page.drawText("NOTE:", { x: margin + 8, y: cellBaseline(rowTop, noteHeight), size: MIN_FONT_SIZE, font: bold });
+      if (note) {
+        const noteText = clipPdfText(safe(note), regular, MIN_FONT_SIZE, noteWidth - 70);
+        page.drawText(noteText, { x: margin + 62, y: cellBaseline(rowTop, noteHeight), size: MIN_FONT_SIZE, font: regular, color: rgb(0.28, 0.28, 0.28) });
+      }
+      page.drawRectangle({ x: totalX, y: rowTop - noteHeight, width: SIZE_CHART_TOTAL_WIDTH, height: noteHeight, borderWidth: 0.8, borderColor: BORDER });
+      page.drawText(String(grandTotal), { x: totalX + (SIZE_CHART_TOTAL_WIDTH - bold.widthOfTextAtSize(String(grandTotal), 13)) / 2, y: cellBaseline(rowTop, noteHeight) - 1, size: 13, font: bold });
+      y = rowTop - noteHeight - 12;
     }
   }
 
   function drawAccessoryTotal(quantity: number, label: string | null) {
-    if (y < 100) {
-      pageNumber += 1;
-      page = document.addPage([A4.width, A4.height]);
-      decorate(page, pageNumber);
-      y = A4.height - margin;
+    if (y < margin + 90) addPage();
+    markUsed();
+    drawHeadingBar(label ?? "JUMLAH PRODUK");
+    y -= 12;
+    page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.5, borderColor: GRID });
+    page.drawText(String(quantity), { x: margin + 8, y: y - TABLE_ROW_HEIGHT + 8, size: MIN_FONT_SIZE, font: bold });
+    y -= TABLE_ROW_HEIGHT + 10;
+  }
+
+  function drawProductSheet(item: PurchaseOrderPdfItem) {
+    const quantity = data.sizes.filter((row) => row.itemId === item.id).reduce((sum, row) => sum + row.quantity, 0);
+    const itemKind = item.productCategory?.name ?? (item.garmentType ? GARMENT_TYPE_LABEL[item.garmentType] : null);
+    if ((item.garmentType ?? data.garmentType) === "AKSESORI") {
+      drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`);
+      return;
     }
-    const totalWidth = A4.width - margin * 2;
-    page.drawRectangle({ x: margin, y: y - 22, width: totalWidth, height: 22, color: rgb(0.12, 0.12, 0.12) });
-    page.drawText(label ?? "JUMLAH PRODUK", { x: margin + 7, y: y - 14, size: 7, font: bold, color: rgb(1, 1, 1) });
-    y -= 22;
-    page.drawRectangle({ x: margin, y: y - 22, width: totalWidth, height: 22, borderWidth: 0.5, borderColor: rgb(0.75, 0.75, 0.75) });
-    page.drawText(String(quantity), { x: margin + 7, y: y - 14, size: 8, font: bold });
-    y -= 32;
+    const rows = data.sizes.filter((row) => row.itemId === item.id);
+    // Size chart selalu ikut halaman gambar desain produk ini.
+    drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id), item.name, measureModelTable(rows));
+    drawModelTable(rows, item.designNotes);
   }
 
   const showPerItem = data.items.length > 1;
-  if (isAccessory) {
-    if (showPerItem) {
-      for (const item of data.items) {
-        const quantity = data.sizes.filter((row) => row.itemId === item.id).reduce((sum, row) => sum + row.quantity, 0);
-        drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}`);
-      }
-    } else {
-      drawAccessoryTotal(totalQuantity, null);
-    }
-  } else if (showPerItem) {
+  if (showPerItem) {
+    // Tiap produk satu lembar mandiri: kop + identitas PO diulang, gambar desain menempel di lembar produknya.
+    let sheetIndex = 0;
     for (const item of data.items) {
-      const itemKind = item.productCategory?.name ?? (item.garmentType ? GARMENT_TYPE_LABEL[item.garmentType] : null);
-      const itemRows = data.sizes.filter((row) => row.itemId === item.id);
-      const itemIsAccessory = (item.garmentType ?? data.garmentType) === "AKSESORI";
-      if (itemIsAccessory) {
-        drawAccessoryTotal(itemRows.reduce((sum, row) => sum + row.quantity, 0), `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`);
-      } else {
-        drawModelTable(itemRows, `${item.name}${itemKind ? ` (${itemKind})` : ""} — ${decorationMethodsLabel(item.decorationMethods)}`);
-      }
-      if (item.designNotes) {
-        page.drawText(`Catatan desain ${safe(item.name)}: ${safe(item.designNotes)}`, { x: margin, y, size: 8, font: regular });
-        y -= 14;
-      }
+      drawSheetHeader(item, sheetIndex > 0);
+      sheetIndex += 1;
+      drawProductSheet(item);
     }
+    // Lembar penutup: ringkasan PO + lampiran yang tidak menempel produk tertentu.
+    drawSheetHeader(null, true);
+    page.drawText(`Total keseluruhan: ${totalQuantity}`, { x: margin, y, size: 14, font: bold });
+    y -= 22;
+    if (!isAccessory) {
+      page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y, size: MIN_FONT_SIZE, font: bold });
+      y -= 20;
+    }
+    drawParagraph("Catatan desain", data.designNotes ?? "-");
+    drawParagraph("Catatan", data.notes ?? "-");
+    drawAssets(embeddedAssets.filter((asset) => !asset.itemId), null);
   } else {
-    const aggregated = new Map<string, { size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>();
-    for (const row of data.sizes) {
-      const key = `${row.sleeveLength}:${row.size}`;
-      const current = aggregated.get(key);
-      if (current) current.quantity += row.quantity;
-      else aggregated.set(key, { size: row.size, sleeveLength: row.sleeveLength, quantity: row.quantity });
+    drawSheetHeader(null, false);
+    if (isAccessory) {
+      drawAssets(embeddedAssets, null);
+      drawAccessoryTotal(totalQuantity, null);
+    } else {
+      const aggregated = new Map<string, { size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>();
+      for (const row of data.sizes) {
+        const key = `${row.sleeveLength}:${row.size}`;
+        const current = aggregated.get(key);
+        if (current) current.quantity += row.quantity;
+        else aggregated.set(key, { size: row.size, sleeveLength: row.sleeveLength, quantity: row.quantity });
+      }
+      const rows = [...aggregated.values()];
+      drawAssets(embeddedAssets, null, measureModelTable(rows));
+      drawModelTable(rows, data.designNotes);
+      page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y: y - 4, size: MIN_FONT_SIZE, font: bold });
+      y -= 22;
     }
-    drawModelTable([...aggregated.values()], null);
+    drawParagraph("Catatan", data.notes ?? "-");
   }
-  if (!isAccessory) page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y, size: 9, font: bold });
-  if (!isAccessory) page.drawText(`Total: ${totalQuantity}`, { x: A4.width - margin - 70, y, size: 9, font: bold });
-  y -= 18;
-  page.drawText(`Catatan desain: ${safe(data.designNotes ?? "-")}`, { x: margin, y, size: 8, font: regular });
-  y -= 14;
-  page.drawText(`Catatan: ${safe(data.notes ?? "-")}`, { x: margin, y, size: 8, font: regular });
 
   if (data.rosterEntries.length) {
     const showProduct = data.items.length > 1;
+    // Lebar kolom dihitung agar teks 12 pt tidak saling menimpa pada halaman A4.
+    const columns = showProduct
+      ? [
+          { key: "memberId" as const, header: "ID", x: 6, width: 64 },
+          { key: "name" as const, header: "Nama", x: 72, width: 168 },
+          { key: "product" as const, header: "Produk", x: 244, width: 130 },
+          { key: "size" as const, header: "Size", x: 378, width: 62 },
+          { key: "sleeve" as const, header: "Lengan", x: 444, width: 79 },
+        ]
+      : [
+          { key: "memberId" as const, header: "ID", x: 6, width: 64 },
+          { key: "name" as const, header: "Nama", x: 72, width: 296 },
+          { key: "size" as const, header: "Size", x: 372, width: 66 },
+          { key: "sleeve" as const, header: "Lengan", x: 442, width: 81 },
+        ];
     for (let offset = 0; offset < data.rosterEntries.length; offset += 25) {
-      pageNumber += 1;
-      page = document.addPage([A4.width, A4.height]);
-      decorate(page, pageNumber);
-      y = A4.height - margin;
+      addPage();
+      markUsed();
       page.drawText("ROSTER PEMAKAI", { x: margin, y, size: 15, font: bold });
-      page.drawText(safe(data.purchaseOrderNo), { x: 405, y, size: 9, font: regular });
-      y -= 28;
-      page.drawRectangle({ x: margin, y: y - 22, width: A4.width - margin * 2, height: 22, color: rgb(0.12, 0.16, 0.2) });
-      page.drawText("ID", { x: margin + 8, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-      page.drawText("Nama", { x: showProduct ? 120 : 160, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-      if (showProduct) page.drawText("Produk", { x: 330, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-      page.drawText("Size", { x: 445, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-      page.drawText("Lengan", { x: 495, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-      y -= 22;
+      const poNo = safe(data.purchaseOrderNo);
+      page.drawText(poNo, { x: A4.width - margin - regular.widthOfTextAtSize(poNo, MIN_FONT_SIZE), y, size: MIN_FONT_SIZE, font: regular });
+      y -= 30;
+      page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
+      columns.forEach((column) => {
+        page.drawText(clipPdfText(column.header, bold, MIN_FONT_SIZE, column.width - 8), {
+          x: margin + column.x,
+          y: y - TABLE_ROW_HEIGHT + 8,
+          size: MIN_FONT_SIZE,
+          font: bold,
+          color: rgb(1, 1, 1),
+        });
+      });
+      y -= TABLE_ROW_HEIGHT;
       data.rosterEntries.slice(offset, offset + 25).forEach((entry) => {
-        page.drawRectangle({ x: margin, y: y - 26, width: A4.width - margin * 2, height: 26, borderWidth: 0.5, borderColor: rgb(0.82, 0.82, 0.82) });
-        page.drawText(safe(entry.memberId).slice(0, 18), { x: margin + 8, y: y - 17, size: 8, font: regular });
-        page.drawText(safe(entry.name).slice(0, showProduct ? 32 : 55), { x: showProduct ? 120 : 160, y: y - 17, size: 8, font: regular });
-        if (showProduct) page.drawText(safe(itemNameById.get(entry.itemId) ?? "-").slice(0, 16), { x: 330, y: y - 17, size: 8, font: regular });
-        page.drawText(safe(entry.size).slice(0, 9), { x: 445, y: y - 17, size: 8, font: regular });
-        page.drawText(entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang", { x: 495, y: y - 17, size: 8, font: regular });
-        y -= 26;
+        page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.5, borderColor: rgb(0.82, 0.82, 0.82) });
+        const cells: Record<(typeof columns)[number]["key"], string> = {
+          memberId: safe(entry.memberId),
+          name: safe(entry.name),
+          product: safe(itemNameById.get(entry.itemId) ?? "-"),
+          size: safe(entry.size),
+          sleeve: entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang",
+        };
+        columns.forEach((column) => {
+          page.drawText(clipPdfText(cells[column.key], regular, MIN_FONT_SIZE, column.width - 8), {
+            x: margin + column.x,
+            y: y - TABLE_ROW_HEIGHT + 8,
+            size: MIN_FONT_SIZE,
+            font: regular,
+          });
+        });
+        y -= TABLE_ROW_HEIGHT;
       });
     }
   }
+  // Buang halaman yang hanya memuat footer supaya PO tidak menyisakan halaman kosong.
+  const keepPages = new Set(usedPages);
+  for (const candidate of document.getPages()) {
+    if (!keepPages.has(candidate)) document.removePage(document.getPages().indexOf(candidate));
+  }
+
   document.setTitle(`PO ${data.purchaseOrderNo}`);
   document.setAuthor(data.snapshotBusinessName ?? "AS Konveksi");
   return document.save();

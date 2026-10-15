@@ -15,18 +15,42 @@ const DESIGN_REVISION_ORDER_BY: Prisma.DesignRevisionOrderByWithRelationInput[] 
 type BoardWhere = { group: ProductionBoardGroup; productCategoryId: string | null };
 
 function boardWhere({ group, productCategoryId }: BoardWhere): Prisma.ProductionWorkOrderWhereInput {
-  const purchaseOrderConditions: Prisma.PurchaseOrderWhereInput[] = [];
+  const woConditions: Prisma.ProductionWorkOrderWhereInput[] = [];
+  // WO dibuat per produk PO, jadi pembagian jalur memakai jenis tiap item (bukan jenis PO).
   // Work Order aksesoris memakai route NON_JERSEY; grup menentukan pembagian tampilannya.
-  if (group === "AKSESORI") purchaseOrderConditions.push({ garmentType: "AKSESORI" });
-  else if (group === "NON_JERSEY") purchaseOrderConditions.push({ OR: [{ garmentType: "NON_JERSEY" }, { garmentType: null }] });
-  // Kartu yang PO-nya belum punya kategori produk selalu ikut tampil agar tak ada Work Order hilang.
-  if (productCategoryId) purchaseOrderConditions.push({ OR: [{ productCategoryId }, { productCategoryId: null }] });
+  // WO lawas tanpa item tetap memakai jenis PO sebagai cadangan.
+  if (group === "AKSESORI") {
+    woConditions.push({
+      OR: [
+        { purchaseOrderItem: { is: { garmentType: "AKSESORI" } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { garmentType: "AKSESORI" } } },
+      ],
+    });
+  } else if (group === "NON_JERSEY") {
+    woConditions.push({
+      OR: [
+        { purchaseOrderItem: { is: { garmentType: "NON_JERSEY" } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { OR: [{ garmentType: "NON_JERSEY" }, { garmentType: null }] } } },
+      ],
+    });
+  }
+  // Kategori mengikuti produk WO (itemnya); WO lawas tanpa item memakai kategori PO.
+  // Item yang belum berkategori ikut tampil agar tak ada Work Order hilang.
+  if (productCategoryId) {
+    woConditions.push({
+      OR: [
+        { purchaseOrderItem: { is: { productCategoryId } } },
+        { purchaseOrderItem: { is: { productCategoryId: null } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { OR: [{ productCategoryId }, { productCategoryId: null }] } } },
+      ],
+    });
+  }
 
   return {
     route: group === "JERSEY" ? "JERSEY" : "NON_JERSEY",
     status: { not: "CANCELLED" },
     designCompletedAt: { not: null },
-    ...(purchaseOrderConditions.length ? { salesOrder: { purchaseOrder: { AND: purchaseOrderConditions } } } : {}),
+    ...(woConditions.length ? { AND: woConditions } : {}),
   };
 }
 
@@ -67,7 +91,8 @@ const getCachedBoardRows = (filter: BoardWhere) =>
               take: 1,
             },
           },
-          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          // Kartu Retur selalu di atas: needsRepair dulu, lalu terbaru.
+          orderBy: [{ needsRepair: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
           take: 500,
         }),
         prisma.productionWorkOrder.count({ where }),

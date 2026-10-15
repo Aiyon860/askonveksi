@@ -2,8 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { DETAIL_DESIGN_VIEW_ROLES } from "@/lib/auth/permissions";
-import { requireActor } from "@/lib/auth/session";
+import { requireDeveloperActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { isStageRole } from "@/lib/production/workflow";
 
@@ -95,7 +94,8 @@ export async function getProductionDesignDetails({
   sort: DesignDetailSort;
   direction: DesignDetailDirection;
 }) {
-  const actor = await requireActor(DETAIL_DESIGN_VIEW_ROLES);
+  // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh membukanya.
+  const actor = await requireDeveloperActor();
   const where = {
     status: { not: "CANCELLED" },
     ...(status === "pending" ? { designCompletedAt: null } : status === "sent" ? { designCompletedAt: { not: null } } : {}),
@@ -128,7 +128,8 @@ export async function getProductionDesignDetails({
 }
 
 export async function getProductionDesignDetail(workOrderId: string) {
-  const actor = await requireActor(DETAIL_DESIGN_VIEW_ROLES);
+  // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh membukanya.
+  const actor = await requireDeveloperActor();
   const workOrder = await getPrismaClient().productionWorkOrder.findFirst({
     where: { id: workOrderId, status: { not: "CANCELLED" } },
     select: designSelect,

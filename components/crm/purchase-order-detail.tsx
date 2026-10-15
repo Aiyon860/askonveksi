@@ -125,7 +125,7 @@ export function PurchaseOrderDetail({
                         size="sm"
                         variant="outline"
                         className="h-auto min-h-9 max-w-full shrink justify-start whitespace-normal py-2 text-left leading-5"
-                        render={<Link href={`/api/crm/purchase-order/${detail.id}/attachments/${attachment.id}`} />}
+                        render={<a href={`/api/crm/purchase-order/${detail.id}/attachments/${attachment.id}`} download />}
                         nativeButton={false}
                       >
                         <Paperclip data-icon="inline-start" aria-hidden="true" />

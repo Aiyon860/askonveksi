@@ -48,6 +48,7 @@ const masterItems = [
   { href: "/master-data/garment-sizes", label: "Ukuran pakaian", icon: Ruler },
   { href: "/master-data/product-categories", label: "Kategori produk", icon: Shirt },
   { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CreditCard },
+  { href: "/master-data/invoice-settings", label: "Pengaturan invoice", icon: FileText },
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
 ] as const;
 
@@ -164,7 +165,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewProduction ? (
         <NavGroup label={<span>Produksi</span>} icon={Factory} tone="text-nav-tone-production">
-          {productionItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />)}
+          {productionItems.filter((item) => isDeveloper || item.href !== "/detail-desain").map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewAnalytics ? (

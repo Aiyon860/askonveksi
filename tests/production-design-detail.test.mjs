@@ -64,11 +64,17 @@ test("Detail Desain dan PDF memakai gambar desain yang disetujui", () => {
   assert.match(detail, /skip: \(page - 1\) \* pageSize/);
   assert.match(productionDetailPage, /PaymentProofPreview/);
   assert.match(productionDetailPage, /Desain final/);
-  assert.match(productionDetailPage, /hoverLabel="Lihat detail desain"/);
+  assert.match(productionDetailPage, /hoverLabel="Perbesar gambar"/);
   assert.match(pdfRoute, /designTask: \{ select:/);
   assert.match(pdfRoute, /designAttachments/);
-  assert.ok(pdf.indexOf("POLA:") < pdf.indexOf("const visibleAssets"));
-  assert.ok(pdf.indexOf("const visibleAssets") < pdf.indexOf("const sizeNames"));
+  // H3: identitas PO + POLA selalu tergambar sebelum gambar desain, dan tiap produk dapat lembar mandiri.
+  assert.ok(pdf.indexOf("POLA :") < pdf.indexOf("function drawAssets"));
+  // Tiap lembar produk: kop dulu, lalu gambar desain produknya, baru tabel ukuran.
+  assert.ok(pdf.indexOf("drawSheetHeader(item, sheetIndex > 0)") < pdf.indexOf("drawProductSheet(item);"));
+  assert.ok(pdf.indexOf("drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id), item.name, measureModelTable(rows))") < pdf.indexOf("drawModelTable(rows, item.designNotes)"));
+  // Gambar desain terikat ke produknya lewat itemId sehingga jatuh di lembar produk yang tepat.
+  assert.match(pdfRoute, /itemId,\s*caption: itemNames\.get\(itemId\)/);
+  assert.match(pdf, /itemId\?: string \| null/);
 });
 
 test("editor anotasi mendukung zoom dan edit langsung pada kanvas", () => {

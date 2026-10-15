@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { FileDown, Plus, Trash2 } from "lucide-react";
 
 import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction } from "@/app/actions/crm";
@@ -542,7 +541,7 @@ export function PurchaseOrderForm({
                       </div>)}
                     </div> : null}
                     {item.rosterMode === "excel" ? <div className="mt-4 flex flex-col gap-3">
-                      <Button size="sm" variant="outline" className="self-start" render={<Link href="/api/crm/roster-template" />} nativeButton={false}><FileDown data-icon="inline-start" aria-hidden="true" />Unduh template Excel</Button>
+                      <Button size="sm" variant="outline" className="self-start" render={<a href="/api/crm/roster-template" download />} nativeButton={false}><FileDown data-icon="inline-start" aria-hidden="true" />Unduh template Excel</Button>
                       <Field><FieldLabel htmlFor={`${prefix}roster-file-${fieldKey}`}>File roster</FieldLabel><FilePicker key={formState.ok ? "ready" : "validation-error"} id={`${prefix}roster-file-${fieldKey}`} name={`${prefix}rosterFile`} accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required onChange={(event) => handleRosterFileChange(item, event.currentTarget.files?.[0])} /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Matriks produk ini terisi otomatis sesuai isi file.</FieldDescription></Field>
                       {previewState[item.key]?.loading ? <FieldDescription> Membaca file Excel…</FieldDescription> : null}
                       {previewState[item.key]?.error ? <Alert variant="destructive"><AlertTitle>Pratinjau roster</AlertTitle><AlertDescription>{previewState[item.key]?.error}</AlertDescription></Alert> : null}

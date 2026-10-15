@@ -740,6 +740,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
               id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
               unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
               discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
+              addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } },
             },
             orderBy: { position: "asc" },
           },
@@ -1397,7 +1398,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
 
 export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
 export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
-export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "PENDING_DEPOSIT" | "UNSCHEDULED";
+export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "PARTIAL" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "PENDING_DEPOSIT" | "UNSCHEDULED";
 export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
 export type SalesOrderInvoicePaymentFilter = "all" | "PAID" | "UNPAID";
 export type SalesOrderWoFilter = "all" | "DONE" | "ONGOING" | "NONE";
@@ -1679,7 +1680,7 @@ const getCachedInvoices = unstable_cache(
           createdAt: true,
           opportunityId: true,
           purchaseOrder: { select: { purchaseOrderNo: true } },
-          salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true } } } },
+          salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true, transactions: { where: { paymentTermId: null, status: "ACTIVE" }, select: { id: true }, take: 1 } } } } },
           pendingPayment: { select: { kind: true } },
         },
         orderBy: invoiceOrderBy(sort, direction),
@@ -1695,7 +1696,9 @@ const getCachedInvoices = unstable_cache(
         paymentStatus: item.salesOrder?.status === "ACTIVE"
           ? item.salesOrder.payment && item.salesOrder.payment.outstandingAmount.equals(0)
             ? "PAID" as const
-            : "UNPAID" as const
+            : item.salesOrder.payment && item.salesOrder.payment.transactions.length
+              ? "PARTIAL" as const
+              : "UNPAID" as const
           : item.pendingPayment?.kind === "DP"
             ? "PENDING_DP" as const
             : item.pendingPayment?.kind === "LUNAS"
@@ -1859,7 +1862,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       opportunity: { select: { id: true, opportunityNo: true } },
       purchaseOrder: { select: { purchaseOrderNo: true, deadline: true } },
       pendingPayment: { select: { kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true }, orderBy: { position: "asc" } } } },
-      items: { select: { id: true, productName: true, size: true, description: true, quantity: true, unitPrice: true, discountPercent: true, discountAmount: true, subtotal: true, total: true }, orderBy: { position: "asc" } },
+      items: { select: { id: true, productName: true, size: true, description: true, quantity: true, unitPrice: true, discountPercent: true, discountAmount: true, subtotal: true, total: true, addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } },
       salesOrder: {
         select: {
           id: true,
@@ -1906,7 +1909,7 @@ export async function getInvoiceDetail(invoiceId: string) {
     taxAmount: invoice.taxAmount.toString(),
     totalProfit: invoice.totalProfit.toString(),
     total: invoice.total.toString(),
-    items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), discountPercent: item.discountPercent.toString(), discountAmount: item.discountAmount.toString(), total: item.total.toString(), subtotal: item.subtotal.toString() })),
+    items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), discountPercent: item.discountPercent.toString(), discountAmount: item.discountAmount.toString(), total: item.total.toString(), subtotal: item.subtotal.toString(), addons: item.addons.map((addon) => ({ ...addon, unitAmount: addon.unitAmount.toString() })) })),
     canRecordPayment: hasRole(actor.role, DEAL_ROLES),
     paymentMethods,
     salesOrder: invoice.salesOrder?.payment ? {

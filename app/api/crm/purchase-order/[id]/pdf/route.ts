@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { requireActor } from "@/lib/auth/session";
 import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
+import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
 import { createPurchaseOrderPdf } from "@/lib/crm/purchase-order-pdf";
 import { normalizePdfImage } from "@/lib/crm/pdf-image";
 import { entityIdSchema } from "@/lib/crm/validation";
@@ -47,8 +45,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   ]);
   if (!purchaseOrder) return new Response("PO tidak ditemukan.", { status: 404 });
   const storage = createAdminClient().storage;
-  const logoPath = purchaseOrder.status === "DRAFT" ? currentBusiness?.logoPath : purchaseOrder.snapshotBusinessLogoPath;
-  let logoBytes = new Uint8Array(await readFile(join(process.cwd(), "public/brand/askonveksi-logo.png")));
+  // Snapshot lebih dulu; PO lama yang snapshot logonya kosong jatuh ke logo profil terkini,
+  // lalu ke logo brand terbaru supaya kop PO tidak pernah memakai ikon lama.
+  const logoPath = purchaseOrder.snapshotBusinessLogoPath ?? currentBusiness?.logoPath ?? null;
+  let logoBytes = await readDefaultBrandLogoPng();
   if (logoPath) {
     const { data } = await storage.from("business-assets").download(logoPath);
     if (data) {
@@ -59,8 +59,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const itemNames = new Map(purchaseOrder.items.map((item) => [item.id, item.name]));
   const latestDesignByItem = new Map<string, (typeof designRevisions)[number]>();
   for (const revision of designRevisions) if (!latestDesignByItem.has(revision.itemId)) latestDesignByItem.set(revision.itemId, revision);
+  // `itemId` dipakai PDF: gambar desain menempel di lembar produknya masing-masing (H3).
   const designAttachments = [...latestDesignByItem].flatMap(([itemId, revision]) => revision.attachments.map((attachment) => ({
     ...attachment,
+    itemId,
     caption: itemNames.get(itemId) ? `Desain produksi ${itemNames.get(itemId)}` : "Desain produksi",
   })));
   const assets = (await Promise.all([...purchaseOrder.attachments, ...designAttachments].map(async (item) => {

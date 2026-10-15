@@ -33,11 +33,6 @@ export default async function BusinessProfilePage() {
                 <Field className="sm:col-span-2"><FieldLabel htmlFor="business-address">Alamat</FieldLabel><Textarea id="business-address" name="address" maxLength={2000} rows={4} defaultValue={profile.address ?? ""} /></Field>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field><FieldLabel htmlFor="business-bank-name">Nama bank / rekening</FieldLabel><Input id="business-bank-name" name="bankName" maxLength={120} placeholder="cth. BCA" defaultValue={profile.bankName ?? ""} /></Field>
-                <Field><FieldLabel htmlFor="business-bank-number">Nomor rekening</FieldLabel><Input id="business-bank-number" name="bankAccountNumber" maxLength={60} defaultValue={profile.bankAccountNumber ?? ""} /></Field>
-                <Field className="sm:col-span-2"><FieldLabel htmlFor="business-bank-holder">Atas nama rekening</FieldLabel><Input id="business-bank-holder" name="bankAccountHolder" maxLength={160} defaultValue={profile.bankAccountHolder ?? ""} /></Field>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
                 <Field><FieldLabel htmlFor="business-signature-name">Nama tanda tangan</FieldLabel><Input id="business-signature-name" name="signatureName" maxLength={160} placeholder="cth. Tasya" defaultValue={profile.signatureName ?? ""} /></Field>
                 <Field><FieldLabel htmlFor="business-signature-title">Jabatan tanda tangan</FieldLabel><Input id="business-signature-title" name="signatureTitle" maxLength={120} placeholder="cth. Owner" defaultValue={profile.signatureTitle ?? ""} /></Field>
                 <Field className="sm:col-span-2"><FieldLabel htmlFor="business-invoice-notes">Template catatan invoice (bisa diedit)</FieldLabel><Textarea id="business-invoice-notes" name="invoiceNotes" maxLength={2000} rows={3} defaultValue={profile.invoiceNotes ?? ""} /></Field>
@@ -49,6 +44,29 @@ export default async function BusinessProfilePage() {
                   <Input id="business-logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" />
                 </div>
                 <FieldDescription>PNG, JPG, atau WebP, maksimal 2 MB. Logo disimpan pada bucket privat.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="business-signature-image">Gambar tanda tangan</FieldLabel>
+                <div className="flex flex-col gap-4 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-center">
+                  {profile.signaturePath ? (
+                    <Image src="/api/master-data/business-profile/signature" alt="Gambar tanda tangan" width={720} height={240} className="h-14 w-auto object-contain" unoptimized />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Belum ada gambar. Tanda tangan ditulis dengan nama dan jabatan di atas.</p>
+                  )}
+                  <Input id="business-signature-image" name="signature" type="file" accept="image/png,image/jpeg,image/webp" />
+                </div>
+                <FieldDescription>
+                  PNG, JPG, atau WebP, maksimal 2 MB. Gambar dicetak di atas nama pada PDF invoice dan kwitansi.
+                  {profile.signaturePath ? (
+                    <>
+                      {" "}
+                      <label className="inline-flex items-center gap-1.5">
+                        <input type="checkbox" name="removeSignature" value="1" className="size-3.5 accent-destructive" />
+                        Hapus gambar (kembali ke teks saja)
+                      </label>
+                    </>
+                  ) : null}
+                </FieldDescription>
               </Field>
               <SubmitButton pendingLabel="Menyimpan profil...">Simpan profil perusahaan</SubmitButton>
             </FieldGroup>

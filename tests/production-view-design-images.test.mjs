@@ -96,8 +96,9 @@ test("G2: Admin Customer memakai daftar role khusus lihat tanpa hak ubah", () =>
   assert.match(permissions, /PRODUCTION_VIEW_ROLES = \[\.\.\.PRODUCTION_ROLES, "ADMIN_CUSTOMER"\]/);
   assert.match(permissions, /DETAIL_DESIGN_VIEW_ROLES = \[\.\.\.DETAIL_DESIGN_ROLES, "ADMIN_CUSTOMER"\]/);
   // Bacaan memakai daftar lihat, sedangkan aksi tetap PRODUCTION_ROLES.
+  // Catatan: Detail Desain tidak lagi memakai DETAIL_DESIGN_VIEW_ROLES —
+  // sejak 3011dac halaman itu dikunci khusus DEVELOPER.
   assert.match(productionData, /requireActor\(PRODUCTION_VIEW_ROLES\)/);
-  assert.match(designDetail, /requireActor\(DETAIL_DESIGN_VIEW_ROLES\)/);
   assert.doesNotMatch(productionActions, /requireActor\((PRODUCTION_VIEW_ROLES|DETAIL_DESIGN_VIEW_ROLES)\)/);
   assert.match(productionActions, /await requireActor\(PRODUCTION_ROLES\)/);
 });
@@ -110,12 +111,15 @@ test("G2: kanban Produksi menyembunyikan aksi saat hanya lihat", () => {
   assert.match(board, /const draggable = canManage && !isMoving/);
   assert.match(board, /if \(!canManage\) return;/);
   assert.match(board, /if \(!event\.over\) return/);
-  assert.match(board, /\{canManage \? <CardAction>/);
+  assert.match(board, /action=\{canManage \? <Button/);
   assert.match(board, /<ProductionObstacle item=\{item\} canManage=\{canManage\} \/>/);
   assert.match(board, /Hanya dapat dilihat oleh tim Produksi\./);
 });
 
-test("G2: detail Work Order dan detail desain hanya lihat", () => {
+test("G2: detail Work Order hanya lihat; Detail Desain dikunci DEVELOPER", () => {
+  // Sejak 3011dac halaman Detail Desain disembunyikan dari semua role kecuali DEVELOPER.
+  assert.match(designDetail, /requireDeveloperActor\(\)/);
+  assert.doesNotMatch(designDetail, /DETAIL_DESIGN_VIEW_ROLES/);
   assert.match(designDetail, /canManage: isStageRole\(actor\.role\)/);
   assert.match(designDetail, /return workOrder \? \{ workOrder: withOwnProductDesign\(workOrder\), canManage: isStageRole\(actor\.role\) \} : null/);
   assert.match(designEditorPage, /readOnly=\{!canManage \|\| Boolean\(workOrder\.designCompletedAt\)\}/);
