@@ -221,7 +221,9 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     }
 
     const garmentType = item?.garmentType ?? data.garmentType;
-    const category = item ? item.productCategory?.name ?? "-" : data.productCategory ?? "-";
+    // Kategori per produk boleh kosong di form; jatuhkan ke kategori level PO
+    // (pilihan "PDH / PDL" user tersimpan di sana) supaya tidak tercetak "-".
+    const category = item?.productCategory?.name ?? data.productCategory ?? "-";
     const decoration = item?.decorationMethods.length ? item.decorationMethods : poDecoration;
     const baseColor = data.baseColor ?? data.color;
     const variationColor = data.variationColor;
@@ -469,6 +471,8 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     const quantity = data.sizes.filter((row) => row.itemId === item.id).reduce((sum, row) => sum + row.quantity, 0);
     const itemKind = item.productCategory?.name ?? (item.garmentType ? GARMENT_TYPE_LABEL[item.garmentType] : null);
     if ((item.garmentType ?? data.garmentType) === "AKSESORI") {
+      // Aksesori tidak punya size chart, tapi desainnya tetap menempel di lembar produknya.
+      drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id), item.name);
       drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`);
       return;
     }
@@ -497,7 +501,9 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     }
     drawParagraph("Catatan desain", data.designNotes ?? "-");
     drawParagraph("Catatan", data.notes ?? "-");
-    drawAssets(embeddedAssets.filter((asset) => !asset.itemId), null);
+    // Lampiran umum + desain yatim (itemId tidak cocok produk mana pun, mis. produk
+    // dihapus setelah desain diunggah) tetap dicetak di lembar penutup.
+    drawAssets(embeddedAssets.filter((asset) => !asset.itemId || !itemNameById.has(asset.itemId)), null);
   } else {
     drawSheetHeader(null, false);
     if (isAccessory) {

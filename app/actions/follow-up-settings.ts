@@ -10,6 +10,13 @@ import { firstValidationMessage } from "@/lib/crm/validation";
 import { repeatOrderDueAt } from "@/lib/crm/reminder-types";
 import { getPrismaClient } from "@/lib/prisma";
 
+// Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
+// (maxWait 2s / timeout 5s) bisa berakhir P2028 "melewati batas waktu".
+const SETTINGS_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 const settingsSchema = z.object({
   version: z.coerce.number().int().positive(),
   offsets: z.array(z.coerce.number().int().min(-365).max(365)).length(3).refine((items) => new Set(items).size === 3, "Ketiga waktu pengingat harus berbeda."),
@@ -40,7 +47,7 @@ export async function updateFollowUpSettingsAction(formData: FormData) {
       await tx.auditEvent.create({
         data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "INVOICE_REMINDER_SETTINGS_UPDATED", changedFields: ["invoiceReminderOffsets"], metadata: { offsets } },
       });
-    });
+    }, SETTINGS_TRANSACTION_OPTIONS);
 
     revalidatePath("/settings");
     return flashMessagePath("/settings", "notice", "Waktu pengingat pembayaran disimpan.");
@@ -95,7 +102,7 @@ export async function updateRepeatOrderSettingsAction(formData: FormData) {
       await tx.auditEvent.create({
         data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "REPEAT_ORDER_SETTINGS_UPDATED", changedFields: ["repeatOrderIntervals"], metadata: { intervals: parsed.data.intervals } },
       });
-    });
+    }, SETTINGS_TRANSACTION_OPTIONS);
 
     revalidatePath("/settings");
     return flashMessagePath("/settings", "notice", "Pola reminder repeat order disimpan.");

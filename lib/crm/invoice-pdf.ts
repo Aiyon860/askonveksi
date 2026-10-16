@@ -55,20 +55,40 @@ const A4 = { width: 595.28, height: 841.89 };
 const margin = 48;
 const CONTENT_WIDTH = A4.width - margin * 2;
 
+/** Biru judul dan nama pada template; navy untuk kepala tabel. */
+const TEMPLATE_BLUE = rgb(0.12, 0.32, 0.64);
+const TABLE_HEAD_BG = rgb(0.18, 0.24, 0.3);
+const ZEBRA_BG = rgb(0.95, 0.96, 0.97);
+const GRID_LINE = rgb(0.84, 0.84, 0.84);
+const RULE_LINE = rgb(0.25, 0.25, 0.25);
+
 function safeText(value: string) {
   return value.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\x7e\xa0-\xff]/g, "?");
 }
 
-function currency(value: { toString(): string }) {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value.toString()));
+/** Angka gaya template: 4,330,000.00 (koma ribuan, dua desimal). */
+function templateNumber(value: number | string) {
+  const number = Number(value);
+  const safe = Number.isFinite(number) ? number : 0;
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safe);
 }
 
-function date(value: Date) {
-  return new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeZone: "Asia/Jakarta" }).format(value);
+function templateMoney(value: number | string) {
+  return `Rp ${templateNumber(value)}`;
 }
 
-function statusLabel(status: string) {
-  return ({ DRAFT: "Draft", ISSUED: "Terbit", SUPERSEDED: "Digantikan" } as Record<string, string>)[status] ?? status;
+function slashDate(value: Date | null) {
+  if (!value) return "-";
+  const parts = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Jakarta" }).formatToParts(value);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("day")}/${pick("month")}/${pick("year")}`;
+}
+
+/** Tanggal tanda tangan gaya template: 19 Sep, 2026. */
+function signatureDate(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).formatToParts(value);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("day")} ${pick("month")}, ${pick("year")}`;
 }
 
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number) {
@@ -110,7 +130,6 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
       signature = undefined;
     }
   }
-  const signatureHeight = signature ? signature.scaleToFit(150, 46).height : 0;
   let page!: PDFPage;
   let y!: number;
 
@@ -132,205 +151,261 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     if (y - height < margin + 20) addPage();
   }
 
-  function text(value: string, x: number, size = MIN_FONT_SIZE, font = regular, color = rgb(0.12, 0.12, 0.12)) {
-    page.drawText(safeText(value), { x, y, size, font, color });
-  }
-
   function rightText(value: string, right: number, size = MIN_FONT_SIZE, font = regular, color = rgb(0.12, 0.12, 0.12)) {
     const safeValue = safeText(value);
     page.drawText(safeValue, { x: right - font.widthOfTextAtSize(safeValue, size), y, size, font, color });
   }
 
+  /** Judul seksi bergaris bawah gaya template ("Info Perusahaan", "Keterangan", ...). */
+  function sectionTitle(title: string, x: number, width: number, color = rgb(0.12, 0.12, 0.12)) {
+    page.drawText(safeText(title), { x, y, size: MIN_FONT_SIZE, font: bold, color });
+    y -= 6;
+    page.drawLine({ start: { x, y }, end: { x: x + width, y }, thickness: 1, color: RULE_LINE });
+    y -= 14;
+  }
+
   /** Blok poin berurutan dari master "Pengaturan invoice" (tiap poin bisa bold). */
-  function drawPointList(title: string, points: PdfInvoiceSettingPoint[]) {
+  function drawPointList(title: string, points: PdfInvoiceSettingPoint[], x = margin, width = CONTENT_WIDTH) {
     if (!points.length) return;
     ensure(70);
-    text(title, margin, 14, bold);
-    y -= 20;
+    sectionTitle(title, x, width);
     points.forEach((point, index) => {
       const font = point.isBold ? bold : regular;
-      const lines = wrap(point.text, font, MIN_FONT_SIZE, CONTENT_WIDTH - 22);
+      const lines = wrap(point.text, font, MIN_FONT_SIZE, width - 22);
       ensure(lines.length * 16 + 10);
-      page.drawText(`${index + 1}.`, { x: margin, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText(`${index + 1}.`, { x, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.4, 0.4, 0.4) });
       lines.forEach((line, lineIndex) => {
-        page.drawText(line, { x: margin + 22, y: y - lineIndex * 16, size: MIN_FONT_SIZE, font, color: rgb(0.12, 0.12, 0.12) });
+        page.drawText(line, { x: x + 22, y: y - lineIndex * 16, size: MIN_FONT_SIZE, font, color: rgb(0.12, 0.12, 0.12) });
       });
       y -= lines.length * 16 + 6;
     });
     y -= 10;
   }
 
+  const issueDate = invoice.issuedAt ?? invoice.createdAt;
+  const totalPaid = invoice.salesOrder?.payment?.transactions.filter((item) => item.status === "ACTIVE").reduce((sum, item) => sum + Number(item.amount.toString()), 0) ?? 0;
+  const amountDue = Math.max(0, Number(invoice.total.toString()) - totalPaid);
+
   addPage();
   if (invoice.status === "DRAFT") page.drawText("DRAFT", { x: 150, y: 370, size: 82, font: bold, color: rgb(0.9, 0.9, 0.9), rotate: degrees(35), opacity: 0.45 });
-  const scaledLogo = logo.scaleToFit(150, 44);
+
+  // Kop: logo kiri, judul + blok referensi kanan.
+  const scaledLogo = logo.scaleToFit(150, 52);
+  const headerTop = y;
   page.drawImage(logo, { x: margin, y: y - scaledLogo.height, width: scaledLogo.width, height: scaledLogo.height });
   const headerRight = A4.width - margin;
-  rightText("INVOICE", headerRight, 18, bold);
-  y -= 24;
-  rightText(invoice.invoiceNo, headerRight, MIN_FONT_SIZE, regular, rgb(0.35, 0.35, 0.35));
-  y -= 20;
-  rightText(`Status: ${statusLabel(invoice.status)}`, headerRight, MIN_FONT_SIZE, bold);
-  y -= 46;
-
-  const customerColumnX = 297;
-  const columnWidth = CONTENT_WIDTH / 2 - 8;
-  text("Info perusahaan", margin, MIN_FONT_SIZE, bold, rgb(0.35, 0.35, 0.35));
-  text("Tagihan untuk", customerColumnX, MIN_FONT_SIZE, bold, rgb(0.35, 0.35, 0.35));
-  y -= 20;
-  text(clipPdfText(safeText(invoice.snapshotBusinessName ?? "AS Konveksi"), bold, MIN_FONT_SIZE, columnWidth), margin, MIN_FONT_SIZE, bold);
-  text(clipPdfText(safeText(invoice.snapshotCustomerName), bold, MIN_FONT_SIZE, columnWidth), customerColumnX, MIN_FONT_SIZE, bold);
-  y -= 18;
-  const businessContact = wrap([invoice.snapshotBusinessPhone, invoice.snapshotBusinessEmail].filter(Boolean).join(" · ") || "-", regular, MIN_FONT_SIZE, columnWidth).slice(0, 2);
-  const customerContact = wrap([invoice.snapshotWhatsapp, invoice.snapshotEmail].filter(Boolean).join(" · ") || "-", regular, MIN_FONT_SIZE, columnWidth).slice(0, 2);
-  businessContact.forEach((line, index) => page.drawText(line, { x: margin, y: y - index * 15, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) }));
-  customerContact.forEach((line, index) => page.drawText(line, { x: customerColumnX, y: y - index * 15, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) }));
-  y -= Math.max(businessContact.length, customerContact.length) * 15 + 8;
-  const businessAddress = wrap(invoice.snapshotBusinessAddress ?? "-", regular, MIN_FONT_SIZE, columnWidth).slice(0, 3);
-  const customerAddress = wrap(invoice.snapshotAddress ?? "-", regular, MIN_FONT_SIZE, columnWidth).slice(0, 3);
-  businessAddress.forEach((line, index) => page.drawText(line, { x: margin, y: y - index * 15, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) }));
-  customerAddress.forEach((line, index) => page.drawText(line, { x: customerColumnX, y: y - index * 15, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) }));
-  y -= Math.max(businessAddress.length, customerAddress.length) * 15 + 10;
-  // Tiga baris meta dicetak bertumpuk; pada 12 pt tidak ada lagi muat untuk 3 kolom sebaris.
-  for (const line of [
-    `Referensi: ${safeText(invoice.purchaseOrder.purchaseOrderNo)}`,
-    `Tanggal: ${date(invoice.issuedAt ?? invoice.createdAt)}`,
-    `Deadline pembayaran awal: ${invoice.dueAt ? date(invoice.dueAt) : "-"}`,
-  ]) {
-    text(line, margin, MIN_FONT_SIZE);
+  page.drawText("Invoice", { x: headerRight - bold.widthOfTextAtSize("Invoice", 20), y: y - 18, size: 20, font: bold, color: TEMPLATE_BLUE });
+  y -= 34;
+  const metaRows: Array<[string, string]> = [
+    ["Referensi", safeText(invoice.invoiceNo)],
+    ["Tanggal", slashDate(issueDate)],
+    ["Tgl. Jatuh Tempo", slashDate(invoice.dueAt)],
+  ];
+  const metaValueWidth = Math.max(...metaRows.map(([, value]) => regular.widthOfTextAtSize(value, MIN_FONT_SIZE)));
+  for (const [label, value] of metaRows) {
+    rightText(value, headerRight, MIN_FONT_SIZE);
+    const labelWidth = regular.widthOfTextAtSize(label, MIN_FONT_SIZE);
+    page.drawText(safeText(label), { x: headerRight - metaValueWidth - 16 - labelWidth, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) });
     y -= 18;
   }
-  y -= 10;
+  y = Math.min(y, headerTop - scaledLogo.height) - 22;
 
+  // Dua kolom info: perusahaan kiri, customer kanan.
+  const infoGap = 24;
+  const infoWidth = (CONTENT_WIDTH - infoGap) / 2;
+  const customerX = margin + infoWidth + infoGap;
+  const infoTop = y;
+  let leftY = y;
+  let rightY = y;
+  const infoLines = (lines: string[], x: number, fromY: number, color = rgb(0.3, 0.3, 0.3)) => {
+    let cursor = fromY;
+    for (const line of lines) {
+      page.drawText(line, { x, y: cursor, size: MIN_FONT_SIZE, font: regular, color });
+      cursor -= 16;
+    }
+    return cursor;
+  };
+  page.drawText("Info Perusahaan", { x: margin, y: leftY, size: MIN_FONT_SIZE, font: bold });
+  leftY -= 6;
+  page.drawLine({ start: { x: margin, y: leftY }, end: { x: margin + infoWidth, y: leftY }, thickness: 1, color: RULE_LINE });
+  leftY -= 16;
+  page.drawText(clipPdfText(safeText(invoice.snapshotBusinessName ?? "AS Konveksi"), bold, MIN_FONT_SIZE, infoWidth), { x: margin, y: leftY, size: MIN_FONT_SIZE, font: bold, color: TEMPLATE_BLUE });
+  leftY -= 18;
+  const businessLines = [
+    ...wrap(invoice.snapshotBusinessAddress ?? "-", regular, MIN_FONT_SIZE, infoWidth),
+    `Telp: ${invoice.snapshotBusinessPhone ?? "-"}`,
+    `Email: ${invoice.snapshotBusinessEmail ?? "-"}`,
+  ];
+  leftY = infoLines(businessLines, margin, leftY) - 4;
+  page.drawText("Tagihan Untuk", { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold });
+  rightY -= 6;
+  page.drawLine({ start: { x: customerX, y: rightY }, end: { x: customerX + infoWidth, y: rightY }, thickness: 1, color: RULE_LINE });
+  rightY -= 16;
+  const customerName = invoice.snapshotCompanyName ?? invoice.snapshotCustomerName;
+  page.drawText(clipPdfText(safeText(customerName), bold, MIN_FONT_SIZE, infoWidth), { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold, color: TEMPLATE_BLUE });
+  rightY -= 18;
+  rightY = infoLines([`Telp: ${invoice.snapshotWhatsapp ?? "-"}`], customerX, rightY) - 4;
+  void infoTop;
+  y = Math.min(leftY, rightY) - 16;
+
+  // Tabel barang gaya template: kepala navy, baris zebra, garis antar kolom.
+  // Teks panjang dibungkus ke bawah (wrap), bukan dipotong "...".
   const tableRight = A4.width - margin;
-  const columns = { text: margin, qtyRight: 372, priceRight: 452, totalRight: tableRight };
-  const textColumnWidth = columns.qtyRight - columns.text - 30;
-  const headerHorizontalInset = 8;
-  ensure(34);
-  page.drawRectangle({
-    x: margin - headerHorizontalInset,
-    y: y - 10,
-    width: tableRight - margin + headerHorizontalInset * 2,
-    height: 26,
-    color: rgb(0.94, 0.94, 0.94),
-  });
-  text("Deskripsi", columns.text, MIN_FONT_SIZE, bold);
-  rightText("Qty", columns.qtyRight, MIN_FONT_SIZE, bold);
-  rightText("Harga", columns.priceRight, MIN_FONT_SIZE, bold);
-  rightText("Jumlah", columns.totalRight, MIN_FONT_SIZE, bold);
-  y -= 32;
-
-  invoice.items.forEach((item) => {
-    const lines = wrap(item.description, regular, MIN_FONT_SIZE, textColumnWidth);
-    const rowHeight = Math.max(30, (lines.length + 1) * 15 + 12);
-    ensure(rowHeight);
-    const rowTop = y;
-    // Nama produk dan deskripsi digabung satu kolom supaya kolom angka tetap lega pada 12 pt.
-    page.drawText(clipPdfText(safeText(item.productName ?? "Produk"), bold, MIN_FONT_SIZE, textColumnWidth), { x: columns.text, y: rowTop, size: MIN_FONT_SIZE, font: bold });
-    lines.forEach((line, index) => page.drawText(line, { x: columns.text, y: rowTop - 16 - index * 15, size: MIN_FONT_SIZE, font: regular, color: rgb(0.28, 0.28, 0.28) }));
-    const quantity = String(item.quantity);
-    const unitPrice = currency({ toString: () => (Number(item.total.toString()) / item.quantity).toFixed(2) });
-    const lineTotal = currency(item.total);
-    page.drawText(quantity, { x: columns.qtyRight - regular.widthOfTextAtSize(quantity, MIN_FONT_SIZE), y: rowTop, size: MIN_FONT_SIZE, font: regular });
-    page.drawText(unitPrice, { x: columns.priceRight - regular.widthOfTextAtSize(unitPrice, MIN_FONT_SIZE), y: rowTop, size: MIN_FONT_SIZE, font: regular });
-    page.drawText(lineTotal, { x: columns.totalRight - regular.widthOfTextAtSize(lineTotal, MIN_FONT_SIZE), y: rowTop, size: MIN_FONT_SIZE, font: regular });
-    y -= rowHeight;
+  const tableColumns = [
+    { key: "product", label: "Produk", width: 80, align: "left" as const },
+    { key: "description", label: "Deskripsi", width: 106, align: "left" as const },
+    { key: "qty", label: "Qty", width: 40, align: "center" as const },
+    { key: "price", label: "Harga", width: 80, align: "right" as const },
+    { key: "disc", label: "Disc", width: 52, align: "center" as const },
+    { key: "tax", label: "Pajak", width: 46, align: "center" as const },
+    { key: "total", label: "Jumlah", width: CONTENT_WIDTH - 80 - 106 - 40 - 80 - 52 - 46, align: "right" as const },
+  ];
+  const TABLE_HEADER_HEIGHT = 24;
+  const TABLE_ROW_MIN = 24;
+  function columnX(index: number) {
+    return margin + tableColumns.slice(0, index).reduce((sum, column) => sum + column.width, 0);
+  }
+  function drawTableGridlines(rowTop: number, rowHeight: number) {
+    tableColumns.forEach((column, index) => {
+      if (index === 0) return;
+      const lineX = columnX(index);
+      page.drawLine({ start: { x: lineX, y: rowTop }, end: { x: lineX, y: rowTop - rowHeight }, thickness: 0.5, color: GRID_LINE });
+    });
+  }
+  function drawTableHeader() {
+    ensure(TABLE_HEADER_HEIGHT + 8);
+    page.drawRectangle({ x: margin, y: y - TABLE_HEADER_HEIGHT, width: CONTENT_WIDTH, height: TABLE_HEADER_HEIGHT, color: TABLE_HEAD_BG });
+    tableColumns.forEach((column, index) => {
+      const cellX = columnX(index);
+      const label = clipPdfText(column.label, bold, MIN_FONT_SIZE, column.width - 8);
+      const textWidth = bold.widthOfTextAtSize(label, MIN_FONT_SIZE);
+      const textX = column.align === "left" ? cellX + 6 : column.align === "right" ? cellX + column.width - 6 - textWidth : cellX + (column.width - textWidth) / 2;
+      page.drawText(label, { x: textX, y: y - TABLE_HEADER_HEIGHT + 6, size: MIN_FONT_SIZE, font: bold, color: rgb(1, 1, 1) });
+    });
+    y -= TABLE_HEADER_HEIGHT;
+  }
+  function drawTableCell(index: number, value: string, baselineY: number, font: PDFFont, color = rgb(0.12, 0.12, 0.12)) {
+    const column = tableColumns[index];
+    const cellX = columnX(index);
+    const clipped = clipPdfText(safeText(value), font, MIN_FONT_SIZE, column.width - 10);
+    const textWidth = font.widthOfTextAtSize(clipped, MIN_FONT_SIZE);
+    const textX = column.align === "left" ? cellX + 6 : column.align === "right" ? cellX + column.width - 6 - textWidth : cellX + (column.width - textWidth) / 2;
+    page.drawText(clipped, { x: textX, y: baselineY, size: MIN_FONT_SIZE, font, color });
+  }
+  type TableRow = { cells: string[][]; lines: number; addon: boolean };
+  const tableRows: TableRow[] = [];
+  const wrapCell = (value: string, columnIndex: number) => wrap(value || "-", regular, MIN_FONT_SIZE, tableColumns[columnIndex].width - 12);
+  for (const item of invoice.items) {
+    const productLines = wrapCell(item.productName ?? "-", 0);
+    const descLines = wrapCell(item.description || "-", 1);
+    tableRows.push({
+      cells: [
+        productLines,
+        descLines,
+        [String(item.quantity)],
+        [templateNumber(item.unitPrice.toString())],
+        [String(Number(item.discountPercent?.toString() ?? "0") || 0)],
+        ["-"],
+        [templateNumber(item.total.toString())],
+      ],
+      lines: Math.max(productLines.length, descLines.length),
+      addon: false,
+    });
     for (const addon of item.addons ?? []) {
       const addonTotal = Number(addon.unitAmount.toString()) * item.quantity;
-      const addonText = `+ ${addon.label} (${item.quantity} x ${currency(addon.unitAmount)})`;
-      const addonLines = wrap(addonText, regular, MIN_FONT_SIZE, textColumnWidth - 8);
-      const addonHeight = addonLines.length * 15 + 6;
-      ensure(addonHeight);
-      addonLines.forEach((line, index) => page.drawText(line, { x: columns.text + 8, y: y - index * 15, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) }));
-      const addonTotalText = currency({ toString: () => String(addonTotal) });
-      page.drawText(addonTotalText, { x: columns.totalRight - regular.widthOfTextAtSize(addonTotalText, MIN_FONT_SIZE), y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) });
-      y -= addonHeight;
+      const addonProductLines = wrapCell(`+ ${addon.label}`, 0);
+      const addonDescLines = wrapCell(`${item.quantity} x ${templateNumber(addon.unitAmount.toString())}`, 1);
+      tableRows.push({
+        cells: [
+          addonProductLines,
+          addonDescLines,
+          [String(item.quantity)],
+          [templateNumber(addon.unitAmount.toString())],
+          ["-"],
+          ["-"],
+          [templateNumber(addonTotal)],
+        ],
+        lines: Math.max(addonProductLines.length, addonDescLines.length),
+        addon: true,
+      });
     }
-    page.drawLine({ start: { x: margin, y: y + 8 }, end: { x: A4.width - margin, y: y + 8 }, thickness: 0.5, color: rgb(0.86, 0.86, 0.86) });
+  }
+  drawTableHeader();
+  tableRows.forEach((row, rowIndex) => {
+    const rowHeight = Math.max(TABLE_ROW_MIN, row.lines * 16 + 8);
+    if (y - rowHeight < margin + 20) {
+      addPage();
+      drawTableHeader();
+    }
+    const rowTop = y;
+    if (rowIndex % 2 === 1) page.drawRectangle({ x: margin, y: rowTop - rowHeight, width: CONTENT_WIDTH, height: rowHeight, color: ZEBRA_BG });
+    page.drawRectangle({ x: margin, y: rowTop - rowHeight, width: CONTENT_WIDTH, height: rowHeight, borderWidth: 0.5, borderColor: GRID_LINE });
+    drawTableGridlines(rowTop, rowHeight);
+    const topPad = Math.max(4, (rowHeight - row.lines * 16) / 2);
+    const firstBaseline = rowTop - topPad - 12;
+    const middleBaseline = rowTop - rowHeight / 2 - 4;
+    const gray = row.addon ? rgb(0.35, 0.35, 0.35) : undefined;
+    row.cells.forEach((cellLines, cellIndex) => {
+      if (cellIndex <= 1) {
+        cellLines.forEach((line, lineIndex) => {
+          drawTableCell(cellIndex, line, firstBaseline - lineIndex * 16, regular, gray);
+        });
+        return;
+      }
+      drawTableCell(cellIndex, cellLines[0] ?? "", middleBaseline, regular, gray);
+    });
+    y = rowTop - rowHeight;
   });
 
-  ensure(180);
-  y -= 8;
-  const summaryX = 320;
-  y -= 24;
-  page.drawLine({ start: { x: summaryX, y: y + 14 }, end: { x: A4.width - margin, y: y + 14 }, thickness: 1, color: rgb(0.2, 0.2, 0.2) });
-  text("Subtotal", summaryX, MIN_FONT_SIZE);
-  rightText(currency(invoice.subtotal), columns.totalRight, MIN_FONT_SIZE);
-  y -= 18;
-  text("Diskon", summaryX, MIN_FONT_SIZE);
-  rightText(currency(invoice.totalDiscount), columns.totalRight, MIN_FONT_SIZE);
-  const taxPct = Number(invoice.taxPercent?.toString() ?? "0");
-  if (taxPct > 0) {
-    y -= 18;
-    text(`Pajak (${taxPct}%)`, summaryX, MIN_FONT_SIZE);
-    rightText(currency(invoice.taxAmount), columns.totalRight, MIN_FONT_SIZE);
-  }
-  y -= 20;
-  text("TOTAL", summaryX, 14, bold);
-  rightText(currency(invoice.total), columns.totalRight, 14, bold);
-  const totalPaid = invoice.salesOrder?.payment?.transactions.filter((item) => item.status === "ACTIVE").reduce((sum, item) => sum + Number(item.amount.toString()), 0) ?? 0;
-  y -= 20;
-  text("Total terbayar", summaryX, MIN_FONT_SIZE);
-  rightText(currency({ toString: () => String(totalPaid) }), columns.totalRight, MIN_FONT_SIZE);
-  y -= 20;
-  text("Sisa tagihan", summaryX, MIN_FONT_SIZE, bold);
-  rightText(currency({ toString: () => String(Math.max(0, Number(invoice.total.toString()) - totalPaid)) }), columns.totalRight, MIN_FONT_SIZE, bold);
-  y -= 30;
-  ensure(90);
-  const bankLine = [invoice.snapshotBankName, invoice.snapshotBankAccountNumber].filter(Boolean).join(" · ");
-  if (bankLine) {
-    // Invoice lama masih memakai snapshot rekening yang tersimpan di barisnya.
-    text("Rekening pembayaran", margin, MIN_FONT_SIZE, bold);
-    y -= 18;
-    page.drawText(safeText(bankLine), { x: margin, y, size: MIN_FONT_SIZE, font: bold });
-    y -= 18;
-    if (invoice.snapshotBankAccountHolder) {
-      text(`a.n. ${safeText(invoice.snapshotBankAccountHolder)}`, margin, MIN_FONT_SIZE, bold);
-      y -= 18;
-    } else {
-      y -= 4;
-    }
-  } else if (assets.paymentMethods?.length) {
-    // Field rekening dihapus dari profil; sumbernya sekarang master metode pembayaran.
-    ensure(40);
-    text("Metode pembayaran", margin, MIN_FONT_SIZE, bold);
-    y -= 18;
-    for (const method of assets.paymentMethods) {
-      const label = method.description?.trim() ? `${method.name} · ${method.description.trim()}` : method.name;
-      for (const line of wrap(label, regular, MIN_FONT_SIZE, CONTENT_WIDTH)) {
-        ensure(22);
-        text(line, margin, MIN_FONT_SIZE, regular, rgb(0.12, 0.12, 0.12));
-        y -= 16;
-      }
-    }
-    y -= 6;
-  }
-
-  ensure(70);
-  // Blok Catatan lama diganti dua blok master "Pengaturan invoice" (mengikuti data terbaru).
+  // Halaman ringkasan gaya template: Keterangan kiri, angka kanan.
+  addPage();
+  const summaryWidth = 218;
+  const summaryX = A4.width - margin - summaryWidth;
+  const listWidth = summaryX - margin - 20;
+  const summaryTop = y;
   const settingPoints = assets.settingPoints ?? [];
-  drawPointList("Keterangan", settingPoints.filter((point) => point.section === "KETERANGAN"));
-  drawPointList("Syarat & Ketentuan", settingPoints.filter((point) => point.section === "SYARAT_KETENTUAN"));
-
-  if (invoice.snapshotSignatureName || signature) {
-    y -= 20;
-    ensure(70 + signatureHeight);
-    const signX = A4.width - margin - 180;
-    text("Hormat kami,", signX, MIN_FONT_SIZE, regular, rgb(0.35, 0.35, 0.35));
-    if (signature) {
-      y -= 16;
-      const scaled = signature.scaleToFit(150, 46);
-      page.drawImage(signature, { x: signX, y: y - scaled.height, width: scaled.width, height: scaled.height });
-      y -= scaled.height + 16;
-    } else {
-      y -= 30;
-    }
-    if (invoice.snapshotSignatureName) {
-      page.drawText(clipPdfText(safeText(invoice.snapshotSignatureName), bold, MIN_FONT_SIZE, 180), { x: signX, y, size: MIN_FONT_SIZE, font: bold });
-      y -= 16;
-    }
-    text(clipPdfText(safeText(invoice.snapshotSignatureTitle ?? ""), regular, MIN_FONT_SIZE, 180), signX, MIN_FONT_SIZE, regular, rgb(0.35, 0.35, 0.35));
-    y -= 10;
+  drawPointList("Keterangan", settingPoints.filter((point) => point.section === "KETERANGAN"), margin, listWidth);
+  const listBottom = y;
+  y = summaryTop;
+  const summaryRows: Array<{ label: string; value: string; bold?: boolean }> = [
+    { label: "Subtotal", value: templateMoney(invoice.subtotal.toString()) },
+    { label: "Pajak", value: templateMoney(invoice.taxAmount.toString()) },
+    { label: "Total", value: templateMoney(invoice.total.toString()) },
+    { label: "Pajak Inclusive", value: templateMoney(0) },
+    { label: "Lunas", value: totalPaid > 0 ? `Rp (${templateNumber(totalPaid)})` : templateMoney(0) },
+  ];
+  for (const row of summaryRows) {
+    page.drawText(safeText(row.label), { x: summaryX, y, size: MIN_FONT_SIZE, font: row.bold ? bold : regular });
+    rightText(row.value, tableRight, MIN_FONT_SIZE, row.bold ? bold : regular);
+    y -= 18;
   }
+  // Garis di atas baris total dengan jeda cukup supaya tidak menimpa huruf.
+  y -= 4;
+  page.drawLine({ start: { x: summaryX, y }, end: { x: tableRight, y }, thickness: 1, color: RULE_LINE });
+  y -= 18;
+  page.drawText("Jumlah Tertagih:", { x: summaryX, y, size: MIN_FONT_SIZE, font: bold });
+  rightText(templateMoney(amountDue), tableRight, MIN_FONT_SIZE, bold);
+  y -= 26;
+  // Tanda tangan di tengah kolom angka: tanggal, gambar, nama terang.
+  const signCenter = summaryX + summaryWidth / 2;
+  const signDate = signatureDate(issueDate);
+  page.drawText(signDate, { x: signCenter - regular.widthOfTextAtSize(signDate, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: regular });
+  y -= 14;
+  if (signature) {
+    const scaled = signature.scaleToFit(450, 138);
+    page.drawImage(signature, { x: signCenter - scaled.width / 2, y: y - scaled.height, width: scaled.width, height: scaled.height });
+    y -= scaled.height + 12;
+  } else {
+    y -= 34;
+  }
+  if (invoice.snapshotSignatureName) {
+    const signName = safeText(invoice.snapshotSignatureName).toUpperCase();
+    page.drawText(signName, { x: signCenter - bold.widthOfTextAtSize(signName, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: bold });
+    y -= 16;
+  }
+  y = Math.min(y, listBottom) - 10;
+  // Syarat & Ketentuan selebar kolom kiri saja (separuh halaman) seperti template.
+  drawPointList("Syarat & Ketentuan", settingPoints.filter((point) => point.section === "SYARAT_KETENTUAN"), margin, listWidth);
 
   document.setTitle(`Invoice ${invoice.invoiceNo}`);
   document.setAuthor(invoice.snapshotBusinessName ?? "AS Konveksi");

@@ -17,6 +17,15 @@ const MAX_FILES = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_REVISIONS = DESIGN_REVISION_LIMIT;
 
+// Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
+// (maxWait 2s / timeout 5s) sering berakhir P2028 "melewati batas waktu"
+// saat mengunggah desain multi-produk, jadi anggaran transaksi dinaikkan
+// mengikuti pola `DEAL_TRANSACTION_OPTIONS` di crm.ts.
+const DESIGN_TRANSACTION_OPTIONS = {
+  maxWait: 15_000,
+  timeout: 30_000,
+} as const;
+
 /** Nomor versi berikutnya untuk setiap produk, dihitung terpisah per produk. */
 function latestRevisionByItem(revisions: Array<{ itemId: string; revision: number }>) {
   const latest = new Map<string, number>();
@@ -160,7 +169,7 @@ export async function uploadDesignRevisionAction(formData: FormData) {
           });
         }
         return current.purchaseOrder.opportunityId;
-      });
+      }, DESIGN_TRANSACTION_OPTIONS);
 
       revalidatePath("/crm");
       revalidatePath("/crm/purchase-orders");

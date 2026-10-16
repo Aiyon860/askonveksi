@@ -9,6 +9,14 @@ import { getPrismaClient } from "@/lib/prisma";
 const MAX_BODY_BYTES = 16 * 1024;
 const RATE_LIMIT_MAX = 5;
 
+// Pooler Supabase bisa lambat; default Prisma (maxWait 2s / timeout 5s)
+// bisa P2028 saat membuat customer + opportunity berurutan.
+const LEAD_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 function json(message: string, status = 200) {
   return Response.json({ message }, {
     status,
@@ -116,7 +124,7 @@ export async function POST(request: Request) {
           productName: parsed.data.productName,
         },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, LEAD_TRANSACTION_OPTIONS);
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) {
       return json("Prospek belum dapat disimpan. Silakan coba lagi atau hubungi kami melalui WhatsApp.", 500);

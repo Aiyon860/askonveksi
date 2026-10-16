@@ -25,17 +25,24 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
     return null;
   }
 
-  const actor = await getPrismaClient().appUser.findUnique({
-    where: { authUserId },
-    select: {
-      id: true,
-      authUserId: true,
-      email: true,
-      name: true,
-      role: true,
-      isActive: true,
-    },
-  });
+  // Gangguan sesaat ke pooler (timeout/connect) tidak boleh merobohkan halaman:
+  // kontrak fungsi ini Actor | null, jadi kegagalan baca = anggap belum masuk.
+  let actor: { id: string; authUserId: string; email: string; name: string; role: AppRole; isActive: boolean } | null;
+  try {
+    actor = await getPrismaClient().appUser.findUnique({
+      where: { authUserId },
+      select: {
+        id: true,
+        authUserId: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+      },
+    });
+  } catch {
+    return null;
+  }
 
   if (!actor?.isActive) {
     return null;

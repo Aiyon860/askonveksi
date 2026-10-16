@@ -49,6 +49,10 @@ export function PurchaseOrderDepositAction({
 }) {
   const [open, setOpen] = useState(false);
   const filled = deposit !== null;
+  // `jakartaNowValue()` berubah tiap menit; render ulang saat dialog terbuka
+  // akan menggeser `defaultValue` dan memicu warning uncontrolled FieldControl
+  // dari Base UI. Bekukan nilainya setiap kali dialog dibuka.
+  const [fallbackPaidAt, setFallbackPaidAt] = useState(jakartaNowValue);
 
   return (
     <>
@@ -58,13 +62,15 @@ export function PurchaseOrderDepositAction({
         className="w-auto"
         disabled={!canEdit || undefined}
         title={canEdit ? undefined : "Deposit hanya dapat diubah saat PO masih draft."}
-        onClick={() => setOpen(true)}
+        onClick={() => { setFallbackPaidAt(jakartaNowValue()); setOpen(true); }}
       >
         <Wallet data-icon="inline-start" aria-hidden="true" />
         {filled ? "Ubah Deposit" : "Isi Deposit"}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+        {/* Remount tiap buka/tutup agar `defaultValue` selalu dibaca dari data
+            terbaru dan tidak pernah berubah di tengah dialog terbuka. */}
+        <DialogContent key={open ? "deposit-open" : "deposit-closed"} className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{purchaseOrderNo ? `Deposit desain ${purchaseOrderNo}` : "Deposit desain"}</DialogTitle>
             <DialogDescription>Catat deposit yang sudah diterima. Nominalnya dikurangkan dari sisa tagihan invoice.</DialogDescription>
@@ -88,7 +94,7 @@ export function PurchaseOrderDepositAction({
                 </Field>
                 <Field>
                   <FieldLabel htmlFor={`po-deposit-paid-at-${purchaseOrderId}`} required>Tanggal deposit</FieldLabel>
-                  <Input id={`po-deposit-paid-at-${purchaseOrderId}`} name="paidAt" type="datetime-local" required max={jakartaNowValue()} defaultValue={deposit ? toDateTimeLocalValue(deposit.paidAt) : jakartaNowValue()} />
+                  <Input id={`po-deposit-paid-at-${purchaseOrderId}`} name="paidAt" type="datetime-local" required max={jakartaNowValue()} defaultValue={deposit ? toDateTimeLocalValue(deposit.paidAt) : fallbackPaidAt} />
                 </Field>
               </div>
               <Field>

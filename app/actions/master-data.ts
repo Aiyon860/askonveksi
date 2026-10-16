@@ -26,6 +26,15 @@ import { getPrismaClient } from "@/lib/prisma";
 import { SITE_LOGO_CACHE_TAG } from "@/lib/site-logo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
+// (maxWait 2s / timeout 5s) bisa berakhir P2028 "melewati batas waktu",
+// jadi anggaran transaksi dinaikkan mengikuti pola di crm.ts.
+const MASTER_DATA_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 function fields(formData: FormData) {
   return { name: formData.get("name"), description: formData.get("description"), position: formData.get("position") };
 }
@@ -90,7 +99,7 @@ async function importCustomerTypeRows(actorId: string, rows: MasterDataExcelRow[
       await tx.auditEvent.create({ data: { actorId, entityType: "CustomerType", entityId: item.id, action: "CUSTOMER_TYPE_UPDATED", changedFields: ["position"] } });
       position += 1;
     }
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, MASTER_DATA_TRANSACTION_OPTIONS);
 }
 
 async function importLeadSourceRows(actorId: string, rows: MasterDataExcelRow[]) {
@@ -134,7 +143,7 @@ async function importLeadSourceRows(actorId: string, rows: MasterDataExcelRow[])
       await tx.auditEvent.create({ data: { actorId, entityType: "LeadSource", entityId: item.id, action: "LEAD_SOURCE_UPDATED", changedFields: ["position"] } });
       position += 1;
     }
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, MASTER_DATA_TRANSACTION_OPTIONS);
 }
 
 async function importGarmentSizeRows(actorId: string, rows: MasterDataExcelRow[]) {
@@ -178,7 +187,7 @@ async function importGarmentSizeRows(actorId: string, rows: MasterDataExcelRow[]
       await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: item.id, action: "GARMENT_SIZE_UPDATED", changedFields: ["position"] } });
       position += 1;
     }
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, MASTER_DATA_TRANSACTION_OPTIONS);
 }
 
 export async function createCustomerTypeAction(formData: FormData) {
@@ -194,7 +203,7 @@ export async function createCustomerTypeAction(formData: FormData) {
         select: { id: true },
       });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "CustomerType", entityId: created.id, action: "CUSTOMER_TYPE_CREATED", changedFields: ["name", "description", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/customer-types");
     return flashMessagePath("/master-data/customer-types", "notice", "Jenis customer berhasil dibuat.");
   });
@@ -286,7 +295,7 @@ export async function bulkUpdateCustomerTypesAction(formData: FormData) {
           },
         });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
 
     revalidatePath("/master-data/customer-types");
     revalidatePath("/customers");
@@ -307,7 +316,7 @@ export async function createLeadSourceAction(formData: FormData) {
         select: { id: true },
       });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "LeadSource", entityId: created.id, action: "LEAD_SOURCE_CREATED", changedFields: ["name", "description", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/lead-sources");
     return flashMessagePath("/master-data/lead-sources", "notice", "Sumber lead berhasil dibuat.");
   });
@@ -399,7 +408,7 @@ export async function bulkUpdateLeadSourcesAction(formData: FormData) {
           },
         });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
 
     revalidatePath("/master-data/lead-sources");
     revalidatePath("/customers");
@@ -436,7 +445,7 @@ async function importPaymentMethodRows(actorId: string, rows: MasterDataExcelRow
       await tx.paymentMethod.update({ where: { id: current.id }, data: { name: row.name, description: row.description, position, isActive: true } });
       await tx.auditEvent.create({ data: { actorId, entityType: "PaymentMethod", entityId: current.id, action: "PAYMENT_METHOD_UPDATED", changedFields } });
     }
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, MASTER_DATA_TRANSACTION_OPTIONS);
 }
 
 export async function createPaymentMethodAction(formData: FormData) {
@@ -449,7 +458,7 @@ export async function createPaymentMethodAction(formData: FormData) {
       const lastItem = await tx.paymentMethod.aggregate({ _max: { position: true } });
       const created = await tx.paymentMethod.create({ data: { ...parsed.data, position: (lastItem._max.position ?? -1) + 1 }, select: { id: true } });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "PaymentMethod", entityId: created.id, action: "PAYMENT_METHOD_CREATED", changedFields: ["name", "description", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/payment-methods");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/payment-methods", "notice", "Metode pembayaran berhasil dibuat.");
@@ -497,7 +506,7 @@ export async function bulkUpdatePaymentMethodsAction(formData: FormData) {
         await tx.paymentMethod.update({ where: { id: item.id }, data: { name: item.name, description, position, isActive: true } });
         await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "PaymentMethod", entityId: item.id, action: "PAYMENT_METHOD_UPDATED", changedFields } });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/payment-methods");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/payment-methods", "notice", "Metode pembayaran berhasil diperbarui.");
@@ -524,7 +533,7 @@ export async function createGarmentSizeAction(formData: FormData) {
       await tx.auditEvent.create({
         data: { actorId: actor.id, entityType: "GarmentSize", entityId: created.id, action: "GARMENT_SIZE_CREATED", changedFields: ["name", "description", "position"] },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/garment-sizes");
     return flashMessagePath("/master-data/garment-sizes", "notice", "Ukuran pakaian berhasil dibuat.");
   });
@@ -586,7 +595,7 @@ export async function bulkUpdateGarmentSizesAction(formData: FormData) {
           data: { actorId: actor.id, entityType: "GarmentSize", entityId: item.id, action: "GARMENT_SIZE_UPDATED", changedFields },
         });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/garment-sizes");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/garment-sizes", "notice", "Ukuran pakaian berhasil diperbarui.");
@@ -635,7 +644,7 @@ export async function deleteCustomerTypeAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.customerType.delete({ where: { id } });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "CustomerType", entityId: id, action: "CUSTOMER_TYPE_DELETED", changedFields: ["name", "description", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/customer-types");
     revalidatePath("/customers");
     return flashMessagePath("/master-data/customer-types", "notice", `Jenis customer "${current.name}" berhasil dihapus.`);
@@ -654,7 +663,7 @@ export async function deleteLeadSourceAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.leadSource.delete({ where: { id } });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "LeadSource", entityId: id, action: "LEAD_SOURCE_DELETED", changedFields: ["name", "description", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/lead-sources");
     revalidatePath("/customers");
     return flashMessagePath("/master-data/lead-sources", "notice", `Sumber lead "${current.name}" berhasil dihapus.`);
@@ -673,7 +682,7 @@ export async function deleteGarmentSizeAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.garmentSize.delete({ where: { id } });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "GarmentSize", entityId: id, action: "GARMENT_SIZE_DELETED", changedFields: ["name", "description", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/garment-sizes");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/garment-sizes", "notice", `Ukuran "${current.name}" berhasil dihapus.`);
@@ -692,7 +701,7 @@ export async function deletePaymentMethodAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.paymentMethod.delete({ where: { id } });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "PaymentMethod", entityId: id, action: "PAYMENT_METHOD_DELETED", changedFields: ["name", "description", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/payment-methods");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/payment-methods", "notice", `Metode pembayaran "${current.name}" berhasil dihapus.`);
@@ -743,7 +752,7 @@ async function importProductCategoryRows(actorId: string, rows: MasterDataExcelR
       await tx.productCategory.update({ where: { id: current.id }, data: { name: row.name, garmentType: row.garmentType, position, isActive: row.isActive } });
       await tx.auditEvent.create({ data: { actorId, entityType: "ProductCategory", entityId: current.id, action: "PRODUCT_CATEGORY_UPDATED", changedFields } });
     }
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, MASTER_DATA_TRANSACTION_OPTIONS);
 }
 
 type InvoiceSettingGroups = Array<{ section: "KETERANGAN" | "SYARAT_KETENTUAN"; rows: Array<{ id?: string | undefined; text: string; bold: boolean }> }>;
@@ -827,7 +836,7 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
           data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: row.id, action: "INVOICE_SETTING_POINT_DELETED", changedFields: ["section", "text", "isBold", "position"] },
         });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { ...MASTER_DATA_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/master-data/invoice-settings");
     revalidatePath("/crm/invoices");
@@ -852,7 +861,7 @@ export async function createProductCategoryAction(formData: FormData) {
       await tx.auditEvent.create({
         data: { actorId: actor.id, entityType: "ProductCategory", entityId: created.id, action: "PRODUCT_CATEGORY_CREATED", changedFields: ["name", "garmentType", "position"] },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/product-categories");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/product-categories", "notice", "Kategori produk berhasil dibuat.");
@@ -916,7 +925,7 @@ export async function bulkUpdateProductCategoriesAction(formData: FormData) {
           data: { actorId: actor.id, entityType: "ProductCategory", entityId: item.id, action: "PRODUCT_CATEGORY_UPDATED", changedFields },
         });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/product-categories");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/product-categories", "notice", "Kategori produk berhasil diperbarui.");
@@ -935,7 +944,7 @@ export async function deleteProductCategoryAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productCategory.delete({ where: { id } });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "ProductCategory", entityId: id, action: "PRODUCT_CATEGORY_DELETED", changedFields: ["name", "garmentType", "position"] } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
     revalidatePath("/master-data/product-categories");
     revalidatePath("/crm");
     return flashMessagePath("/master-data/product-categories", "notice", `Kategori "${current.name}" berhasil dihapus.`);
@@ -1013,7 +1022,7 @@ export async function updateBusinessProfileAction(formData: FormData) {
         await tx.auditEvent.create({
           data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedLogoPath ? ["logoPath"] : []), ...(uploadedSignaturePath || removeSignature ? ["signaturePath"] : [])] },
         });
-      });
+      }, MASTER_DATA_TRANSACTION_OPTIONS);
     } catch (error) {
       if (uploadedLogoPath) await createAdminClient().storage.from("business-assets").remove([uploadedLogoPath]);
       if (uploadedSignaturePath) await createAdminClient().storage.from("business-assets").remove([uploadedSignaturePath]);

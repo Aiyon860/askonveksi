@@ -14,6 +14,9 @@ if (!connectionString) throw new Error("DATABASE_URL belum dikonfigurasi.");
 const lockConnectionString = process.env.DIRECT_URL || connectionString;
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString, max: 3 }) });
+// Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
+// (maxWait 2s / timeout 5s) bisa P2028, jadi anggaran transaksi dinaikkan.
+const WORKER_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
 // Advisory locks need a session-stable connection; avoid transaction poolers for this client.
 const lockClient = new Client({ connectionString: lockConnectionString });
 const authRoot = path.resolve(process.env.WHATSAPP_AUTH_PATH || ".data/baileys-auth");
@@ -234,7 +237,7 @@ async function storeInbound(accountId, message, remoteJid) {
         update: {},
       });
     }
-  });
+  }, WORKER_TRANSACTION_OPTIONS);
 }
 
 async function processAccountDeletion(account) {
@@ -567,7 +570,7 @@ async function processOneJob() {
     await prisma.$transaction([
       prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null, lastError: "Sumber automasi sudah berubah atau selesai." } }),
       prisma.whatsAppMessage.updateMany({ where: { automationJobId: id, status: { in: ["QUEUED", "SENDING"] } }, data: { status: "CANCELLED" } }),
-    ]);
+    ], WORKER_TRANSACTION_OPTIONS);
     return true;
   }
   if (job.message?.status === "SENDING") {
@@ -575,7 +578,7 @@ async function processOneJob() {
     await prisma.$transaction([
       prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "FAILED", leaseOwner: null, leaseExpiresAt: null, lastError: error } }),
       prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { status: "FAILED", failedAt: new Date(), errorMessage: error } }),
-    ]);
+    ], WORKER_TRANSACTION_OPTIONS);
     return true;
   }
   let sendStarted = false;
@@ -638,7 +641,7 @@ async function processOneJob() {
           await tx.customerReminder.updateMany({ where: { id: job.reminderId, generation: reminder.generation, resolvedAt: null }, data: { dueAt, nextOccurrence: occurrence, generation: { increment: 1 } } });
         }
       }
-    });
+    }, WORKER_TRANSACTION_OPTIONS);
   } catch (error) {
     const detail = cleanError(error);
     const message = sendStarted ? `Status pengiriman ambigu: ${detail}` : detail;

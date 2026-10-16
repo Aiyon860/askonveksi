@@ -68,8 +68,9 @@ const CUSTOMER_IMPORT_TRANSACTION_OPTIONS = {
 } as const;
 const DEAL_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-  maxWait: 10_000,
-  timeout: 20_000,
+  // 6 query berurutan × ±450ms RTT + akuisisi antrean pool saat burst.
+  maxWait: 15_000,
+  timeout: 30_000,
 } as const;
 
 function shouldLogDocumentTiming() {
@@ -838,7 +839,7 @@ export async function updateCustomerAction(formData: FormData) {
         "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
       ]);
       return updated;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     if (!result.count) throw new UserFacingError("Customer tidak dapat diperbarui.");
 
     revalidatePath("/customers");
@@ -867,7 +868,7 @@ export async function updateCustomerOrderReminderAction(formData: FormData) {
       if (!updated.count) throw new UserFacingError("Pengaturan customer sudah berubah. Muat ulang halaman.");
       await resetCustomerOrderReminderDelivery(tx, parsed.data.customerId, parsed.data.enabled);
       await audit(tx, actor, "Customer", parsed.data.customerId, "ORDER_REMINDER_SETTING_UPDATED", ["orderReminderEnabled"]);
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     revalidatePath(`/customers/${parsed.data.customerId}`);
     return flashMessagePath(`/customers/${parsed.data.customerId}`, "notice", `Reminder order ${parsed.data.enabled ? "diaktifkan" : "dinonaktifkan"}.`);
   });
@@ -913,7 +914,7 @@ export async function archiveCustomerAction(formData: FormData) {
         if (updated.count !== 1) throw new UserFacingError("Data customer sudah berubah. Muat ulang halaman.");
         await audit(tx, actor, "Customer", parsed.data.customerId, "CUSTOMER_ARCHIVED", ["archivedAt"]);
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");
@@ -946,7 +947,7 @@ export async function restoreCustomerAction(formData: FormData) {
         throw new UserFacingError("Customer sudah aktif, tidak ditemukan, atau datanya telah berubah. Muat ulang halaman.");
       }
       await audit(tx, actor, "Customer", parsed.data.customerId, "CUSTOMER_RESTORED", ["archivedAt"]);
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/customers");
@@ -1009,7 +1010,7 @@ export async function createOpportunityAction(formData: FormData) {
         ], { stage: "LEAD_BARU" });
         return created;
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");
@@ -1121,7 +1122,7 @@ export async function createProspectAction(formData: FormData) {
         "customerId", "title", "leadSourceId", "salesPicId", "stage", "origin",
       ], { stage: "FOLLOW_UP", origin: "PROSPEK_FORM" });
       return created;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/prospek");
@@ -1166,7 +1167,7 @@ export async function createRepeatOrderAction(formData: FormData) {
       });
       await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", ["customerId", "title", "stage", "leadSourceId", "salesPicId"], { stage: "NEGOSIASI", repeatOrder: true });
       return created;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/prospek");
@@ -1227,7 +1228,7 @@ export async function updateOpportunityAction(formData: FormData) {
         "nextAction", "nextActionAt",
       ]);
       return updated;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     if (!result.count) throw new UserFacingError("Peluang tidak dapat diperbarui.");
 
     revalidatePath("/crm");
@@ -1376,7 +1377,7 @@ export async function addCommunicationActivityAction(formData: FormData) {
       await audit(tx, actor, "CommunicationActivity", activity.id, "COMMUNICATION_ACTIVITY_ADDED", [
         "kind", "channel", "direction", "content", "occurredAt",
       ], { customerId: customer.id, opportunityId: parsed.data.opportunityId ?? null });
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath(`/customers/${parsed.data.customerId}`);
     if (parsed.data.opportunityId) revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
@@ -1455,7 +1456,7 @@ export async function recordFollowUpResultAction(formData: FormData) {
         await rearmCustomerRemindersAfterLost(tx, current.customerId);
       }
       return current.customerId;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/follow-up");
@@ -1686,7 +1687,7 @@ export async function agreePurchaseOrderAction(formData: FormData) {
         sourceAuditEventId: auditEvent.id,
       });
       return { opportunityId: purchaseOrder.opportunityId, customerId: purchaseOrder.opportunity.customerId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${result.opportunityId}`);
@@ -1755,7 +1756,7 @@ export async function recordPurchaseOrderDepositAction(formData: FormData) {
         amount: parsed.data.amount,
       });
       return purchaseOrder.opportunityId;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePurchaseOrderList();
@@ -1793,7 +1794,7 @@ export async function markPurchaseOrderDesignSentAction(formData: FormData) {
       if (result.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
       await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_DESIGN_SENT", ["designSentAt", "designSentById", ...(customerConfirmed ? ["customerConfirmedAt", "customerConfirmedById"] : [])]);
       return purchaseOrder;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${updated.opportunityId}`);
     return flashMessagePath(`/crm/peluang/${updated.opportunityId}?tab=po`, "notice", `1 set PDF PO ditandai terkirim oleh ${actor.name}. Minta konfirmasi revisi ke customer.`);
@@ -1816,7 +1817,7 @@ export async function confirmPurchaseOrderCustomerAction(formData: FormData) {
       if (result.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
       await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_CUSTOMER_CONFIRMED", ["customerConfirmedAt", "customerConfirmedById"]);
       return purchaseOrder;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${updated.opportunityId}`);
     return flashMessagePath(`/crm/peluang/${updated.opportunityId}?tab=po`, "notice", "Customer dikonfirmasi tidak ada revisi. PO siap disepakati.");
@@ -2177,7 +2178,7 @@ export async function issueInvoiceAction(formData: FormData) {
       });
       if (actor.role !== "DEVELOPER") await enqueueIssuedInvoiceWhatsAppJob(tx, parsed.data.invoiceId);
       return { opportunityId: invoice.opportunityId, customerId: invoice.opportunity.customerId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${issuedInvoice.opportunityId}`);
@@ -2296,7 +2297,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
         ], { sourceInvoiceId: source.id });
         return source.opportunityId;
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");
@@ -2949,7 +2950,7 @@ export async function cancelPurchaseOrderAction(formData: FormData) {
         cancelledByName: actor.name,
       });
       return { opportunityId: purchaseOrder.opportunityId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/purchase-orders");
@@ -2991,7 +2992,7 @@ export async function cancelInvoiceAction(formData: FormData) {
         cancelledByName: actor.name,
       });
       return { opportunityId: invoice.opportunityId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidateInvoiceList();
@@ -3076,7 +3077,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
         await restoreCustomerRemindersAfterCancellation(tx, order.opportunity.customerId);
         return { opportunityId: order.opportunityId, customerId: order.opportunity.customerId };
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");

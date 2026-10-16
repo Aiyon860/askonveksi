@@ -110,7 +110,7 @@ export async function saveProductionDesignAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.designAttachment.update({ where: { id: attachment.id }, data: { contentType: "image/png", sizeBytes: bytes.length, originalPath, annotations: annotations.data } });
       await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_VERSION_SAVED", ["annotations"], { attachmentId: attachment.id });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidatePath("/detail-desain");
     revalidatePath(`/crm/purchase-orders`);
     return flashMessagePath(fallback, "notice", "Versi desain disimpan. Konfirmasikan untuk memasukkannya ke Produksi.");
@@ -188,7 +188,7 @@ export async function overwriteProductionDesignAction(formData: FormData) {
           },
         });
         await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_REPLACED", ["path", "contentType", "sizeBytes", "originalName", "originalPath", "annotations"], { attachmentId: attachment.id, previousPath: attachment.path, nextPath });
-      });
+      }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     } catch (error) {
       await storage.remove([nextPath]);
       throw error;
@@ -253,7 +253,7 @@ export async function resetProductionDesignAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.designAttachment.update({ where: { id: attachment.id }, data: { annotations: Prisma.JsonNull, ...(restoredContentType === undefined ? {} : { contentType: restoredContentType, sizeBytes: originalSize }) } });
       await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_RESET", ["annotations"], { attachmentId: attachment.id });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidatePath("/detail-desain");
     revalidatePath("/crm/purchase-orders");
     return flashMessagePath(fallback, "notice", "Perubahan desain dikembalikan ke desain awal.");
@@ -290,7 +290,7 @@ export async function sendProductionDesignAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productionWorkOrder.update({ where: { id: order.id }, data: { designCompletedAt: new Date() } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_DESIGN_SENT", ["designCompletedAt"], { attachmentId: parsed.data.attachmentId });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     if (attachment.originalPath) {
       try {
         const { error } = await createAdminClient().storage.from(DESIGN_BUCKET).remove([attachment.originalPath]);
@@ -312,6 +312,13 @@ export async function sendProductionDesignAction(formData: FormData) {
 // jadi anggaran transaksi dinaikkan mengikuti pola `DEAL_TRANSACTION_OPTIONS` di crm.ts.
 const MOVE_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
+// Transaksi tulis kecil lain (2-3 query berurutan) juga bisa P2028 di pooler
+// yang lambat; diberi anggaran yang sama tanpa mengubah isolation level.
+const PRODUCTION_WRITE_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
   timeout: 20_000,
 } as const;
@@ -510,7 +517,7 @@ export async function updateProductionObstacleAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productionWorkOrder.update({ where: { id: order.id }, data: { obstacle, obstacleUpdatedAt } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_OBSTACLE_UPDATED", ["obstacle", "obstacleUpdatedAt"], { hasObstacle: Boolean(obstacle) });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidateProductionBoard();
     revalidatePath(detailPath(order.id));
     return { ok: true as const };
@@ -542,7 +549,7 @@ export async function assignProductionStepAction(formData: FormData) {
       await tx.productionStep.update({ where: { id: step.id }, data: { assigneeId: assignee.id } });
       await tx.productionActivity.create({ data: { workOrderId: parsed.data.workOrderId, actorId: actor.id, type: "PIC_ASSIGNED", toStage: step.stage, metadata: { assigneeId: assignee.id, assigneeName: assignee.name } } });
       await productionAudit(tx, actor.id, parsed.data.workOrderId, "PRODUCTION_PIC_ASSIGNED", ["assigneeId"], { stepId: step.id, stage: step.stage, assigneeId: assignee.id });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
 
     revalidateProductionBoard();
     revalidatePath(fallback);
@@ -562,7 +569,7 @@ export async function addProductionNoteAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productionActivity.create({ data: { workOrderId: order.id, actorId: actor.id, type: "NOTE_ADDED", toStage: order.currentStage, note: parsed.data.note } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_NOTE_ADDED", ["activity"], { stage: order.currentStage });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidatePath(fallback);
     return flashMessagePath(fallback, "notice", "Catatan produksi ditambahkan.");
   });

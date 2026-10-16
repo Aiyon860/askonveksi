@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { CopyPlus, FileDown, XCircle } from "lucide-react";
+import { CopyPlus, Eye, XCircle } from "lucide-react";
 
 import { cancelInvoiceAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
@@ -87,9 +87,14 @@ export function InvoiceWorkflowSection({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
           {!isCreatingRevision && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
           {!isCreatingRevision && invoiceStatus !== "ISSUED" ? (
-            <Button className="w-full sm:w-auto" render={<a href={`/api/crm/invoice/${invoiceId}/pdf`} download />} nativeButton={false}>
-              <FileDown data-icon="inline-start" aria-hidden="true" />
-              Unduh PDF
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              render={<a href={`/api/crm/invoice/${invoiceId}/pdf?preview=1`} target="_blank" rel="noopener noreferrer" aria-label={`Lihat Invoice ${title.split(" · ")[0]}`} />}
+              nativeButton={false}
+            >
+              <Eye data-icon="inline-start" aria-hidden="true" />
+              Lihat Invoice
             </Button>
           ) : null}
           {showCreateRevision ? (

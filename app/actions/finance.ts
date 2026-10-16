@@ -26,6 +26,13 @@ const optionalHppMethod = z.preprocess(
 const salesOrderCostSchema = z.object({ salesOrderId: z.string().cuid(), version: z.coerce.number().int().positive(), kain: z.coerce.number().finite().nonnegative(), zipper: z.coerce.number().finite().nonnegative(), jahit: z.coerce.number().finite().nonnegative(), pres: z.coerce.number().finite().nonnegative(), dtfPlastisol: z.coerce.number().finite().nonnegative(), bordir: z.coerce.number().finite().nonnegative(), lainnya: z.coerce.number().finite().nonnegative(), expenseMethodKain: optionalHppMethod, expenseMethodZipper: optionalHppMethod, expenseMethodJahit: optionalHppMethod, expenseMethodPres: optionalHppMethod, expenseMethodDtfPlastisol: optionalHppMethod, expenseMethodBordir: optionalHppMethod, expenseMethodLainnya: optionalHppMethod, expenseSpentAtKain: optionalHppDate, expenseSpentAtZipper: optionalHppDate, expenseSpentAtJahit: optionalHppDate, expenseSpentAtPres: optionalHppDate, expenseSpentAtDtfPlastisol: optionalHppDate, expenseSpentAtBordir: optionalHppDate, expenseSpentAtLainnya: optionalHppDate });
 const PATH = "/keuangan/pengeluaran";
 
+// Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
+// (maxWait 2s / timeout 5s) bisa berakhir P2028 "melewati batas waktu".
+const FINANCE_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 function input(formData: FormData) { const id = formData.get("id"); return { id: typeof id === "string" && id ? id : undefined, purpose: formData.get("purpose"), spentAt: formData.get("spentAt"), amount: formData.get("amount"), category: formData.get("category"), paymentMethodId: formData.get("paymentMethodId"), isReimbursable: formData.get("isReimbursable") === "on", customerName: formData.get("customerName"), salesOrderId: formData.get("salesOrderId") }; }
 async function assertPaymentMethod(paymentMethodId: string) { const method = await getPrismaClient().paymentMethod.findFirst({ where: { id: paymentMethodId, isActive: true }, select: { id: true } }); if (!method) throw new UserFacingError("Metode pembayaran tidak ditemukan atau tidak aktif."); }
 function date(value: string) { const result = new Date(`${value}T00:00:00.000Z`); if (Number.isNaN(result.getTime())) throw new UserFacingError("Tanggal tidak valid."); return result; }
@@ -39,7 +46,7 @@ export async function createExpenseAction(formData: FormData) {
     const proof = await uploadPaymentProof(formData.get("proof"), actor.id);
     if (!proof) throw new UserFacingError("Bukti pengeluaran wajib dilampirkan.");
     await assertPaymentMethod(parsed.data.paymentMethodId);
-    try { await getPrismaClient().$transaction(async (tx) => { const item = await tx.expense.create({ data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethodId: parsed.data.paymentMethodId, isReimbursable: parsed.data.isReimbursable, customerName: parsed.data.customerName ?? null, salesOrderId: parsed.data.salesOrderId ?? null, ...proof, createdById: actor.id } }); await audit(tx, actor.id, item.id, "EXPENSE_CREATED", ["purpose", "spentAt", "amount", "category", "paymentMethodId", "isReimbursable", "customerName", "proofPath"]); }); } catch (error) { await deletePaymentProof(proof.proofPath); throw error; }
+    try { await getPrismaClient().$transaction(async (tx) => { const item = await tx.expense.create({ data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethodId: parsed.data.paymentMethodId, isReimbursable: parsed.data.isReimbursable, customerName: parsed.data.customerName ?? null, salesOrderId: parsed.data.salesOrderId ?? null, ...proof, createdById: actor.id } }); await audit(tx, actor.id, item.id, "EXPENSE_CREATED", ["purpose", "spentAt", "amount", "category", "paymentMethodId", "isReimbursable", "customerName", "proofPath"]); }, FINANCE_TRANSACTION_OPTIONS); } catch (error) { await deletePaymentProof(proof.proofPath); throw error; }
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran berhasil dicatat.");
   });
 }
@@ -55,7 +62,7 @@ export async function updateExpenseAction(formData: FormData) {
     const proof = await uploadPaymentProof(formData.get("proof"), actor.id);
     if (!proof && !current.proofPath) throw new UserFacingError("Bukti pengeluaran wajib dilampirkan.");
     await assertPaymentMethod(parsed.data.paymentMethodId);
-    try { await getPrismaClient().$transaction(async (tx) => { await tx.expense.update({ where: { id }, data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethodId: parsed.data.paymentMethodId, isReimbursable: parsed.data.isReimbursable, customerName: parsed.data.customerName ?? null, salesOrderId: parsed.data.salesOrderId ?? null, ...(proof ?? {}) } }); await audit(tx, actor.id, id, "EXPENSE_UPDATED", ["purpose", "spentAt", "amount", "category", "paymentMethodId", "isReimbursable", "customerName", ...(proof ? ["proofPath"] : [])]); }); } catch (error) { await deletePaymentProof(proof?.proofPath); throw error; }
+    try { await getPrismaClient().$transaction(async (tx) => { await tx.expense.update({ where: { id }, data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethodId: parsed.data.paymentMethodId, isReimbursable: parsed.data.isReimbursable, customerName: parsed.data.customerName ?? null, salesOrderId: parsed.data.salesOrderId ?? null, ...(proof ?? {}) } }); await audit(tx, actor.id, id, "EXPENSE_UPDATED", ["purpose", "spentAt", "amount", "category", "paymentMethodId", "isReimbursable", "customerName", ...(proof ? ["proofPath"] : [])]); }, FINANCE_TRANSACTION_OPTIONS); } catch (error) { await deletePaymentProof(proof?.proofPath); throw error; }
     if (proof) await deletePaymentProof(current.proofPath);
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran berhasil diperbarui.");
   });
@@ -74,7 +81,7 @@ export async function deleteExpenseAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.expense.update({ where: { id: parsed.data.id }, data: { deletedAt: new Date(), deletedById: actor.id, deleteReason: reason } });
       await audit(tx, actor.id, parsed.data.id, "EXPENSE_DELETED", ["deletedAt", "deletedById"]);
-    });
+    }, FINANCE_TRANSACTION_OPTIONS);
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran dipindahkan ke riwayat hapus.");
   });
 }
@@ -88,7 +95,7 @@ export async function restoreExpenseAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.expense.update({ where: { id: parsed.data }, data: { deletedAt: null, deletedById: null, deleteReason: null } });
       await audit(tx, actor.id, parsed.data, "EXPENSE_RESTORED", ["deletedAt"]);
-    });
+    }, FINANCE_TRANSACTION_OPTIONS);
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran dikembalikan dari riwayat hapus.");
   });
 }
@@ -96,7 +103,7 @@ export async function restoreExpenseAction(formData: FormData) {
 export async function reimburseExpenseAction(formData: FormData) {
   return runRedirectingAction(PATH, async () => {
     const actor = await requireActor(FINANCE_ROLES); const parsed = idSchema.safeParse(formData.get("id")); if (!parsed.success) throw new UserFacingError("Pengeluaran tidak valid.");
-    await getPrismaClient().$transaction(async (tx) => { const current = await tx.expense.findUnique({ where: { id: parsed.data }, select: { isReimbursable: true, reimbursedAt: true, deletedAt: true } }); if (!current || current.deletedAt) throw new UserFacingError("Pengeluaran tidak ditemukan."); if (!current.isReimbursable) throw new UserFacingError("Verifikasi hanya tersedia untuk pengeluaran yang bisa diganti."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran ini sudah ditandai diganti."); await tx.expense.update({ where: { id: parsed.data }, data: { reimbursedAt: new Date() } }); await audit(tx, actor.id, parsed.data, "EXPENSE_REIMBURSED", ["reimbursedAt"]); });
+    await getPrismaClient().$transaction(async (tx) => { const current = await tx.expense.findUnique({ where: { id: parsed.data }, select: { isReimbursable: true, reimbursedAt: true, deletedAt: true } }); if (!current || current.deletedAt) throw new UserFacingError("Pengeluaran tidak ditemukan."); if (!current.isReimbursable) throw new UserFacingError("Verifikasi hanya tersedia untuk pengeluaran yang bisa diganti."); if (current.reimbursedAt) throw new UserFacingError("Pengeluaran ini sudah ditandai diganti."); await tx.expense.update({ where: { id: parsed.data }, data: { reimbursedAt: new Date() } }); await audit(tx, actor.id, parsed.data, "EXPENSE_REIMBURSED", ["reimbursedAt"]); }, FINANCE_TRANSACTION_OPTIONS);
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran ditandai sudah diganti.");
   });
 }
@@ -170,7 +177,7 @@ export async function updateSalesOrderCostAction(formData: FormData) {
           await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: item.id, action: "EXPENSE_CREATED", changedFields: ["purpose", "spentAt", "amount", "category", "salesOrderId", "proofPath"] } });
         }
         return result;
-      });
+      }, FINANCE_TRANSACTION_OPTIONS);
       if (updated.count) { revalidatePath("/keuangan/pemasukan"); revalidatePath("/keuangan/pengeluaran"); }
       return flashMessagePath("/keuangan/pemasukan", "notice", entries.length ? "Biaya HPP diperbarui dan otomatis masuk ke Pengeluaran (kategori Project)." : "Biaya HPP berhasil diperbarui.");
     } catch (error) {

@@ -874,21 +874,12 @@ export async function getSalesDashboardData() {
   const monthStart = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - 7 * 60 * 60 * 1000);
   const nextMonth = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) - 7 * 60 * 60 * 1000);
   const openStages: OpportunityStage[] = ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"];
-  const [
-    stageGroups,
-    dealRevenue,
-    overdue,
-    dueToday,
-    urgentActions,
-    latestPurchaseOrders,
-    latestInvoices,
-    monthMoneyIn,
-    activeOutstanding,
-    monthOrders,
-    newCustomerCount,
-    activeProductionCount,
-    overdueProductionCount,
-  ] = await Promise.all([
+  // 13 query dalam satu Promise.all berebut pool (max 10) dengan RTT ±500ms
+  // ke pooler Sydney: 8 query antre per request, 2 request bersamaan (RSC +
+  // polling SWR 30 dtk) langsung memicu "timeout exceeded when trying to
+  // connect" dari pg-pool. Dipecah 5 + 4 + 4 berurutan agar checkout
+  // bersamaan tidak pernah melebihi pool.
+  const [stageGroups, dealRevenue, overdue, dueToday, urgentActions] = await Promise.all([
     prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
     canViewFinancialData ? prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }) : null,
     prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { lt: start }, customer: { archivedAt: null } } }),
@@ -899,6 +890,8 @@ export async function getSalesDashboardData() {
       orderBy: { nextActionAt: "asc" },
       take: 5,
     }),
+  ]);
+  const [latestPurchaseOrders, latestInvoices, monthMoneyIn, activeOutstanding] = await Promise.all([
     prisma.purchaseOrder.findMany({
       select: {
         id: true,
@@ -951,6 +944,8 @@ export async function getSalesDashboardData() {
           _count: true,
       })
       : null,
+  ]);
+  const [monthOrders, newCustomerCount, activeProductionCount, overdueProductionCount] = await Promise.all([
     canViewFinancialData
       ? prisma.salesOrder.findMany({
           where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } },

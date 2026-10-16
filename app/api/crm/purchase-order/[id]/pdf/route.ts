@@ -67,13 +67,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   })));
   const assets = (await Promise.all([...purchaseOrder.attachments, ...designAttachments].map(async (item) => {
     const label = item.caption || ATTACHMENT_LABEL[item.kind] || item.originalName;
-    if (item.contentType === "application/pdf") return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array() };
+    // `itemId` wajib diteruskan agar gambar desain menempel di lembar produknya,
+    // bukan jatuh ke lembar penutup di akhir dokumen.
+    const itemId = ("itemId" in item && typeof item.itemId === "string" ? item.itemId : null) || null;
+    if (item.contentType === "application/pdf") return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array(), itemId };
     const { data } = await storage.from("crm-po-designs").download(item.path);
     if (!data) return null;
     try {
-      return { kind: item.kind, label, originalName: item.originalName, contentType: "image/png", bytes: await normalizePdfImage(new Uint8Array(await data.arrayBuffer())) };
+      return { kind: item.kind, label, originalName: item.originalName, contentType: "image/png", bytes: await normalizePdfImage(new Uint8Array(await data.arrayBuffer())), itemId };
     } catch {
-      return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array() };
+      return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array(), itemId };
     }
   }))).filter((item): item is NonNullable<typeof item> => item !== null);
   const profile = purchaseOrder.status === "DRAFT" ? currentBusiness : null;

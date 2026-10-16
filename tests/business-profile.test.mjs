@@ -72,7 +72,7 @@ test("snapshot invoice menyimpan gambar tanda tangan dan tidak lagi menulis reke
   assert.ok(!crmActionSource.includes("snapshotBankName: business?.bankName"), "perekaman rekening dari profil dihentikan");
 });
 
-test("PDF invoice memakai master metode pembayaran dan gambar tanda tangan", () => {
+test("PDF invoice mengikuti template: tanpa blok rekening, dengan gambar tanda tangan", () => {
   const route = invoiceRouteSource;
   assert.match(route, /snapshotSignaturePath: true/);
   assert.match(route, /paymentMethod\.findMany\(\{\s*where: \{ isActive: true \}/s, "hanya metode pembayaran aktif");
@@ -80,10 +80,11 @@ test("PDF invoice memakai master metode pembayaran dan gambar tanda tangan", () 
   assert.ok(!route.includes("profile?.bankName"), "tidak ada lagi fallback rekening dari profil");
 
   const pdf = invoicePdfSource;
-  assert.match(pdf, /Metode pembayaran/, "invoice baru dicetak dengan daftar metode pembayaran");
-  assert.match(pdf, /Rekening pembayaran/, "invoice lama tetap memakai snapshot rekeningnya");
+  // Template tidak punya blok rekening/metode: info bank cukup lewat teks Keterangan.
+  assert.doesNotMatch(pdf, /Metode pembayaran/, "blok metode pembayaran dihapus mengikuti template");
+  assert.doesNotMatch(pdf, /Rekening pembayaran/, "blok snapshot rekening dihapus mengikuti template");
   assert.match(pdf, /assets\.signature/);
-  assert.match(pdf, /scaleToFit\(150, 46\)/, "gambar tanda tangan diskalakan tetap di atas nama");
+  assert.match(pdf, /scaleToFit\(450, 138\)/, "gambar tanda tangan diskalakan tetap di atas nama");
 });
 
 test("PDF kwitansi menampilkan gambar tanda tangan dari snapshot invoice", () => {

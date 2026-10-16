@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion: string | undefined;
 };
 
-const PRISMA_SCHEMA_VERSION = "invoice-setting-point";
+const PRISMA_SCHEMA_VERSION = "pool20-batched-dashboard";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -17,9 +17,16 @@ function createPrismaClient() {
 
   const adapter = new PrismaPg({
     connectionString,
-    max: 5,
+    // Dashboard menembak 13 query paralel + polling SWR (dashboard 30 dtk,
+    // trends 30 dtk, pipeline 60 dtk, inbox 3 dtk) + halaman customers
+    // (~7 checkout bersamaan). RTT ke pooler Sydney ±400-700ms, connect
+    // dingin ±2,5 dtk. Burst beberapa request/tab bersamaan memenuhi pool
+    // kecil hingga antrean timeout ("timeout exceeded when trying to
+    // connect" dari pg-pool). max 20 memberi ruang burst 2-3 halaman
+    // bersamaan; koneksi aktual di Supabase terpantau rendah (<15).
+    max: 20,
     // DNS lambat (±5 dtk) membuat handshake ke pooler ±7 dtk; beri ruang agar
-    // checkout antrean (mis. 13 query paralel dashboard) tidak timeout.
+    // checkout antrean tidak timeout.
     idleTimeoutMillis: 60_000,
     connectionTimeoutMillis: 30_000,
   });

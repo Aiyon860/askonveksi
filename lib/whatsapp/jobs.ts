@@ -13,6 +13,13 @@ import {
   renderWhatsAppTemplate,
 } from "@/lib/whatsapp/core";
 
+// Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
+// (maxWait 2s / timeout 5s) bisa berakhir P2028 "melewati batas waktu".
+const WHATSAPP_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 async function loadInvoiceDelivery(tx: Prisma.TransactionClient, invoiceId: string) {
   const [invoice, business, template] = await Promise.all([
     tx.invoice.findUnique({
@@ -41,7 +48,7 @@ async function loadInvoiceDelivery(tx: Prisma.TransactionClient, invoiceId: stri
 }
 
 export async function getInvoiceWhatsAppMessage(invoiceId: string) {
-  return getPrismaClient().$transaction(async (tx) => (await loadInvoiceDelivery(tx, invoiceId)).text);
+  return getPrismaClient().$transaction(async (tx) => (await loadInvoiceDelivery(tx, invoiceId)).text, WHATSAPP_TRANSACTION_OPTIONS);
 }
 
 export async function enqueueIssuedInvoiceWhatsAppJob(tx: Prisma.TransactionClient, invoiceId: string) {
@@ -81,7 +88,7 @@ export async function ensureCustomerWhatsAppConversation(actor: Actor, customerI
       update: { customerId: customer.id },
       select: { id: true },
     });
-  });
+  }, WHATSAPP_TRANSACTION_OPTIONS);
 }
 
 export async function enqueueInvoiceWhatsAppMessage(actor: Actor, invoiceId: string) {
@@ -102,7 +109,7 @@ export async function enqueueInvoiceWhatsAppMessage(actor: Actor, invoiceId: str
     await tx.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", kind: "DOCUMENT", status: "QUEUED", text, mediaFileName: `invoice-${invoice.invoiceNo}.pdf`, mediaMimeType: "application/pdf", sentById: actor.id, automationJobId: job.id } });
     await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date(), lastMessagePreview: text.slice(0, 240), isResolved: false } });
     return conversation.id;
-  });
+  }, WHATSAPP_TRANSACTION_OPTIONS);
 }
 
 export async function enqueueCampaignTestWhatsAppMessage(actor: Actor, phoneNumber: string, text: string) {
@@ -143,7 +150,7 @@ export async function enqueueCampaignTestWhatsAppMessage(actor: Actor, phoneNumb
       },
     });
     return job.id;
-  });
+  }, WHATSAPP_TRANSACTION_OPTIONS);
 }
 
 export async function enqueueManualWhatsAppMessage({
@@ -250,7 +257,7 @@ export async function enqueueManualWhatsAppMessage({
       data: { lastMessageAt: new Date(), lastMessagePreview: renderedText.slice(0, 240), isResolved: false },
     });
     return conversation.id;
-  });
+  }, WHATSAPP_TRANSACTION_OPTIONS);
 }
 
 export async function enqueueWhatsAppJob(
