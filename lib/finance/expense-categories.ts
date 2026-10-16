@@ -1,3 +1,15 @@
-export const EXPENSE_CATEGORIES = ["WIFI", "LINGKUNGAN", "ADS", "CICILAN_LAPTOP", "FREE_PICK", "ONGKIR_CUST", "ONGKIR_ADMIN_PRODUKSI", "LISTRIK_DEPAN", "LISTRIK_BELAKANG", "PERALATAN_KANTOR", "SAMPEL", "KONTEN", "MEETING", "EVENT_IFANA_SAGA", "GOSEND_MOBIL_PRODUKSI", "LEMBUR", "LOKER", "DLL"] as const;
+export const EXPENSE_CATEGORIES = ["WIFI", "LINGKUNGAN", "ADS", "CICILAN_LAPTOP", "FREE_PICK", "ONGKIR_CUST", "ONGKIR_ADMIN_PRODUKSI", "LISTRIK_DEPAN", "LISTRIK_BELAKANG", "PERALATAN_KANTOR", "SAMPEL", "KONTEN", "MEETING", "EVENT_IFANA_SAGA", "GOSEND_MOBIL_PRODUKSI", "LEMBUR", "LOKER", "DLL", "PROJECT"] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
-export const EXPENSE_CATEGORY_LABEL: Record<ExpenseCategory, string> = { WIFI: "Wifi", LINGKUNGAN: "Lingkungan", ADS: "ADS", CICILAN_LAPTOP: "Cicilan laptop", FREE_PICK: "Free Pick", ONGKIR_CUST: "Ongkir cust", ONGKIR_ADMIN_PRODUKSI: "Ongkir admin produksi", LISTRIK_DEPAN: "Listrik depan", LISTRIK_BELAKANG: "Listrik Belakang", PERALATAN_KANTOR: "Peralatan / Perlengkapan Kantor", SAMPEL: "Sampel", KONTEN: "Konten", MEETING: "Meeting", EVENT_IFANA_SAGA: "Event ifana saga", GOSEND_MOBIL_PRODUKSI: "Gosend mobil produksi", LEMBUR: "Lembur", LOKER: "Loker", DLL: "DLL" };
+export const EXPENSE_CATEGORY_LABEL: Record<ExpenseCategory, string> = { WIFI: "Wifi", LINGKUNGAN: "Lingkungan", ADS: "ADS", CICILAN_LAPTOP: "Cicilan laptop", FREE_PICK: "Free Pick", ONGKIR_CUST: "Ongkir cust", ONGKIR_ADMIN_PRODUKSI: "Ongkir admin produksi", LISTRIK_DEPAN: "Listrik depan", LISTRIK_BELAKANG: "Listrik Belakang", PERALATAN_KANTOR: "Peralatan / Perlengkapan Kantor", SAMPEL: "Sampel", KONTEN: "Konten", MEETING: "Meeting", EVENT_IFANA_SAGA: "Event ifana saga", GOSEND_MOBIL_PRODUKSI: "Gosend mobil produksi", LEMBUR: "Lembur", LOKER: "Loker", DLL: "DLL", PROJECT: "Project" };
+
+export type ExpenseTypeFilter = "all" | "OPERASIONAL" | "PROJECT";
+
+export const EXPENSE_TYPE_LABEL: Record<ExpenseTypeFilter, string> = {
+  all: "Semua tipe",
+  OPERASIONAL: "Operasional",
+  PROJECT: "Project",
+};
+
+export function isProjectCategory(category: ExpenseCategory) {
+  return category === "PROJECT";
+}

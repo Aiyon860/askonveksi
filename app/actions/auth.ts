@@ -38,7 +38,7 @@ export async function loginAction(formData: FormData) {
       throw new UserFacingError("Akun tidak aktif atau belum terdaftar di aplikasi.");
     }
 
-    return profile.role === "ADMIN_PRODUCTION" ? "/produksi" : profile.role === "DESIGNER" ? "/desain" : "/dashboard";
+    return profile.role === "ADMIN_PO" ? "/produksi" : "/dashboard";
   });
 }
 
@@ -72,6 +72,6 @@ export async function updatePasswordAction(formData: FormData) {
       },
     });
 
-    return flashMessagePath(actor.role === "ADMIN_PRODUCTION" ? "/produksi" : actor.role === "DESIGNER" ? "/desain" : "/dashboard", "notice", "Password berhasil diperbarui.");
+    return flashMessagePath(actor.role === "ADMIN_PO" ? "/produksi" : "/dashboard", "notice", "Password berhasil diperbarui.");
   });
 }

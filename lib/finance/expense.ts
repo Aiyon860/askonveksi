@@ -5,21 +5,25 @@ import { Prisma } from "@prisma/client";
 import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory } from "@/lib/finance/expense-categories";
+import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory, type ExpenseTypeFilter } from "@/lib/finance/expense-categories";
 
-export { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory };
+export { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory, type ExpenseTypeFilter };
 
-export type ExpenseListState = { query: string; from: Date | null; to: Date | null; category: ExpenseCategory | "all"; method: string | "all"; creatorId: string | "all"; order: "asc" | "desc"; page: number; pageSize: number };
+export type ExpenseListState = { query: string; customer: string; from: Date | null; to: Date | null; category: ExpenseCategory | "all"; expenseType: ExpenseTypeFilter; method: string | "all"; creatorId: string | "all"; order: "asc" | "desc"; page: number; pageSize: number };
 
-function expenseWhere(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
+function expenseWhere(state: Omit<ExpenseListState, "order" | "page" | "pageSize">, includeDeleted = false) {
   const query = state.query.trim().slice(0, 80);
+  const customer = state.customer.trim().slice(0, 80);
   const dateOnly = (value: Date | null) => value && new Date(value.getTime() + 7 * 60 * 60 * 1000);
   const from = dateOnly(state.from);
   const to = dateOnly(state.to);
   return {
-    ...(query ? { purpose: { contains: query, mode: "insensitive" as const } } : {}),
+    ...(includeDeleted ? {} : { deletedAt: null }),
+    ...(query ? { OR: [{ purpose: { contains: query, mode: "insensitive" as const } }, { customerName: { contains: query, mode: "insensitive" as const } }] } : {}),
+    ...(customer ? { customerName: { contains: customer, mode: "insensitive" as const } } : {}),
     ...(from && to ? { spentAt: { gte: from, lt: to } } : {}),
     ...(state.category === "all" ? {} : { category: state.category }),
+    ...(state.expenseType === "all" ? {} : state.expenseType === "PROJECT" ? { category: "PROJECT" as const } : { category: { not: "PROJECT" as const } }),
     ...(state.method === "all" ? {} : { paymentMethodId: state.method }),
     ...(state.creatorId === "all" ? {} : { createdById: state.creatorId }),
   } satisfies Prisma.ExpenseWhereInput;
@@ -43,25 +47,67 @@ export async function getExpenses(state: ExpenseListState) {
     : state;
   const where = expenseWhere(bounded);
   const prisma = getPrismaClient();
-  const [dates, creators] = await Promise.all([
+  const [dates, creators, totalAgg] = await Promise.all([
     prisma.expense.groupBy({ by: ["spentAt"], where, orderBy: { spentAt: bounded.order } }),
     prisma.appUser.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.expense.aggregate({ where, _sum: { amount: true } }),
   ]);
   const pageDates = dates.slice((bounded.page - 1) * bounded.pageSize, bounded.page * bounded.pageSize).map((item) => item.spentAt);
-  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
+  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, salesOrderId: true, customerName: true, hppKey: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } }, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
   const grouped = new Map(pageDates.map((spentAt) => [spentAt.getTime(), { spentAt, items: [] as typeof items }]));
   items.forEach((item) => grouped.get(item.spentAt.getTime())?.items.push(item));
-  return { groups: [...grouped.values()].map((group) => ({ ...group, items: group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory })) })), total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / bounded.pageSize)) };
+  const groups = [...grouped.values()].map((group) => {
+    const mapped = group.items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory }));
+    const operasional = mapped.filter((item) => item.category !== "PROJECT");
+    const byProject = new Map<string, typeof mapped>();
+    mapped.filter((item) => item.category === "PROJECT").forEach((item) => {
+      const key = item.salesOrderId ?? "none";
+      byProject.set(key, [...(byProject.get(key) ?? []), item]);
+    });
+    const projects = [...byProject.entries()].map(([key, projectItems]) => {
+      const subtotal = projectItems.reduce((sum, item) => sum.add(new Prisma.Decimal(item.amount)), new Prisma.Decimal(0)).toString();
+      return { key, label: projectGroupLabel(projectItems[0].salesOrder, projectItems[0].customerName), subtotal, items: projectItems };
+    });
+    return { spentAt: group.spentAt, operasional, projects };
+  });
+  return { groups, total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / bounded.pageSize)), totalAmount: (totalAgg._sum.amount ?? new Prisma.Decimal(0)).toString() };
+}
+
+export function projectGroupLabel(salesOrder: { invoiceNo: string; snapshotCustomerName: string; snapshotCompanyName: string | null; purchaseOrder: { productName: string } } | null, customerName: string | null) {
+  if (!salesOrder) return customerName ? `Tanpa project · ${customerName}` : "Tanpa project";
+  const customer = salesOrder.snapshotCompanyName ?? salesOrder.snapshotCustomerName;
+  return `${customer} · ${salesOrder.purchaseOrder.productName} · ${salesOrder.invoiceNo}`;
 }
 
 export async function getExpensesForExport(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
   await requireActor(FINANCE_ROLES);
   // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
-  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, createdBy: { select: { name: true } }, reimbursedAt: true }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], take: 5000 });
-  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory }));
+  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, createdBy: { select: { name: true } }, reimbursedAt: true, customerName: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], take: 5000 });
+  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory, project: row.category === "PROJECT" ? projectGroupLabel(row.salesOrder, row.customerName) : "" }));
 }
 
-export type IncomeListState = { query: string; from: Date | null; to: Date | null; status: "all" | "DP" | "LUNAS"; hppStatus: "all" | "COMPLETE" | "INCOMPLETE"; page: number; pageSize: number };
+export async function getDeletedExpenses(page: number, pageSize: number) {
+  await requireActor(FINANCE_ROLES);
+  const prisma = getPrismaClient();
+  const where = { deletedAt: { not: null } } satisfies Prisma.ExpenseWhereInput;
+  const [total, items] = await Promise.all([
+    prisma.expense.count({ where }),
+    prisma.expense.findMany({
+      where,
+      select: { id: true, purpose: true, spentAt: true, amount: true, category: true, customerName: true, deleteReason: true, deletedAt: true, createdBy: { select: { name: true } }, deletedBy: { select: { name: true } } },
+      orderBy: { deletedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+  return {
+    items: items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory })),
+    total,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+export type IncomeListState = { query: string; from: Date | null; to: Date | null; status: "all" | "DP" | "LUNAS" | "DEPOSIT"; hppStatus: "all" | "COMPLETE" | "INCOMPLETE"; page: number; pageSize: number };
 
 function incomeWhere(state: Omit<IncomeListState, "page" | "pageSize">) {
   const query = state.query.trim().slice(0, 80);
@@ -83,7 +129,7 @@ function incomeWhere(state: Omit<IncomeListState, "page" | "pageSize">) {
 function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   const transactions = order.payment!.transactions;
   const paid = transactions.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-  const dp = order.payment!.kind === "DP" ? transactions.filter((item) => !item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : null;
+  const dp = order.payment!.kind === "DP" || order.payment!.kind === "DEPOSIT" ? transactions.filter((item) => !item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : null;
   const settled = order.payment!.kind === "LUNAS" ? transactions.filter((item) => !item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : transactions.filter((item) => item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
   const costs = order.cost;
   const complete = Boolean(costs && [costs.kain, costs.zipper, costs.jahit, costs.pres, costs.dtfPlastisol, costs.bordir, costs.lainnya].every((value) => value !== null));
@@ -91,7 +137,7 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   const netProfit = hpp ? order.invoice.total.sub(hpp) : null;
   const margin = netProfit && !order.invoice.total.isZero() ? netProfit.div(order.invoice.total).toNumber() : null;
   const latest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt > date ? item.paidAt : date, null);
-  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
+  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), tax: order.invoice.taxAmount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
 }
 
 async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number, take?: number) {
@@ -99,8 +145,8 @@ async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number
     where,
     select: {
       id: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true,
-      purchaseOrder: { select: { productName: true, productCategory: { select: { name: true } } } },
-      invoice: { select: { subtotal: true, total: true, totalDiscount: true, items: { select: { quantity: true } } } },
+      purchaseOrder: { select: { productName: true, garmentType: true, productCategory: { select: { name: true } } } },
+      invoice: { select: { subtotal: true, total: true, totalDiscount: true, taxAmount: true, items: { select: { quantity: true } } } },
       cost: { select: { kain: true, zipper: true, jahit: true, pres: true, dtfPlastisol: true, bordir: true, lainnya: true, version: true } },
       payment: { select: { kind: true, transactions: { where: { status: "ACTIVE" }, select: { amount: true, paidAt: true, paymentTermId: true } } } },
     },
@@ -118,6 +164,25 @@ export async function getIncome(state: IncomeListState) {
 
 export async function getIncomeForExport(state: Omit<IncomeListState, "page" | "pageSize">) {
   await requireActor(FINANCE_ROLES);
-  // Fix: sebelumnya pageSize 1 sehingga export hanya 1 baris. Cap 5000 agar muat 600M.
+  // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
   return (await getIncomeOrders(incomeWhere(state), 0, 5000)).map(mapIncome);
+}
+
+export type ProjectExpensePrefill = { id: string; hppKey: string | null; purpose: string; spentAt: string; paymentMethodId: string; proofPath: string | null; proofFileName: string | null; proofMimeType: string | null };
+
+export async function getProjectExpensesBySalesOrders(salesOrderIds: string[]) {
+  await requireActor(FINANCE_ROLES);
+  if (!salesOrderIds.length) return new Map<string, ProjectExpensePrefill[]>();
+  const rows = await getPrismaClient().expense.findMany({
+    where: { salesOrderId: { in: salesOrderIds }, category: "PROJECT", deletedAt: null },
+    select: { id: true, salesOrderId: true, hppKey: true, purpose: true, spentAt: true, paymentMethodId: true, proofPath: true, proofFileName: true, proofMimeType: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const grouped = new Map<string, ProjectExpensePrefill[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.salesOrderId ?? "") ?? [];
+    list.push({ id: row.id, hppKey: row.hppKey, purpose: row.purpose, spentAt: row.spentAt.toISOString().slice(0, 10), paymentMethodId: row.paymentMethodId, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType });
+    grouped.set(row.salesOrderId ?? "", list);
+  }
+  return grouped;
 }

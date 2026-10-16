@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, Check, Circle, RotateCcw, UserRound } from "lucide-react";
 
 import { addProductionNoteAction, assignProductionStepAction, reopenProductionAction } from "@/app/actions/production";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { PaymentProofPreview } from "@/components/payment-proof-preview";
@@ -38,8 +39,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   const { id } = await params;
   const result = await getProductionDetail(id);
   if (!result) notFound();
-  const { workOrder, users, actor } = result;
-  const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+  const { workOrder, users, actor, canManage } = result;
   const designTask = workOrder.salesOrder.purchaseOrder?.designTask;
   const designAttachments = designTask?.revisions[0]?.attachments ?? [];
   const purchaseOrder = workOrder.salesOrder.purchaseOrder;
@@ -47,6 +47,9 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   const boardHref = purchaseOrder?.productCategoryId
     ? `/produksi?jalur=${boardGroup}&kategori=${purchaseOrder.productCategoryId}`
     : `/produksi?jalur=${boardGroup}`;
+  // Penanda Retur menempel di kartu kanban; status Retur di sini tampil selama
+  // WO masih ACTIVE dan belum kembali Selesai (sama dengan warna merah di board).
+  const returActive = workOrder.status === "ACTIVE" && Boolean(workOrder.repairReason) && workOrder.currentStage !== "SELESAI";
 
   return (
     <>
@@ -54,23 +57,30 @@ export default async function ProductionDetailPage({ params }: { params: Promise
       <PageHeader
         title={workOrder.productName}
         description={`${workOrder.workOrderNo} · ${workOrder.salesOrder.salesOrderNo} · ${workOrder.salesOrder.snapshotCustomerName}`}
-        action={<Badge variant={workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
+        action={<Badge variant={returActive ? "destructive" : workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{returActive ? "Retur" : workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
       />
       <PageMessage />
 
-      {workOrder.needsRepair ? <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
+      {!canManage ? (
+        <Alert>
+          <AlertTitle>Mode lihat saja</AlertTitle>
+          <AlertDescription>Anda dapat memantau tahapan Work Order ini. Menetapkan PIC, menambah catatan, dan membuka kembali hanya untuk tim Produksi.</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {returActive ? <div className="sticky top-0 z-10 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Retur — Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">
-          {designTask && designAttachments.length ? <Card><CardHeader><CardTitle>Desain final</CardTitle><CardDescription>Gunakan gambar ini sebagai acuan produksi. Arahkan kursor ke gambar untuk melihat detail.</CardDescription></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">{designAttachments.map((attachment) => <div key={attachment.id} className="flex min-w-0 flex-col gap-2"><PaymentProofPreview href={`/api/desain/${designTask.id}/attachments/${attachment.id}?inline=1`} mimeType={attachment.contentType} label={`Desain final ${attachment.originalName}`} thumbnailClassName="h-64 w-full bg-muted" imageClassName="object-cover" hoverLabel="Lihat detail desain" /><p className="truncate text-xs text-muted-foreground">{attachment.originalName}</p></div>)}</CardContent></Card> : null}
+          {designTask && designAttachments.length ? <Card><CardHeader><CardTitle>Desain final</CardTitle><CardDescription>Gunakan gambar ini sebagai acuan produksi. Arahkan kursor ke gambar untuk melihat detail.</CardDescription></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">{designAttachments.map((attachment) => <div key={attachment.id} className="flex min-w-0 flex-col gap-2"><PaymentProofPreview href={`/api/desain/${designTask.id}/attachments/${attachment.id}?inline=1`} mimeType={attachment.contentType} label={`Desain final ${attachment.originalName}`} thumbnailClassName="h-64 w-full bg-muted" imageClassName="object-cover" hoverLabel="Perbesar gambar" /><p className="truncate text-xs text-muted-foreground">{attachment.originalName}</p></div>)}</CardContent></Card> : null}
 
           <Card>
             <CardHeader><CardTitle>Tahapan produksi</CardTitle><CardDescription>PIC, percobaan, dan waktu kerja untuk setiap tahap.</CardDescription></CardHeader>
             <CardContent>
               <ol className="flex flex-col gap-2">
                 {workOrder.steps.map((step) => {
-                  const candidates = users.filter((user) => user.role === "ADMIN_PRODUCTION");
-                  const canClaim = !manager && !step.assignee && isStageRole(actor.role);
+                  const candidates = users.filter((user) => user.role === "ADMIN_PO");
+                  const canClaim = !canManage && !step.assignee && isStageRole(actor.role);
                   return (
                     <li key={step.id} className={cn("grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center", step.status === "ACTIVE" && "border-primary/25 bg-primary/5")}>
                       <div className="flex min-w-0 items-start gap-3">
@@ -80,7 +90,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
                           <p className="mt-1 text-xs text-muted-foreground"><UserRound aria-hidden="true" className="mr-1 inline size-3.5" />{step.assignee?.name ?? "PIC belum ditentukan"} · Mulai {formatDate(step.startedAt, true)} · Selesai {formatDate(step.completedAt, true)}</p>
                         </div>
                       </div>
-                      {manager && workOrder.status === "ACTIVE" ? (
+                      {canManage && workOrder.status === "ACTIVE" ? (
                         <form action={assignProductionStepAction} className="flex items-center gap-2">
                           <input type="hidden" name="workOrderId" value={workOrder.id} /><input type="hidden" name="stepId" value={step.id} />
                           <NativeSelect name="assigneeId" aria-label={`PIC ${PRODUCTION_STAGE_LABEL[step.stage]}`} defaultValue={step.assignee?.id ?? ""} required>
@@ -112,12 +122,12 @@ export default async function ProductionDetailPage({ params }: { params: Promise
         <aside className="flex flex-col gap-6">
           <Card>
             <CardHeader><CardTitle>Ringkasan</CardTitle><CardDescription>Snapshot kebutuhan produksi dari Sales Order.</CardDescription></CardHeader>
-            <CardContent><dl className="grid gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">Jalur</dt><dd className="mt-1 font-medium">{PRODUCTION_BOARD_GROUP_LABEL[boardGroup]}</dd></div><div><dt className="text-xs text-muted-foreground">Jumlah</dt><dd className="mt-1 font-mono">{workOrder.quantity} pcs</dd></div><div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1"><CalendarClock aria-hidden="true" className="mr-1 inline size-4" />{formatDate(workOrder.deadline)}</dd></div><div><dt className="text-xs text-muted-foreground">Revisi sampel</dt><dd className="mt-1 font-mono">{workOrder.sampleRevision}</dd></div></dl>{manager ? <Button className="mt-4 w-full" variant="outline" render={<Link href={`/sales-orders/${workOrder.salesOrder.id}`} />} nativeButton={false}>Buka Sales Order</Button> : null}</CardContent>
+            <CardContent><dl className="grid gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">Jalur</dt><dd className="mt-1 font-medium">{PRODUCTION_BOARD_GROUP_LABEL[boardGroup]}</dd></div><div><dt className="text-xs text-muted-foreground">Jumlah</dt><dd className="mt-1 font-mono">{workOrder.quantity} pcs</dd></div><div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1"><CalendarClock aria-hidden="true" className="mr-1 inline size-4" />{formatDate(workOrder.deadline)}</dd></div><div><dt className="text-xs text-muted-foreground">Revisi sampel</dt><dd className="mt-1 font-mono">{workOrder.sampleRevision}</dd></div></dl><Button className="mt-4 w-full" variant="outline" render={<Link href={`/sales-orders/${workOrder.salesOrder.id}`} />} nativeButton={false}>Buka Sales Order</Button></CardContent>
           </Card>
 
-          {workOrder.status !== "CANCELLED" ? <Card><CardHeader><CardTitle>Catatan produksi</CardTitle><CardDescription>Catat kendala atau informasi operasional.</CardDescription></CardHeader><CardContent><form action={addProductionNoteAction}><input type="hidden" name="workOrderId" value={workOrder.id} /><FieldGroup><Field><FieldLabel htmlFor="productionNote" required>Catatan</FieldLabel><Textarea id="productionNote" name="note" required minLength={2} maxLength={2000} rows={4} /></Field><Button type="submit">Tambahkan catatan</Button></FieldGroup></form></CardContent></Card> : null}
+          {canManage && workOrder.status !== "CANCELLED" ? <Card><CardHeader><CardTitle>Catatan produksi</CardTitle><CardDescription>Catat kendala atau informasi operasional.</CardDescription></CardHeader><CardContent><form action={addProductionNoteAction}><input type="hidden" name="workOrderId" value={workOrder.id} /><FieldGroup><Field><FieldLabel htmlFor="productionNote" required>Catatan</FieldLabel><Textarea id="productionNote" name="note" required minLength={2} maxLength={2000} rows={4} /></Field><Button type="submit">Tambahkan catatan</Button></FieldGroup></form></CardContent></Card> : null}
 
-          {manager && workOrder.status === "COMPLETED" ? <Card><CardHeader><CardTitle>Buka kembali</CardTitle><CardDescription>Kembalikan Work Order selesai ke tahap perbaikan dengan alasan.</CardDescription></CardHeader><CardContent><form action={reopenProductionAction}><input type="hidden" name="workOrderId" value={workOrder.id} /><input type="hidden" name="version" value={workOrder.version} /><FieldGroup><Field><FieldLabel htmlFor="reopenStage" required>Tahap tujuan</FieldLabel><NativeSelect id="reopenStage" name="targetStage" required className="w-full">{workOrder.stageSequence.filter((stage) => stage !== "SELESAI").map((stage) => <NativeSelectOption key={stage} value={stage}>{PRODUCTION_STAGE_LABEL[stage]}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor="reopenNote" required>Alasan</FieldLabel><Textarea id="reopenNote" name="note" required minLength={3} maxLength={2000} rows={4} /></Field><Button type="submit" variant="outline">Buka kembali Work Order</Button></FieldGroup></form></CardContent></Card> : null}
+          {canManage && workOrder.status === "COMPLETED" ? <Card><CardHeader><CardTitle>Buka kembali</CardTitle><CardDescription>Kembalikan Work Order selesai ke tahap perbaikan dengan alasan.</CardDescription></CardHeader><CardContent><form action={reopenProductionAction}><input type="hidden" name="workOrderId" value={workOrder.id} /><input type="hidden" name="version" value={workOrder.version} /><FieldGroup><Field><FieldLabel htmlFor="reopenStage" required>Tahap tujuan</FieldLabel><NativeSelect id="reopenStage" name="targetStage" required className="w-full">{workOrder.stageSequence.filter((stage) => stage !== "SELESAI").map((stage) => <NativeSelectOption key={stage} value={stage}>{PRODUCTION_STAGE_LABEL[stage]}</NativeSelectOption>)}</NativeSelect></Field><Field><FieldLabel htmlFor="reopenNote" required>Alasan</FieldLabel><Textarea id="reopenNote" name="note" required minLength={3} maxLength={2000} rows={4} /></Field><Button type="submit" variant="outline">Buka kembali Work Order</Button></FieldGroup></form></CardContent></Card> : null}
         </aside>
       </div>
     </>

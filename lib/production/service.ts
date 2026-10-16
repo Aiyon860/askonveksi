@@ -3,7 +3,7 @@ import "server-only";
 import { type AppRole, Prisma, type ProductionRoute } from "@prisma/client";
 
 import { nextWorkOrderNo } from "@/lib/crm/numbers";
-import { productionStages } from "@/lib/production/workflow";
+import { AKSESORI_STAGE_SEQUENCE, productionStages } from "@/lib/production/workflow";
 
 type Tx = Prisma.TransactionClient;
 
@@ -12,22 +12,30 @@ export async function createProductionWorkOrder(
   actor: { id: string },
   input: {
     salesOrderId: string;
+    purchaseOrderItemId?: string | null;
+    itemName?: string | null;
     route: ProductionRoute;
+    garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
     productName: string;
     quantity: number;
     deadline: Date;
   },
 ) {
-  const sequence = productionStages(input.route);
+  // G1: WO Aksesori memakai 5 stage tanpa migrasi (sequence disimpan per WO).
+  const sequence = input.garmentType === "AKSESORI" ? [...AKSESORI_STAGE_SEQUENCE] : productionStages(input.route);
   const currentStage = sequence[0];
   const created = await tx.productionWorkOrder.create({
     data: {
       workOrderNo: await nextWorkOrderNo(tx),
       salesOrderId: input.salesOrderId,
+      purchaseOrderItemId: input.purchaseOrderItemId ?? null,
+      itemName: input.itemName ?? null,
       route: input.route,
       productName: input.productName,
       quantity: input.quantity,
       deadline: input.deadline,
+      // Halaman Detail Desain disembunyikan: WO langsung masuk Produksi saat dibuat.
+      designCompletedAt: new Date(),
       stageSequence: sequence,
       currentStage,
       stageEnteredAt: new Date(),
@@ -53,7 +61,7 @@ export async function createProductionWorkOrder(
       entityType: "ProductionWorkOrder",
       entityId: created.id,
       action: "PRODUCTION_WORK_ORDER_CREATED",
-      changedFields: ["route", "productName", "quantity", "deadline", "stageSequence", "currentStage"],
+      changedFields: ["route", "productName", "quantity", "deadline", "designCompletedAt", "stageSequence", "currentStage"],
       metadata: { salesOrderId: input.salesOrderId, workOrderNo: created.workOrderNo },
     },
   });
@@ -66,14 +74,15 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
     select: {
       id: true,
       status: true,
-      productionWorkOrder: { select: { id: true, workOrderNo: true } },
+      productionWorkOrders: { select: { id: true, workOrderNo: true, purchaseOrderItemId: true } },
       purchaseOrder: {
         select: {
           status: true,
           garmentType: true,
           productName: true,
           deadline: true,
-          sizes: { select: { quantity: true } },
+          items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
+          sizes: { select: { itemId: true, quantity: true } },
         },
       },
       invoice: { select: { status: true } },
@@ -81,20 +90,42 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
     },
   });
   if (!order || order.status !== "ACTIVE" || !order.payment?.transactions.length) return null;
-  if (order.productionWorkOrder) return order.productionWorkOrder;
   if (order.purchaseOrder.status !== "AGREED" || order.invoice.status !== "ISSUED" || !order.purchaseOrder.garmentType || !order.purchaseOrder.deadline) {
     throw new Error("PO atau invoice belum memenuhi syarat Work Order otomatis.");
   }
 
-  return createProductionWorkOrder(tx, actor, {
-    salesOrderId: order.id,
-    route: order.purchaseOrder.garmentType === "JERSEY" ? "JERSEY" : "NON_JERSEY",
-    productName: order.purchaseOrder.productName,
-    quantity: order.purchaseOrder.sizes.reduce((sum, item) => sum + item.quantity, 0),
-    deadline: order.purchaseOrder.deadline,
-  });
+  // Satu WO per item PO (itemId "" = PO lawas satu produk). Rute ikut jenis tiap item.
+  const poGarmentType = order.purchaseOrder.garmentType;
+  const items = order.purchaseOrder.items.length
+    ? order.purchaseOrder.items.map((item) => ({ id: item.id, name: item.name, garmentType: item.garmentType ?? poGarmentType }))
+    : [{ id: "", name: order.purchaseOrder.productName, garmentType: poGarmentType }];
+  const existingByItem = new Map(order.productionWorkOrders.map((wo) => [wo.purchaseOrderItemId ?? "", wo]));
+  const created: Array<{ id: string; workOrderNo: string }> = [];
+  for (const item of items) {
+    const key = item.id || "";
+    const existing = existingByItem.get(key);
+    if (existing) {
+      created.push(existing);
+      continue;
+    }
+    const quantity = order.purchaseOrder.sizes
+      .filter((size) => (size.itemId || "") === key)
+      .reduce((sum, size) => sum + size.quantity, 0);
+    if (quantity <= 0) continue;
+    created.push(await createProductionWorkOrder(tx, actor, {
+      salesOrderId: order.id,
+      purchaseOrderItemId: item.id || null,
+      itemName: order.purchaseOrder.items.length ? item.name : null,
+      route: item.garmentType === "JERSEY" ? "JERSEY" : "NON_JERSEY",
+      garmentType: item.garmentType ?? poGarmentType,
+      productName: item.name,
+      quantity,
+      deadline: order.purchaseOrder.deadline,
+    }));
+  }
+  return created;
 }
 
 export function canClaimProductionStep(role: AppRole) {
-  return role === "DEVELOPER" || role === "OWNER" || role === "ADMIN_PRODUCTION";
+  return role === "DEVELOPER" || role === "OWNER" || role === "ADMIN_PO";
 }

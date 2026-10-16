@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, ImageUp, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,7 @@ const mainItems = [
 ] as const;
 
 const financeItems = [
-  { href: "/keuangan/pemasukan", label: "Pemasukan", icon: Wallet },
+  { href: "/keuangan/pemasukan", label: "Project", icon: Wallet },
   { href: "/keuangan/pengeluaran", label: "Pengeluaran", icon: CircleDollarSign },
   { href: "/keuangan/laporan", label: "Laporan", icon: FileText },
 ] as const;
@@ -42,16 +42,13 @@ const productionItems = [
   { href: "/detail-desain", label: "Detail Desain", icon: PenTool },
 ] as const;
 
-const designItems = [
-  { href: "/desain", label: "Upload Desain", icon: ImageUp },
-] as const;
-
 const masterItems = [
   { href: "/master-data/customer-types", label: "Jenis customer", icon: Tags },
   { href: "/master-data/lead-sources", label: "Sumber lead", icon: Magnet },
   { href: "/master-data/garment-sizes", label: "Ukuran pakaian", icon: Ruler },
   { href: "/master-data/product-categories", label: "Kategori produk", icon: Shirt },
   { href: "/master-data/payment-methods", label: "Metode pembayaran", icon: CreditCard },
+  { href: "/master-data/invoice-settings", label: "Pengaturan invoice", icon: FileText },
   { href: "/master-data/business-profile", label: "Profil perusahaan", icon: Building2 },
 ] as const;
 
@@ -139,13 +136,15 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   }, []);
 
   const isDeveloper = role === "DEVELOPER";
-  const canManageMasterData = isDeveloper || role === "OWNER";
+  const canManageMasterData = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
+  // Pengguna (manajemen akun) tetap Owner/Developer saja; Admin Customer hanya Data Master.
+  const canManageUsers = isDeveloper || role === "OWNER";
   const canViewAnalytics = isDeveloper || role === "OWNER" || role === "KEUANGAN";
-  const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
+  const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "ADMIN_PO";
   const canViewDashboard = canViewCrm || role === "KEUANGAN";
-  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PRODUCTION";
+  // Admin Customer hanya melihat modul Produksi (mode lihat saja); aksi tetap terbatas tim Produksi.
+  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PO" || role === "ADMIN_CUSTOMER";
   const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
-  const canViewDesign = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "DESIGNER";
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
@@ -164,10 +163,9 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested tone="text-nav-tone-whatsapp" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
-      {canViewProduction || canViewDesign ? (
+      {canViewProduction ? (
         <NavGroup label={<span>Produksi</span>} icon={Factory} tone="text-nav-tone-production">
-          {canViewProduction ? productionItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />) : null}
-          {canViewDesign ? designItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />) : null}
+          {productionItems.filter((item) => isDeveloper || item.href !== "/detail-desain").map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewAnalytics ? (
@@ -178,7 +176,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       {canManageMasterData ? (
         <NavGroup label={<span>Data Master</span>} icon={Database} tone="text-nav-tone-master">
           {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
-          {ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
+          {canManageUsers ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />) : null}
         </NavGroup>
       ) : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: SlidersHorizontal }} onNavigate={onNavigate} /> : null}

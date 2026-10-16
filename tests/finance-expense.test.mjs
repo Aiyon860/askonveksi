@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("..", import.meta.url);
 
 test("finance keeps expense methods via master data, feedback, ownership guards, and income export", async () => {
-  const [schema, actions, income, expenses, expenseData, migration, expenseMethodMigration, incomeExport] = await Promise.all([
+  const [schema, actions, income, expenses, expenseData, migration, expenseMethodMigration, incomeExport, expenseExport] = await Promise.all([
     readFile(new URL("prisma/schema.prisma", root), "utf8"),
     readFile(new URL("app/actions/finance.ts", root), "utf8"),
     readFile(new URL("app/(app)/keuangan/pemasukan/page.tsx", root), "utf8"),
@@ -14,6 +14,7 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
     readFile(new URL("prisma/migrations/20260923010000_sales_order_costs_and_remove_profit/migration.sql", root), "utf8"),
     readFile(new URL("prisma/migrations/20260930010000_expense_payment_method_fk/migration.sql", root), "utf8"),
     readFile(new URL("app/api/keuangan/pemasukan/export/route.ts", root), "utf8"),
+    readFile(new URL("app/api/keuangan/pengeluaran/export/route.ts", root), "utf8"),
   ]);
   // Metode pembayaran pengeluaran kini memakai Data Master, bukan enum hardcoded.
   assert.match(schema, /paymentMethodId\s+String/);
@@ -30,7 +31,16 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
   assert.match(actions, /category: z\.enum\(EXPENSE_CATEGORIES\)/);
   assert.match(actions, /flashMessagePath\(PATH, "notice", "Pengeluaran berhasil dicatat\."\)/);
   assert.match(expenses, /<PageMessage \/>/);
-  assert.match(expenses, /rowSpan=\{group\.items\.length\}/);
+  assert.match(expenses, /rowSpan=\{totalRows\}/);
+  // Baris Project dikelompokkan per order di dalam grup tanggal, lengkap dengan subtotal.
+  assert.match(expenses, /group\.operasional/);
+  assert.match(expenses, /group\.projects/);
+  assert.match(expenses, /Project: \{project\.label\}/);
+  assert.match(expenses, /project\.subtotal/);
+  assert.match(expenseData, /projectGroupLabel/);
+  assert.match(expenseData, /salesOrderId \?\? "none"/);
+  assert.match(expenseExport, /"Project"/);
+  assert.match(expenseExport, /Subtotal Project:/);
   assert.match(expenses, /<SortableTableHead label="Tanggal"/);
   assert.match(expenses, /EXPENSE_CATEGORY_LABEL\[item\.category\]/);
   assert.match(expenses, /name="category"/);

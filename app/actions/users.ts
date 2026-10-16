@@ -10,6 +10,14 @@ import { createUserSchema, firstValidationMessage, toggleUserSchema, updateUserS
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
+// (maxWait 2s / timeout 5s) bisa berakhir P2028 "melewati batas waktu".
+const USERS_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
 function usersReturnPath(value: FormDataEntryValue | null) {
   if (typeof value !== "string" || value.length > 1_000) return "/admin/users";
 
@@ -77,7 +85,7 @@ export async function createUserAction(formData: FormData) {
             metadata: { role: parsed.data.role },
           },
         });
-      });
+      }, USERS_TRANSACTION_OPTIONS);
     } catch (databaseError) {
       await admin.auth.admin.deleteUser(data.user.id);
       throw databaseError;
@@ -176,7 +184,7 @@ export async function updateUserAction(formData: FormData) {
             },
           });
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        USERS_TRANSACTION_OPTIONS,
       );
     } catch (databaseError) {
       if (admin) await admin.auth.admin.updateUserById(target.authUserId, { email: target.email });
@@ -232,7 +240,7 @@ export async function toggleUserActiveAction(formData: FormData) {
           },
         });
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      USERS_TRANSACTION_OPTIONS,
     );
 
     return flashMessagePath(returnTo, "notice", parsed.data.isActive ? "Pengguna diaktifkan." : "Pengguna dinonaktifkan.");
@@ -250,7 +258,7 @@ export async function resetTestingDataAction(formData: FormData) {
       await tx.auditEvent.create({
         data: { actorId: actor.id, entityType: "System", entityId: "testing-data", action: "TESTING_DATA_RESET", changedFields: ["operationalData"], metadata: { preserved: ["Customer", "AppUser", "MasterData"] } },
       });
-    });
+    }, USERS_TRANSACTION_OPTIONS);
 
     ["/dashboard", "/crm", "/customers", "/produksi", "/whatsapp", "/keuangan", "/analytics"].forEach((path) => revalidatePath(path));
     return flashMessagePath("/admin/users", "notice", "Data uji telah direset. Customer, akun, dan data master tetap tersimpan.");

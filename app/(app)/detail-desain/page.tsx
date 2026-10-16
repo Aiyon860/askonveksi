@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Check, ChevronDown, Eye, ListFilter, Pencil } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { PageHeader } from "@/components/page-header";
@@ -52,12 +54,18 @@ export default async function DetailDesainPage({ searchParams }: { searchParams:
   const sort = parseSort(params.sort);
   const direction = parseDirection(params.order);
   const state = { query, status, page, pageSize, sort, direction } satisfies TableState;
-  const { items: workOrders, total, pageCount } = await getProductionDesignDetails(state);
+  const { items: workOrders, total, pageCount, canManage } = await getProductionDesignDetails(state);
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
   const persistentParams = { q: query || undefined, status: status !== "all" ? status : undefined, sort: sort !== "deadline" ? sort : undefined, order: direction !== defaultDirection() ? direction : undefined, pageSize: pageSize !== DATA_PAGE_SIZE ? String(pageSize) : undefined };
   return <>
     <PageHeader title="Detail Desain" description="Work Order masuk ke kanban Produksi setelah desain diberi keterangan oleh tim Produksi." />
     <PageMessage />
+    {!canManage ? (
+      <Alert>
+        <AlertTitle>Mode lihat saja</AlertTitle>
+        <AlertDescription>Anda dapat melihat desain Work Order. Menambah keterangan dan mengirim ke Produksi hanya untuk tim Produksi.</AlertDescription>
+      </Alert>
+    ) : null}
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Daftar Work Order Detail Desain">
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center"><DebouncedSearchInput key={query} initialValue={query} pathname="/detail-desain" params={persistentParams} placeholder="Cari nomor, customer, atau produk..." ariaLabel="Cari Detail Desain" className="sm:max-w-md" /><DropdownMenu><DropdownMenuTrigger render={<Button variant="outline" />}><ListFilter data-icon="inline-start" aria-hidden="true" />{status === "pending" ? "Belum dikirim" : status === "sent" ? "Masuk Produksi" : "Semua desain"}<ChevronDown data-icon="inline-end" aria-hidden="true" /></DropdownMenuTrigger><DropdownMenuContent align="start" className="w-48"><DropdownMenuGroup><DropdownMenuLabel>Status desain</DropdownMenuLabel>{(["all", "pending", "sent"] as const).map((item) => <DropdownMenuItem key={item} render={<Link href={tableHref(state, { status: item, page: 1 })} />}><Check className={cn(status !== item && "opacity-0")} aria-hidden="true" />{item === "pending" ? "Belum dikirim" : item === "sent" ? "Masuk Produksi" : "Semua desain"}</DropdownMenuItem>)}</DropdownMenuGroup></DropdownMenuContent></DropdownMenu></div>
@@ -69,7 +77,7 @@ export default async function DetailDesainPage({ searchParams }: { searchParams:
         <TableBody>{workOrders.map((workOrder, index) => <TableRow key={workOrder.id}>
           <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono text-muted-foreground">{workOrder.workOrderNo}</TableCell><TableCell className="font-mono text-muted-foreground">{workOrder.salesOrder.purchaseOrder.purchaseOrderNo}</TableCell><TableCell className="font-mono text-muted-foreground">{workOrder.salesOrder.salesOrderNo}</TableCell><TableCell><span className="font-medium text-primary">{workOrder.salesOrder.snapshotCustomerName}</span></TableCell><TableCell>{workOrder.productName}</TableCell><TableCell className="text-muted-foreground">{workOrder.route === "JERSEY" ? "Jersey" : "Non-jersey"}</TableCell><TableCell className="text-muted-foreground">{workOrder.deadline.toLocaleDateString("id-ID")}</TableCell>
           <TableCell><Badge variant={workOrder.designCompletedAt ? "success" : "warning"}>{workOrder.designCompletedAt ? "Masuk Produksi" : "Belum dikirim"}</Badge></TableCell>
-          <TableCell><Button size="sm" variant={workOrder.designCompletedAt ? "secondary" : "default"} nativeButton={false} render={<Link href={`/detail-desain/${workOrder.id}`}>{workOrder.designCompletedAt ? <Eye data-icon="inline-start" aria-hidden="true" /> : <Pencil data-icon="inline-start" aria-hidden="true" />}{workOrder.designCompletedAt ? "Lihat desain" : "Edit desain"}</Link>} /></TableCell>
+          <TableCell><Button size="sm" variant={!canManage || workOrder.designCompletedAt ? "secondary" : "default"} nativeButton={false} render={<Link href={`/detail-desain/${workOrder.id}`}>{!canManage || workOrder.designCompletedAt ? <Eye data-icon="inline-start" aria-hidden="true" /> : <Pencil data-icon="inline-start" aria-hidden="true" />}{!canManage || workOrder.designCompletedAt ? "Lihat desain" : "Edit desain"}</Link>} /></TableCell>
         </TableRow>)}</TableBody>
       </Table>
       <DataPagination pathname="/detail-desain" page={page} pageCount={pageCount} total={total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistentParams} className="border-t px-4 py-3" />

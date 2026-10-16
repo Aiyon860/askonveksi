@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -38,11 +41,16 @@ export function CustomerFields({
   fixedWhatsapp?: string;
   prospect?: boolean;
 }) {
+  const [selectedLeadSourceId, setSelectedLeadSourceId] = useState(values?.leadSourceId ?? "");
   const currentSalesPicIsMissing = Boolean(
     values?.salesPicId
       && currentSalesPic
       && !salesUsers.some((item) => item.id === values.salesPicId),
   );
+
+  const selectedSource = leadSources.find((item) => item.id === selectedLeadSourceId);
+  const isOtherLeadSource = selectedLeadSourceId === "custom_other" || selectedSource?.name.toLocaleLowerCase("id-ID") === "lainnya";
+  const hasLainnyaOption = leadSources.some((item) => item.name.toLocaleLowerCase("id-ID") === "lainnya");
 
   return (
     <FieldGroup>
@@ -73,16 +81,36 @@ export function CustomerFields({
           <NativeSelect
             id={`${idPrefix}-leadSourceId`}
             name="leadSourceId"
-            defaultValue={values?.leadSourceId ?? ""}
+            value={selectedLeadSourceId}
+            onChange={(event) => setSelectedLeadSourceId(event.target.value)}
             className="w-full"
           >
             <NativeSelectOption value="">Belum ditentukan</NativeSelectOption>
             {leadSources.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
+            {!hasLainnyaOption ? <NativeSelectOption value="custom_other">Lainnya</NativeSelectOption> : null}
           </NativeSelect>
         </Field>
+        {isOtherLeadSource ? (
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor={`${idPrefix}-leadSourceCustom`} required>Keterangan Sumber Lead</FieldLabel>
+            <Input
+              id={`${idPrefix}-leadSourceCustom`}
+              name="leadSourceCustom"
+              placeholder="Misal: TikTok, Rekomendasi Teman, Event Kampus..."
+              maxLength={80}
+              required
+            />
+            <FieldDescription>Tuliskan sumber lead spesifik karena memilih opsi Lainnya.</FieldDescription>
+          </Field>
+        ) : null}
         <Field>
           <FieldLabel htmlFor={`${idPrefix}-salesPicId`}>Sales/PIC</FieldLabel>
-          {prospect ? <Input id={`${idPrefix}-salesPicId`} value="Admin Customer" readOnly /> : (
+          {prospect ? (
+            <>
+              <Input id={`${idPrefix}-salesPicId`} value="Michelle (Admin Customer)" readOnly className="bg-muted font-medium text-foreground" />
+              <input type="hidden" name="salesPicName" value="Michelle" />
+            </>
+          ) : (
             <NativeSelect id={`${idPrefix}-salesPicId`} name="salesPicId" defaultValue={values?.salesPicId ?? ""} className="w-full">
               <NativeSelectOption value="">Belum ditugaskan</NativeSelectOption>
               {currentSalesPicIsMissing && currentSalesPic ? <NativeSelectOption value={currentSalesPic.id}>{currentSalesPic.name}{currentSalesPic.isActive ? "" : " (nonaktif)"}</NativeSelectOption> : null}

@@ -25,17 +25,19 @@ export type LandingProductMenuItem = {
 
 export type LandingProductMenuEntry =
   | { label: string; href: string }
-  | { label: string; children: readonly LandingProductMenuItem[] };
+  | { label: string; href?: string; children: readonly LandingProductMenuItem[] };
 
 /**
  * Clean & simple product menu for navbar dropdown + footer.
- * Group headers (Kemeja, Kaos) are non-clickable labels.
+ * Group headers (Kemeja, Kaos, Jersey) link to the parent aggregate page
+ * and expand to their sub-product children.
  * Every menu href has a matching entry in LANDING_PRODUCTS
  * so /produk/[slug] renders a full detail page.
  */
 export const LANDING_PRODUCT_MENU = [
   {
     label: "Kemeja",
+    href: "/produk/kemeja",
     children: [
       { label: "Kemeja PDH/PDL", href: "/produk/kemeja-pdh-pdl" },
       { label: "Workshirt", href: "/produk/workshirt" },
@@ -46,18 +48,27 @@ export const LANDING_PRODUCT_MENU = [
   { label: "Poloshirt", href: "/produk/poloshirt" },
   {
     label: "Kaos",
+    href: "/produk/kaos",
     children: [
       { label: "Sablon DTF/Plastisol", href: "/produk/kaos-sablon" },
       { label: "Vneck", href: "/produk/kaos-vneck" },
       { label: "Raglan", href: "/produk/kaos-raglan" },
     ],
   },
-  { label: "Jersey", href: "/produk/jersey" },
+  {
+    label: "Jersey",
+    href: "/produk/jersey",
+    children: [
+      { label: "Jersey Kerah", href: "/produk/jersey-kerah" },
+      { label: "Jersey Oblong", href: "/produk/jersey-oblong" },
+    ],
+  },
   { label: "Jacket", href: "/produk/jacket" },
   { label: "Lanyard", href: "/produk/lanyard" },
   { label: "Rompi / Vest / Apron", href: "/produk/rompi-vest-apron" },
   { label: "Totebag / Topi", href: "/produk/totebag-topi" },
   { label: "Gantungan Kunci", href: "/produk/gantungan-kunci" },
+  { label: "Stiker", href: "/produk/stiker" },
 ] as const satisfies readonly LandingProductMenuEntry[];
 
 export const LANDING_FOOTER_LINKS = [

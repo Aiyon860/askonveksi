@@ -3,9 +3,8 @@ import Script from "next/script";
 
 import { LandingClients } from "@/components/landing-clients";
 import { LandingCta } from "@/components/landing-cta";
-import { LandingFooter } from "@/components/landing-footer";
+import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
 import { LandingHero } from "@/components/landing-hero";
-import { LandingNavbar } from "@/components/landing-navbar";
 import { LandingProcess } from "@/components/landing-process";
 import { LandingProducts } from "@/components/landing-products";
 import { LandingTestimonials } from "@/components/landing-testimonials";
@@ -58,7 +57,7 @@ const structuredData = {
       name: SITE_NAME,
       alternateName: "AS Konveksi Semarang",
       url: SITE_URL.toString(),
-      logo: new URL("/brand/askonveksi-logo.png", SITE_URL).toString(),
+      logo: new URL("/new-logo.webp", SITE_URL).toString(),
       image: new URL("/hero.jpg", SITE_URL).toString(),
       description: SITE_DESCRIPTION,
       telephone: `+${ASKONVEKSI_WHATSAPP}`,
@@ -95,7 +94,7 @@ export default function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
       />
       <main className="bg-white">
-        <LandingNavbar />
+        <SiteNavbar />
         <LandingHero />
         <LandingProducts />
         <LandingProcess />
@@ -103,7 +102,7 @@ export default function HomePage() {
         <LandingClients />
         <LandingTestimonials />
         <LandingCta />
-        <LandingFooter />
+        <SiteFooter />
         <LandingWhatsAppFab />
       </main>
       <Script

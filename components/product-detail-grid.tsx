@@ -7,13 +7,15 @@ import type { LandingProduct } from "@/lib/products";
 
 const PLACEHOLDER_COUNT = 9;
 
+export type ProductDetailImage = { src: string; alt: string };
+
 /**
  * Galeri foto asli per slug produk. Kunci harus sama dengan `slug` di `lib/products`.
  * Foto berdimensi landscape 3:2 (1536x1024) sehingga card memakai
  * `aspect-[3/2]` + `object-cover`: proporsional tanpa crop berlebih di semua breakpoint.
  * Slug lain yang belum punya foto tetap memakai placeholder.
  */
-const PRODUCT_DETAIL_GALLERIES: Record<string, { src: string; alt: string }[]> = {
+export const PRODUCT_DETAIL_GALLERIES: Record<string, ProductDetailImage[]> = {
   "kemeja-pdh-pdl": [
     { src: "/assets/pdh-kemeja/APJII.webp", alt: "Kemeja PDH pesanan APJII produksi Askonveksi" },
     { src: "/assets/pdh-kemeja/ARTA%20JAYA.webp", alt: "Kemeja PDH pesanan Arta Jaya produksi Askonveksi" },
@@ -37,26 +39,47 @@ const PRODUCT_DETAIL_GALLERIES: Record<string, { src: string; alt: string }[]> =
     },
     { src: "/assets/pdh-kemeja/SMA%20N%209%20SMG.webp", alt: "Kemeja PDH pesanan SMA N 9 Semarang produksi Askonveksi" },
   ],
-  jersey: [
-    { src: "/assets/jerysey-webp/AKPOL.webp", alt: "Jersey pesanan AKPOL produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/CORPORATE%20PADEL%20(2).webp", alt: "Jersey pesanan Corporate Padel produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/CORPORATE%20PADEL.webp", alt: "Jersey pesanan Corporate Padel produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/INDUSTRIPOLIS.webp", alt: "Jersey pesanan Industripolis produksi Askonveksi" },
+  "jersey-kerah": [
+    { src: "/assets/jerysey-webp/AKPOL.webp", alt: "Jersey kerah pesanan AKPOL produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/CORPORATE%20PADEL%20(2).webp", alt: "Jersey kerah pesanan Corporate Padel produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/CORPORATE%20PADEL.webp", alt: "Jersey kerah pesanan Corporate Padel produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/INDUSTRIPOLIS.webp", alt: "Jersey kerah pesanan Industripolis produksi Askonveksi" },
     {
       src: "/assets/jerysey-webp/JERSEY%20KOPASUS%20RAJAWALI.webp",
-      alt: "Jersey pesanan Kopasus Rajawali produksi Askonveksi",
+      alt: "Jersey kerah pesanan Kopasus Rajawali produksi Askonveksi",
     },
     {
       src: "/assets/jerysey-webp/KANWIL%20BPN%20JAWA%20TENGAH.webp",
-      alt: "Jersey pesanan Kanwil BPN Jawa Tengah produksi Askonveksi",
+      alt: "Jersey kerah pesanan Kanwil BPN Jawa Tengah produksi Askonveksi",
     },
-    { src: "/assets/jerysey-webp/ONSEVEN%20COFFE.webp", alt: "Jersey pesanan Onseven Coffe produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/PBPI%20JATENG.webp", alt: "Jersey pesanan PBPI Jateng produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/PIP.webp", alt: "Jersey pesanan PIP produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/PNM.webp", alt: "Jersey pesanan PNM produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/POLRES%20PEKALONGAN.webp", alt: "Jersey pesanan Polres Pekalongan produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/PSIS.webp", alt: "Jersey pesanan PSIS produksi Askonveksi" },
-    { src: "/assets/jerysey-webp/USM.webp", alt: "Jersey pesanan USM produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/ONSEVEN%20COFFE.webp", alt: "Jersey kerah pesanan Onseven Coffe produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PBPI%20JATENG.webp", alt: "Jersey kerah pesanan PBPI Jateng produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PIP.webp", alt: "Jersey kerah pesanan PIP produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PNM.webp", alt: "Jersey kerah pesanan PNM produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/POLRES%20PEKALONGAN.webp", alt: "Jersey kerah pesanan Polres Pekalongan produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PSIS.webp", alt: "Jersey kerah pesanan PSIS produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/USM.webp", alt: "Jersey kerah pesanan USM produksi Askonveksi" },
+  ],
+  "jersey-oblong": [
+    { src: "/assets/jerysey-webp/AKPOL.webp", alt: "Jersey oblong pesanan AKPOL produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/CORPORATE%20PADEL%20(2).webp", alt: "Jersey oblong pesanan Corporate Padel produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/CORPORATE%20PADEL.webp", alt: "Jersey oblong pesanan Corporate Padel produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/INDUSTRIPOLIS.webp", alt: "Jersey oblong pesanan Industripolis produksi Askonveksi" },
+    {
+      src: "/assets/jerysey-webp/JERSEY%20KOPASUS%20RAJAWALI.webp",
+      alt: "Jersey oblong pesanan Kopasus Rajawali produksi Askonveksi",
+    },
+    {
+      src: "/assets/jerysey-webp/KANWIL%20BPN%20JAWA%20TENGAH.webp",
+      alt: "Jersey oblong pesanan Kanwil BPN Jawa Tengah produksi Askonveksi",
+    },
+    { src: "/assets/jerysey-webp/ONSEVEN%20COFFE.webp", alt: "Jersey oblong pesanan Onseven Coffe produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PBPI%20JATENG.webp", alt: "Jersey oblong pesanan PBPI Jateng produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PIP.webp", alt: "Jersey oblong pesanan PIP produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PNM.webp", alt: "Jersey oblong pesanan PNM produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/POLRES%20PEKALONGAN.webp", alt: "Jersey oblong pesanan Polres Pekalongan produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/PSIS.webp", alt: "Jersey oblong pesanan PSIS produksi Askonveksi" },
+    { src: "/assets/jerysey-webp/USM.webp", alt: "Jersey oblong pesanan USM produksi Askonveksi" },
   ],
   poloshirt: [
     { src: "/assets/polo-webp/BPKAD.webp", alt: "Poloshirt pesanan BPKAD produksi Askonveksi" },
@@ -103,13 +126,57 @@ const PRODUCT_DETAIL_GALLERIES: Record<string, { src: string; alt: string }[]> =
       src: "/assets/rompi-apron/SPPG%20MANGUNHARJO%2003.webp",
       alt: "Rompi pesanan SPPG Mangunharjo 03 produksi Askonveksi",
     },
+  ],
+  "seragam-kerja": [
     {
-      src: "/assets/rompi-apron/VIRGIN%20BAKERY%20CEWEK.webp",
-      alt: "Apron pesanan Virgin Bakery model cewek produksi Askonveksi",
+      src: "/assets/seragam-kerja/VIRGIN%20BAKERY%20CEWEK.webp",
+      alt: "Seragam kerja pesanan Virgin Bakery model cewek produksi Askonveksi",
     },
-    { src: "/assets/rompi-apron/VIRGIN%20BAKERY.webp", alt: "Apron pesanan Virgin Bakery produksi Askonveksi" },
+    {
+      src: "/assets/seragam-kerja/VIRGIN%20BAKERY.webp",
+      alt: "Seragam kerja pesanan Virgin Bakery produksi Askonveksi",
+    },
   ],
 };
+
+export function ProductDetailGallery({ images }: { images: ProductDetailImage[] }) {
+  return (
+    <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
+      {images.map((image) => (
+        <div
+          key={image.src}
+          className="relative aspect-[3/2] w-full overflow-hidden bg-[#e3eaf1]"
+        >
+          <Image
+            src={image.src}
+            alt={image.alt}
+            fill
+            sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 26vw"
+            className="object-cover"
+          />
+        </div>
+      ))}
+    </LandingStagger>
+  );
+}
+
+export function ProductDetailPlaceholder({ pageName }: { pageName: string }) {
+  return (
+    <ComingSoonOverlay pageName={pageName}>
+      <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
+        {Array.from({ length: PLACEHOLDER_COUNT }, (_, index) => (
+          <div
+            key={`placeholder-${index + 1}`}
+            aria-hidden="true"
+            className="flex aspect-[3/2] w-full items-center justify-center overflow-hidden bg-[#e3eaf1]"
+          >
+            <ImageIcon className="size-8 text-[#9db4c6] sm:size-10" strokeWidth={1.5} />
+          </div>
+        ))}
+      </LandingStagger>
+    </ComingSoonOverlay>
+  );
+}
 
 export function ProductDetailGrid({ product }: { product: LandingProduct }) {
   const detailImages = PRODUCT_DETAIL_GALLERIES[product.slug];
@@ -128,36 +195,9 @@ export function ProductDetailGrid({ product }: { product: LandingProduct }) {
         </LandingReveal>
 
         {detailImages ? (
-          <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
-            {detailImages.map((image) => (
-              <div
-                key={image.src}
-                className="relative aspect-[3/2] w-full overflow-hidden bg-[#e3eaf1]"
-              >
-                <Image
-                  src={image.src}
-                  alt={image.alt}
-                  fill
-                  sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 26vw"
-                  className="object-cover"
-                />
-              </div>
-            ))}
-          </LandingStagger>
+          <ProductDetailGallery images={detailImages} />
         ) : (
-          <ComingSoonOverlay pageName={product.name}>
-            <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
-              {Array.from({ length: PLACEHOLDER_COUNT }, (_, index) => (
-                <div
-                  key={`placeholder-${index + 1}`}
-                  aria-hidden="true"
-                  className="flex aspect-[3/2] w-full items-center justify-center overflow-hidden bg-[#e3eaf1]"
-                >
-                  <ImageIcon className="size-8 text-[#9db4c6] sm:size-10" strokeWidth={1.5} />
-                </div>
-              ))}
-            </LandingStagger>
-          </ComingSoonOverlay>
+          <ProductDetailPlaceholder pageName={product.name} />
         )}
       </div>
     </section>

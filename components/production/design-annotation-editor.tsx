@@ -422,7 +422,8 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
   function save() {
     commitInline();
     const annotations = copy(notesRef.current);
-    if (!stage.current || !annotations.length) return setError("Tambahkan minimal satu keterangan.");
+    // D3: detailing opsional — tanpa coretan sama sekali pun bisa disimpan.
+    if (!stage.current) return setError("Gambar desain belum dapat dibuat.");
     setError(null);
     window.requestAnimationFrame(() => {
       const currentStage = stage.current;
@@ -470,7 +471,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
   }
 
   return <Card>
-    <CardHeader><CardTitle>{readOnly ? "Desain final" : "Anotasi"}: {attachmentName}</CardTitle><CardDescription id={`annotation-help-${attachmentId}`}>{readOnly ? "Desain sudah masuk Produksi dan hanya dapat dilihat." : "Klik dan tahan lalu tarik di atas gambar untuk membuat panah (klik biasa tidak membuat apa pun). Seret dua titik ujung untuk mengubah arah panah, klik dua kali elemen untuk memunculkan teksnya lalu seret teks itu untuk melepaskannya dari panah. Tombol Tambah teks membuat keterangan teks tanpa panah yang bisa digeser bebas di kanvas, dan klik kanan menghapus keterangan."}</CardDescription></CardHeader>
+    <CardHeader><CardTitle>{readOnly ? "Desain" : "Anotasi"}: {attachmentName}</CardTitle><CardDescription id={`annotation-help-${attachmentId}`}>{readOnly ? "Desain hanya dapat dilihat. Menambah keterangan dan mengirim ke Produksi dilakukan oleh tim Produksi." : "Klik dan tahan lalu tarik di atas gambar untuk membuat panah (klik biasa tidak membuat apa pun). Seret dua titik ujung untuk mengubah arah panah, klik dua kali elemen untuk memunculkan teksnya lalu seret teks itu untuk melepaskannya dari panah. Tombol Tambah teks membuat keterangan teks tanpa panah yang bisa digeser bebas di kanvas, dan klik kanan menghapus keterangan."}</CardDescription></CardHeader>
     <CardContent className="flex flex-col gap-4">
       {!readOnly ? <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
         <label className="flex flex-col gap-1 text-sm font-medium" htmlFor={`font-size-${attachmentId}`}>Ukuran teks<Input id={`font-size-${attachmentId}`} className="w-14" type="number" min={12} max={48} value={fontSize} onChange={(event) => updateFontSize(Number(event.currentTarget.value))} /></label>
@@ -481,7 +482,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
           <Button type="button" variant="outline" onClick={() => uploadInput.current?.click()} disabled={isBusy}>{isUploading ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Upload data-icon="inline-start" />}{isUploading ? "Mengunggah..." : "Upload Desain"}</Button>
           <Button type="button" variant="outline" onClick={reset} disabled={isBusy}>{isResetting ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" />}{isResetting ? "Mereset..." : "Reset perubahan"}</Button>
           <Button type="button" onClick={save} disabled={isBusy || !image}>{isSavingVersion ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}{isSavingVersion ? "Menyimpan..." : "Simpan versi"}</Button>
-          <input ref={uploadInput} type="file" accept=".png,.psd,image/png,image/vnd.adobe.photoshop" className="sr-only" aria-label="Pilih file desain pengganti" onChange={upload} />
+          <input ref={uploadInput} type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" className="sr-only" aria-label="Pilih file desain pengganti" onChange={upload} />
         </div>
       </div> : null}
       <div className="relative">
@@ -528,7 +529,7 @@ export function DesignAnnotationEditor({ workOrderId, taskId, attachmentId, atta
         </div>
       </div>
 
-      {!readOnly ? <div className="mt-2 flex flex-wrap items-center justify-end gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button><Button type="button" variant="success" onClick={() => setConfirming(true)} disabled={isBusy || !savedAnnotations.length}><Send data-icon="inline-start" />Kirim ke Produksi</Button></div> : <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button></div>}
+      {!readOnly ? <div className="mt-2 flex flex-wrap items-center justify-end gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button><Button type="button" variant="success" onClick={() => setConfirming(true)} disabled={isBusy}><Send data-icon="inline-start" />Kirim ke Produksi</Button></div> : <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" render={<a href={`/api/desain/${taskId}/attachments/${attachmentId}?v=${encodeURIComponent(imageToken)}`} aria-label={`Unduh gambar ${attachmentName}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Unduh hasil</Button></div>}
       {!readOnly ? <p className="text-xs text-muted-foreground">Unduhan berisi versi terakhir yang tersimpan; simpan dulu bila ada keterangan baru.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </CardContent>

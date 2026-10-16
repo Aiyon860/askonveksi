@@ -6,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion: string | undefined;
 };
 
-const PRISMA_SCHEMA_VERSION = "expense-payment-method-fk";
+const PRISMA_SCHEMA_VERSION = "pool20-batched-dashboard";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -17,16 +17,25 @@ function createPrismaClient() {
 
   const adapter = new PrismaPg({
     connectionString,
-    max: 5,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    // Dashboard menembak 13 query paralel + polling SWR (dashboard 30 dtk,
+    // trends 30 dtk, pipeline 60 dtk, inbox 3 dtk) + halaman customers
+    // (~7 checkout bersamaan). RTT ke pooler Sydney ±400-700ms, connect
+    // dingin ±2,5 dtk. Burst beberapa request/tab bersamaan memenuhi pool
+    // kecil hingga antrean timeout ("timeout exceeded when trying to
+    // connect" dari pg-pool). max 20 memberi ruang burst 2-3 halaman
+    // bersamaan; koneksi aktual di Supabase terpantau rendah (<15).
+    max: 20,
+    // DNS lambat (±5 dtk) membuat handshake ke pooler ±7 dtk; beri ruang agar
+    // checkout antrean tidak timeout.
+    idleTimeoutMillis: 60_000,
+    connectionTimeoutMillis: 30_000,
   });
   return new PrismaClient({ adapter });
 }
 
 function hasCurrentModelDelegates(client: PrismaClient) {
   const delegates = client as unknown as Record<string, { findMany?: unknown } | undefined>;
-  return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction", "designTask", "designRevision", "whatsAppCampaign", "expense"].every(
+  return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction", "designTask", "designRevision", "whatsAppCampaign", "expense", "invoiceItemAddon", "invoiceSettingPoint"].every(
     (model) => typeof delegates[model]?.findMany === "function",
   );
 }

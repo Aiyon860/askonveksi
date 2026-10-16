@@ -7,8 +7,9 @@ import { z } from "zod";
 
 import { flashMessagePath, messageForError, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
 import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
-import { requireActor } from "@/lib/auth/session";
+import { requireActor, requireDeveloperActor } from "@/lib/auth/session";
 import { firstValidationMessage } from "@/lib/crm/validation";
+import { designImageContentType, designImageExtensionFor, designImageRejection, sniffImageContentType } from "@/lib/design/image";
 import { getPrismaClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -41,30 +42,13 @@ function revalidateProductionBoard() {
 const DESIGN_BUCKET = "crm-po-designs";
 const MAX_DESIGN_BYTES = 5 * 1024 * 1024;
 
-function isPng(bytes: Uint8Array) {
-  return bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value);
-}
-
-function designExtension(name: string) {
-  return /\.([a-z0-9]{1,10})$/i.exec(name)?.[1]?.toLowerCase() ?? "";
-}
-
-function isDesignFile(bytes: Uint8Array, fileExtension: string) {
-  const png = isPng(bytes);
-  const psd = bytes.length >= 4 && bytes[0] === 56 && bytes[1] === 66 && bytes[2] === 80 && bytes[3] === 83;
-  return fileExtension === "png" ? png : fileExtension === "psd" ? psd : false;
-}
-
-function designContentType(fileExtension: string) {
-  return fileExtension === "png" ? "image/png" : "image/vnd.adobe.photoshop";
-}
-
 const designVersionSchema = z.object({ workOrderId: z.string().trim().min(10).max(40), attachmentId: z.string().trim().min(10).max(40) });
 
 export async function saveProductionDesignAction(formData: FormData) {
   const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
   return runRedirectingAction(fallback, async () => {
-    const actor = await requireActor(PRODUCTION_ROLES);
+    // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh memakai aksi ini.
+    const actor = await requireDeveloperActor();
     const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
     const file = formData.get("design");
     let rawAnnotations: unknown;
@@ -73,7 +57,7 @@ export async function saveProductionDesignAction(formData: FormData) {
     if (!parsed.success || !annotations.success || !(file instanceof File)) throw new UserFacingError("Desain atau keterangannya tidak valid.");
     if (!file.size || file.size > MAX_DESIGN_BYTES || file.type !== "image/png") throw new UserFacingError("Hasil desain harus berupa PNG maksimal 5 MB.");
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (!isPng(bytes)) throw new UserFacingError("Isi file desain tidak valid.");
+    if (sniffImageContentType(bytes) !== "image/png") throw new UserFacingError("Isi file desain tidak valid.");
 
     const target = await getPrismaClient().productionWorkOrder.findFirst({
       where: { id: parsed.data.workOrderId, status: "ACTIVE" },
@@ -87,7 +71,7 @@ export async function saveProductionDesignAction(formData: FormData) {
                 designTask: {
                   select: {
                     revisions: {
-                      where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
+                      orderBy: { revision: "desc" },
                       select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, path: true, originalPath: true } } },
                     },
                   },
@@ -98,8 +82,8 @@ export async function saveProductionDesignAction(formData: FormData) {
         },
       },
     });
-    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
-    if (!target || !attachment) throw new UserFacingError("File desain yang disetujui tidak ditemukan.");
+    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions.flatMap((revision) => revision.attachments)[0];
+    if (!target || !attachment) throw new UserFacingError("File desain tidak ditemukan.");
     if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diubah.");
     const storage = createAdminClient().storage.from(DESIGN_BUCKET);
     const originalPath = attachment.originalPath ?? `production-design-original/${attachment.id}.png`;
@@ -112,7 +96,9 @@ export async function saveProductionDesignAction(formData: FormData) {
       if (!snapshot.data) {
         const { data: original, error: originalError } = await storage.download(attachment.path);
         if (originalError || !original) throw new UserFacingError("Desain awal tidak dapat dibuka.");
-        const { error: copyError } = await storage.upload(originalPath, new Uint8Array(await original.arrayBuffer()), { contentType: "image/png", upsert: false });
+        const originalBytes = new Uint8Array(await original.arrayBuffer());
+        // Jenis gambar disesuaikan agar pratinjau (nosniff) tidak menolak JPEG yang dilabeli PNG.
+        const { error: copyError } = await storage.upload(originalPath, originalBytes, { contentType: sniffImageContentType(originalBytes) ?? "image/png", upsert: false });
         if (copyError && !(await storage.exists(originalPath)).data) {
           console.error("Gagal menyimpan salinan desain awal.", { status: copyError.status, statusCode: copyError.statusCode });
           throw new UserFacingError("Salinan desain awal belum dapat disimpan.");
@@ -124,7 +110,7 @@ export async function saveProductionDesignAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.designAttachment.update({ where: { id: attachment.id }, data: { contentType: "image/png", sizeBytes: bytes.length, originalPath, annotations: annotations.data } });
       await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_VERSION_SAVED", ["annotations"], { attachmentId: attachment.id });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidatePath("/detail-desain");
     revalidatePath(`/crm/purchase-orders`);
     return flashMessagePath(fallback, "notice", "Versi desain disimpan. Konfirmasikan untuk memasukkannya ke Produksi.");
@@ -134,15 +120,15 @@ export async function saveProductionDesignAction(formData: FormData) {
 export async function overwriteProductionDesignAction(formData: FormData) {
   const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
   return runRedirectingAction(fallback, async () => {
-    const actor = await requireActor(PRODUCTION_ROLES);
+    // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh memakai aksi ini.
+    const actor = await requireDeveloperActor();
     const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
     const file = formData.get("design");
     if (!parsed.success || !(file instanceof File)) throw new UserFacingError("Desain yang diunggah tidak valid.");
     if (!file.size || file.size > MAX_DESIGN_BYTES) throw new UserFacingError("File desain maksimal 5 MB.");
-    const fileExtension = designExtension(file.name);
-    if (fileExtension !== "png" && fileExtension !== "psd") throw new UserFacingError("Desain hanya boleh berupa PNG atau PSD.");
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (!isDesignFile(bytes, fileExtension)) throw new UserFacingError("Isi file tidak sesuai format PNG atau PSD.");
+    const contentType = designImageContentType(file.name, bytes);
+    if (!contentType) throw new UserFacingError(designImageRejection(file.name));
 
     const target = await getPrismaClient().productionWorkOrder.findFirst({
       where: { id: parsed.data.workOrderId, status: "ACTIVE" },
@@ -156,7 +142,7 @@ export async function overwriteProductionDesignAction(formData: FormData) {
                 designTask: {
                   select: {
                     revisions: {
-                      where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
+                      orderBy: { revision: "desc" },
                       select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, path: true, originalPath: true } } },
                     },
                   },
@@ -167,14 +153,13 @@ export async function overwriteProductionDesignAction(formData: FormData) {
         },
       },
     });
-    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
-    if (!target || !attachment) throw new UserFacingError("File desain yang disetujui tidak ditemukan.");
+    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions.flatMap((revision) => revision.attachments)[0];
+    if (!target || !attachment) throw new UserFacingError("File desain tidak ditemukan.");
     if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diganti.");
 
     const storage = createAdminClient().storage.from(DESIGN_BUCKET);
-    const contentType = designContentType(fileExtension);
     const folder = attachment.path.includes("/") ? attachment.path.slice(0, attachment.path.lastIndexOf("/")) : "design";
-    const nextPath = `${folder}/${randomUUID()}.${fileExtension}`;
+    const nextPath = `${folder}/${randomUUID()}.${designImageExtensionFor(contentType)}`;
     const { error: uploadError } = await storage.upload(nextPath, bytes, { contentType, upsert: false });
     if (uploadError) throw new UserFacingError("File desain belum dapat disimpan.");
 
@@ -203,7 +188,7 @@ export async function overwriteProductionDesignAction(formData: FormData) {
           },
         });
         await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_REPLACED", ["path", "contentType", "sizeBytes", "originalName", "originalPath", "annotations"], { attachmentId: attachment.id, previousPath: attachment.path, nextPath });
-      });
+      }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     } catch (error) {
       await storage.remove([nextPath]);
       throw error;
@@ -223,7 +208,8 @@ export async function overwriteProductionDesignAction(formData: FormData) {
 export async function resetProductionDesignAction(formData: FormData) {
   const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
   return runRedirectingAction(fallback, async () => {
-    const actor = await requireActor(PRODUCTION_ROLES);
+    // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh memakai aksi ini.
+    const actor = await requireDeveloperActor();
     const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
     if (!parsed.success) throw new UserFacingError("Work Order tidak valid.");
     const target = await getPrismaClient().productionWorkOrder.findFirst({
@@ -238,7 +224,7 @@ export async function resetProductionDesignAction(formData: FormData) {
                 designTask: {
                   select: {
                     revisions: {
-                      where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
+                      orderBy: { revision: "desc" },
                       select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, path: true, originalPath: true } } },
                     },
                   },
@@ -249,23 +235,25 @@ export async function resetProductionDesignAction(formData: FormData) {
         },
       },
     });
-    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
-    if (!target || !attachment) throw new UserFacingError("File desain yang disetujui tidak ditemukan.");
+    const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions.flatMap((revision) => revision.attachments)[0];
+    if (!target || !attachment) throw new UserFacingError("File desain tidak ditemukan.");
     if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diubah.");
     let originalSize: number | undefined;
+    let restoredContentType: "image/png" | "image/jpeg" | undefined;
     if (attachment.originalPath) {
       const storage = createAdminClient().storage.from(DESIGN_BUCKET);
       const { data: original, error: downloadError } = await storage.download(attachment.originalPath);
       if (downloadError || !original) throw new UserFacingError("Desain awal tidak dapat dibuka.");
       const originalBytes = new Uint8Array(await original.arrayBuffer());
-      const { error: uploadError } = await storage.upload(attachment.path, originalBytes, { contentType: "image/png", upsert: true });
+      restoredContentType = sniffImageContentType(originalBytes) ?? "image/png";
+      const { error: uploadError } = await storage.upload(attachment.path, originalBytes, { contentType: restoredContentType, upsert: true });
       if (uploadError) throw new UserFacingError("Desain awal belum dapat dipulihkan.");
       originalSize = originalBytes.length;
     }
     await getPrismaClient().$transaction(async (tx) => {
-      await tx.designAttachment.update({ where: { id: attachment.id }, data: { annotations: Prisma.JsonNull, ...(originalSize === undefined ? {} : { contentType: "image/png", sizeBytes: originalSize }) } });
+      await tx.designAttachment.update({ where: { id: attachment.id }, data: { annotations: Prisma.JsonNull, ...(restoredContentType === undefined ? {} : { contentType: restoredContentType, sizeBytes: originalSize }) } });
       await productionAudit(tx, actor.id, target.id, "PRODUCTION_DESIGN_RESET", ["annotations"], { attachmentId: attachment.id });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidatePath("/detail-desain");
     revalidatePath("/crm/purchase-orders");
     return flashMessagePath(fallback, "notice", "Perubahan desain dikembalikan ke desain awal.");
@@ -275,7 +263,8 @@ export async function resetProductionDesignAction(formData: FormData) {
 export async function sendProductionDesignAction(formData: FormData) {
   const fallback = `/detail-desain/${String(value(formData, "workOrderId") ?? "")}`;
   return runRedirectingAction(fallback, async () => {
-    const actor = await requireActor(PRODUCTION_ROLES);
+    // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh memakai aksi ini.
+    const actor = await requireDeveloperActor();
     const parsed = designVersionSchema.safeParse({ workOrderId: value(formData, "workOrderId"), attachmentId: value(formData, "attachmentId") });
     if (!parsed.success) throw new UserFacingError("Work Order tidak valid.");
     const order = await getPrismaClient().productionWorkOrder.findUnique({
@@ -288,9 +277,7 @@ export async function sendProductionDesignAction(formData: FormData) {
           purchaseOrder: { select: {
             designTask: { select: {
               revisions: {
-                where: { status: "APPROVED" },
                 orderBy: { revision: "desc" },
-                take: 1,
                 select: { attachments: { where: { id: parsed.data.attachmentId }, select: { id: true, annotations: true, originalPath: true } } },
               },
             } },
@@ -298,12 +285,12 @@ export async function sendProductionDesignAction(formData: FormData) {
         } },
       },
     });
-    const attachment = order?.salesOrder.purchaseOrder.designTask?.revisions[0]?.attachments[0];
-    if (!order || !attachment || order.status !== "ACTIVE" || order.designCompletedAt || !designAnnotationsSchema.safeParse(attachment.annotations).success) throw new UserFacingError("Simpan versi desain dengan minimal satu keterangan sebelum memasukkannya ke Produksi.");
+    const attachment = order?.salesOrder.purchaseOrder.designTask?.revisions.flatMap((revision) => revision.attachments)[0];
+    if (!order || !attachment || order.status !== "ACTIVE" || order.designCompletedAt || !designAnnotationsSchema.safeParse(attachment.annotations).success) throw new UserFacingError("Simpan versi desain terlebih dahulu sebelum memasukkannya ke Produksi.");
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productionWorkOrder.update({ where: { id: order.id }, data: { designCompletedAt: new Date() } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_DESIGN_SENT", ["designCompletedAt"], { attachmentId: parsed.data.attachmentId });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     if (attachment.originalPath) {
       try {
         const { error } = await createAdminClient().storage.from(DESIGN_BUCKET).remove([attachment.originalPath]);
@@ -325,6 +312,13 @@ export async function sendProductionDesignAction(formData: FormData) {
 // jadi anggaran transaksi dinaikkan mengikuti pola `DEAL_TRANSACTION_OPTIONS` di crm.ts.
 const MOVE_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  maxWait: 10_000,
+  timeout: 20_000,
+} as const;
+
+// Transaksi tulis kecil lain (2-3 query berurutan) juga bisa P2028 di pooler
+// yang lambat; diberi anggaran yang sama tanpa mengubah isolation level.
+const PRODUCTION_WRITE_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
   timeout: 20_000,
 } as const;
@@ -360,23 +354,44 @@ async function moveProduction(formData: FormData) {
         route: true,
         version: true,
         currentStage: true,
+        needsRepair: true,
         stageSequence: true,
         steps: { select: { id: true, stage: true, position: true, status: true, assigneeId: true } },
       },
     });
-    if (!order || order.status !== "ACTIVE") throw new UserFacingError("Work Order tidak aktif atau tidak ditemukan.");
+    if (!order || (order.status !== "ACTIVE" && order.status !== "COMPLETED")) throw new UserFacingError("Work Order tidak aktif atau tidak ditemukan.");
     if (order.version !== parsed.data.version) throw new UserFacingError("Work Order sudah berubah. Muat ulang halaman.");
-
-    const currentStep = order.steps.find((step) => step.stage === order.currentStage && step.status === "ACTIVE");
-    if (!currentStep) throw new UserFacingError("Tahap aktif tidak valid. Muat ulang halaman.");
-    const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
-    if (!isStageRole(actor.role)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
-    if (!manager && currentStep.assigneeId !== actor.id) throw new UserFacingError("Ambil penugasan PIC tahap ini sebelum memperbarui progres.");
+    const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PO";
 
     const targetStep = order.steps.find((step) => step.stage === parsed.data.targetStage);
     if (!targetStep) throw new UserFacingError("Tahap tujuan tidak termasuk alur Work Order.");
     const now = new Date();
-    let activityType: "STAGE_MOVED" | "STAGE_SKIPPED" | "STAGE_REVERTED" | "SAMPLE_REJECTED" | "QC_REJECTED" = "STAGE_MOVED";
+    let activityType: "STAGE_MOVED" | "STAGE_SKIPPED" | "STAGE_REVERTED" | "SAMPLE_REJECTED" = "STAGE_MOVED";
+
+    // Selesai → Retur: hanya manager, wajib alasan, WO langsung kembali ACTIVE.
+    if (order.status === "COMPLETED") {
+      if (parsed.data.decision !== "TO_RETUR") throw new UserFacingError("Work Order selesai hanya dapat masuk Retur.");
+      if (!manager) throw new UserFacingError("Hanya Admin Produksi yang dapat meretur Work Order selesai.");
+      const reason = parsed.data.note?.trim() ?? "";
+      if (reason.length < 3) throw new UserFacingError("Alasan retur minimal 3 karakter.");
+      const doneStep = order.steps.find((step) => step.stage === "SELESAI");
+      if (!doneStep || targetStep.position >= doneStep.position) throw new UserFacingError("Pilih tahap sebelum Selesai.");
+      await tx.productionStep.updateMany({ where: { workOrderId: order.id, position: { gte: targetStep.position } }, data: { status: "PENDING", startedAt: null, completedAt: null } });
+      await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, attemptCount: { increment: 1 } } });
+      const reopened = await tx.productionWorkOrder.updateMany({
+        where: { id: order.id, version: order.version, status: "COMPLETED", currentStage: order.currentStage },
+        data: { currentStage: parsed.data.targetStage, status: "ACTIVE", completedAt: null, needsRepair: true, repairReason: reason.slice(0, 2000), repairRequestedAt: now, stageEnteredAt: now, version: { increment: 1 } },
+      });
+      if (reopened.count !== 1) throw new UserFacingError("Work Order sudah berubah. Muat ulang halaman.");
+      await tx.productionActivity.create({ data: { workOrderId: order.id, actorId: actor.id, type: "STAGE_REVERTED", fromStage: order.currentStage, toStage: parsed.data.targetStage, note: parsed.data.note } });
+      await productionAudit(tx, actor.id, order.id, "STAGE_REVERTED", ["currentStage", "status", "version", "stageEnteredAt", "needsRepair", "repairReason"], { from: order.currentStage, to: parsed.data.targetStage });
+      return { id: order.id };
+    }
+
+    const currentStep = order.steps.find((step) => step.stage === order.currentStage && step.status === "ACTIVE");
+    if (!currentStep) throw new UserFacingError("Tahap aktif tidak valid. Muat ulang halaman.");
+    if (!isStageRole(actor.role)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
+    if (!manager && currentStep.assigneeId !== actor.id) throw new UserFacingError("Ambil penugasan PIC tahap ini sebelum memperbarui progres.");
     let completed = false;
     let needsRepair: boolean | undefined;
     let repairReason: string | null | undefined;
@@ -384,6 +399,10 @@ async function moveProduction(formData: FormData) {
     let sampleRevisionIncrement = 0;
     // undefined = Kendala pada kartu tidak diubah.
     let obstacleUpdate: string | null | undefined;
+    // needsRepair = kartu sedang berparkir di kolom Retur. Semua keluar dari Retur
+    // (maju/lewat/sampel/keluar Retur) melepasnya; badge Retur (repairReason)
+    // tidak pernah dihapus — menempel sampai kartu masuk Retur berikutnya.
+    if (order.needsRepair) needsRepair = false;
 
     if (parsed.data.decision === "SKIP") {
       const currentIndex = order.stageSequence.indexOf(order.currentStage);
@@ -408,11 +427,24 @@ async function moveProduction(formData: FormData) {
       sampleRevisionIncrement = 1;
       await tx.productionStep.update({ where: { id: currentStep.id }, data: { status: "PENDING", startedAt: null, completedAt: null } });
       await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, completedAt: null, attemptCount: { increment: 1 } } });
-    } else if (parsed.data.decision === "QC_REJECT") {
-      if (order.currentStage !== "QC" || targetStep.position >= currentStep.position) throw new UserFacingError("QC hanya dapat mengembalikan ke tahap sebelumnya.");
-      activityType = "QC_REJECTED";
+    } else if (parsed.data.decision === "RELEASE_RETUR") {
+      // Keluar dari kolom Retur: kartu kembali menempati kolom tahapnya tanpa
+      // mengubah tahap. Badge Retur tetap menempel (repairReason tidak dihapus).
+      if (!order.needsRepair) throw new UserFacingError("Work Order tidak sedang berada di kolom Retur.");
+      if (parsed.data.targetStage !== order.currentStage) throw new UserFacingError("Keluar Retur hanya ke tahap kartu saat ini.");
+      activityType = "STAGE_MOVED";
+      // Tahap dan langkah tidak berubah; jejak "Masuk Pada" dicatat ulang saat keluar Retur.
+    } else if (parsed.data.decision === "TO_RETUR") {
+      // Parkir Retur (drop langsung ke kolom Retur / WO selesai): wajib alasan
+      // (min 3 karakter). Kartu langsung parkir di kolom Retur (needsRepair)
+      // sampai Admin mengeluarkannya; badge Retur (repairReason) tidak pernah
+      // dihapus, hanya warna merahnya yang hilang saat kartu kembali masuk Selesai.
+      if (targetStep.position >= currentStep.position) throw new UserFacingError("Masuk retur hanya ke tahap sebelum tahap sekarang.");
+      const reason = parsed.data.note?.trim() ?? "";
+      if (reason.length < 3) throw new UserFacingError("Alasan retur minimal 3 karakter.");
+      activityType = "STAGE_REVERTED";
       needsRepair = true;
-      repairReason = parsed.data.note ?? null;
+      repairReason = reason.slice(0, 2000);
       repairRequestedAt = now;
       await tx.productionStep.updateMany({
         where: { workOrderId: order.id, position: { gte: targetStep.position } },
@@ -420,15 +452,20 @@ async function moveProduction(formData: FormData) {
       });
       await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, attemptCount: { increment: 1 } } });
     } else if (parsed.data.decision === "REVERT") {
-      if (targetStep.position >= currentStep.position) throw new UserFacingError("Tahap mundur hanya dapat menuju tahap sebelum tahap sekarang.");
+      // Mundur langsung: wajib alasan (min 3 karakter), pindah bersih ke tahap
+      // tujuan tanpa parkir Retur dan tanpa badge Retur. Alasan tercatat di
+      // riwayat aktivitas. Keluar dari parkir Retur ikut dilepas bila ada.
+      const targetIndex = order.stageSequence.indexOf(parsed.data.targetStage);
+      const currentIndex = order.stageSequence.indexOf(order.currentStage);
+      if (targetIndex < 0 || targetIndex >= currentIndex) throw new UserFacingError("Mundur hanya ke tahap sebelum tahap sekarang.");
+      const reason = parsed.data.note?.trim() ?? "";
+      if (reason.length < 3) throw new UserFacingError("Alasan mundur minimal 3 karakter.");
       activityType = "STAGE_REVERTED";
-      // Mundur selalu mengosongkan Kendala kartu; bila pop-up diisi, teks itu menjadi Kendala baru.
-      obstacleUpdate = parsed.data.note ? parsed.data.note.slice(0, 2000) : null;
       await tx.productionStep.updateMany({
         where: { workOrderId: order.id, position: { gte: targetStep.position } },
         data: { status: "PENDING", startedAt: null, completedAt: null },
       });
-      await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, completedAt: null, attemptCount: { increment: 1 } } });
+      await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, attemptCount: { increment: 1 } } });
     } else {
       const nextStage = nextProductionStage(order.stageSequence, order.currentStage);
       if (nextStage !== parsed.data.targetStage) throw new UserFacingError("Work Order hanya dapat maju ke tahap berikutnya.");
@@ -438,13 +475,8 @@ async function moveProduction(formData: FormData) {
       completed = parsed.data.targetStage === "SELESAI";
       await tx.productionStep.update({
         where: { id: targetStep.id },
-        data: { status: "COMPLETED", startedAt: now, completedAt: now, attemptCount: { increment: 1 }, ...(completed ? {} : { status: "ACTIVE", completedAt: null }) },
+        data: { status: completed ? "COMPLETED" : "ACTIVE", startedAt: now, completedAt: completed ? now : null, attemptCount: { increment: 1 } },
       });
-      if (order.currentStage === "QC") {
-        needsRepair = false;
-        repairReason = null;
-        repairRequestedAt = null;
-      }
     }
 
     const updated = await tx.productionWorkOrder.updateMany({
@@ -465,9 +497,9 @@ async function moveProduction(formData: FormData) {
     if (updated.count !== 1) throw new UserFacingError("Work Order sudah berubah. Muat ulang halaman.");
 
     await tx.productionActivity.create({
-      data: { workOrderId: order.id, actorId: actor.id, type: activityType, fromStage: order.currentStage, toStage: parsed.data.targetStage, note: parsed.data.note },
+      data: { workOrderId: order.id, actorId: actor.id, type: activityType, fromStage: order.currentStage, toStage: parsed.data.targetStage, note: parsed.data.note ?? (parsed.data.decision === "RELEASE_RETUR" ? "Keluarkan dari kolom Retur" : undefined) },
     });
-    await productionAudit(tx, actor.id, order.id, activityType, ["currentStage", "status", "version", "stageEnteredAt", ...(obstacleUpdate !== undefined ? ["obstacle", "obstacleUpdatedAt"] : [])], { from: order.currentStage, to: parsed.data.targetStage });
+    await productionAudit(tx, actor.id, order.id, activityType, ["currentStage", "status", "version", "stageEnteredAt", ...(needsRepair !== undefined ? ["needsRepair", "repairReason"] : []), ...(obstacleUpdate !== undefined ? ["obstacle", "obstacleUpdatedAt"] : [])], { from: order.currentStage, to: parsed.data.targetStage });
     return { id: order.id };
   }, MOVE_TRANSACTION_OPTIONS);
 }
@@ -500,7 +532,7 @@ export async function updateProductionObstacleAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productionWorkOrder.update({ where: { id: order.id }, data: { obstacle, obstacleUpdatedAt } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_OBSTACLE_UPDATED", ["obstacle", "obstacleUpdatedAt"], { hasObstacle: Boolean(obstacle) });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidateProductionBoard();
     revalidatePath(detailPath(order.id));
     return { ok: true as const };
@@ -522,7 +554,7 @@ export async function assignProductionStepAction(formData: FormData) {
         select: { id: true, stage: true, assigneeId: true, workOrder: { select: { status: true } } },
       });
       if (!step || step.workOrder.status !== "ACTIVE") throw new UserFacingError("Tahap produksi tidak aktif atau tidak ditemukan.");
-      const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PRODUCTION";
+      const manager = actor.role === "DEVELOPER" || actor.role === "OWNER" || actor.role === "ADMIN_PO";
       if (!manager && (parsed.data.assigneeId !== actor.id || step.assigneeId)) throw new UserFacingError("Anda hanya dapat mengambil tahap yang belum memiliki PIC.");
 
       const assignee = await tx.appUser.findFirst({ where: { id: parsed.data.assigneeId, isActive: true }, select: { id: true, role: true, name: true } });
@@ -532,7 +564,7 @@ export async function assignProductionStepAction(formData: FormData) {
       await tx.productionStep.update({ where: { id: step.id }, data: { assigneeId: assignee.id } });
       await tx.productionActivity.create({ data: { workOrderId: parsed.data.workOrderId, actorId: actor.id, type: "PIC_ASSIGNED", toStage: step.stage, metadata: { assigneeId: assignee.id, assigneeName: assignee.name } } });
       await productionAudit(tx, actor.id, parsed.data.workOrderId, "PRODUCTION_PIC_ASSIGNED", ["assigneeId"], { stepId: step.id, stage: step.stage, assigneeId: assignee.id });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
 
     revalidateProductionBoard();
     revalidatePath(fallback);
@@ -552,7 +584,7 @@ export async function addProductionNoteAction(formData: FormData) {
     await getPrismaClient().$transaction(async (tx) => {
       await tx.productionActivity.create({ data: { workOrderId: order.id, actorId: actor.id, type: "NOTE_ADDED", toStage: order.currentStage, note: parsed.data.note } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_NOTE_ADDED", ["activity"], { stage: order.currentStage });
-    });
+    }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     revalidatePath(fallback);
     return flashMessagePath(fallback, "notice", "Catatan produksi ditambahkan.");
   });
@@ -573,7 +605,7 @@ export async function reopenProductionAction(formData: FormData) {
       const now = new Date();
       await tx.productionStep.updateMany({ where: { workOrderId: order.id, position: { gte: target.position } }, data: { status: "PENDING", startedAt: null, completedAt: null } });
       await tx.productionStep.update({ where: { id: target.id }, data: { status: "ACTIVE", startedAt: now, attemptCount: { increment: 1 } } });
-      const updated = await tx.productionWorkOrder.updateMany({ where: { id: order.id, version: order.version, status: "COMPLETED" }, data: { status: "ACTIVE", currentStage: target.stage, completedAt: null, version: { increment: 1 } } });
+      const updated = await tx.productionWorkOrder.updateMany({ where: { id: order.id, version: order.version, status: "COMPLETED" }, data: { status: "ACTIVE", currentStage: target.stage, completedAt: null, version: { increment: 1 }, needsRepair: true, repairReason: parsed.data.note.slice(0, 2000), repairRequestedAt: now } });
       if (updated.count !== 1) throw new UserFacingError("Work Order sudah berubah.");
       await tx.productionActivity.create({ data: { workOrderId: order.id, actorId: actor.id, type: "REOPENED", fromStage: "SELESAI", toStage: target.stage, note: parsed.data.note } });
       await productionAudit(tx, actor.id, order.id, "PRODUCTION_REOPENED", ["status", "currentStage", "completedAt"], { to: target.stage });

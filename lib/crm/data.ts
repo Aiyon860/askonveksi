@@ -10,7 +10,7 @@ import {
   type AnalyticsReportMode,
 } from "@/lib/analytics/report-period";
 import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
-import { ANALYTICS_ROLES, CRM_ROLES, DASHBOARD_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ANALYTICS_ROLES, CRM_VIEW_ROLES, DASHBOARD_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
@@ -53,12 +53,12 @@ export type PipelineOpportunity = {
     version: number;
     total: string;
     issuedAt: string | null;
-    pendingPayment: { kind: "LUNAS" | "DP"; initialDueAt: string } | null;
+    pendingPayment: { kind: "LUNAS" | "DP" | "DEPOSIT"; initialDueAt: string } | null;
   } | null;
   salesOrder: {
     id: string;
     salesOrderNo: string;
-    paymentKind: "LUNAS" | "DP" | null;
+    paymentKind: "LUNAS" | "DP" | "DEPOSIT" | null;
   } | null;
 };
 
@@ -160,7 +160,7 @@ const getCachedPipelineData = unstable_cache(
 );
 
 export async function getPipelineData() {
-  const actor = await requireActor();
+  const actor = await requireActor(CRM_VIEW_ROLES);
   return getCachedPipelineData(actor.role);
 }
 
@@ -178,7 +178,7 @@ const getCachedCustomerOptions = unstable_cache(
 );
 
 export async function getCustomerOptions() {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getCachedCustomerOptions();
 }
 
@@ -244,7 +244,7 @@ export async function getCustomers({
   sort: CustomerSort;
   direction: SortDirection;
 }) {
-  const actor = await requireActor();
+  const actor = await requireActor(CRM_VIEW_ROLES);
   const where = customerWhere(actor, query, segment);
   const prisma = getPrismaClient();
   const orderBy = customerOrderBy(sort, direction);
@@ -387,7 +387,7 @@ export async function getProspects({
   sort: ProspectSort;
   direction: SortDirection;
 }) {
-  await requireActor(CRM_ROLES);
+  await requireActor(CRM_VIEW_ROLES);
   const normalizedQuery = query.trim().slice(0, 80);
   const where = {
     stage: { not: "DEAL" as const },
@@ -425,7 +425,7 @@ export async function getProspects({
 }
 
 export async function getCustomerPopupDetail(customerId: string) {
-  await requireActor(CRM_ROLES);
+  await requireActor(CRM_VIEW_ROLES);
   return getPrismaClient().customer.findUnique({
     where: { id: customerId },
     select: {
@@ -484,7 +484,7 @@ export async function getCustomerPopupDetail(customerId: string) {
 }
 
 export async function getCustomerDetail(customerId: string) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getPrismaClient().customer.findUnique({
     where: { id: customerId },
     select: {
@@ -542,7 +542,7 @@ export type CustomerCommunicationFilter = "all" | "COMMUNICATION" | "INTERNAL_NO
 export type CustomerOrderStatus = "all" | "ACTIVE" | "CANCELLED";
 
 export async function getCustomerOrderSummary(customerId: string) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   const where = { opportunity: { customerId }, status: { not: "CANCELLED" } } satisfies Prisma.SalesOrderWhereInput;
   const prisma = getPrismaClient();
   const [aggregate, activeOrderCount, latestOrder] = await Promise.all([
@@ -556,7 +556,7 @@ export async function getCustomerOrderSummary(customerId: string) {
 export async function getCustomerCommunicationHistory({ customerId, query, filter, page, pageSize }: {
   customerId: string; query: string; filter: CustomerCommunicationFilter; page: number; pageSize: number;
 }) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   const normalizedQuery = query.trim().slice(0, 80);
   const where = {
     customerId,
@@ -583,7 +583,7 @@ export async function getCustomerCommunicationHistory({ customerId, query, filte
 export async function getCustomerSalesOrders({ customerId, query, status, start, end, page, pageSize }: {
   customerId: string; query: string; status: CustomerOrderStatus; start: Date | null; end: Date | null; page: number; pageSize: number;
 }) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   const normalizedQuery = query.trim().slice(0, 80);
   const where = {
     opportunity: { customerId },
@@ -614,7 +614,7 @@ export async function getCustomerSalesOrders({ customerId, query, status, start,
 export async function getCustomerOpportunities({ customerId, query, stage, page, pageSize }: {
   customerId: string; query: string; stage: OpportunityStage | "all"; page: number; pageSize: number;
 }) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   const normalizedQuery = query.trim().slice(0, 80);
   const where = {
     customerId,
@@ -633,7 +633,7 @@ export async function getCustomerOpportunities({ customerId, query, stage, page,
 }
 
 export const getOpportunityDetail = cache(async function getOpportunityDetail(opportunityId: string) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getPrismaClient().opportunity.findUnique({
     relationLoadStrategy: "join",
     where: { id: opportunityId },
@@ -683,24 +683,35 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           productCategoryId: true,
           productCategory: { select: { name: true } },
           productName: true,
+          instansi: true,
+          pola: true,
           material: true,
           color: true,
           baseColor: true,
           variationColor: true,
           decorationMethod: true,
+          decorationMethods: true,
           orderDate: true,
           sampleSize: true,
           designNotes: true,
           notes: true,
           deadline: true,
           agreedAt: true,
+          designSentAt: true,
+          designSentBy: { select: { name: true } },
+          customerConfirmedAt: true,
+          customerConfirmedBy: { select: { name: true } },
           version: true,
           createdAt: true,
           createdBy: { select: { name: true } },
-          sizes: { select: { id: true, position: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          rosterEntries: { select: { id: true, position: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
+          items: { select: { id: true, position: true, name: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true }, orderBy: { position: "asc" } },
+          sizes: { select: { id: true, position: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+          rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
-          designTask: { select: { deadline: true, revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
+          // Desain diunggah per produk, jadi statusnya dihitung dari revisi tiap produk.
+          designTask: { select: { id: true, deadline: true, revisions: { select: { itemId: true, revision: true } } } },
+          depositRequired: true,
+          deposit: { select: { amount: true, paidAt: true, paymentMethodId: true, reference: true, note: true, proofFileName: true, paymentMethod: { select: { name: true } } } },
         },
         orderBy: { revision: "desc" },
       },
@@ -714,6 +725,8 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           discountValue: true,
           subtotal: true,
           totalDiscount: true,
+          taxPercent: true,
+          taxAmount: true,
           totalProfit: true,
           total: true,
           issuedAt: true,
@@ -727,10 +740,11 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
               id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
               unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
               discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
+              addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } },
             },
             orderBy: { position: "asc" },
           },
-          salesOrder: { select: { id: true, salesOrderNo: true, status: true } },
+          salesOrder: { select: { id: true, salesOrderNo: true, status: true, payment: { select: { kind: true, transactions: { where: { status: "ACTIVE", paymentTermId: null }, select: { id: true, amount: true } }, terms: { orderBy: { position: "asc" }, select: { position: true, transactions: { where: { status: "ACTIVE" }, orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }], select: { id: true } } } } } } } },
           pendingPayment: { select: { kind: true, initialDueAt: true } },
         },
         orderBy: { revision: "desc" },
@@ -793,7 +807,7 @@ export async function getCommunicationTimeline({
   opportunityId?: string;
   page: number;
 }) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   if (!customerId && !opportunityId) throw new Error("Timeline membutuhkan customer atau peluang.");
   const safePage = Number.isInteger(page) && page > 0 ? page : 1;
   const where = {
@@ -841,7 +855,7 @@ async function countFollowUpBadge(actorId: string, actorRole: string) {
 }
 
 export async function getFollowUpBadgeCount() {
-  const actor = await requireActor();
+  const actor = await requireActor(CRM_VIEW_ROLES);
   const cached = unstable_cache(
     () => countFollowUpBadge(actor.id, actor.role),
     ["follow-up-badge", actor.id, actor.role],
@@ -860,21 +874,12 @@ export async function getSalesDashboardData() {
   const monthStart = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - 7 * 60 * 60 * 1000);
   const nextMonth = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) - 7 * 60 * 60 * 1000);
   const openStages: OpportunityStage[] = ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"];
-  const [
-    stageGroups,
-    dealRevenue,
-    overdue,
-    dueToday,
-    urgentActions,
-    latestPurchaseOrders,
-    latestInvoices,
-    monthMoneyIn,
-    activeOutstanding,
-    monthOrders,
-    newCustomerCount,
-    activeProductionCount,
-    overdueProductionCount,
-  ] = await Promise.all([
+  // 13 query dalam satu Promise.all berebut pool (max 10) dengan RTT ±500ms
+  // ke pooler Sydney: 8 query antre per request, 2 request bersamaan (RSC +
+  // polling SWR 30 dtk) langsung memicu "timeout exceeded when trying to
+  // connect" dari pg-pool. Dipecah 5 + 4 + 4 berurutan agar checkout
+  // bersamaan tidak pernah melebihi pool.
+  const [stageGroups, dealRevenue, overdue, dueToday, urgentActions] = await Promise.all([
     prisma.opportunity.groupBy({ by: ["stage"], where: { customer: { archivedAt: null } }, orderBy: { stage: "asc" }, _count: true }),
     canViewFinancialData ? prisma.salesOrder.aggregate({ where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } }, _sum: { total: true } }) : null,
     prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { lt: start }, customer: { archivedAt: null } } }),
@@ -885,6 +890,8 @@ export async function getSalesDashboardData() {
       orderBy: { nextActionAt: "asc" },
       take: 5,
     }),
+  ]);
+  const [latestPurchaseOrders, latestInvoices, monthMoneyIn, activeOutstanding] = await Promise.all([
     prisma.purchaseOrder.findMany({
       select: {
         id: true,
@@ -937,6 +944,8 @@ export async function getSalesDashboardData() {
           _count: true,
       })
       : null,
+  ]);
+  const [monthOrders, newCustomerCount, activeProductionCount, overdueProductionCount] = await Promise.all([
     canViewFinancialData
       ? prisma.salesOrder.findMany({
           where: { status: "ACTIVE", acceptedAt: { gte: monthStart, lt: nextMonth } },
@@ -1304,7 +1313,7 @@ export async function getAnalyticsOverviewData(params: AnalyticsReportParams) {
 }
 
 export async function getSalesOrderDetail(salesOrderId: string) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getPrismaClient().salesOrder.findUnique({
     relationLoadStrategy: "join",
     where: { id: salesOrderId },
@@ -1377,14 +1386,14 @@ export async function getSalesOrderDetail(salesOrderId: string) {
         },
         orderBy: { position: "asc" },
       },
-      productionWorkOrder: { select: { id: true, workOrderNo: true, status: true, currentStage: true } },
+      productionWorkOrders: { select: { id: true, workOrderNo: true, itemName: true, status: true, currentStage: true }, orderBy: { createdAt: "asc" as const } },
     },
   });
 }
 
 export type PurchaseOrderListStatus = "all" | "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
 export type InvoiceListStatus = "all" | "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
-export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "UNSCHEDULED";
+export type InvoicePaymentStatus = "all" | "PAID" | "UNPAID" | "PARTIAL" | "NO_SALES_ORDER" | "PENDING_DP" | "PENDING_LUNAS" | "PENDING_DEPOSIT" | "UNSCHEDULED";
 export type SalesOrderListStatus = "all" | "ACTIVE" | "CANCELLED";
 export type SalesOrderInvoicePaymentFilter = "all" | "PAID" | "UNPAID";
 export type SalesOrderWoFilter = "all" | "DONE" | "ONGOING" | "NONE";
@@ -1469,21 +1478,23 @@ function salesOrderInvoicePaymentWhere(invoicePayment: SalesOrderInvoicePaymentF
   return {};
 }
 
+const WO_DONE_CONDITION: Prisma.ProductionWorkOrderWhereInput = { OR: [{ status: "COMPLETED" }, { currentStage: "SELESAI" }] };
+
 function salesOrderWoWhere(woStatus: SalesOrderWoFilter) {
   if (woStatus === "DONE") {
+    // Punya WO dan semuanya selesai.
     return {
-      productionWorkOrder: {
-        is: {
-          OR: [{ status: "COMPLETED" }, { currentStage: "SELESAI" }],
-        },
-      },
+      AND: [
+        { productionWorkOrders: { some: {} } },
+        { productionWorkOrders: { every: WO_DONE_CONDITION } },
+      ],
     } satisfies Prisma.SalesOrderWhereInput;
   }
 
   if (woStatus === "ONGOING") {
     return {
-      productionWorkOrder: {
-        is: {
+      productionWorkOrders: {
+        some: {
           status: { not: "COMPLETED" },
           currentStage: { not: "SELESAI" },
         },
@@ -1493,7 +1504,7 @@ function salesOrderWoWhere(woStatus: SalesOrderWoFilter) {
 
   if (woStatus === "NONE") {
     return {
-      productionWorkOrder: null,
+      productionWorkOrders: { none: {} },
     } satisfies Prisma.SalesOrderWhereInput;
   }
 
@@ -1552,6 +1563,12 @@ const getCachedPurchaseOrders = unstable_cache(
           deadline: true,
           createdAt: true,
           opportunity: { select: { id: true, customer: { select: { name: true } } } },
+          // Deposit desain dicatat langsung pada PO (sebelum invoice ada).
+          depositRequired: true,
+          deposit: { select: { amount: true, paidAt: true } },
+          // Status upload desain: progres per produk + total versi yang pernah diunggah.
+          items: { select: { id: true } },
+          designTask: { select: { revisions: { select: { itemId: true } } } },
         },
         orderBy: purchaseOrderOrderBy(sort, direction),
         skip: (page - 1) * pageSize,
@@ -1560,7 +1577,23 @@ const getCachedPurchaseOrders = unstable_cache(
       prisma.purchaseOrder.count({ where }),
     ]);
     return {
-      items,
+      items: items.map(({ deposit, designTask, items: purchaseOrderItems, ...item }) => {
+        const revisionItemIds = new Set((designTask?.revisions ?? []).map((revision) => revision.itemId));
+        // PO lama tanpa baris produk dihitung sebagai satu produk implisit (itemId kosong).
+        const designItemIds = purchaseOrderItems.length ? purchaseOrderItems.map((purchaseOrderItem) => purchaseOrderItem.id) : [""];
+        const designUploadedCount = designItemIds.filter((itemId) => revisionItemIds.has(itemId)).length;
+        const designRevisionCount = designTask?.revisions.length ?? 0;
+        return {
+          ...item,
+          depositPaid: deposit !== null,
+          depositPaidAmount: deposit ? deposit.amount.toString() : null,
+          depositPaidAt: deposit ? deposit.paidAt.toISOString() : null,
+          designItemCount: designItemIds.length,
+          designUploadedCount,
+          designUploaded: designUploadedCount === designItemIds.length,
+          designRevisionCount,
+        };
+      }),
       total,
       pageCount: Math.max(1, Math.ceil(total / pageSize)),
     };
@@ -1588,7 +1621,7 @@ export async function getPurchaseOrders({
   sort: PurchaseOrderListSort;
   direction: SortDirection;
 }) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getCachedPurchaseOrders({ query, status, start, end, page, pageSize, sort, direction });
 }
 
@@ -1642,7 +1675,7 @@ const getCachedInvoices = unstable_cache(
           createdAt: true,
           opportunityId: true,
           purchaseOrder: { select: { purchaseOrderNo: true } },
-          salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true } } } },
+          salesOrder: { select: { status: true, payment: { select: { outstandingAmount: true, transactions: { where: { paymentTermId: null, status: "ACTIVE" }, select: { id: true }, take: 1 } } } } },
           pendingPayment: { select: { kind: true } },
         },
         orderBy: invoiceOrderBy(sort, direction),
@@ -1658,12 +1691,16 @@ const getCachedInvoices = unstable_cache(
         paymentStatus: item.salesOrder?.status === "ACTIVE"
           ? item.salesOrder.payment && item.salesOrder.payment.outstandingAmount.equals(0)
             ? "PAID" as const
-            : "UNPAID" as const
+            : item.salesOrder.payment && item.salesOrder.payment.transactions.length
+              ? "PARTIAL" as const
+              : "UNPAID" as const
           : item.pendingPayment?.kind === "DP"
             ? "PENDING_DP" as const
             : item.pendingPayment?.kind === "LUNAS"
               ? "PENDING_LUNAS" as const
-              : "UNSCHEDULED" as const,
+              : item.pendingPayment?.kind === "DEPOSIT"
+                ? "PENDING_DEPOSIT" as const
+                : "UNSCHEDULED" as const,
       })),
       total,
       pageCount: Math.max(1, Math.ceil(total / pageSize)),
@@ -1694,7 +1731,7 @@ export async function getInvoices({
   sort: InvoiceListSort;
   direction: SortDirection;
 }) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getCachedInvoices({ query, status, paymentStatus, start, end, page, pageSize, sort, direction });
 }
 
@@ -1718,21 +1755,22 @@ const getCachedSalesOrders = unstable_cache(
     } satisfies Prisma.SalesOrderWhereInput;
     const prisma = getPrismaClient();
     const [items, total] = await Promise.all([
-      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrder: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrders: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
       prisma.salesOrder.count({ where }),
     ]);
     return {
       items: items.map((item) => {
-        const workOrder = item.productionWorkOrder;
+        const workOrders = item.productionWorkOrders;
+        const isDone = (wo: (typeof workOrders)[number]) => wo.status === "COMPLETED" || wo.currentStage === "SELESAI";
         return {
           ...item,
           total: item.total.toString(),
           invoicePayment: item.payment && item.payment.outstandingAmount.equals(0)
             ? "PAID" as const
             : "UNPAID" as const,
-          woStatus: !workOrder
+          woStatus: !workOrders.length
             ? "NONE" as const
-            : workOrder.status === "COMPLETED" || workOrder.currentStage === "SELESAI"
+            : workOrders.every(isDone)
               ? "DONE" as const
               : "ONGOING" as const,
         };
@@ -1748,12 +1786,12 @@ const getCachedSalesOrders = unstable_cache(
 export async function getSalesOrders({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction }: {
   query: string; status: SalesOrderListStatus; invoicePayment: SalesOrderInvoicePaymentFilter; woStatus: SalesOrderWoFilter; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
 }) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getCachedSalesOrders({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction });
 }
 
 export async function getSalesOrderDocumentDetail(salesOrderId: string) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   const order = await getPrismaClient().salesOrder.findUnique({
     where: { id: salesOrderId },
     select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, status: true, snapshotCustomerName: true, snapshotCompanyName: true, total: true, acceptedAt: true, createdAt: true, cancelledAt: true, cancelReason: true, opportunity: { select: { id: true } }, items: { select: { id: true, productName: true, description: true, size: true, quantity: true, unitPrice: true, total: true }, orderBy: { position: "asc" } } },
@@ -1762,7 +1800,7 @@ export async function getSalesOrderDocumentDetail(salesOrderId: string) {
 }
 
 export async function getPurchaseOrderDetail(purchaseOrderId: string) {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getPrismaClient().purchaseOrder.findUnique({
     where: { id: purchaseOrderId },
     select: {
@@ -1770,24 +1808,31 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
       purchaseOrderNo: true,
       customerReference: true,
       productName: true,
+      instansi: true,
+      pola: true,
       garmentType: true,
       productCategory: { select: { name: true } },
       material: true,
       color: true,
       deadline: true,
       status: true,
+      decorationMethods: true,
       designNotes: true,
       notes: true,
       createdAt: true,
-      sizes: { select: { id: true, size: true, quantity: true }, orderBy: { position: "asc" } },
+      items: { select: { id: true, position: true, name: true, garmentType: true, decorationMethods: true }, orderBy: { position: "asc" } },
+      sizes: { select: { id: true, itemId: true, size: true, quantity: true }, orderBy: { position: "asc" } },
       attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
+      deposit: { select: { amount: true, paidAt: true, reference: true, note: true, proofFileName: true, paymentMethod: { select: { name: true } }, createdBy: { select: { name: true } } } },
       opportunity: { select: { id: true, opportunityNo: true, customer: { select: { name: true, companyName: true } } } },
     },
-  });
+  }).then((order) => order
+    ? { ...order, deposit: order.deposit ? { ...order.deposit, amount: order.deposit.amount.toString() } : null }
+    : order);
 }
 
 export async function getInvoiceDetail(invoiceId: string) {
-  const actor = await requireActor();
+  const actor = await requireActor(CRM_VIEW_ROLES);
   const prisma = getPrismaClient();
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
@@ -1801,6 +1846,8 @@ export async function getInvoiceDetail(invoiceId: string) {
       discountValue: true,
       subtotal: true,
       totalDiscount: true,
+      taxPercent: true,
+      taxAmount: true,
       totalProfit: true,
       total: true,
       issuedAt: true,
@@ -1810,7 +1857,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       opportunity: { select: { id: true, opportunityNo: true } },
       purchaseOrder: { select: { purchaseOrderNo: true, deadline: true } },
       pendingPayment: { select: { kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true }, orderBy: { position: "asc" } } } },
-      items: { select: { id: true, size: true, description: true, quantity: true, unitPrice: true, subtotal: true }, orderBy: { position: "asc" } },
+      items: { select: { id: true, productName: true, size: true, description: true, quantity: true, unitPrice: true, discountPercent: true, discountAmount: true, subtotal: true, total: true, addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } },
       salesOrder: {
         select: {
           id: true,
@@ -1853,9 +1900,11 @@ export async function getInvoiceDetail(invoiceId: string) {
     discountValue: invoice.discountValue.toString(),
     subtotal: invoice.subtotal.toString(),
     totalDiscount: invoice.totalDiscount.toString(),
+    taxPercent: invoice.taxPercent.toString(),
+    taxAmount: invoice.taxAmount.toString(),
     totalProfit: invoice.totalProfit.toString(),
     total: invoice.total.toString(),
-    items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), subtotal: item.subtotal.toString() })),
+    items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), discountPercent: item.discountPercent.toString(), discountAmount: item.discountAmount.toString(), total: item.total.toString(), subtotal: item.subtotal.toString(), addons: item.addons.map((addon) => ({ ...addon, unitAmount: addon.unitAmount.toString() })) })),
     canRecordPayment: hasRole(actor.role, DEAL_ROLES),
     paymentMethods,
     salesOrder: invoice.salesOrder?.payment ? {

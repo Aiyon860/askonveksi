@@ -2,7 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
-import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
+import { CRM_VIEW_ROLES, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { sortProductCategoryRows } from "@/lib/crm/constants";
 import { getPrismaClient } from "@/lib/prisma";
@@ -32,7 +32,7 @@ const getCachedCustomerFormOptions = unstable_cache(
 );
 
 export async function getCustomerFormOptions() {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getCachedCustomerFormOptions();
 }
 
@@ -89,7 +89,7 @@ export async function getProductCategories() {
 }
 
 export async function getActiveProductCategories() {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   const items = await getPrismaClient().productCategory.findMany({
     where: { isActive: true },
     select: { id: true, name: true, garmentType: true, position: true },
@@ -108,7 +108,7 @@ export async function getPaymentMethods() {
 }
 
 export async function getActivePaymentMethods() {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getPrismaClient().paymentMethod.findMany({
     where: { isActive: true },
     select: { id: true, name: true },
@@ -117,11 +117,20 @@ export async function getActivePaymentMethods() {
 }
 
 export async function getActiveGarmentSizes() {
-  await requireActor();
+  await requireActor(CRM_VIEW_ROLES);
   return getPrismaClient().garmentSize.findMany({
     where: { isActive: true },
     select: { id: true, name: true },
     orderBy: [{ position: "asc" }, { name: "asc" }],
+  });
+}
+
+/** Poin master "Pengaturan invoice" untuk halaman editor (dua kolom, urutan manual). */
+export async function getInvoiceSettingPoints() {
+  await requireActor(MASTER_DATA_ROLES);
+  return getPrismaClient().invoiceSettingPoint.findMany({
+    select: { id: true, section: true, text: true, isBold: true, position: true },
+    orderBy: [{ section: "asc" }, { position: "asc" }],
   });
 }
 

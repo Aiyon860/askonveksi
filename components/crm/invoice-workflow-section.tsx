@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { CopyPlus, FileDown, XCircle } from "lucide-react";
+import { CopyPlus, Eye, XCircle } from "lucide-react";
 
 import { cancelInvoiceAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
@@ -22,11 +22,16 @@ type PurchaseOrder = {
 type InvoiceDraftValues = {
   notes: string;
   discountPercent: string;
+  taxPercent?: string;
   items: Array<{
+    productName?: string;
+    description?: string;
     size: string;
     sleeveLength: "PENDEK" | "PANJANG" | null;
     quantity: number;
     unitPrice: string;
+    discountPercent?: string;
+    addons?: Array<{ label?: string; amount?: string }>;
   }>;
 };
 
@@ -45,6 +50,8 @@ type InvoiceWorkflowSectionProps = {
   draftValues: InvoiceDraftValues;
   salesOrderHref?: string;
   salesOrderLabel?: string;
+  /** Tombol Lihat Kwitansi per pembayaran yang sudah dibayar (tab Invoice pada peluang). */
+  receipts?: Array<{ id: string; label: string }>;
   children: ReactNode;
 };
 
@@ -63,6 +70,7 @@ export function InvoiceWorkflowSection({
   draftValues,
   salesOrderHref,
   salesOrderLabel,
+  receipts,
   children,
 }: InvoiceWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
@@ -77,11 +85,16 @@ export function InvoiceWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isCreatingRevision && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} /> : null}
+          {!isCreatingRevision && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
           {!isCreatingRevision && invoiceStatus !== "ISSUED" ? (
-            <Button className="w-full sm:w-auto" render={<Link href={`/api/crm/invoice/${invoiceId}/pdf`} />} nativeButton={false}>
-              <FileDown data-icon="inline-start" aria-hidden="true" />
-              Unduh PDF
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              render={<a href={`/api/crm/invoice/${invoiceId}/pdf?preview=1`} target="_blank" rel="noopener noreferrer" aria-label={`Lihat PDF ${title.split(" · ")[0]}`} />}
+              nativeButton={false}
+            >
+              <Eye data-icon="inline-start" aria-hidden="true" />
+              Lihat PDF
             </Button>
           ) : null}
           {showCreateRevision ? (

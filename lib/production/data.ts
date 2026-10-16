@@ -3,28 +3,54 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import type { Prisma } from "@prisma/client";
 
-import { PRODUCTION_ROLES } from "@/lib/auth/permissions";
+import { PRODUCTION_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import type { ProductionBoardGroup } from "@/lib/production/workflow";
+import { isStageRole, type ProductionBoardGroup } from "@/lib/production/workflow";
 
 export type ProductionBoardFilter = { group: ProductionBoardGroup; productCategoryId?: string | null };
+
+const DESIGN_REVISION_ORDER_BY: Prisma.DesignRevisionOrderByWithRelationInput[] = [{ revision: "desc" }, { createdAt: "desc" }];
 
 type BoardWhere = { group: ProductionBoardGroup; productCategoryId: string | null };
 
 function boardWhere({ group, productCategoryId }: BoardWhere): Prisma.ProductionWorkOrderWhereInput {
-  const purchaseOrderConditions: Prisma.PurchaseOrderWhereInput[] = [];
+  const woConditions: Prisma.ProductionWorkOrderWhereInput[] = [];
+  // WO dibuat per produk PO, jadi pembagian jalur memakai jenis tiap item (bukan jenis PO).
   // Work Order aksesoris memakai route NON_JERSEY; grup menentukan pembagian tampilannya.
-  if (group === "AKSESORI") purchaseOrderConditions.push({ garmentType: "AKSESORI" });
-  else if (group === "NON_JERSEY") purchaseOrderConditions.push({ OR: [{ garmentType: "NON_JERSEY" }, { garmentType: null }] });
-  // Kartu yang PO-nya belum punya kategori produk selalu ikut tampil agar tak ada Work Order hilang.
-  if (productCategoryId) purchaseOrderConditions.push({ OR: [{ productCategoryId }, { productCategoryId: null }] });
+  // WO lawas tanpa item tetap memakai jenis PO sebagai cadangan.
+  if (group === "AKSESORI") {
+    woConditions.push({
+      OR: [
+        { purchaseOrderItem: { is: { garmentType: "AKSESORI" } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { garmentType: "AKSESORI" } } },
+      ],
+    });
+  } else if (group === "NON_JERSEY") {
+    woConditions.push({
+      OR: [
+        { purchaseOrderItem: { is: { garmentType: "NON_JERSEY" } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { OR: [{ garmentType: "NON_JERSEY" }, { garmentType: null }] } } },
+      ],
+    });
+  }
+  // Kategori mengikuti produk WO (itemnya); WO lawas tanpa item memakai kategori PO.
+  // Item yang belum berkategori ikut tampil agar tak ada Work Order hilang.
+  if (productCategoryId) {
+    woConditions.push({
+      OR: [
+        { purchaseOrderItem: { is: { productCategoryId } } },
+        { purchaseOrderItem: { is: { productCategoryId: null } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { OR: [{ productCategoryId }, { productCategoryId: null }] } } },
+      ],
+    });
+  }
 
   return {
     route: group === "JERSEY" ? "JERSEY" : "NON_JERSEY",
     status: { not: "CANCELLED" },
     designCompletedAt: { not: null },
-    ...(purchaseOrderConditions.length ? { salesOrder: { purchaseOrder: { AND: purchaseOrderConditions } } } : {}),
+    ...(woConditions.length ? { AND: woConditions } : {}),
   };
 }
 
@@ -65,7 +91,8 @@ const getCachedBoardRows = (filter: BoardWhere) =>
               take: 1,
             },
           },
-          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          // Kartu Retur selalu di atas: needsRepair dulu, lalu terbaru.
+          orderBy: [{ needsRepair: "desc" }, { updatedAt: "desc" }, { id: "asc" }],
           take: 500,
         }),
         prisma.productionWorkOrder.count({ where }),
@@ -90,7 +117,7 @@ const getCachedBoardRows = (filter: BoardWhere) =>
 
 export async function getProductionBoard(input: ProductionBoardFilter) {
   const filter: BoardWhere = { group: input.group, productCategoryId: input.productCategoryId ?? null };
-  const actor = await requireActor(PRODUCTION_ROLES);
+  const actor = await requireActor(PRODUCTION_VIEW_ROLES);
   const { rows, total } = await getCachedBoardRows(filter);
 
   return {
@@ -98,17 +125,19 @@ export async function getProductionBoard(input: ProductionBoardFilter) {
     total,
     truncated: total > rows.length,
     actor: { id: actor.id, role: actor.role },
+    canManage: isStageRole(actor.role),
   };
 }
 
 export async function getProductionDetail(id: string) {
-  const actor = await requireActor(PRODUCTION_ROLES);
+  const actor = await requireActor(PRODUCTION_VIEW_ROLES);
   const workOrder = await getPrismaClient().productionWorkOrder.findUnique({
     relationLoadStrategy: "join",
     where: { id },
     select: {
       id: true,
       workOrderNo: true,
+      purchaseOrderItemId: true,
       route: true,
       productName: true,
       quantity: true,
@@ -138,13 +167,13 @@ export async function getProductionDetail(id: string) {
               designTask: {
                 select: {
                   id: true,
+                  // Desain disimpan per produk PO; work order memakai revisi produknya sendiri.
                   revisions: {
-                    where: { status: "APPROVED" },
-                    orderBy: { revision: "desc" },
-                    take: 1,
+                    orderBy: DESIGN_REVISION_ORDER_BY,
                     select: {
+                      itemId: true,
                       attachments: {
-                        where: { contentType: "image/png" },
+                        where: { contentType: { in: ["image/png", "image/jpeg"] } },
                         orderBy: { createdAt: "asc" },
                         select: { id: true, originalName: true, contentType: true },
                       },
@@ -177,12 +206,29 @@ export async function getProductionDetail(id: string) {
     },
   });
   if (!workOrder) return null;
+  // Sisakan hanya revisi desain produk work order ini agar gambar acuan produksi tidak tertukar.
+  const designTask = workOrder.salesOrder.purchaseOrder?.designTask;
+  const designRevision = designTask
+    ? (designTask.revisions.find((revision) => revision.itemId === workOrder.purchaseOrderItemId) ?? designTask.revisions[0])
+    : undefined;
+  const workOrderWithDesign = {
+    ...workOrder,
+    salesOrder: {
+      ...workOrder.salesOrder,
+      purchaseOrder: workOrder.salesOrder.purchaseOrder
+        ? {
+            ...workOrder.salesOrder.purchaseOrder,
+            designTask: designTask ? { ...designTask, revisions: designRevision ? [designRevision] : [] } : null,
+          }
+        : null,
+    },
+  };
 
   const users = await getPrismaClient().appUser.findMany({
-    where: { isActive: true, role: "ADMIN_PRODUCTION" },
+    where: { isActive: true, role: "ADMIN_PO" },
     select: { id: true, name: true, role: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });
 
-  return { workOrder, users, actor: { id: actor.id, role: actor.role } };
+  return { workOrder: workOrderWithDesign, users, actor: { id: actor.id, role: actor.role }, canManage: isStageRole(actor.role) };
 }

@@ -142,9 +142,9 @@ function MessagePanel({ conversation, templates, canSeeUnknown, customers, custo
               <article key={message.id} className={`flex min-w-0 ${message.direction === "OUTBOUND" ? "justify-end" : "justify-start"}`}>
                 <div className={`min-w-0 max-w-[82%] overflow-hidden rounded-md border px-3 py-2 ${message.direction === "OUTBOUND" ? "bg-primary text-primary-foreground" : "bg-card"}`}>
                   {canPreviewImage(message) ? (
-                    <Link href={`/api/whatsapp/media/${message.id}`} className="mb-2 block overflow-hidden rounded-sm">
+                    <a href={`/api/whatsapp/media/${message.id}`} target="_blank" rel="noreferrer" className="mb-2 block overflow-hidden rounded-sm">
                       <Image unoptimized src={`/api/whatsapp/media/${message.id}`} alt={message.mediaFileName || "Gambar WhatsApp"} width={320} height={240} className="h-auto max-h-72 w-auto max-w-full object-contain" />
-                    </Link>
+                    </a>
                   ) : null}
                   {(() => {
                     const attachment = documentAttachment(message);

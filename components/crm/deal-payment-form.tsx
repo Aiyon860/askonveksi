@@ -27,13 +27,14 @@ function addJakartaDays(value: string, days: number) {
   return new Date(Date.UTC(part("year"), part("month") - 1, part("day") + days)).toISOString().slice(0, 10);
 }
 
-export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, issuedAt }: {
+export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrderId, invoiceId, invoiceVersion, total, depositAmount = "0", issuedAt }: {
   opportunityId: string;
   opportunityVersion: number;
   purchaseOrderId: string;
   invoiceId: string;
   invoiceVersion: number;
   total: string;
+  depositAmount?: string;
   issuedAt: string;
 }) {
   const [kind, setKind] = useState<"LUNAS" | "DP">("LUNAS");
@@ -41,20 +42,24 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
   const [terms, setTerms] = useState<Term[]>([{ key: "term-0", value: "", dueAt: "" }]);
   const initialDueAt = addJakartaDays(issuedAt, 7);
   const totalAmount = Number(total);
+  // Deposit desain yang sudah dibayar pada PO ikut mengurangi sisa yang perlu dijadwalkan.
+  const depositTotal = Number(depositAmount) || 0;
+  const collectibleAmount = Math.max(0, totalAmount - depositTotal);
   const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount < 0) return 0;
-    return valueType === "PERCENTAGE" ? roundPaymentAmount(totalAmount * amount / 100) : amount;
+    return valueType === "PERCENTAGE" ? roundPaymentAmount(collectibleAmount * amount / 100) : amount;
   };
   const isLunas = kind === "LUNAS" || Number(initialValue) === 100;
   const initialAmount = amountFor("PERCENTAGE", isLunas ? "100" : initialValue);
-  const outstandingAmount = totalAmount - initialAmount;
+  const outstandingAmount = collectibleAmount - initialAmount;
   const termAmount = (value: string) => {
     const amount = Number(value);
     return !Number.isFinite(amount) || amount < 0 ? 0 : amount;
   };
   const scheduledTermAmount = terms.reduce((sum, term) => sum + termAmount(term.value), 0);
   const scheduleDifference = outstandingAmount - scheduledTermAmount;
+  const paymentBaseLabel = depositTotal > 0 ? "sisa setelah deposit" : "total invoice";
   const datesReady = terms.every((term, index) => term.dueAt >= addJakartaDays(index ? terms[index - 1].dueAt || initialDueAt : initialDueAt, 1));
   const scheduleReady = isLunas || (Math.abs(scheduleDifference) < 0.005 && datesReady);
 
@@ -77,11 +82,19 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
         <div className="rounded-lg border bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Total invoice</p>
           <p className="mt-1 font-mono text-lg font-semibold tabular-nums">{formatCurrency(totalAmount)}</p>
+          {depositTotal > 0 ? (
+            <>
+              <p className="mt-2 text-xs text-muted-foreground">Deposit desain sudah dibayar</p>
+              <p className="mt-1 font-mono tabular-nums">{formatCurrency(depositTotal)}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Sisa yang dijadwalkan</p>
+              <p className="mt-1 font-mono tabular-nums">{formatCurrency(collectibleAmount)}</p>
+            </>
+          ) : null}
         </div>
         <div className="grid gap-4">
           <Field>
             <FieldLabel htmlFor={`payment-kind-${invoiceId}`} required>Jenis pembayaran</FieldLabel>
-            <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} className="w-full">
+            <NativeSelect id={`payment-kind-${invoiceId}`} name="kind" required value={kind} onChange={(event) => { setKind(event.target.value as typeof kind); setInitialValue(""); }} className="w-full">
               <NativeSelectOption value="LUNAS">Lunas</NativeSelectOption>
               <NativeSelectOption value="DP">DP</NativeSelectOption>
             </NativeSelect>
@@ -104,7 +117,7 @@ export function DealPaymentForm({ opportunityId, opportunityVersion, purchaseOrd
               </Field>
             </div>
 
-            <FieldDescription>Deadline DP otomatis 7 hari setelah invoice diterbitkan. DP minimal 50%; nilai 100% diproses sebagai Lunas.</FieldDescription>
+            <FieldDescription>Deadline DP otomatis 7 hari setelah invoice diterbitkan. DP minimal 50% dari {paymentBaseLabel}; nilai 100% diproses sebagai Lunas.</FieldDescription>
             {initialAmount > 0 && initialAmount < totalAmount ? <p className="text-sm text-muted-foreground">Sisa setelah DP: <span className="font-mono text-foreground">{formatCurrency(outstandingAmount)}</span></p> : null}
 
             <div className="flex items-center justify-between gap-4">

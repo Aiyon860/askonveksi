@@ -6,12 +6,12 @@ import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
-import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, MASTER_DATA_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES } from "@/lib/auth/permissions";
+import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, GATE_OVERRIDE_ROLES, MASTER_DATA_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/session";
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
-import { calculateInvoiceLines, roundInvoiceTotal, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
+import { calculateInvoiceLines, defaultInvoiceItemDescription, roundInvoiceTotal, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
 import {
@@ -38,6 +38,7 @@ import {
   purchaseOrderIdSchema,
   payInvoicePaymentTermSchema,
   payPaymentTermSchema,
+  purchaseOrderDepositSchema,
   payPendingInitialPaymentSchema,
   recordInitialPaymentSchema,
   recordFollowUpResultSchema,
@@ -67,8 +68,9 @@ const CUSTOMER_IMPORT_TRANSACTION_OPTIONS = {
 } as const;
 const DEAL_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-  maxWait: 10_000,
-  timeout: 20_000,
+  // 6 query berurutan × ±450ms RTT + akuisisi antrean pool saat burst.
+  maxWait: 15_000,
+  timeout: 30_000,
 } as const;
 
 function shouldLogDocumentTiming() {
@@ -229,16 +231,28 @@ function invoiceInput(formData: FormData) {
   const descriptions = formData.getAll("itemDescription");
   const quantities = formData.getAll("itemQuantity");
   const unitPrices = formData.getAll("itemUnitPrice");
+  const itemDiscounts = formData.getAll("itemDiscountPercent");
   const length = Math.max(purchaseOrderSizeIds.length, sizes.length, unitPrices.length);
-  const items = Array.from({ length }, (_, index) => ({
-    purchaseOrderSizeId: purchaseOrderSizeIds[index],
-    productName: productNames[index],
-    size: sizes[index],
-    sleeveLength: sleeveLengths[index],
-    description: descriptions[index],
-    quantity: quantities[index],
-    unitPrice: unitPrices[index],
-  }));
+  const fallbackDiscount = formValue(formData, "discountPercent") || "0";
+  const items = Array.from({ length }, (_, index) => {
+    const addonLabels = formData.getAll(`item-${index}-addon-label`);
+    const addonAmounts = formData.getAll(`item-${index}-addon-amount`);
+    const addons = Array.from({ length: Math.max(addonLabels.length, addonAmounts.length) }, (_, addonIndex) => ({
+      label: addonLabels[addonIndex],
+      unitAmount: addonAmounts[addonIndex],
+    }));
+    return {
+      purchaseOrderSizeId: purchaseOrderSizeIds[index],
+      productName: productNames[index],
+      size: sizes[index],
+      sleeveLength: sleeveLengths[index],
+      description: descriptions[index],
+      quantity: quantities[index],
+      unitPrice: unitPrices[index],
+      discountPercent: itemDiscounts[index] || fallbackDiscount,
+      addons,
+    };
+  });
 
   return {
     opportunityId: formValue(formData, "opportunityId"),
@@ -246,49 +260,64 @@ function invoiceInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId") || undefined,
     version: formValue(formData, "version") || undefined,
     dueAt: formValue(formData, "dueAt"),
-    discountPercent: formValue(formData, "discountPercent") || "0",
+    discountPercent: fallbackDiscount,
+    taxPercent: formValue(formData, "taxPercent") || "0",
     notes: formValue(formData, "notes"),
     items,
   };
 }
 
 function purchaseOrderInput(formData: FormData) {
-  const sizeIds = formData.getAll("sizeId");
-  const sleeveLengths = formData.getAll("sleeveLength");
-  const quantities = formData.getAll("sizeQuantity");
-  const rosterMemberIds = formData.getAll("rosterMemberId");
-  const rosterNames = formData.getAll("rosterName");
-  const rosterSizeIds = formData.getAll("rosterSizeId");
-  const rosterSleeveLengths = formData.getAll("rosterSleeveLength");
+  const itemKeys = formData.getAll("itemKey").map((value) => String(value));
+  const items = itemKeys.map((key, position) => {
+    const prefix = `item-${position}-`;
+    const sizeIds = formData.getAll(`${prefix}sizeId`);
+    const sleeveLengths = formData.getAll(`${prefix}sleeveLength`);
+    const quantities = formData.getAll(`${prefix}sizeQuantity`);
+    const rosterMemberIds = formData.getAll(`${prefix}rosterMemberId`);
+    const rosterNames = formData.getAll(`${prefix}rosterName`);
+    const rosterSizeIds = formData.getAll(`${prefix}rosterSizeId`);
+    const rosterSleeveLengths = formData.getAll(`${prefix}rosterSleeveLength`);
+    return {
+      key,
+      name: formValue(formData, `${prefix}name`),
+      productCategoryId: formValue(formData, `${prefix}productCategoryId`) || undefined,
+      decorationMethods: formData.getAll(`${prefix}decorationMethod`).map((value) => String(value)),
+      designNotes: formValue(formData, `${prefix}designNotes`),
+      rosterMode: formValue(formData, `${prefix}rosterMode`),
+      sizes: Array.from({ length: Math.max(sizeIds.length, quantities.length) }, (_, index) => ({
+        sizeId: sizeIds[index],
+        sleeveLength: sleeveLengths[index],
+        quantity: quantities[index],
+      })),
+      roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
+        memberId: rosterMemberIds[index],
+        name: rosterNames[index],
+        sizeId: rosterSizeIds[index],
+        sleeveLength: rosterSleeveLengths[index],
+      })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
+    };
+  });
   return {
     opportunityId: formValue(formData, "opportunityId"),
     purchaseOrderId: formValue(formData, "purchaseOrderId") || undefined,
     version: formValue(formData, "version") || undefined,
     garmentType: formValue(formData, "garmentType"),
     productCategoryId: formValue(formData, "productCategoryId") || undefined,
-    productName: formValue(formData, "productName"),
+    instansi: formValue(formData, "instansi"),
+    pola: formValue(formData, "pola"),
     material: formValue(formData, "material"),
     baseColor: formValue(formData, "baseColor"),
     variationColor: formValue(formData, "variationColor"),
-    decorationMethod: formValue(formData, "decorationMethod"),
     orderDate: formValue(formData, "orderDate"),
     sampleSize: formValue(formData, "sampleSize"),
     designNotes: formValue(formData, "designNotes"),
     notes: formValue(formData, "notes"),
     deadline: formValue(formData, "deadline"),
     designDeadline: formValue(formData, "designDeadline"),
-    rosterMode: formValue(formData, "rosterMode"),
-    sizes: Array.from({ length: Math.max(sizeIds.length, quantities.length) }, (_, index) => ({
-      sizeId: sizeIds[index],
-      sleeveLength: sleeveLengths[index],
-      quantity: quantities[index],
-    })),
-    roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
-      memberId: rosterMemberIds[index],
-      name: rosterNames[index],
-      sizeId: rosterSizeIds[index],
-      sleeveLength: rosterSleeveLengths[index],
-    })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
+    // Checkbox Deposit pada form PO (dapat diisi sebelum draft terbuat).
+    depositRequired: formData.get("depositRequired") === "on",
+    items,
   };
 }
 
@@ -309,8 +338,8 @@ async function resolveOpportunityCategory(reader: Tx, productCategoryId: string 
   return category;
 }
 
-async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "manual" | "excel") {
-  const file = formData.get("rosterFile");
+async function importedPurchaseOrderRoster(formData: FormData, fieldName: string, mode: "none" | "manual" | "excel") {
+  const file = formData.get(fieldName);
   if (mode !== "excel") {
     if (file instanceof File && file.size) throw new UserFacingError("File roster hanya boleh diunggah pada mode Impor Excel.");
     return [];
@@ -319,6 +348,22 @@ async function importedPurchaseOrderRoster(formData: FormData, mode: "none" | "m
   const rows = await parseRosterFile(file);
   if (!rows.length) throw new UserFacingError("File Excel roster belum berisi pemakai.");
   return rows;
+}
+
+type ParsedPoItem = {
+  key: string;
+  name: string;
+  productCategoryId?: string;
+  decorationMethods: string[];
+  designNotes?: string | null;
+  sizes: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
+  rosterMode: "none" | "manual" | "excel";
+  roster: Array<{ memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
+};
+
+function legacyDecorationMethod(methods: string[]) {
+  if (methods.length === 1 && methods[0] === "NONE") return "NONE";
+  return methods.find((method) => method === "TINTA" || method === "BORDIR") ?? methods[0] ?? "NONE";
 }
 
 function completeDealInput(formData: FormData) {
@@ -332,6 +377,7 @@ function completeDealInput(formData: FormData) {
     invoiceId: formValue(formData, "invoiceId"),
     invoiceVersion: formValue(formData, "invoiceVersion"),
     kind: formValue(formData, "kind"),
+    initialValueType: formValue(formData, "initialValueType"),
     initialValue: formValue(formData, "initialValue"),
     terms: Array.from({ length: Math.max(valueTypes.length, values.length, dueDates.length) }, (_, index) => ({
       valueType: valueTypes[index],
@@ -381,23 +427,21 @@ type PurchaseOrderRowReader = {
 
 async function preparePurchaseOrderRows(
   db: PurchaseOrderRowReader,
-  data: {
-    sizes: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-    rosterMode: "none" | "manual" | "excel";
-    roster: Array<{ memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
-  },
-  importedRoster: ImportedRosterRow[],
+  items: Array<ParsedPoItem & { itemId: string; fileRoster: ImportedRosterRow[] }>,
 ) {
-  const requestedIds = new Set([
-    ...data.sizes.map((item) => item.sizeId),
-    ...data.roster.map((item) => item.sizeId),
-  ]);
+  const requestedIds = new Set<string>();
+  const importedNames = new Set<string>();
+  for (const item of items) {
+    item.sizes.forEach((size) => requestedIds.add(size.sizeId));
+    item.roster.forEach((row) => requestedIds.add(row.sizeId));
+    item.fileRoster.forEach((row) => importedNames.add(row.size));
+  }
   const sizeMasters = await db.garmentSize.findMany({
     where: {
       isActive: true,
       OR: [
         ...(requestedIds.size ? [{ id: { in: [...requestedIds] } }] : []),
-        ...(importedRoster.length ? [{ name: { in: importedRoster.map((item) => item.size), mode: "insensitive" as const } }] : []),
+        ...(importedNames.size ? [{ name: { in: [...importedNames], mode: "insensitive" as const } }] : []),
       ],
     },
     select: { id: true, name: true },
@@ -405,82 +449,109 @@ async function preparePurchaseOrderRows(
   const byId = new Map(sizeMasters.map((item) => [item.id, item]));
   const byName = new Map(sizeMasters.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
 
-  const sizes = data.sizes.filter((item) => item.quantity > 0).map((item, position) => {
-    const master = byId.get(item.sizeId);
-    if (!master) throw new UserFacingError("Salah satu ukuran matriks tidak aktif atau tidak ditemukan.");
-    return { ...item, size: master.name, position };
-  });
-  const manualRoster = data.roster.map((item) => {
-    const master = byId.get(item.sizeId);
-    if (!master) throw new UserFacingError("Salah satu ukuran roster tidak aktif atau tidak ditemukan.");
-    return { ...item, size: master.name };
-  });
-  const fileRoster = importedRoster.map((item, index) => {
-    const master = byName.get(item.size.toLocaleLowerCase("id-ID"));
-    if (!master) throw new UserFacingError(`Ukuran ${item.size} pada baris roster ${index + 2} belum tersedia di Data Master.`);
-    return { memberId: item.memberId, name: item.name, sizeId: master.id, size: master.name, sleeveLength: item.sleeveLength };
-  });
-  const roster = data.rosterMode === "excel" ? fileRoster : data.rosterMode === "manual" ? manualRoster : [];
-  const normalizedIds = roster.map((item) => item.memberId.toLocaleLowerCase("id-ID"));
-  if (new Set(normalizedIds).size !== normalizedIds.length) throw new UserFacingError("ID anggota roster tidak boleh duplikat.");
+  const sizes: Array<{ itemId: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number; size: string; position: number }> = [];
+  const roster: Array<{ itemId: string; memberId: string; name: string; sizeId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; position: number }> = [];
+  for (const item of items) {
+    const itemSizes = item.sizes.filter((size) => size.quantity > 0).map((size) => {
+      const master = byId.get(size.sizeId);
+      if (!master) throw new UserFacingError(`Salah satu ukuran matriks ${item.name} tidak aktif atau tidak ditemukan.`);
+      const row = { itemId: item.itemId, sizeId: size.sizeId, sleeveLength: size.sleeveLength, quantity: size.quantity, size: master.name, position: sizes.length };
+      sizes.push(row);
+      return row;
+    });
+    const manualRoster = item.roster.map((row) => {
+      const master = byId.get(row.sizeId);
+      if (!master) throw new UserFacingError(`Salah satu ukuran roster ${item.name} tidak aktif atau tidak ditemukan.`);
+      return { itemId: item.itemId, memberId: row.memberId, name: row.name, sizeId: row.sizeId, size: master.name, sleeveLength: row.sleeveLength };
+    });
+    const fileRoster = item.fileRoster.map((row, index) => {
+      const master = byName.get(row.size.toLocaleLowerCase("id-ID"));
+      if (!master) throw new UserFacingError(`Ukuran ${row.size} pada baris roster ${index + 2} (${item.name}) belum tersedia di Data Master.`);
+      return { itemId: item.itemId, memberId: row.memberId, name: row.name, sizeId: master.id, size: master.name, sleeveLength: row.sleeveLength };
+    });
+    const itemRoster = item.rosterMode === "excel" ? fileRoster : item.rosterMode === "manual" ? manualRoster : [];
+    const normalizedIds = itemRoster.map((row) => row.memberId.toLocaleLowerCase("id-ID"));
+    if (new Set(normalizedIds).size !== normalizedIds.length) throw new UserFacingError(`ID anggota roster ${item.name} tidak boleh duplikat.`);
 
-  if (roster.length) {
-    const matrixTotals = new Map<string, number>();
-    for (const item of sizes) {
-      const key = `${item.sizeId}:${item.sleeveLength}`;
-      matrixTotals.set(key, (matrixTotals.get(key) ?? 0) + item.quantity);
-    }
-    const rosterTotals = new Map<string, number>();
-    for (const item of roster) {
-      const key = `${item.sizeId}:${item.sleeveLength}`;
-      rosterTotals.set(key, (rosterTotals.get(key) ?? 0) + 1);
-    }
-    const allKeys = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
-    for (const key of allKeys) {
-      if ((matrixTotals.get(key) ?? 0) !== (rosterTotals.get(key) ?? 0)) {
-        const [sizeId, sleeveLength] = key.split(":");
-        const sizeName = byId.get(sizeId)?.name ?? "tidak dikenal";
-        throw new UserFacingError(`Total roster ukuran ${sizeName} lengan ${sleeveLength.toLocaleLowerCase("id-ID")} harus sama dengan jumlah pada matriks.`);
+    if (itemRoster.length) {
+      const matrixTotals = new Map<string, number>();
+      for (const size of itemSizes) {
+        const key = `${size.sizeId}:${size.sleeveLength}`;
+        matrixTotals.set(key, (matrixTotals.get(key) ?? 0) + size.quantity);
+      }
+      const rosterTotals = new Map<string, number>();
+      for (const row of itemRoster) {
+        const key = `${row.sizeId}:${row.sleeveLength}`;
+        rosterTotals.set(key, (rosterTotals.get(key) ?? 0) + 1);
+      }
+      const allKeys = new Set([...matrixTotals.keys(), ...rosterTotals.keys()]);
+      for (const key of allKeys) {
+        if ((matrixTotals.get(key) ?? 0) !== (rosterTotals.get(key) ?? 0)) {
+          const [sizeId, sleeveLength] = key.split(":");
+          const sizeName = byId.get(sizeId)?.name ?? "tidak dikenal";
+          throw new UserFacingError(`Total roster ${item.name} ukuran ${sizeName} lengan ${sleeveLength.toLocaleLowerCase("id-ID")} harus sama dengan jumlah pada matriks.`);
+        }
       }
     }
+    itemRoster.forEach((row) => roster.push({ ...row, position: roster.length }));
   }
 
-  return {
-    sizes,
-    roster: roster.map((item, position) => ({ ...item, position })),
-  };
+  return { sizes, roster };
+}
+
+async function preparePoItems(formData: FormData, items: ParsedPoItem[]) {
+  return Promise.all(items.map(async (item, index) => ({
+    ...item,
+    itemId: randomUUID(),
+    fileRoster: await importedPurchaseOrderRoster(formData, `item-${index}-rosterFile`, item.rosterMode),
+  })));
 }
 
 function calculateInvoiceForPurchaseOrder(
   purchaseOrder: {
     productName: string;
-    sizes: Array<{ id: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
+    garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
+    items?: Array<{ id: string; name: string; garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null }>;
+    sizes: Array<{ id: string; itemId: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
   submittedItems: InvoicePricingInput[],
   discountPercent: string,
+  taxPercent = "0",
 ) {
   const submittedById = new Map(submittedItems.map((item) => [String(item.purchaseOrderSizeId), item]));
   if (submittedById.size !== purchaseOrder.sizes.length || submittedItems.length !== purchaseOrder.sizes.length) {
     throw new UserFacingError("Item invoice harus sama dengan seluruh baris matriks PO.");
   }
+  const itemNameById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.name]));
+  const itemGarmentById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.garmentType ?? purchaseOrder.garmentType]));
   const calculated = calculateInvoiceLines(purchaseOrder.sizes.map((poRow) => {
     const submitted = submittedById.get(poRow.id);
     if (!submitted) throw new UserFacingError("Salah satu baris PO tidak tersedia pada invoice.");
+    const rowDefault = itemNameById.get(poRow.itemId) ?? purchaseOrder.productName;
+    const productName = String(submitted.productName || rowDefault).trim() || rowDefault;
+    const rowIsAccessory = (itemGarmentById.get(poRow.itemId) ?? purchaseOrder.garmentType) === "AKSESORI";
+    const description = String(submitted.description || "").trim() || defaultInvoiceItemDescription(productName, poRow.sleeveLength, poRow.size, rowIsAccessory);
     return {
       purchaseOrderSizeId: poRow.id,
-      productName: purchaseOrder.productName,
+      productName,
       size: poRow.size,
       sleeveLength: poRow.sleeveLength,
-      description: `${purchaseOrder.productName} ${poRow.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poRow.size}`,
+      description,
       quantity: poRow.quantity,
       unitPrice: String(submitted.unitPrice),
+      discountPercent: String((submitted as { discountPercent?: string }).discountPercent ?? discountPercent ?? "0"),
+      addons: ((submitted as { addons?: Array<{ label: unknown; unitAmount: unknown }> }).addons ?? []).map((addon) => ({
+        label: String(addon.label ?? ""),
+        unitAmount: String(addon.unitAmount ?? ""),
+      })),
     };
-  }), discountPercent);
+  }), discountPercent, taxPercent);
   return {
     ...calculated,
-    items: calculated.items.map(({ purchaseOrderSizeId, ...item }) => ({
+    items: calculated.items.map(({ purchaseOrderSizeId, addons, addonGross, ...item }) => ({
       ...item,
       sizeId: purchaseOrder.sizes.find((row) => row.id === purchaseOrderSizeId)?.sizeId ?? null,
+      addons: { create: addons.map((addon) => ({ position: addon.position, label: addon.label, unitAmount: addon.unitAmount })) },
     })),
   };
 }
@@ -493,16 +564,59 @@ export async function createCustomerAction(formData: FormData) {
 
     await getPrismaClient().$transaction(
       async (tx) => {
+        const rawLeadSourceCustom = formValue(formData, "leadSourceCustom");
+        const leadSourceCustom = typeof rawLeadSourceCustom === "string" ? rawLeadSourceCustom.trim() : "";
+        let resolvedLeadSourceId = parsed.data.leadSourceId;
+
+        if (resolvedLeadSourceId === "custom_other" || (resolvedLeadSourceId && leadSourceCustom)) {
+          if (leadSourceCustom) {
+            const trimmedCustom = leadSourceCustom.slice(0, 80);
+            let customSource = await tx.leadSource.findFirst({
+              where: { name: { equals: trimmedCustom, mode: "insensitive" } },
+              select: { id: true },
+            });
+            if (!customSource) {
+              customSource = await tx.leadSource.create({
+                data: {
+                  name: trimmedCustom,
+                  description: "Sumber lead kustom dari form Customer",
+                  position: 99,
+                  isActive: true,
+                },
+                select: { id: true },
+              });
+            }
+            resolvedLeadSourceId = customSource.id;
+          } else if (resolvedLeadSourceId === "custom_other") {
+            let otherSource = await tx.leadSource.findFirst({
+              where: { name: { equals: "Lainnya", mode: "insensitive" } },
+              select: { id: true },
+            });
+            if (!otherSource) {
+              otherSource = await tx.leadSource.create({
+                data: { name: "Lainnya", description: "Sumber lead lainnya", position: 99, isActive: true },
+                select: { id: true },
+              });
+            }
+            resolvedLeadSourceId = otherSource.id;
+          }
+        }
+
         const [customerType, leadSource, salesPic] = await Promise.all([
           tx.customerType.findUnique({ where: { id: parsed.data.customerTypeId }, select: { id: true } }),
-          parsed.data.leadSourceId ? tx.leadSource.findUnique({ where: { id: parsed.data.leadSourceId }, select: { id: true } }) : null,
+          resolvedLeadSourceId ? tx.leadSource.findUnique({ where: { id: resolvedLeadSourceId }, select: { id: true } }) : null,
           parsed.data.salesPicId ? tx.appUser.findFirst({ where: { id: parsed.data.salesPicId, role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }) : null,
         ]);
         if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
-        if (parsed.data.leadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
+        if (resolvedLeadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak ditemukan.");
         if (parsed.data.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
         const created = await tx.customer.create({
-          data: { ...parsed.data, email: parsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+          data: {
+            ...parsed.data,
+            leadSourceId: resolvedLeadSourceId,
+            email: parsed.data.email?.toLowerCase(),
+            customerNo: await nextCustomerNo(tx),
+          },
           select: { id: true },
         });
         await audit(tx, actor, "Customer", created.id, "CUSTOMER_CREATED", [
@@ -725,7 +839,7 @@ export async function updateCustomerAction(formData: FormData) {
         "name", "companyName", "whatsapp", "email", "instagram", "address", "city", "notes", "customerTypeId", "leadSourceId", "salesPicId",
       ]);
       return updated;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     if (!result.count) throw new UserFacingError("Customer tidak dapat diperbarui.");
 
     revalidatePath("/customers");
@@ -754,7 +868,7 @@ export async function updateCustomerOrderReminderAction(formData: FormData) {
       if (!updated.count) throw new UserFacingError("Pengaturan customer sudah berubah. Muat ulang halaman.");
       await resetCustomerOrderReminderDelivery(tx, parsed.data.customerId, parsed.data.enabled);
       await audit(tx, actor, "Customer", parsed.data.customerId, "ORDER_REMINDER_SETTING_UPDATED", ["orderReminderEnabled"]);
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     revalidatePath(`/customers/${parsed.data.customerId}`);
     return flashMessagePath(`/customers/${parsed.data.customerId}`, "notice", `Reminder order ${parsed.data.enabled ? "diaktifkan" : "dinonaktifkan"}.`);
   });
@@ -800,7 +914,7 @@ export async function archiveCustomerAction(formData: FormData) {
         if (updated.count !== 1) throw new UserFacingError("Data customer sudah berubah. Muat ulang halaman.");
         await audit(tx, actor, "Customer", parsed.data.customerId, "CUSTOMER_ARCHIVED", ["archivedAt"]);
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");
@@ -833,7 +947,7 @@ export async function restoreCustomerAction(formData: FormData) {
         throw new UserFacingError("Customer sudah aktif, tidak ditemukan, atau datanya telah berubah. Muat ulang halaman.");
       }
       await audit(tx, actor, "Customer", parsed.data.customerId, "CUSTOMER_RESTORED", ["archivedAt"]);
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/customers");
@@ -896,7 +1010,7 @@ export async function createOpportunityAction(formData: FormData) {
         ], { stage: "LEAD_BARU" });
         return created;
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");
@@ -913,18 +1027,75 @@ export async function createProspectAction(formData: FormData) {
     if (!customerParsed.success) throw new UserFacingError(firstValidationMessage(customerParsed.error));
 
     await getPrismaClient().$transaction(async (tx) => {
-      const salesPicId = actor.role === "ADMIN_CUSTOMER"
-        ? actor.id
-        : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id;
+      const michelleUser = await tx.appUser.findFirst({
+        where: {
+          isActive: true,
+          OR: [
+            { name: { contains: "Michelle", mode: "insensitive" } },
+            { email: { contains: "michelle", mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      const salesPicId = michelleUser?.id
+        ?? (actor.role === "ADMIN_CUSTOMER"
+          ? actor.id
+          : (await tx.appUser.findFirst({ where: { role: "ADMIN_CUSTOMER", isActive: true }, select: { id: true } }))?.id);
       if (!salesPicId) throw new UserFacingError("Admin Customer aktif tidak ditemukan.");
+
+      const rawLeadSourceCustom = formValue(formData, "leadSourceCustom");
+      const leadSourceCustom = typeof rawLeadSourceCustom === "string" ? rawLeadSourceCustom.trim() : "";
+      let resolvedLeadSourceId = customerParsed.data.leadSourceId;
+
+      if (resolvedLeadSourceId === "custom_other" || (resolvedLeadSourceId && leadSourceCustom)) {
+        if (leadSourceCustom) {
+          const trimmedCustom = leadSourceCustom.slice(0, 80);
+          let customSource = await tx.leadSource.findFirst({
+            where: { name: { equals: trimmedCustom, mode: "insensitive" } },
+            select: { id: true },
+          });
+          if (!customSource) {
+            customSource = await tx.leadSource.create({
+              data: {
+                name: trimmedCustom,
+                description: "Sumber lead kustom dari form Prospek",
+                position: 99,
+                isActive: true,
+              },
+              select: { id: true },
+            });
+          }
+          resolvedLeadSourceId = customSource.id;
+        } else if (resolvedLeadSourceId === "custom_other") {
+          let otherSource = await tx.leadSource.findFirst({
+            where: { name: { equals: "Lainnya", mode: "insensitive" } },
+            select: { id: true },
+          });
+          if (!otherSource) {
+            otherSource = await tx.leadSource.create({
+              data: { name: "Lainnya", description: "Sumber lead lainnya", position: 99, isActive: true },
+              select: { id: true },
+            });
+          }
+          resolvedLeadSourceId = otherSource.id;
+        }
+      }
+
       const [customerType, customerLeadSource] = await Promise.all([
         tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
-        customerParsed.data.leadSourceId ? tx.leadSource.findFirst({ where: { id: customerParsed.data.leadSourceId, isActive: true }, select: { id: true } }) : null,
+        resolvedLeadSourceId ? tx.leadSource.findFirst({ where: { id: resolvedLeadSourceId, isActive: true }, select: { id: true } }) : null,
       ]);
       if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
-      if (customerParsed.data.leadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+      if (resolvedLeadSourceId && !customerLeadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
       const customer = await tx.customer.create({
-        data: { ...customerParsed.data, salesPicId, lifecycle: "PROSPEK", email: customerParsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+        data: {
+          ...customerParsed.data,
+          leadSourceId: resolvedLeadSourceId,
+          salesPicId,
+          lifecycle: "PROSPEK",
+          email: customerParsed.data.email?.toLowerCase(),
+          customerNo: await nextCustomerNo(tx),
+        },
         select: { id: true, name: true, leadSourceId: true },
       });
       await audit(tx, actor, "Customer", customer.id, "CUSTOMER_CREATED", [
@@ -951,7 +1122,7 @@ export async function createProspectAction(formData: FormData) {
         "customerId", "title", "leadSourceId", "salesPicId", "stage", "origin",
       ], { stage: "FOLLOW_UP", origin: "PROSPEK_FORM" });
       return created;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/prospek");
@@ -996,7 +1167,7 @@ export async function createRepeatOrderAction(formData: FormData) {
       });
       await audit(tx, actor, "Opportunity", created.id, "OPPORTUNITY_CREATED", ["customerId", "title", "stage", "leadSourceId", "salesPicId"], { stage: "NEGOSIASI", repeatOrder: true });
       return created;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/prospek");
@@ -1057,7 +1228,7 @@ export async function updateOpportunityAction(formData: FormData) {
         "nextAction", "nextActionAt",
       ]);
       return updated;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
     if (!result.count) throw new UserFacingError("Peluang tidak dapat diperbarui.");
 
     revalidatePath("/crm");
@@ -1206,7 +1377,7 @@ export async function addCommunicationActivityAction(formData: FormData) {
       await audit(tx, actor, "CommunicationActivity", activity.id, "COMMUNICATION_ACTIVITY_ADDED", [
         "kind", "channel", "direction", "content", "occurredAt",
       ], { customerId: customer.id, opportunityId: parsed.data.opportunityId ?? null });
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath(`/customers/${parsed.data.customerId}`);
     if (parsed.data.opportunityId) revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
@@ -1285,7 +1456,7 @@ export async function recordFollowUpResultAction(formData: FormData) {
         await rearmCustomerRemindersAfterLost(tx, current.customerId);
       }
       return current.customerId;
-    });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/follow-up");
@@ -1304,13 +1475,13 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
-    timer.mark("roster");
 
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
+    const preparedItems = await preparePoItems(formData, parsed.data.items);
+    const rows = await preparePurchaseOrderRows(prisma, preparedItems);
     timer.mark("rows");
+    const allDecorationMethods = [...new Set(preparedItems.flatMap((item) => item.decorationMethods))];
     await prisma.$transaction(async (tx) => {
         const opportunity = await tx.opportunity.findUnique({
           where: { id: parsed.data.opportunityId },
@@ -1327,6 +1498,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
         if (opportunity._count.purchaseOrders > 0) throw new UserFacingError("Gunakan aksi Revisi PO dari dokumen sebelumnya.");
 
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
+        const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
@@ -1335,26 +1507,41 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
             revision: 1,
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.productName,
+            productName: parsed.data.pola,
+            instansi: parsed.data.instansi,
+            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
             variationColor: parsed.data.variationColor,
-            decorationMethod: parsed.data.decorationMethod,
+            decorationMethod: legacyDecorationMethod(allDecorationMethods),
+            decorationMethods: allDecorationMethods,
             orderDate: optionalDate(parsed.data.orderDate),
             sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            depositRequired: parsed.data.depositRequired,
             designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
+            items: {
+              create: preparedItems.map((item, position) => ({
+                id: item.itemId,
+                position,
+                name: item.name,
+                productCategoryId: itemCategories[position]?.productCategoryId ?? null,
+                garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
+                decorationMethods: [...new Set(item.decorationMethods)],
+                designNotes: item.designNotes,
+              })),
+            },
             sizes: { create: rows.sizes },
             rosterEntries: { create: rows.roster },
           },
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_DRAFT_CREATED", [
-          "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ], { opportunityId: parsed.data.opportunityId });
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1376,43 +1563,52 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
       throw new UserFacingError(parsed.success ? "Identitas PO tidak lengkap." : firstValidationMessage(parsed.error));
     }
     timer.mark("parse");
-    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
-    timer.mark("roster");
     const prisma = getPrismaClient();
     const purchaseOrderId = parsed.data.purchaseOrderId;
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
+    const preparedItems = await preparePoItems(formData, parsed.data.items);
+    const rows = await preparePurchaseOrderRows(prisma, preparedItems);
     timer.mark("rows");
+    const allDecorationMethods = [...new Set(preparedItems.flatMap((item) => item.decorationMethods))];
     await prisma.$transaction(async (tx) => {
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
+        const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         const updated = await tx.purchaseOrder.updateMany({
           where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { purchaseOrders: { none: { status: "AGREED" } }, invoices: { none: { status: "ISSUED" } } } },
           data: {
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.productName,
+            productName: parsed.data.pola,
+            instansi: parsed.data.instansi,
+            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
             variationColor: parsed.data.variationColor,
-            decorationMethod: parsed.data.decorationMethod,
+            decorationMethod: legacyDecorationMethod(allDecorationMethods),
+            decorationMethods: allDecorationMethods,
             orderDate: optionalDate(parsed.data.orderDate),
             sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            depositRequired: parsed.data.depositRequired,
             version: { increment: 1 },
           },
         });
-        if (updated.count !== 1) throw new UserFacingError("Draft PO sudah berubah atau tidak lagi dapat diedit.");
+        if (updated.count !== 1) throw new UserFacingError("Draft sudah berubah atau tidak lagi dapat diedit.");
         await tx.designTask.upsert({ where: { purchaseOrderId }, update: { deadline: optionalDate(parsed.data.designDeadline)! }, create: { purchaseOrderId, deadline: optionalDate(parsed.data.designDeadline)! } });
         await tx.purchaseOrderRosterEntry.deleteMany({ where: { purchaseOrderId } });
         await tx.purchaseOrderSize.deleteMany({ where: { purchaseOrderId } });
+        await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId } });
+        await tx.purchaseOrderItem.createMany({
+          data: preparedItems.map((item, position) => ({ id: item.itemId, purchaseOrderId, position, name: item.name, productCategoryId: itemCategories[position]?.productCategoryId ?? null, garmentType: itemCategories[position]?.garmentType ?? category.garmentType, decorationMethods: [...new Set(item.decorationMethods)], designNotes: item.designNotes ?? null })),
+        });
         await tx.purchaseOrderSize.createMany({
           data: rows.sizes.map((item) => ({ purchaseOrderId, ...item })),
         });
         if (rows.roster.length) await tx.purchaseOrderRosterEntry.createMany({ data: rows.roster.map((item) => ({ purchaseOrderId, ...item })) });
         await audit(tx, actor, "PurchaseOrder", purchaseOrderId, "PURCHASE_ORDER_DRAFT_UPDATED", [
-          "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ]);
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1442,7 +1638,8 @@ export async function agreePurchaseOrderAction(formData: FormData) {
           status: true,
           garmentType: true,
           deadline: true,
-          designTask: { select: { revisions: { orderBy: { revision: "desc" }, take: 1, select: { status: true } } } },
+          designSentAt: true,
+          customerConfirmedAt: true,
           sizes: { select: { id: true }, take: 1 },
           opportunity: {
             select: {
@@ -1461,7 +1658,7 @@ export async function agreePurchaseOrderAction(formData: FormData) {
       if (purchaseOrder.opportunity.purchaseOrders.length) throw new UserFacingError("PO sudah disepakati dan bersifat final.");
       if (!purchaseOrder.sizes.length) throw new UserFacingError("PO belum memiliki ukuran dan jumlah.");
       if (!purchaseOrder.garmentType || !purchaseOrder.deadline) throw new UserFacingError("Jenis pakaian dan deadline produksi wajib dilengkapi sebelum PO disepakati.");
-      if (purchaseOrder.designTask?.revisions[0]?.status !== "APPROVED") throw new UserFacingError("Desain harus diunggah dan disetujui Owner atau Admin sebelum PO disepakati.");
+      if (!purchaseOrder.customerConfirmedAt) throw new UserFacingError("Kirim 1 set PDF PO ke customer dan tandai konfirmasi tidak ada revisi sebelum menyepakati PO.");
       const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
       const agreedAt = new Date();
@@ -1490,12 +1687,140 @@ export async function agreePurchaseOrderAction(formData: FormData) {
         sourceAuditEventId: auditEvent.id,
       });
       return { opportunityId: purchaseOrder.opportunityId, customerId: purchaseOrder.opportunity.customerId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${result.opportunityId}`);
     revalidatePath(`/customers/${result.customerId}`);
     return flashMessagePath(`/crm/peluang/${result.opportunityId}?tab=po`, "notice", "PO disepakati dan dikunci.");
+  });
+}
+
+/**
+ * Tabel CRM > Purchase order membaca data dari `unstable_cache` bertag "purchase-orders" (30 detik).
+ * Deposit baru harus langsung tampil di kolom Deposit/Tanggal Deposit, jadi tag dikosongkan juga.
+ */
+function revalidatePurchaseOrderList() {
+  revalidatePath("/crm/purchase-orders");
+  revalidateTag("purchase-orders", { expire: 0 });
+}
+
+export async function recordPurchaseOrderDepositAction(formData: FormData) {
+  const fallbackPurchaseOrderId = entityIdSchema.safeParse(formValue(formData, "purchaseOrderId"));
+  const fallbackPath = fallbackPurchaseOrderId.success ? "/crm/purchase-orders" : "/crm";
+  return runRedirectingAction(fallbackPath, async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderDepositSchema.safeParse({
+      purchaseOrderId: formValue(formData, "purchaseOrderId"),
+      amount: formValue(formData, "amount"),
+      paymentMethodId: formValue(formData, "paymentMethodId"),
+      paidAt: formValue(formData, "paidAt"),
+      reference: formValue(formData, "reference"),
+      note: formValue(formData, "note"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const paidAt = jakartaDateTime(parsed.data.paidAt) ?? new Date();
+    if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal deposit tidak boleh maju ke masa depan.");
+    // Bukti lama tetap dipakai bila tidak ada file baru, jadi tanda "sudah ada bukti" ikut dikirim.
+    const existingDeposit = await getPrismaClient().purchaseOrderDeposit.findUnique({
+      where: { purchaseOrderId: parsed.data.purchaseOrderId },
+      select: { proofPath: true },
+    });
+    const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId, Boolean(existingDeposit?.proofPath));
+
+    const opportunityId = await getPrismaClient().$transaction(async (tx) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({
+        where: { id: parsed.data.purchaseOrderId },
+        select: { id: true, purchaseOrderNo: true, status: true, opportunityId: true, depositRequired: true, deposit: { select: { id: true } } },
+      });
+      if (!purchaseOrder) throw new UserFacingError("Purchase order tidak ditemukan.");
+      // Deposit hanya untuk PO yang checkbox Deposit-nya dicentang; DEVELOPER/OWNER tetap bisa mengisinya (AGENTS.md).
+      if (!purchaseOrder.depositRequired && !purchaseOrder.deposit && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("PO ini tidak memerlukan deposit. Centang Deposit pada form PO terlebih dahulu.");
+      // Deposit dibuka selama PO masih draft; DEVELOPER/OWNER tetap bisa memperbaikinya (AGENTS.md).
+      if (purchaseOrder.status !== "DRAFT" && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("Deposit hanya dapat diubah saat PO masih draft.");
+      const values = {
+        amount: new Prisma.Decimal(parsed.data.amount),
+        paidAt,
+        paymentMethodId: parsed.data.paymentMethodId,
+        reference: parsed.data.reference ?? null,
+        note: parsed.data.note ?? null,
+        ...(proof ?? {}),
+        createdById: actor.id,
+      };
+      const deposit = purchaseOrder.deposit
+        ? await tx.purchaseOrderDeposit.update({ where: { id: purchaseOrder.deposit.id }, data: values })
+        : await tx.purchaseOrderDeposit.create({ data: { ...values, purchaseOrderId: purchaseOrder.id } });
+      await audit(tx, actor, "PurchaseOrderDeposit", deposit.id, purchaseOrder.deposit ? "PURCHASE_ORDER_DEPOSIT_UPDATED" : "PURCHASE_ORDER_DEPOSIT_RECORDED", ["amount", "paidAt", "paymentMethodId", "reference", "note"], {
+        purchaseOrderId: purchaseOrder.id,
+        purchaseOrderNo: purchaseOrder.purchaseOrderNo,
+        amount: parsed.data.amount,
+      });
+      return purchaseOrder.opportunityId;
+    }, DEAL_TRANSACTION_OPTIONS);
+
+    revalidatePath("/crm");
+    revalidatePurchaseOrderList();
+    revalidatePath(`/crm/peluang/${opportunityId}`);
+    return flashMessagePath(`/crm/peluang/${opportunityId}?tab=po`, "notice", "Deposit desain tersimpan dan dikurangkan dari sisa tagihan invoicenya.");
+  });
+}
+
+export async function markPurchaseOrderDesignSentAction(formData: FormData) {
+  return runRedirectingAction(opportunityTabFallback(formData, "po"), async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderIdSchema.safeParse({ purchaseOrderId: formValue(formData, "purchaseOrderId"), version: formValue(formData, "version") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const updated = await getPrismaClient().$transaction(async (tx) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({
+        where: { id: parsed.data.purchaseOrderId },
+        select: {
+          opportunityId: true,
+          status: true,
+          items: { select: { id: true } },
+          designTask: { select: { revisions: { select: { itemId: true } } } },
+        },
+      });
+      if (!purchaseOrder || purchaseOrder.status !== "DRAFT") throw new UserFacingError("Hanya PO draft yang dapat ditandai terkirim.");
+      // PDF dikirim setelah desain SETIAP produk diunggah; DEVELOPER/OWNER selalu boleh melewati gate ini.
+      const uploadedItemIds = new Set((purchaseOrder.designTask?.revisions ?? []).map((revision) => revision.itemId));
+      const designUploaded = purchaseOrder.items.length > 0 && purchaseOrder.items.every((item) => uploadedItemIds.has(item.id));
+      if (!designUploaded && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("Unggah desain terlebih dahulu sebelum mengirim 1 set PDF ke customer.");
+      const customerConfirmed = String(formData.get("customerConfirmed") ?? "") === "yes";
+      const now = new Date();
+      const result = await tx.purchaseOrder.updateMany({
+        where: { id: parsed.data.purchaseOrderId, status: "DRAFT", version: parsed.data.version },
+        data: { designSentAt: now, designSentById: actor.id, ...(customerConfirmed ? { customerConfirmedAt: now, customerConfirmedById: actor.id } : {}) },
+      });
+      if (result.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
+      await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_DESIGN_SENT", ["designSentAt", "designSentById", ...(customerConfirmed ? ["customerConfirmedAt", "customerConfirmedById"] : [])]);
+      return purchaseOrder;
+    }, DEAL_TRANSACTION_OPTIONS);
+    revalidatePath("/crm");
+    revalidatePath(`/crm/peluang/${updated.opportunityId}`);
+    return flashMessagePath(`/crm/peluang/${updated.opportunityId}?tab=po`, "notice", `1 set PDF PO ditandai terkirim oleh ${actor.name}. Minta konfirmasi revisi ke customer.`);
+  });
+}
+
+export async function confirmPurchaseOrderCustomerAction(formData: FormData) {
+  return runRedirectingAction(opportunityTabFallback(formData, "po"), async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderIdSchema.safeParse({ purchaseOrderId: formValue(formData, "purchaseOrderId"), version: formValue(formData, "version") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const updated = await getPrismaClient().$transaction(async (tx) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({ where: { id: parsed.data.purchaseOrderId }, select: { opportunityId: true, status: true, designSentAt: true } });
+      if (!purchaseOrder || purchaseOrder.status !== "DRAFT") throw new UserFacingError("Hanya PO draft yang dapat dikonfirmasi.");
+      if (!purchaseOrder.designSentAt) throw new UserFacingError("Kirim 1 set PDF PO ke customer terlebih dahulu.");
+      const result = await tx.purchaseOrder.updateMany({
+        where: { id: parsed.data.purchaseOrderId, status: "DRAFT", version: parsed.data.version },
+        data: { customerConfirmedAt: new Date(), customerConfirmedById: actor.id },
+      });
+      if (result.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
+      await audit(tx, actor, "PurchaseOrder", parsed.data.purchaseOrderId, "PURCHASE_ORDER_CUSTOMER_CONFIRMED", ["customerConfirmedAt", "customerConfirmedById"]);
+      return purchaseOrder;
+    }, DEAL_TRANSACTION_OPTIONS);
+    revalidatePath("/crm");
+    revalidatePath(`/crm/peluang/${updated.opportunityId}`);
+    return flashMessagePath(`/crm/peluang/${updated.opportunityId}?tab=po`, "notice", "Customer dikonfirmasi tidak ada revisi. PO siap disepakati.");
   });
 }
 
@@ -1509,13 +1834,12 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
     const parsed = purchaseOrderDraftSchema.safeParse(purchaseOrderInput(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     timer.mark("parse");
-    const importedRoster = await importedPurchaseOrderRoster(formData, parsed.data.rosterMode);
-    timer.mark("roster");
-
     const prisma = getPrismaClient();
     const purchaseOrderId = randomUUID();
-    const rows = await preparePurchaseOrderRows(prisma, parsed.data, importedRoster);
+    const preparedItems = await preparePoItems(formData, parsed.data.items);
+    const rows = await preparePurchaseOrderRows(prisma, preparedItems);
     timer.mark("rows");
+    const allDecorationMethods = [...new Set(preparedItems.flatMap((item) => item.decorationMethods))];
     const opportunityId = await prisma.$transaction(async (tx) => {
         const source = await tx.purchaseOrder.findUnique({
           where: { id: sourcePurchaseOrderId.data },
@@ -1536,18 +1860,27 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             },
           },
         });
-        if (!source || source.status !== "DRAFT") throw new UserFacingError("Revisi hanya dapat dibuat dari draft PO aktif.");
+        if (!source || (source.status !== "DRAFT" && source.status !== "AGREED")) throw new UserFacingError("Revisi hanya dapat dibuat dari PO draft atau disepakati yang aktif.");
         if (source.revision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi PO sudah tercapai.");
         if (source.opportunityId !== parsed.data.opportunityId) throw new UserFacingError("PO sumber tidak sesuai dengan peluang.");
-        if (source.opportunity.purchaseOrders.length || source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("PO atau invoice sudah final dan tidak dapat direvisi.");
         if (source.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Revisi PO hanya dapat dibuat saat Negosiasi.");
-        if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
+        if (source.status === "DRAFT") {
+          if (source.opportunity.purchaseOrders.length || source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("PO atau invoice sudah final dan tidak dapat direvisi.");
+          if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
+        } else {
+          // E3: revisi dari PO yang sudah disepakati (mis. tambah qty H-1).
+          if (source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("Invoice sudah terbit. Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati.");
+          if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
+          const downstream = await tx.salesOrder.findFirst({ where: { purchaseOrderId: source.id, status: "ACTIVE" }, select: { id: true } });
+          if (downstream) throw new UserFacingError("Sales Order sudah terbentuk. Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati.");
+        }
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
+        const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         const locked = await tx.purchaseOrder.updateMany({
-          where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
+          where: { id: source.id, status: source.status, revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
         });
-        if (locked.count !== 1) throw new UserFacingError("Draft PO sudah berubah. Muat ulang halaman.");
+        if (locked.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
@@ -1556,27 +1889,42 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             revision: source.revision + 1,
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.productName,
+            productName: parsed.data.pola,
+            instansi: parsed.data.instansi,
+            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
             variationColor: parsed.data.variationColor,
-            decorationMethod: parsed.data.decorationMethod,
+            decorationMethod: legacyDecorationMethod(allDecorationMethods),
+            decorationMethods: allDecorationMethods,
             orderDate: optionalDate(parsed.data.orderDate),
             sampleSize: category.garmentType === "JERSEY" ? parsed.data.sampleSize : null,
             designNotes: parsed.data.designNotes,
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
+            depositRequired: parsed.data.depositRequired,
             designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
             createdById: actor.id,
+            items: {
+              create: preparedItems.map((item, position) => ({
+                id: item.itemId,
+                position,
+                name: item.name,
+                productCategoryId: itemCategories[position]?.productCategoryId ?? null,
+                garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
+                decorationMethods: [...new Set(item.decorationMethods)],
+                designNotes: item.designNotes,
+              })),
+            },
             sizes: { create: rows.sizes },
             rosterEntries: { create: rows.roster },
           },
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
-          "revision", "garmentType", "productCategoryId", "productName", "material", "baseColor", "variationColor", "decorationMethod", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "sizes", "roster",
-        ], { sourcePurchaseOrderId: source.id });
+          "revision", "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
+        ], { sourcePurchaseOrderId: source.id, fromStatus: source.status });
         return source.opportunityId;
     }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     timer.mark("transaction");
@@ -1622,11 +1970,13 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           where: { id: parsed.data.purchaseOrderId, opportunityId: opportunity.id, status: "AGREED" },
           select: {
             productName: true,
-            sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+            garmentType: true,
+            items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
+            sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           },
         });
         if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent);
+        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent, parsed.data.taxPercent);
         const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
         const aggregate = await tx.invoice.aggregate({ where: { opportunityId: opportunity.id }, _max: { revision: true } });
@@ -1647,20 +1997,25 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
             snapshotBusinessEmail: business?.email,
             snapshotBusinessAddress: business?.address,
             snapshotBusinessLogoPath: business?.logoPath,
+            snapshotSignatureName: business?.signatureName,
+            snapshotSignatureTitle: business?.signatureTitle,
+            snapshotSignaturePath: business?.signaturePath,
             discountType: calculated.discountPercent.eq(0) ? "NONE" : "PERCENTAGE",
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
+            taxPercent: calculated.taxPercent,
+            taxAmount: calculated.taxAmount,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
-            notes: parsed.data.notes,
+            notes: parsed.data.notes ?? business?.invoiceNotes,
             createdById: actor.id,
             items: { create: calculated.items },
           },
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_DRAFT_CREATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "addons", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ], { opportunityId: opportunity.id });
         return created;
       },
@@ -1692,11 +2047,13 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
       where: { id: parsed.data.purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "AGREED" },
       select: {
         productName: true,
-        sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+        garmentType: true,
+        items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
+        sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
       },
     });
     if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent);
+    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, parsed.data.discountPercent, parsed.data.taxPercent);
     timer.mark("calculate");
 
     await prisma.$transaction(
@@ -1709,6 +2066,8 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
+            taxPercent: calculated.taxPercent,
+            taxAmount: calculated.taxAmount,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1717,11 +2076,19 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
         });
         if (updated.count !== 1) throw new UserFacingError("Draft sudah berubah atau tidak lagi dapat diedit.");
         await tx.invoiceItem.deleteMany({ where: { invoiceId } });
-        await tx.invoiceItem.createMany({
-          data: calculated.items.map((item) => ({ ...item, invoiceId })),
+        const createdItems = await tx.invoiceItem.createManyAndReturn({
+          data: calculated.items.map(({ addons: _addons, ...item }) => ({ ...item, invoiceId })),
+          select: { id: true, position: true },
         });
+        const itemIdByPosition = new Map(createdItems.map((item) => [item.position, item.id]));
+        const addonRows = calculated.items.flatMap((item) => {
+          const invoiceItemId = itemIdByPosition.get(item.position);
+          if (!invoiceItemId) throw new UserFacingError("Item invoice gagal disimpan. Muat ulang halaman.");
+          return item.addons.create.map((addon) => ({ ...addon, invoiceItemId }));
+        });
+        if (addonRows.length) await tx.invoiceItemAddon.createMany({ data: addonRows });
         await audit(tx, actor, "Invoice", invoiceId, "INVOICE_DRAFT_UPDATED", [
-          "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
+          "purchaseOrderId", "items", "addons", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ]);
       },
       DOCUMENT_DRAFT_TRANSACTION_OPTIONS,
@@ -1788,6 +2155,9 @@ export async function issueInvoiceAction(formData: FormData) {
           snapshotBusinessEmail: business?.email,
           snapshotBusinessAddress: business?.address,
           snapshotBusinessLogoPath: business?.logoPath,
+          snapshotSignatureName: business?.signatureName,
+          snapshotSignatureTitle: business?.signatureTitle,
+          snapshotSignaturePath: business?.signaturePath,
           version: { increment: 1 },
         },
       });
@@ -1808,7 +2178,7 @@ export async function issueInvoiceAction(formData: FormData) {
       });
       if (actor.role !== "DEVELOPER") await enqueueIssuedInvoiceWhatsAppJob(tx, parsed.data.invoiceId);
       return { opportunityId: invoice.opportunityId, customerId: invoice.opportunity.customerId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${issuedInvoice.opportunityId}`);
@@ -1866,7 +2236,9 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
               select: {
                 status: true,
                 productName: true,
-                sizes: { select: { id: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+                garmentType: true,
+                items: { select: { id: true, name: true, garmentType: true }, orderBy: { position: "asc" } },
+                sizes: { select: { id: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
               },
             },
           },
@@ -1883,7 +2255,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           throw new UserFacingError("Revisi invoice hanya dapat dibuat dari PO aktif saat Negosiasi.");
         }
         if (source.opportunity.purchaseOrders.length) throw new UserFacingError("Sepakati atau selesaikan draft PO sebelum merevisi invoice.");
-        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.discountPercent);
+        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, parsed.data.discountPercent, parsed.data.taxPercent);
         const locked = await tx.invoice.updateMany({
           where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
           data: { status: "SUPERSEDED", version: { increment: 1 } },
@@ -1910,6 +2282,8 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             discountValue: calculated.discountPercent,
             subtotal: calculated.subtotal,
             totalDiscount: calculated.totalDiscount,
+            taxPercent: calculated.taxPercent,
+            taxAmount: calculated.taxAmount,
             total: calculated.total,
             dueAt: optionalDate(parsed.data.dueAt),
             notes: parsed.data.notes,
@@ -1919,11 +2293,11 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
           select: { id: true },
         });
         await audit(tx, actor, "Invoice", created.id, "INVOICE_REVISION_CREATED", [
-          "revision", "purchaseOrderId", "items", "discountType", "discountValue", "subtotal", "totalDiscount", "total", "dueAt", "notes",
+          "revision", "purchaseOrderId", "items", "addons", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ], { sourceInvoiceId: source.id });
         return source.opportunityId;
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");
@@ -1946,7 +2320,7 @@ export async function completeDealAction(formData: FormData) {
         select: {
           id: true, total: true, status: true, version: true, opportunityId: true, purchaseOrderId: true, issuedAt: true, dueAt: true,
           salesOrder: { select: { id: true } }, pendingPayment: { select: { id: true } },
-          purchaseOrder: { select: { status: true, garmentType: true, deadline: true } },
+          purchaseOrder: { select: { status: true, garmentType: true, deadline: true, deposit: { select: { amount: true } } } },
           opportunity: { select: { stage: true, version: true, purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 }, invoices: { where: { status: "DRAFT" }, select: { id: true }, take: 1 } } },
         },
       });
@@ -1958,23 +2332,29 @@ export async function completeDealAction(formData: FormData) {
       if (!invoice.issuedAt) throw new UserFacingError("Tanggal terbit invoice tidak tersedia.");
 
       const roundedTotal = invoice.total;
-      const requestedInitialPercent = new Prisma.Decimal(parsed.data.initialValue);
-      if (parsed.data.kind === "DP" && requestedInitialPercent.lt(50)) throw new UserFacingError("DP minimal 50%.");
-      if (requestedInitialPercent.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-      const kind = parsed.data.kind === "LUNAS" || requestedInitialPercent.eq(100) ? "LUNAS" as const : "DP" as const;
+      // Deposit desain yang sudah dibayar dikurangkan dari sisa yang perlu dijadwalkan.
+      const depositAmount = invoice.purchaseOrder.deposit?.amount ?? new Prisma.Decimal(0);
+      const collectibleTotal = roundedTotal.sub(depositAmount);
+      if (collectibleTotal.lte(0)) throw new UserFacingError("Deposit sudah menutup seluruh total invoice. Sesuaikan nominal deposit pada PO terlebih dahulu.");
+      const requestedInitial = new Prisma.Decimal(parsed.data.initialValue);
+      const requestedType = parsed.data.kind === "DEPOSIT" ? ("NOMINAL" as const) : parsed.data.initialValueType;
+      if (parsed.data.kind === "DP" && parsed.data.initialValueType === "PERCENTAGE" && requestedInitial.lt(50)) throw new UserFacingError("DP minimal 50%.");
+      if (parsed.data.initialValueType === "PERCENTAGE" && requestedInitial.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
+      const kind = parsed.data.kind === "LUNAS" || (parsed.data.initialValueType === "PERCENTAGE" && requestedInitial.eq(100)) ? "LUNAS" as const : parsed.data.kind;
       if (kind === "DP" && parsed.data.terms.length === 0) throw new UserFacingError("DP wajib memiliki minimal satu termin.");
+      if (kind === "DEPOSIT" && parsed.data.terms.length === 0) throw new UserFacingError("Deposit wajib memiliki minimal satu termin sisa.");
       if (kind === "LUNAS" && parsed.data.terms.length) throw new UserFacingError("Pembayaran Lunas tidak memakai termin.");
       const initialDueAt = invoice.dueAt ?? addJakartaDays(invoice.issuedAt, 7);
 
       const amountFor = (valueType: "NOMINAL" | "PERCENTAGE", value: string) => {
         const decimal = new Prisma.Decimal(value);
         if (valueType === "PERCENTAGE" && decimal.gt(100)) throw new UserFacingError("Persentase pembayaran maksimal 100%.");
-        return valueType === "PERCENTAGE" ? roundInvoiceTotal(roundedTotal.mul(decimal).div(100)) : decimal;
+        return valueType === "PERCENTAGE" ? roundInvoiceTotal(collectibleTotal.mul(decimal).div(100)) : decimal;
       };
-      const initialValueType = "PERCENTAGE" as const;
-      const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitialPercent;
-      const initialAmount = amountFor("PERCENTAGE", initialValue.toString());
-      if (initialAmount.lte(0) || initialAmount.gt(roundedTotal)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
+      const initialValueType = kind === "LUNAS" ? ("PERCENTAGE" as const) : requestedType;
+      const initialValue = kind === "LUNAS" ? new Prisma.Decimal(100) : requestedInitial;
+      const initialAmount = amountFor(initialValueType, initialValue.toString());
+      if (initialAmount.lte(0) || initialAmount.gt(collectibleTotal)) throw new UserFacingError("Nilai pembayaran awal tidak valid.");
 
       let previousDueAt: Date | null = initialDueAt;
       const terms = parsed.data.terms.map((term, position) => {
@@ -1984,9 +2364,9 @@ export async function completeDealAction(formData: FormData) {
         previousDueAt = dueAt;
         return { position, valueType: term.valueType, value: new Prisma.Decimal(term.value), amount: amountFor(term.valueType, term.value), dueAt };
       });
-      const outstandingAmount = roundedTotal.sub(initialAmount);
+      const outstandingAmount = collectibleTotal.sub(initialAmount);
       const termTotal = terms.reduce((sum, term) => sum.add(term.amount), new Prisma.Decimal(0));
-      if (!termTotal.eq(outstandingAmount)) throw new UserFacingError("Total seluruh termin harus sama dengan sisa setelah pembayaran awal.");
+      if (!termTotal.eq(outstandingAmount)) throw new UserFacingError(depositAmount.gt(0) ? "Total seluruh termin harus sama dengan sisa setelah pembayaran awal dan deposit." : "Total seluruh termin harus sama dengan sisa setelah pembayaran awal.");
 
       await tx.pendingDealPayment.create({ data: { invoiceId: invoice.id, kind, initialValueType, initialValue, initialAmount, initialDueAt, createdById: actor.id, terms: { create: terms } } });
       await audit(tx, actor, "Invoice", invoice.id, "PAYMENT_SCHEDULED", ["paymentSchedule"], { kind, initialDueAt, terms: terms.length });
@@ -2042,12 +2422,14 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
   const parsed = payPendingInitialPaymentSchema.safeParse({
     invoiceId: formValue(formData, "invoiceId"),
     paymentMethodId: formValue(formData, "paymentMethodId"),
+    paidAt: formValue(formData, "paidAt"),
     reference: formValue(formData, "reference"),
     note: formValue(formData, "note"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
   const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
-  const paidAt = new Date();
+  const paidAt = parsed.data.paidAt ? jakartaDateTime(parsed.data.paidAt) ?? new Date() : new Date();
+  if (paidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh maju ke masa depan.");
 
   return runDealTransaction(async (tx) => {
     if (!await tx.paymentMethod.findFirst({ where: { id: parsed.data.paymentMethodId, isActive: true }, select: { id: true } })) throw new UserFacingError("Metode pembayaran tidak tersedia.");
@@ -2068,9 +2450,12 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
         discountType: true,
         discountValue: true,
         subtotal: true,
+        totalDiscount: true,
+        taxPercent: true,
+        taxAmount: true,
         total: true,
         salesOrder: { select: { id: true } },
-        purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true } },
+        purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true, deposit: { select: { amount: true } } } },
         items: {
           select: {
             position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
@@ -2112,9 +2497,12 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
     const activeOrder = await tx.salesOrder.findFirst({ where: { opportunityId: invoice.opportunityId, status: "ACTIVE" }, select: { id: true } });
     if (activeOrder) throw new UserFacingError("Peluang ini sudah memiliki Sales Order aktif.");
 
+    const depositAmount = invoice.purchaseOrder.deposit?.amount ?? new Prisma.Decimal(0);
     const scheduledTotal = invoice.pendingPayment.terms.reduce((sum, term) => sum.add(term.amount), invoice.pendingPayment.initialAmount);
-    if (!scheduledTotal.eq(invoice.total)) throw new UserFacingError("Jadwal pembayaran tidak sama dengan total invoice.");
-    const outstandingAmount = invoice.total.sub(invoice.pendingPayment.initialAmount);
+    if (!scheduledTotal.eq(invoice.total.sub(depositAmount))) throw new UserFacingError("Jadwal pembayaran tidak sama dengan sisa setelah deposit.");
+    // Deposit desain menyatu ke pembayaran awal supaya sisa tagihan Sales Order langsung berkurang.
+    const initialAmount = invoice.pendingPayment.initialAmount.add(depositAmount);
+    const outstandingAmount = invoice.total.sub(initialAmount);
 
     const opportunityUpdated = await tx.opportunity.updateMany({
       where: { id: invoice.opportunityId, stage: "NEGOSIASI" },
@@ -2142,6 +2530,9 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
         discountType: invoice.discountType,
         discountValue: invoice.discountValue,
         subtotal: invoice.subtotal,
+        totalDiscount: invoice.totalDiscount,
+        taxPercent: invoice.taxPercent,
+        taxAmount: invoice.taxAmount,
         total: invoice.total,
         acceptedAt: paidAt,
         createdById: actor.id,
@@ -2153,17 +2544,17 @@ async function createSalesOrderFromPendingPayment(formData: FormData) {
             paidAt,
             initialValueType: invoice.pendingPayment.initialValueType,
             initialValue: invoice.pendingPayment.initialValue,
-            initialAmount: invoice.pendingPayment.initialAmount,
+            initialAmount,
             outstandingAmount,
             createdById: actor.id,
             terms: { create: invoice.pendingPayment.terms.map(({ position, valueType, value, amount, dueAt }) => ({ position, valueType, value, amount, dueAt })) },
             transactions: {
               create: {
-                amount: invoice.pendingPayment.initialAmount,
+                amount: initialAmount,
                 paidAt,
                 paymentMethodId: parsed.data.paymentMethodId,
                 reference: parsed.data.reference,
-                note: parsed.data.note,
+                note: depositAmount.gt(0) ? [parsed.data.note, "Termasuk deposit desain"].filter(Boolean).join(" · ") : parsed.data.note,
                 ...(proof ?? {}),
                 createdById: actor.id,
               },
@@ -2230,8 +2621,11 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
     salesOrderId: formValue(formData, "salesOrderId"),
     paymentTermId: formValue(formData, "paymentTermId"),
     paymentMethodId: formValue(formData, "paymentMethodId"),
+    paidAt: formValue(formData, "paidAt"),
   });
   if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+  const resolvedPaidAt = parsed.data.paidAt ? jakartaDateTime(parsed.data.paidAt) ?? paidAt : paidAt;
+  if (resolvedPaidAt.getTime() > Date.now() + 5 * 60 * 1000) throw new UserFacingError("Tanggal pembayaran tidak boleh maju ke masa depan.");
   const proof = await paymentProof(formData, actor.id, parsed.data.paymentMethodId);
   const reference = typeof formValue(formData, "reference") === "string" ? String(formValue(formData, "reference")).trim() || null : null;
   const note = typeof formValue(formData, "note") === "string" ? String(formValue(formData, "note")).trim() || null : null;
@@ -2255,7 +2649,7 @@ async function recordPaymentTerm(formData: FormData, paidAt: Date) {
         paymentTermId: term.id,
         paymentMethodId: parsed.data.paymentMethodId,
         amount: term.amount,
-        paidAt,
+        paidAt: resolvedPaidAt,
         reference,
         note,
         ...(proof ?? {}),
@@ -2556,7 +2950,7 @@ export async function cancelPurchaseOrderAction(formData: FormData) {
         cancelledByName: actor.name,
       });
       return { opportunityId: purchaseOrder.opportunityId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidatePath("/crm/purchase-orders");
@@ -2598,7 +2992,7 @@ export async function cancelInvoiceAction(formData: FormData) {
         cancelledByName: actor.name,
       });
       return { opportunityId: invoice.opportunityId };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
     revalidateInvoiceList();
@@ -2629,7 +3023,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
             salesOrderNo: true,
             opportunityId: true,
             opportunity: { select: { stage: true, version: true, customerId: true } },
-            productionWorkOrder: { select: { id: true, status: true, currentStage: true } },
+            productionWorkOrders: { select: { id: true, status: true, currentStage: true } },
           },
         });
         if (!order || order.status !== "ACTIVE") throw new UserFacingError("Sales Order tidak aktif atau tidak ditemukan.");
@@ -2647,21 +3041,22 @@ export async function reverseSalesOrderAction(formData: FormData) {
         });
         if (opportunity.count !== 1) throw new UserFacingError("Peluang sudah berubah.");
 
-        if (order.productionWorkOrder && order.productionWorkOrder.status !== "CANCELLED") {
+        for (const workOrder of order.productionWorkOrders) {
+          if (workOrder.status === "CANCELLED") continue;
           await tx.productionWorkOrder.update({
-            where: { id: order.productionWorkOrder.id },
+            where: { id: workOrder.id },
             data: { status: "CANCELLED", cancelledAt, version: { increment: 1 } },
           });
           await tx.productionActivity.create({
             data: {
-              workOrderId: order.productionWorkOrder.id,
+              workOrderId: workOrder.id,
               actorId: actor.id,
               type: "CANCELLED",
-              fromStage: order.productionWorkOrder.currentStage,
+              fromStage: workOrder.currentStage,
               note: parsed.data.cancelReason,
             },
           });
-          await audit(tx, actor, "ProductionWorkOrder", order.productionWorkOrder.id, "PRODUCTION_WORK_ORDER_CANCELLED", ["status", "cancelledAt"], { salesOrderId: parsed.data.salesOrderId });
+          await audit(tx, actor, "ProductionWorkOrder", workOrder.id, "PRODUCTION_WORK_ORDER_CANCELLED", ["status", "cancelledAt"], { salesOrderId: parsed.data.salesOrderId });
         }
 
         const salesOrderAudit = await audit(tx, actor, "SalesOrder", parsed.data.salesOrderId, "SALES_ORDER_CANCELLED", ["status", "cancelledAt", "cancelledById", "cancelReason"]);
@@ -2682,7 +3077,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
         await restoreCustomerRemindersAfterCancellation(tx, order.opportunity.customerId);
         return { opportunityId: order.opportunityId, customerId: order.opportunity.customerId };
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      DEAL_TRANSACTION_OPTIONS,
     );
 
     revalidatePath("/crm");

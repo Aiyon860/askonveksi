@@ -2,13 +2,19 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { DETAIL_DESIGN_ROLES } from "@/lib/auth/permissions";
-import { requireActor } from "@/lib/auth/session";
+import { requireDeveloperActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
+import { isStageRole } from "@/lib/production/workflow";
+
+// Gambar desain yang dapat dirender pratinjau: PNG dan JPEG (revisi D2).
+const DESIGN_IMAGE_CONTENT_TYPES = ["image/png", "image/jpeg"];
+
+const DESIGN_REVISION_ORDER_BY: Prisma.DesignRevisionOrderByWithRelationInput[] = [{ revision: "desc" }, { createdAt: "desc" }];
 
 const designSelect = {
   id: true,
   workOrderNo: true,
+  purchaseOrderItemId: true,
   productName: true,
   route: true,
   quantity: true,
@@ -24,9 +30,11 @@ const designSelect = {
           designTask: {
             select: {
               id: true,
+              // Desain per produk PO: ambil semua revisi lalu pilih milik item work order ini.
               revisions: {
-                where: { status: "APPROVED" }, orderBy: { revision: "desc" }, take: 1,
-                select: { attachments: { where: { contentType: "image/png" }, orderBy: { createdAt: "asc" }, select: { id: true, path: true, originalName: true, annotations: true } } },
+                orderBy: DESIGN_REVISION_ORDER_BY,
+                // D2: hanya gambar PNG/JPEG yang ditampilkan (PDF/PSD sudah ditolak saat unggah).
+                select: { itemId: true, attachments: { where: { contentType: { in: DESIGN_IMAGE_CONTENT_TYPES } }, orderBy: { createdAt: "asc" }, select: { id: true, path: true, originalName: true, annotations: true } } },
               },
             },
           },
@@ -39,6 +47,26 @@ const designSelect = {
 export type DesignDetailStatus = "all" | "pending" | "sent";
 export type DesignDetailSort = "workOrderNo" | "purchaseOrderNo" | "salesOrderNo" | "customer" | "productName" | "route" | "deadline" | "designStatus";
 export type DesignDetailDirection = "asc" | "desc";
+
+type DesignWorkOrder = Prisma.ProductionWorkOrderGetPayload<{ select: typeof designSelect }>;
+
+/**
+ * Work order hanya terhubung ke satu produk PO, jadi halaman desain memakai revisi produk itu
+ * (versi terbaru) alih-alih revisi produk lain pada PO yang sama.
+ */
+function withOwnProductDesign(workOrder: DesignWorkOrder): DesignWorkOrder {
+  const purchaseOrder = workOrder.salesOrder.purchaseOrder;
+  const designTask = purchaseOrder?.designTask;
+  if (!purchaseOrder || !designTask) return workOrder;
+  const designRevision = designTask.revisions.find((revision) => revision.itemId === workOrder.purchaseOrderItemId) ?? designTask.revisions[0];
+  return {
+    ...workOrder,
+    salesOrder: {
+      ...workOrder.salesOrder,
+      purchaseOrder: { ...purchaseOrder, designTask: { ...designTask, revisions: designRevision ? [designRevision] : [] } },
+    },
+  };
+}
 
 function designDetailOrderBy(sort: DesignDetailSort, direction: DesignDetailDirection) {
   const order = (
@@ -66,7 +94,8 @@ export async function getProductionDesignDetails({
   sort: DesignDetailSort;
   direction: DesignDetailDirection;
 }) {
-  await requireActor(DETAIL_DESIGN_ROLES);
+  // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh membukanya.
+  const actor = await requireDeveloperActor();
   const where = {
     status: { not: "CANCELLED" },
     ...(status === "pending" ? { designCompletedAt: null } : status === "sent" ? { designCompletedAt: { not: null } } : {}),
@@ -91,16 +120,19 @@ export async function getProductionDesignDetails({
     getPrismaClient().productionWorkOrder.count({ where }),
   ]);
   return {
-    items,
+    items: items.map(withOwnProductDesign),
     total,
     pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    canManage: isStageRole(actor.role),
   };
 }
 
 export async function getProductionDesignDetail(workOrderId: string) {
-  await requireActor(DETAIL_DESIGN_ROLES);
-  return getPrismaClient().productionWorkOrder.findFirst({
+  // Halaman Detail Desain disembunyikan: hanya DEVELOPER yang boleh membukanya.
+  const actor = await requireDeveloperActor();
+  const workOrder = await getPrismaClient().productionWorkOrder.findFirst({
     where: { id: workOrderId, status: { not: "CANCELLED" } },
     select: designSelect,
   });
+  return workOrder ? { workOrder: withOwnProductDesign(workOrder), canManage: isStageRole(actor.role) } : null;
 }

@@ -11,23 +11,34 @@ import { PurchaseOrderPdfDownloadButton } from "@/components/crm/purchase-order-
 import { Button } from "@/components/ui/button";
 
 type SizeOption = { id: string; name: string };
+export type PurchaseOrderItemDraftValues = {
+  key: string;
+  name: string;
+  productCategoryId: string;
+  decorationMethods: string[];
+  designNotes: string;
+  matrix: Record<string, number>;
+  rosterMode: "none" | "manual" | "excel";
+  roster: Array<{ key: string; memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" | "" }>;
+  accessoryQuantity: string;
+};
 type PurchaseOrderDraftValues = {
   purchaseOrderNo: string;
   garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   productCategoryId: string | null;
-  productName: string;
+  instansi: string;
+  pola: string;
   material: string;
   baseColor: string;
   variationColor: string;
-  decorationMethod: string;
   orderDate: string;
   sampleSize: string;
   designNotes: string;
   notes: string;
   deadline: string;
   designDeadline: string;
-  sizes: Array<{ sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-  roster: Array<{ memberId: string; name: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
+  depositRequired: boolean;
+  items: PurchaseOrderItemDraftValues[];
 };
 
 type PurchaseOrderWorkflowSectionProps = {
@@ -45,6 +56,7 @@ type PurchaseOrderWorkflowSectionProps = {
   categoryOptions: ProductCategoryOption[];
   draftValues: PurchaseOrderDraftValues;
   purchaseOrderNoPreview: string;
+  defaultInstansi?: string;
   children: ReactNode;
 };
 
@@ -63,11 +75,14 @@ export function PurchaseOrderWorkflowSection({
   categoryOptions,
   draftValues,
   purchaseOrderNoPreview,
+  defaultInstansi,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
   // Draft yang sudah tersimpan bersifat readonly; perubahan hanya lewat "Buat versi revisi".
-  const canCreateRevision = purchaseOrderStatus === "DRAFT" && purchaseOrderRevision < 4 && canOperate && inNegotiation && !isCreatingRevision;
+  // PO yang sudah disepakati bisa direvisi untuk mitigasi perubahan (mis. tambah qty H-1);
+  // server menolak bila invoice sudah terbit atau Sales Order sudah terbentuk.
+  const canCreateRevision = (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED") && purchaseOrderRevision < 4 && canOperate && inNegotiation && !isCreatingRevision;
 
   return (
     <>
@@ -83,7 +98,7 @@ export function PurchaseOrderWorkflowSection({
           {canCreateRevision ? (
             <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
               <CopyPlus data-icon="inline-start" aria-hidden="true" />
-              Buat versi revisi
+              {purchaseOrderStatus === "AGREED" ? "Revisi PO disepakati" : "Buat versi revisi"}
             </Button>
           ) : null}
           {canCancel && purchaseOrderStatus === "DRAFT" ? (
@@ -106,6 +121,7 @@ export function PurchaseOrderWorkflowSection({
             sourcePurchaseOrderId={purchaseOrderId}
             submitLabel="Buat versi revisi"
             purchaseOrderNoPreview={purchaseOrderNoPreview}
+            defaultInstansi={defaultInstansi}
           />
           <Button
             type="button"

@@ -52,6 +52,13 @@ export function ProductionBoardSectionClient({
     <>
       <ProductionSummary group={group} items={board.items} total={board.total} />
 
+      {board.canManage === false ? (
+        <Alert>
+          <AlertTitle>Mode lihat saja</AlertTitle>
+          <AlertDescription>Anda dapat memantau progres produksi, tetapi memindahkan tahap dan mengubah kendala hanya dapat dilakukan tim Produksi.</AlertDescription>
+        </Alert>
+      ) : null}
+
       {board.truncated ? (
         <Alert>
           <AlertTitle>Board menampilkan 500 Work Order terbaru</AlertTitle>
@@ -59,7 +66,7 @@ export function ProductionBoardSectionClient({
         </Alert>
       ) : null}
 
-      <ProductionBoard group={group} items={board.items} onRefresh={() => mutate()} />
+      <ProductionBoard group={group} items={board.items} canManage={board.canManage !== false} onRefresh={() => mutate()} />
     </>
   );
 }

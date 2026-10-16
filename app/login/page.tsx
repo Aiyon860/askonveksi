@@ -9,16 +9,18 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { getCurrentActor } from "@/lib/auth/session";
+import { getSiteLogo } from "@/lib/site-logo";
 
 export default async function LoginPage() {
   const actor = await getCurrentActor();
-  if (actor) redirect(actor.role === "ADMIN_PRODUCTION" ? "/produksi" : actor.role === "DESIGNER" ? "/desain" : "/dashboard");
+  if (actor) redirect(actor.role === "ADMIN_PO" ? "/produksi" : "/dashboard");
+  const logo = await getSiteLogo();
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-10">
       <Card className="w-full max-w-md" size="lg">
         <CardHeader className="items-center text-center">
-          <Image src="/brand/askonveksi-logo.png" alt="AS Konveksi" width={591} height={591} priority className="mx-auto mb-2 h-auto w-24 object-contain" />
+          <Image src={logo.src} alt={logo.name} width={1920} height={1080} priority unoptimized={logo.unoptimized} className="mx-auto mb-2 h-12 w-auto object-contain" />
           <CardTitle className="text-xl">Masuk ke ruang kerja</CardTitle>
           <CardDescription>Kelola pipeline, customer, penawaran, dan Sales Order dari satu tempat.</CardDescription>
         </CardHeader>
