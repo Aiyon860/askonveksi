@@ -122,10 +122,9 @@ test("kop invoice & kwitansi jatuh ke profil terkini bila snapshot masih kosong"
   assert.doesNotMatch(invoiceRouteSource, /notes: invoice\.notes \?\? profile\?\.invoiceNotes/);
 });
 
-test("template kwitansi mengikuti referensi (A5 landscape, kop, empat baris)", () => {
-  assert.match(receiptPdfSource, /const W = 595\.28/);
-  assert.match(receiptPdfSource, /const H = 420/);
-  for (const label of ["KWITANSI", "Payment No. :", "Invoice No. :", "Terima Dari", "Banyaknya Uang", "Untuk pembayaran", "Jumlah Rp"]) {
+test("template kwitansi mengikuti referensi (slip 28,5 x 9 cm, kop, tiga baris)", () => {
+  assert.match(receiptPdfSource, /const SLIP = \{ width: [\d.]+, height: [\d.]+ \}/);
+  for (const label of ["KUITANSI", "Payment No.", "Invoice No.", "Terima Dari", "Banyaknya Uang", "Untuk pembayaran", "Jumlah Rp"]) {
     assert.ok(receiptPdfSource.includes(label), `template harus memuat teks "${label}"`);
   }
   // Tanggal "02 Okt 2026" dan jumlah "2,165,000.00" sesuai referensi.

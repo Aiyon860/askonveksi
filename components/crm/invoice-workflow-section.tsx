@@ -50,7 +50,7 @@ type InvoiceWorkflowSectionProps = {
   draftValues: InvoiceDraftValues;
   salesOrderHref?: string;
   salesOrderLabel?: string;
-  /** Tombol Unduh Kwitansi per pembayaran yang sudah dibayar (tab Invoice pada peluang). */
+  /** Tombol Lihat Kwitansi per pembayaran yang sudah dibayar (tab Invoice pada peluang). */
   receipts?: Array<{ id: string; label: string }>;
   children: ReactNode;
 };
@@ -90,11 +90,11 @@ export function InvoiceWorkflowSection({
             <Button
               type="button"
               className="w-full sm:w-auto"
-              render={<a href={`/api/crm/invoice/${invoiceId}/pdf?preview=1`} target="_blank" rel="noopener noreferrer" aria-label={`Lihat Invoice ${title.split(" · ")[0]}`} />}
+              render={<a href={`/api/crm/invoice/${invoiceId}/pdf?preview=1`} target="_blank" rel="noopener noreferrer" aria-label={`Lihat PDF ${title.split(" · ")[0]}`} />}
               nativeButton={false}
             >
               <Eye data-icon="inline-start" aria-hidden="true" />
-              Lihat Invoice
+              Lihat PDF
             </Button>
           ) : null}
           {showCreateRevision ? (

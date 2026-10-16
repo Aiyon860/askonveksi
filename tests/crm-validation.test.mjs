@@ -1116,23 +1116,23 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   // Kwitansi pindah ke footer dialog (sejajar aksi invoice), diletakkan sebelum tombol unduh invoice.
   const deliveryActions = await readFile(new URL("../components/crm/invoice-delivery-actions.tsx", import.meta.url), "utf8");
   assert.match(invoiceDetail, /receipts={receipts}/);
-  assert.match(invoiceDetail, /label: "Unduh Kwitansi"/);
-  assert.match(invoiceDetail, /label: `Kwitansi Termin \$\{term\.position \+ 1\}`/);
-  // Kwitansi hanya ada di footer dialog (sebelum Unduh Invoice, varian hijau); baris pembayaran hanya pratinjau bukti.
-  assert.equal(invoiceDetail.match(/Unduh Kwitansi/g)?.length, 1);
+  assert.match(invoiceDetail, /label: "Lihat Kwitansi"/);
+  assert.match(invoiceDetail, /label: `Lihat Kwitansi Termin \$\{term\.position \+ 1\}`/);
+  // Kwitansi hanya ada di footer dialog (sebelum Lihat PDF, varian hijau); baris pembayaran hanya pratinjau bukti.
+  assert.equal(invoiceDetail.match(/label: "Lihat Kwitansi"/g)?.length, 1);
   assert.doesNotMatch(invoiceDetail, /payment-transactions\/\$\{transaction\.id\}\/kwitansi/);
   assert.match(deliveryActions, /api\/crm\/payment-transactions\/\$\{receipt\.id\}\/kwitansi/);
   assert.match(deliveryActions, /variant={compact \? "ghost" : "success"}/);
-  assert.match(deliveryActions, /Unduh Invoice/);
+  assert.match(deliveryActions, /Lihat PDF/);
   assert.doesNotMatch(deliveryActions, /Unduh PDF/);
 
-  // Tab Invoice pada peluang memakai komponen yang sama: kwitansi tampil sebelah Unduh Invoice.
+  // Tab Invoice pada peluang memakai komponen yang sama: kwitansi tampil sebelah Lihat PDF.
   const workflowSection = await readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8");
   const opportunityPage = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
   const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
   assert.match(workflowSection, /receipts={receipts}/);
   assert.match(opportunityPage, /receipts={invoiceReceipts}/);
-  assert.match(opportunityPage, /label: "Unduh Kwitansi"/);
+  assert.match(opportunityPage, /label: "Lihat Kwitansi"/);
   // Id transaksi pembayaran (awal + termin) ikut ditarik oleh detail peluang.
   assert.match(dataSource, /paymentTermId: null \}, select: \{ id: true, amount: true \}/);
   assert.match(dataSource, /terms: \{ orderBy: \{ position: "asc" \}, select: \{ position: true, transactions/);

@@ -27,13 +27,12 @@ type ReceiptAssets = {
   signature?: Uint8Array;
 };
 
-// Halaman A5 landscape (595,28 × 420 pt), ukuran sama seperti template kwitansi.
-const W = 595.28;
-const H = 420;
-const M = 15; // margin kiri
-const RIGHT = 577; // tepi kanan garis
-const VALUE_X = 131; // kolom nilai
-const COL_X = 407; // kolom kanan: tanggal, nama, tanda tangan
+// Kertas slip landscape 28,5 x 9 cm (1 cm = 28,3465 pt).
+const SLIP = { width: 807.87, height: 600.12 };
+const margin = 20;
+const RIGHT = SLIP.width - margin;
+const LABEL_WIDTH = 160;
+const VALUE_X = margin + LABEL_WIDTH + 12;
 
 function safeText(value: string) {
   return value.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\x7e\xa0-\xff]/g, "?");
@@ -83,86 +82,116 @@ export async function createReceiptPdf(data: ReceiptData, assets: ReceiptAssets 
     }
   }
 
-  const page: PDFPage = document.addPage([W, H]);
+  const page: PDFPage = document.addPage([SLIP.width, SLIP.height]);
   const ink = rgb(0.1, 0.1, 0.1);
-  const muted = rgb(0.28, 0.28, 0.28);
+  const muted = rgb(0.32, 0.32, 0.32);
+  let y = SLIP.height - margin - 4;
 
-  function text(value: string, x: number, y: number, size: number, font: PDFFont, color = ink) {
-    page.drawText(safeText(value), { x, y, size, font, color });
-  }
-
-  function rightText(value: string, right: number, y: number, size: number, font: PDFFont, color = ink) {
+  function rightText(value: string, size = MIN_FONT_SIZE, font = regular, color = ink) {
     const safeValue = safeText(value);
-    page.drawText(safeValue, { x: right - font.widthOfTextAtSize(safeValue, size), y, size, font, color });
+    page.drawText(safeValue, { x: RIGHT - font.widthOfTextAtSize(safeValue, size), y, size, font, color });
   }
 
-  /** Garis pemisah horizontal selebar blok konten. */
-  function rule(y: number) {
-    page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.8, color: rgb(0.7, 0.7, 0.7) });
+  /** Garis pemisah horizontal selebar konten. */
+  function rule(lineY = y) {
+    page.drawLine({ start: { x: margin, y: lineY }, end: { x: RIGHT, y: lineY }, thickness: 0.8, color: rgb(0.72, 0.72, 0.72) });
   }
 
-  // ——— Kop: logo, identitas perusahaan, judul & nomor dokumen
-  const scaledLogo = logo.scaleToFit(88, 74);
-  page.drawImage(logo, { x: M, y: H - 8 - scaledLogo.height, width: scaledLogo.width, height: scaledLogo.height });
+  /** Kotak pola garis abu tipis untuk terbilang dan nominal. */
+  function stripedBox(boxX: number, boxBottom: number, boxWidth: number, boxHeight: number) {
+    page.drawRectangle({ x: boxX, y: boxBottom, width: boxWidth, height: boxHeight, color: rgb(0.94, 0.94, 0.94) });
+    for (let lineY = boxBottom + 2; lineY < boxBottom + boxHeight; lineY += 3) {
+      page.drawLine({ start: { x: boxX, y: lineY }, end: { x: boxX + boxWidth, y: lineY }, thickness: 0.4, color: rgb(0.8, 0.8, 0.8) });
+    }
+  }
 
+  // ——— Kop: logo + identitas perusahaan kiri, judul + nomor kanan
+  const headerTop = y;
+  const scaledLogo = logo.scaleToFit(140, 60);
+  page.drawImage(logo, { x: margin, y: y - scaledLogo.height, width: scaledLogo.width, height: scaledLogo.height });
+  const companyX = margin + scaledLogo.width + 14;
+  const companyWidth = 300;
+  page.drawText(clipPdfText(safeText(data.businessName ?? "AS Konveksi"), bold, MIN_FONT_SIZE, companyWidth), { x: companyX, y: y - 12, size: MIN_FONT_SIZE, font: bold });
+  let companyBottom = y - 12 - 15;
   const companyLines: string[] = [];
   if (data.businessAddress) {
-    // Alamat boleh memuat jeda baris buatan (seperti referensi); tiap baris dibungkus lagi bila kepanjangan.
-    const segments = data.businessAddress.split(/\r?\n/).flatMap((segment) => wrapPdfText(safeText(segment.trim()), regular, MIN_FONT_SIZE, 230));
-    companyLines.push(...segments.filter(Boolean).slice(0, 4));
+    companyLines.push(...data.businessAddress.split(/\r?\n/).flatMap((segment) => wrapPdfText(safeText(segment.trim()), regular, MIN_FONT_SIZE, companyWidth)).filter(Boolean).slice(0, 3));
   }
   if (data.businessPhone) companyLines.push(`Telp: ${data.businessPhone}`);
   if (data.businessEmail) companyLines.push(`Email: ${data.businessEmail}`);
+  for (const line of companyLines.slice(0, 5)) {
+    page.drawText(line, { x: companyX, y: companyBottom, size: MIN_FONT_SIZE, font: regular, color: muted });
+    companyBottom -= 15;
+  }
+  page.drawText("KUITANSI", { x: RIGHT - bold.widthOfTextAtSize("KUITANSI", 18), y: headerTop - 16, size: 18, font: bold });
+  y = headerTop - 36;
+  rightText(`Payment No. ${safeText(data.receiptNo)}`);
+  y -= 17;
+  rightText(`Invoice No. ${safeText(data.invoiceNo)}`);
+  y = Math.min(companyBottom, y) - 8;
+  rule();
+  y -= 18;
 
-  let y = H - 25.5;
-  text(clipPdfText(safeText(data.businessName ?? "AS Konveksi"), bold, MIN_FONT_SIZE, 230), 113, y, MIN_FONT_SIZE, bold);
-  for (const line of companyLines.slice(0, 6)) {
-    y -= 13;
-    text(line, 113, y, MIN_FONT_SIZE, regular, muted);
+  /** Satu baris formulir: label tebal kiri + nilai (wrap) vertikal di tengah baris; kotak garis opsional di zona nilai. */
+  function drawRow(label: string, valueLines: string[], font: PDFFont, style: "plain" | "striped" | "underline") {
+    const rowHeight = Math.max(46, valueLines.length * 16 + 16);
+    // Kotak arsir mengikuti tinggi isi teks (tidak sebaris penuh) agar ramping.
+    const boxHeight = style === "striped" ? valueLines.length * 16 + 12 : rowHeight;
+    const boxBottom = y - (rowHeight + boxHeight) / 2;
+    if (style === "striped") stripedBox(VALUE_X - 6, boxBottom, RIGHT - VALUE_X + 6, boxHeight);
+    const firstBaseline = boxBottom + boxHeight - 16;
+    page.drawText(safeText(label), { x: margin, y: firstBaseline, size: MIN_FONT_SIZE, font: bold });
+    valueLines.forEach((line, index) => {
+      page.drawText(line, { x: VALUE_X, y: firstBaseline - index * 16, size: MIN_FONT_SIZE, font, color: ink });
+    });
+    if (style === "underline") page.drawLine({ start: { x: VALUE_X, y: y - rowHeight + 6 }, end: { x: RIGHT, y: y - rowHeight + 6 }, thickness: 0.7, color: rgb(0.72, 0.72, 0.72) });
+    y -= rowHeight;
+    rule(y);
+    y -= 14;
   }
 
-  rightText("KWITANSI", RIGHT, H - 38, 15, bold, ink);
-  rightText(`Payment No. : ${data.receiptNo}`, RIGHT, H - 60, MIN_FONT_SIZE, regular, ink);
-  rightText(`Invoice No. : ${data.invoiceNo}`, RIGHT, H - 77, MIN_FONT_SIZE, regular, ink);
-
-  rule(H - 107.5);
-
-  // ——— Baris isian (mengalir ke bawah; tiap baris diberi garis pemisah seperti formulir)
-  let cursor = H - 124;
-
-  /** Satu baris "label (kiri) + nilai (kanan)" dengan bungkus baris maksimal `maxLines`. */
-  function drawRow(label: string, value: string, options: { font?: PDFFont; size?: number; maxLines?: number } = {}) {
-    const size = options.size ?? MIN_FONT_SIZE;
-    const font = options.font ?? regular;
-    const lines = wrapPdfText(safeText(value), font, size, RIGHT - VALUE_X).slice(0, options.maxLines ?? 2);
-    text(`${label}:`, M, cursor, MIN_FONT_SIZE, bold);
-    lines.forEach((line, index) => page.drawText(line, { x: VALUE_X, y: cursor - index * 13, size, font, color: ink }));
-    cursor -= (lines.length - 1) * 13 + 12;
-    rule(cursor);
-    cursor -= 12;
-  }
-
+  const valueWidth = RIGHT - VALUE_X;
+  const wrapValue = (value: string, maxLines: number) => wrapPdfText(safeText(value), regular, MIN_FONT_SIZE, valueWidth).slice(0, maxLines);
   // ——— Baris 1: Terima Dari
-  drawRow("Terima Dari", data.customerName, { maxLines: 1 });
-  // ——— Baris 2: Banyaknya Uang (terbilang)
-  drawRow("Banyaknya Uang", terbilangRupiah(Math.round(Number(data.amount.toString()))), { maxLines: 3 });
+  drawRow("Terima Dari", wrapValue(data.customerName, 1), regular, "plain");
+  // ——— Baris 2: Banyaknya Uang (terbilang dalam kotak garis)
+  drawRow("Banyaknya Uang", wrapValue(terbilangRupiah(Math.round(Number(data.amount.toString()))), 2), regular, "striped");
   // ——— Baris 3: Untuk pembayaran
-  drawRow("Untuk pembayaran", `Pembayaran Invoice ${data.invoiceNo}${data.reference ? ` (${data.reference})` : ""}`, { maxLines: 2 });
+  drawRow("Untuk pembayaran", wrapValue(`Pembayaran Invoice ${data.invoiceNo}${data.reference ? ` (${data.reference})` : ""}`, 1), regular, "underline");
 
-  // ——— Jumlah rupiah (kiri) & blok tanggal/tanda tangan (kanan) pada pita yang sama
-  const band = cursor;
-  text("Jumlah Rp:", M, band, MIN_FONT_SIZE, bold);
-  page.drawText(safeText(amount(data.amount)), { x: VALUE_X, y: band, size: 14, font: bold, color: ink });
-
-  text(date(data.paidAt), COL_X, band, MIN_FONT_SIZE, regular);
-  let signatureTop = band - 16;
+  // ——— Pita bawah: jumlah rupiah (kiri) & blok tanggal/tanda tangan (kanan)
+  const band = y;
+  const amountBoxHeight = 30;
+  const amountBoxBottom = band - 2 - amountBoxHeight;
+  const amountBaseline = amountBoxBottom + 11;
+  // Label sebaris (satu baseline) dengan angka; digit vertikal di tengah kotak.
+  page.drawText("Jumlah Rp", { x: margin, y: amountBaseline, size: 16, font: bold });
+  const amountText = safeText(amount(data.amount));
+  const amountWidth = bold.widthOfTextAtSize(amountText, 16);
+  stripedBox(VALUE_X - 6, amountBoxBottom, amountWidth + 24, amountBoxHeight);
+  page.drawText(amountText, { x: VALUE_X + 6, y: amountBaseline, size: 16, font: bold });
+  // Satu sumber ukuran blok tanda tangan: ubah di sini, posisi tengah + gambar ikut.
+  const SIGN_DATE_SIZE = MIN_FONT_SIZE;
+  const SIGN_NAME_SIZE = MIN_FONT_SIZE;
+  const SIGN_IMAGE_MAX_WIDTH = 160;
+  const signZoneWidth = 200;
+  const signX = RIGHT - signZoneWidth;
+  const signCenter = signX + signZoneWidth / 2;
+  const signDate = date(data.paidAt);
+  const signDateBaseline = band - 20;
+  page.drawText(signDate, { x: signCenter - regular.widthOfTextAtSize(signDate, SIGN_DATE_SIZE) / 2, y: signDateBaseline, size: SIGN_DATE_SIZE, font: regular });
+  const signer = data.signatureName ?? data.businessName ?? "AS Konveksi";
+  const signName = clipPdfText(safeText(signer), bold, SIGN_NAME_SIZE, signZoneWidth);
+  const signNameBaseline = signDateBaseline - 16;
+  page.drawText(signName, { x: signCenter - bold.widthOfTextAtSize(signName, SIGN_NAME_SIZE) / 2, y: signNameBaseline, size: SIGN_NAME_SIZE, font: bold });
   if (signature) {
-    const scaled = signature.scaleToFit(150, 42);
-    page.drawImage(signature, { x: COL_X, y: signatureTop - scaled.height, width: scaled.width, height: scaled.height });
-    signatureTop -= scaled.height + 8;
+    // Gambar mulai di bawah nama; tingginya dikunci sisa ruang hingga margin
+    // bawah sehingga tidak pernah terpotong tepi kertas.
+    const imageTop = signNameBaseline - 8;
+    const sigMaxHeight = Math.max(24, imageTop - margin);
+    const scaled = signature.scaleToFit(SIGN_IMAGE_MAX_WIDTH, sigMaxHeight);
+    page.drawImage(signature, { x: signCenter - scaled.width / 2, y: imageTop - scaled.height, width: scaled.width, height: scaled.height });
   }
-  if (data.signatureName) text(clipPdfText(safeText(data.signatureName), bold, MIN_FONT_SIZE, 170), COL_X, signatureTop, MIN_FONT_SIZE, bold);
-  if (data.signatureTitle) text(clipPdfText(safeText(data.signatureTitle), regular, MIN_FONT_SIZE, 170), COL_X, signatureTop - 14, MIN_FONT_SIZE, regular, muted);
 
   document.setTitle(`Kwitansi ${data.receiptNo}`);
   return document.save();

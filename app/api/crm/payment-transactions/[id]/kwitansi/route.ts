@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireActor(CRM_VIEW_ROLES);
   } catch {
@@ -71,7 +71,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${downloadFilename(`kwitansi-${order.invoiceNo}`, "pdf")}"`,
+      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${downloadFilename(`kwitansi-${order.invoiceNo}`, "pdf")}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

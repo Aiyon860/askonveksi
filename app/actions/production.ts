@@ -435,10 +435,10 @@ async function moveProduction(formData: FormData) {
       activityType = "STAGE_MOVED";
       // Tahap dan langkah tidak berubah; jejak "Masuk Pada" dicatat ulang saat keluar Retur.
     } else if (parsed.data.decision === "TO_RETUR") {
-      // Mundur hanya lewat Retur: wajib alasan (min 3 karakter). Kartu langsung
-      // parkir di kolom Retur (needsRepair) sampai Admin mengeluarkannya; badge
-      // Retur (repairReason) tidak pernah dihapus, hanya warna merahnya yang
-      // hilang saat kartu kembali masuk Selesai.
+      // Parkir Retur (drop langsung ke kolom Retur / WO selesai): wajib alasan
+      // (min 3 karakter). Kartu langsung parkir di kolom Retur (needsRepair)
+      // sampai Admin mengeluarkannya; badge Retur (repairReason) tidak pernah
+      // dihapus, hanya warna merahnya yang hilang saat kartu kembali masuk Selesai.
       if (targetStep.position >= currentStep.position) throw new UserFacingError("Masuk retur hanya ke tahap sebelum tahap sekarang.");
       const reason = parsed.data.note?.trim() ?? "";
       if (reason.length < 3) throw new UserFacingError("Alasan retur minimal 3 karakter.");
@@ -446,6 +446,21 @@ async function moveProduction(formData: FormData) {
       needsRepair = true;
       repairReason = reason.slice(0, 2000);
       repairRequestedAt = now;
+      await tx.productionStep.updateMany({
+        where: { workOrderId: order.id, position: { gte: targetStep.position } },
+        data: { status: "PENDING", startedAt: null, completedAt: null },
+      });
+      await tx.productionStep.update({ where: { id: targetStep.id }, data: { status: "ACTIVE", startedAt: now, attemptCount: { increment: 1 } } });
+    } else if (parsed.data.decision === "REVERT") {
+      // Mundur langsung: wajib alasan (min 3 karakter), pindah bersih ke tahap
+      // tujuan tanpa parkir Retur dan tanpa badge Retur. Alasan tercatat di
+      // riwayat aktivitas. Keluar dari parkir Retur ikut dilepas bila ada.
+      const targetIndex = order.stageSequence.indexOf(parsed.data.targetStage);
+      const currentIndex = order.stageSequence.indexOf(order.currentStage);
+      if (targetIndex < 0 || targetIndex >= currentIndex) throw new UserFacingError("Mundur hanya ke tahap sebelum tahap sekarang.");
+      const reason = parsed.data.note?.trim() ?? "";
+      if (reason.length < 3) throw new UserFacingError("Alasan mundur minimal 3 karakter.");
+      activityType = "STAGE_REVERTED";
       await tx.productionStep.updateMany({
         where: { workOrderId: order.id, position: { gte: targetStep.position } },
         data: { status: "PENDING", startedAt: null, completedAt: null },

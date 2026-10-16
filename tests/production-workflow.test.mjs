@@ -88,6 +88,9 @@ test("board produksi auto-refresh setelah kartu dipindah", () => {
   // Transisi menunggu revalidate SWR agar kartu tidak sempat balik ke kolom lama.
   assert.match(board, /await onRefresh\?\.\(\)/);
   assert.match(sectionClient, /onRefresh=\{\(\) => mutate\(\)\}/);
+  // Kunci kolom dipasang urgent sebelum startTransition: update di dalam callback
+  // async terbukti bisa tidak ter-commit (log: lockStage macet di save sebelumnya).
+  assert.match(board, /setSavingMove\(\{ id: item\.id, stage: lockStage \}\);\s+startMoving\(async \(\) => \{/);
 });
 
 test("Kendala kartu dihapus saat proses maju, tidak tersentuh saat masuk Retur", () => {
@@ -132,20 +135,25 @@ test("transaksi perpindahan tahap memakai anggaran waktu yang lebih longgar", ()
   assert.doesNotMatch(actions, /\}, \{ isolationLevel: Prisma\.TransactionIsolationLevel\.Serializable \}\);/);
 });
 
-test("mundur hanya lewat Retur dengan alasan wajib; badge Retur menempel permanen", () => {
+test("mundur langsung dengan alasan wajib tanpa parkir Retur; badge Retur menempel permanen", () => {
   const retur = { workOrderId: "DEMO-WO-NON-JERSEY", version: 2, targetStage: "SABLON", decision: "TO_RETUR", note: "Sablon belum rata" };
   assert.equal(moveProductionSchema.safeParse(retur).success, true);
-  assert.equal(moveProductionSchema.safeParse({ ...retur, decision: "REVERT" }).success, false);
+  assert.equal(moveProductionSchema.safeParse({ ...retur, decision: "REVERT" }).success, true);
   assert.equal(moveProductionSchema.safeParse({ ...retur, decision: "QC_REJECT" }).success, false);
   // Keluar dari kolom Retur memakai keputusan sendiri dan selalu ke tahap kartu saat ini.
   assert.equal(moveProductionSchema.safeParse({ workOrderId: retur.workOrderId, version: 2, targetStage: "SABLON", decision: "RELEASE_RETUR" }).success, true);
   assert.match(board, /decision: "TO_RETUR" as const/);
   assert.doesNotMatch(board, /"QC_REJECT" as const/);
-  assert.doesNotMatch(board, /"REVERT" as const/);
-  assert.match(board, /Masuk Retur, kembali ke \$\{stageLabelForGroup\(option\.targetStage, group\)\}/);
-  assert.match(board, /Alasan retur \(wajib\)/);
+  // Seret mundur diubah jadi REVERT: isi alasan lalu pindah ke tujuan tanpa parkir.
+  assert.match(board, /decision: "REVERT"/);
+  assert.doesNotMatch(board, /name="moveOption"/);
+  assert.doesNotMatch(board, /Perubahan<\/FieldLabel>/);
+  assert.match(board, /Mundur ke \$\{stageLabelForGroup\(move\.targetStage, group\)\}/);
+  assert.match(board, /Alasan \(wajib\)/);
   assert.match(board, /className="sticky top-0 z-10 font-bold">Retur/);
   assert.match(actions, /Alasan retur minimal 3 karakter/);
+  assert.match(actions, /Alasan mundur minimal 3 karakter/);
+  assert.match(actions, /parsed\.data\.decision === "REVERT"/);
   assert.match(actions, /needsRepair = true/);
   // Badge Retur (repairReason) tidak pernah dihapus: tetap menempel walau kartu Selesai.
   assert.doesNotMatch(actions, /repairReason = null/);
@@ -226,15 +234,18 @@ test("kartu Retur berdiam di kolom Retur sampai dipindahkan, badge bertahan, mer
   // Kolom Retur adalah rumah kartu Retur; kartu tidak diduplikasi di kolom tahap.
   assert.doesNotMatch(board, /!item\.needsRepair/);
   assert.doesNotMatch(board, /key=\{`\$\{item\.id\}-retur`\}/);
-  assert.match(board, /itemColumn\(item, previewMove\) === stage/);
+  assert.match(board, /itemColumn\(item, previewMove, activeSavingMove\) === stage/);
+  // Kunci kolom hanya dilepas saat data yang masuk sudah mencerminkan hasil save
+  // (kebal dari data basi: polling atau revalidasi ter-dedupe di tengah save).
+  assert.match(board, /const activeSavingMove = savingSettled \? null : savingMove;/);
   assert.match(board, /Work Order retur/);
   assert.match(board, /Seret kartu ke sini untuk masuk Retur/);
   assert.match(board, /event\.over\.id === RETUR_COLUMN/);
   assert.match(board, /item\.status === "ACTIVE" && item\.needsRepair/);
   assert.match(board, /Belum ada retur/);
-  // Drop ke kolom Retur mengunci dialog: langsung isi alasan tanpa pilihan Perubahan.
-  assert.match(board, /setReturLocked\(true\)/);
-  assert.match(board, /\{returLocked \? null : \(/);
+  // Drop ke kolom Retur: dialog langsung isi alasan (tanpa pilihan Perubahan).
+  assert.doesNotMatch(board, /returLocked/);
+  assert.doesNotMatch(board, /moveOption/);
   assert.match(board, /Masuk Retur/);
   // Keluar dari Retur: seret kartu ke kolom tahap; drop ke kolomnya sendiri
   // memakai RELEASE_RETUR tanpa dialog, dan kolom Retur tak menerima drop ulang.

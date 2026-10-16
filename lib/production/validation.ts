@@ -9,9 +9,9 @@ export const moveProductionSchema = z.object({
   workOrderId,
   version,
   targetStage: stage,
-  decision: z.enum(["ADVANCE", "SKIP", "SAMPLE_REJECT", "TO_RETUR", "RELEASE_RETUR"]).default("ADVANCE"),
+  decision: z.enum(["ADVANCE", "SKIP", "SAMPLE_REJECT", "TO_RETUR", "RELEASE_RETUR", "REVERT"]).default("ADVANCE"),
   // Kendala opsional untuk semua jenis perpindahan proses, kecuali masuk Retur
-  // yang wajib membawa alasan (ditegakkan di aksi).
+  // dan mundur langsung (REVERT) yang wajib membawa alasan (ditegakkan di aksi).
   note: z.string().trim().max(2000).optional(),
 });
 

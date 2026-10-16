@@ -380,8 +380,8 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                 // Kwitansi tersedia untuk pembayaran yang sudah dibayar (awal + termin).
                 const invoiceReceipts = invoice.salesOrder?.payment
                   ? [
-                      ...(invoice.salesOrder.payment.transactions[0] ? [{ id: invoice.salesOrder.payment.transactions[0].id, label: "Unduh Kwitansi" }] : []),
-                      ...invoice.salesOrder.payment.terms.flatMap((term) => (term.transactions[0] ? [{ id: term.transactions[0].id, label: `Kwitansi Termin ${term.position + 1}` }] : [])),
+                      ...(invoice.salesOrder.payment.transactions[0] ? [{ id: invoice.salesOrder.payment.transactions[0].id, label: "Lihat Kwitansi" }] : []),
+                      ...invoice.salesOrder.payment.terms.flatMap((term) => (term.transactions[0] ? [{ id: term.transactions[0].id, label: `Lihat Kwitansi Termin ${term.position + 1}` }] : [])),
                     ]
                   : [];
                 const invoiceDraftValues = {

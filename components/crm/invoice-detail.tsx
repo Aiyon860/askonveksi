@@ -57,11 +57,11 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
     if (!detail) void loadDetail();
   }
 
-  // Kwitansi dibuat per pembayaran; tombolnya diletakkan di footer dialog (sebelum Unduh Invoice).
+  // Kwitansi dibuat per pembayaran; tombolnya diletakkan di footer dialog (sebelum Lihat PDF).
   const receipts = detail?.salesOrder
     ? [
-        ...(detail.salesOrder.initialTransaction ? [{ id: detail.salesOrder.initialTransaction.id, label: "Unduh Kwitansi" }] : []),
-        ...detail.salesOrder.terms.flatMap((term) => (term.transaction ? [{ id: term.transaction.id, label: `Kwitansi Termin ${term.position + 1}` }] : [])),
+        ...(detail.salesOrder.initialTransaction ? [{ id: detail.salesOrder.initialTransaction.id, label: "Lihat Kwitansi" }] : []),
+        ...detail.salesOrder.terms.flatMap((term) => (term.transaction ? [{ id: term.transaction.id, label: `Lihat Kwitansi Termin ${term.position + 1}` }] : [])),
       ]
     : [];
 
@@ -86,7 +86,7 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
           {!detail.salesOrder && !detail.pendingPayment ? <section className="rounded-lg border bg-muted/30 p-3 text-sm" aria-label="Status jadwal pembayaran"><Badge variant="secondary">Jadwal pembayaran belum diatur</Badge><p className="mt-2 text-muted-foreground">Atur persentase pembayaran awal dari tab Deal SO; deadline dibuat otomatis 7 hari setelah invoice terbit.</p></section> : null}
           {detail.notes ? <Info label="Catatan" value={detail.notes} /> : null}
         </div> : null}
-        {detail ? <DialogFooter>{detail.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={detail.id} invoiceNo={detail.invoiceNo} receipts={receipts} /> : null}<Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=invoice`} />}>Lihat Invoice</Button></DialogFooter> : null}
+        {detail ? <DialogFooter>{detail.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={detail.id} invoiceNo={detail.invoiceNo} receipts={receipts} /> : null}<Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=invoice`} />}>Kelola Invoice</Button></DialogFooter> : null}
       </DialogContent>
     </Dialog>
   </>;
