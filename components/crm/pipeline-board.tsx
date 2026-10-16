@@ -23,7 +23,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
 import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
-import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
+import { canOpenOpportunityDetail, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
 import { formatDate } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
@@ -170,7 +170,9 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
                   <div className="flex flex-col gap-2">
-                  {items.length ? items.map((opportunity) => (
+                  {items.length ? items.map((opportunity) => {
+                    const canOpenDetail = canOpenOpportunityDetail(opportunity.stage);
+                    return (
                     <DraggablePipelineCard
                       key={opportunity.id}
                       opportunity={opportunity}
@@ -178,12 +180,16 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       entering={recentMove?.id === opportunity.id && recentMove.stage === stage}
                       previewing={previewMove?.opportunity.id === opportunity.id}
                     >
-                      {(drag) => <Card size="sm" className="cursor-default border shadow-xs hover:border-primary/40 transition-colors">
+                      {(drag) => <Card size="sm" className={cn("cursor-default border shadow-xs transition-colors", canOpenDetail ? "hover:border-primary/40" : "border-muted-foreground/25 bg-muted/60")}>
                       <CardHeader className="gap-1">
                         <CardTitle className="font-bold text-base leading-tight">
-                          <Link href={`/crm/peluang/${opportunity.id}`} className="font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-                            {opportunity.customer.name}
-                          </Link>
+                          {canOpenDetail ? (
+                            <Link href={`/crm/peluang/${opportunity.id}`} className="font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                              {opportunity.customer.name}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">{opportunity.customer.name}</span>
+                          )}
                         </CardTitle>
                         <CardDescription className="font-semibold text-foreground/70">{opportunity.title}{opportunity.customer.companyName ? ` · ${opportunity.customer.companyName}` : ""}</CardDescription>
                         {canOperate ? <CardAction>
@@ -232,7 +238,8 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                         {canOperate && opportunity.stage !== "DEAL" ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => requestMove(opportunity, DEFAULT_DESTINATION[opportunity.stage])}>Ubah status</Button> : null}
                       </CardContent>
                     </Card>}</DraggablePipelineCard>
-                  )) : (
+                    );
+                  }) : (
                     <Empty className="min-h-32 p-4">
                       <EmptyHeader>
                         <EmptyTitle className="text-sm">Belum ada peluang</EmptyTitle>

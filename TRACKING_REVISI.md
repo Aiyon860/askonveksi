@@ -76,7 +76,7 @@ Dikerjakan di cabang `feat/sprint-4-crm-broadcast` (kerja B & H sendiri tidak me
 
 *(tidak diperiksa lagi — semua item di bawah sengaja dibiarkan)*
 
-- [ ] I1 — Hapus AOV dashboard (AOV masih ada di `dashboard-content-client.tsx`)
+- [x] ~~I1 — Hapus AOV dashboard~~ → **dikerjakan 17 Okt** (lihat "Revisi 17 Okt" di bawah)
 - [ ] I2a — Semua berkancing + Kemeja → Seragam Kerja (Virgin skip — sesuai keputusan)
 - [ ] I2b — Pecah Jersey → Jersey Kerah + Jersey Oblong
 - [ ] I2c — Portofolio hanya logo customer (butuh file logo)
@@ -204,3 +204,33 @@ Keluhan Owner: **halaman 2 PDF PO kosong (hanya footer)** dan size chart harus p
 - **9 PDF fixture** (PO customer & penjahit: 1 produk, 1 produk + gambar desain, 3 produk; invoice dengan & tanpa poin master; kwitansi) lolos pemeriksaan otomatis yang kini juga menandai **halaman tanpa isi** dan **kolom size chart yang hilang**.
 - `tsc` bersih · eslint **0 error** (2 warning lama di `app/actions/crm.ts`) · **206/206 tes** (`tests/crm-validation.test.mjs` ditambah asersi penjaga: `SIZE_LADDER`, `usedPages`/`removePage`, tinggi blok paragraf) · `next build` sukses.
 - **Belum diverifikasi:** tampilan PDF di browser/PDF viewer manual (lingkungan ini tanpa browser) — pemeriksaan dilakukan pada teks, posisi, dan struktur halaman hasil render yang sebenarnya.
+
+---
+
+## Revisi 17 Okt — 4 revisi client sebelum demo
+
+Empat permintaan client dikerjakan sekaligus: kartu AOV, kunci kartu Follow Up, tab Peluang, dan sidebar analytics.
+
+### 1. Kartu AOV dihapus dari dashboard (sekaligus menutup I1)
+- [x] Kartu **AOV** (dan ikon `Wallet`) dilepas dari baris hasil sales `components/dashboard/dashboard-content-client.tsx`. Baris KPI kini 4 kartu: kartu jangkar setengah baris + **Repeat rate** + **Gross margin** + kartu lebar; ritme `DASH_SALES_SPANS` di `components/dashboard/dashboard-ui.tsx` dipangkas 5 → 4 entri (2 kolom + 2 kolom penuh pada xl, rapi 2×2). Skeleton memakai konstanta yang sama sehingga bentuknya tidak pernah melenceng dari isi aslinya
+- [x] `averageOrderValue` **tetap dihitung** di payload `lib/crm/data.ts` (pola sama seperti `overdue`/`dueToday` dulu: dibuang dari tampilan, tidak dihapus dari data) — kalau nanti dipakai lagi tinggal pasang kembali kartunya
+
+### 2. Kartu Follow Up tidak bisa dibuka — dari mana pun
+- [x] Helper bersama `canOpenOpportunityDetail(stage)` di `lib/crm/constants.ts`: **hanya `stage !== "FOLLOW_UP"` yang bisa diklik** — Negosiasi, Deal, dan Lost tetap punya tautan judul; Follow Up tidak
+- [x] Kartu kanban: judul bukan tautan, permukaan redup `border-muted-foreground/25 bg-muted/60` + judul `text-muted-foreground`, jadi sebelum diklik pun terlihat tidak seaktif kartu lain. Geser kartu & tombol "Ubah status" **tidak berubah** — kartu tetap bisa diproses, hanya pintu masuk halaman detailnya yang ditutup
+- [x] **Semua jalur lain ikut dikunci** (konfirmasi Owner, 17 Okt): "Next action terdekat" di dashboard, baris tabel Prospek, riwayat komunikasi di halaman CRM **dan** halaman customer, serta "Peluang CRM" + "Peluang terbaru" di halaman customer — Follow Up tampil sebagai teks redup tanpa tautan. Payload ikut membawa `stage` (`lib/crm/data.ts`: select `urgentActions` dan `communicationActivitySelect`) supaya keputusan diambil di komponen dengan aturan yang sama
+- Yang sengaja tetap bertaut karena bukan Follow Up: tombol "Tambah PO"/"Tambah invoice" (khusus Negosiasi), dialog "Buka detail peluang" (alur Deal), "Lihat PO"/"Kelola Invoice" (dokumen baru ada dari Negosiasi), "Kembali ke peluang" di Sales Order (Deal), dan tautan order→peluang di riwayat customer
+
+### 3. Halaman detail peluang mulai dari tab PO (tab "Peluang" dihapus)
+- [x] `OPPORTUNITY_DETAIL_TABS` kini `["po","invoice","deal","aktivitas"]` di `lib/crm/constants.ts`; `parseOpportunityDetailTab` tidak dikenal → jatuh ke **`"po"`**, jadi tautan lama `?tab=peluang` otomatis berakhir di tab PO (tidak error)
+- [x] Panel **"Kualifikasi dan next action"** beserta form simpan dan versi read-only-nya dihapus dari `app/(app)/crm/peluang/[id]/page.tsx` (ikut terbuang: impor `OpportunityFields`, `SubmitButton`, `getCustomerFormOptions`, `OpportunityReadOnly`, serta status `peluang` di judul tab). Kartu di kanban Negosiasi → langsung PO, Invoice, Deal, Aktivitas
+- [x] Semua redirect/notifikasi aksi CRM (`app/actions/crm.ts`: `opportunityRedirectPath`, `updateOpportunityAction`, flash "Peluang diperbarui.") dialihkan dari `?tab=peluang` ke **`?tab=po`** supaya tidak pernah mendarat di tab yang sudah tidak ada
+- **Konsekuensi yang perlu client tahu:** kualifikasi & next action **tidak lagi bisa diedit dari halaman detail** karena form itu satu-satunya tempatnya. Aksi `updateOpportunityAction` dan komponen `opportunity-fields.tsx` sengaja tidak dihapus (kode mati yang tetap lolos lint/tsc, pola sama seperti `overdue`/`dueToday`) supaya pengembalian form tinggal satu sambungan. Kalau client masih perlu menyunting next action, opsi cepatnya: kembalikan form ke tab Aktivitas atau taruh tombol edit di header
+- Alternatif yang dipertimbangkan & ditolak: tab Peluang disembunyikan khusus role tertentu — tidak dipakai karena revisi client lain yang bersifat permintaan langsung selalu dihapus penuh (preseden kartu "Follow-up mendesak"), bukan digerbangi role
+
+### 4. Sidebar analytics: satu halaman, satu item aktif
+- [x] Akar masalah: `isNavItemActive()` di `components/app-nav.tsx` memakai aturan awalan rute, sehingga `/analytics` dianggap aktif juga saat halaman `/analytics/lead-sources` dibuka — dan karena "Ringkasan" dan "Sumber & omzet" sama-sama memakai awalan `/analytics`, keduanya menyala. Ditambah cabang khusus **`if (href === "/analytics") return pathname === href;`** — sama pola dengan item Dashboard/Follow Up yang sudah ada. Kini `/analytics` menyalakan hanya Ringkasan, `/analytics/lead-sources` menyalakan hanya Sumber & omzet
+
+**Verifikasi (nyata):** `npx tsc --noEmit` bersih · **210/210 tes** (`node --test`; 4 tes baru: kartu Follow Up terkunci, jalur lain (dashboard/Prospek/riwayat komunikasi/customer) ikut terkunci, tab Peluang dihapus, dan menu analytics satu item aktif — plus asersi tab fallback & redirect diperbarui ke `po`, serta tes baru "card AOV dihapus dari baris hasil sales" di `tests/dashboard-documents.test.mjs`) · eslint **0 error** (2 warning lama di `app/actions/crm.ts`) · `next build` **sukses, exit 0** ("Compiled successfully"; hanya warning custom cache-control bawaan Next.js).
+- **Belum diverifikasi:** tampilan langsung di browser (lingkungan ini tanpa browser dan tanpa kredensial login Supabase) — perilaku dikunci lewat tsc/eslint/build/tes sumber. Kartu Follow Up juga belum bisa dilihat langsung karena 8 kartu di DB lokal berisi 3 Negosiasi, 4 Deal, 1 Lost, **0 Follow Up**; aturan klik & warna dipastikan dari kode dan tes
+

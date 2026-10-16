@@ -106,7 +106,7 @@ function opportunityTabFallback(formData: FormData, tab: OpportunityDetailTab) {
 }
 
 function opportunityRedirectPath(formData: FormData) {
-  const fallback = opportunityTabFallback(formData, "peluang");
+  const fallback = opportunityTabFallback(formData, "po");
   const opportunityId = entityIdSchema.safeParse(formValue(formData, "opportunityId"));
   const rawRedirectTo = formValue(formData, "redirectTo");
   if (!opportunityId.success || typeof rawRedirectTo !== "string") return fallback;
@@ -1179,7 +1179,7 @@ export async function createRepeatOrderAction(formData: FormData) {
 }
 
 export async function updateOpportunityAction(formData: FormData) {
-  return runRedirectingAction(opportunityTabFallback(formData, "peluang"), async () => {
+  return runRedirectingAction(opportunityTabFallback(formData, "po"), async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
     const parsed = updateOpportunitySchema.safeParse({
       opportunityId: formValue(formData, "opportunityId"),
@@ -1233,7 +1233,7 @@ export async function updateOpportunityAction(formData: FormData) {
 
     revalidatePath("/crm");
     revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
-    return flashMessagePath(`/crm/peluang/${parsed.data.opportunityId}?tab=peluang`, "notice", "Peluang diperbarui.");
+    return flashMessagePath(`/crm/peluang/${parsed.data.opportunityId}?tab=po`, "notice", "Peluang diperbarui.");
   });
 }
 

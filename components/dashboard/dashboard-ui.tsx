@@ -62,15 +62,15 @@ const ACCENT_VALUE_CLASS = "font-mono text-2xl leading-none font-semibold tracki
 export const DASH_CARD_CLASS = "dash-panel rounded-xl border-0 bg-card";
 
 /**
- * Ritme kolom baris KPI sales.
+ * Ritme kolom baris KPI sales: kartu jangkar setengah baris, lalu tiga kartu angka
+ * yang mengisi dua baris penuh pada xl (2 + 2 kolom).
  * Dipakai juga oleh skeleton agar barisnya tidak pernah melenceng dari isi aslinya.
  */
 export const DASH_SALES_SPANS = [
   "sm:col-span-2 xl:col-span-3",
   "xl:col-span-3",
-  "xl:col-span-2",
-  "xl:col-span-2",
-  "xl:col-span-2",
+  "xl:col-span-3",
+  "sm:col-span-2 xl:col-span-3",
 ] as const;
 
 /*

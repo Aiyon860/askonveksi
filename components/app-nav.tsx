@@ -69,6 +69,9 @@ function isNavItemActive(pathname: string, href: string) {
   if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang");
   if (href === "/crm/sales-orders") return isPathWithin(pathname, href) || isPathWithin(pathname, "/sales-orders");
   if (href === "/crm/follow-up") return pathname === href;
+  // Ringkasan analytics hanya aktif di halaman itu sendiri: "/analytics" bukan
+  // awalan yang boleh menyalakan juga saat halaman Sumber & omzet dibuka.
+  if (href === "/analytics") return pathname === href;
   return isPathWithin(pathname, href);
 }
 

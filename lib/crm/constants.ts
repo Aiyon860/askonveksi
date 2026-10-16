@@ -59,6 +59,16 @@ export const STAGE_LABEL: Record<OpportunityStage, string> = {
   LOST: "Lost",
 };
 
+/**
+ * Pintu masuk halaman detail peluang hanya untuk Negosiasi dan seterusnya.
+ * Peluang tahap Follow Up masih kualifikasi: judulnya bukan tautan di kanban
+ * dan daftar mana pun, dan kartunya diberi permukaan redup supaya bedanya
+ * terlihat sebelum dicoba diklik.
+ */
+export function canOpenOpportunityDetail(stage: string) {
+  return stage !== "FOLLOW_UP";
+}
+
 export const OPEN_STAGES: OpportunityStage[] = [
   "LEAD_BARU",
   "FOLLOW_UP",
@@ -132,7 +142,9 @@ export function decorationCostBucket(value: string | null | undefined) {
   return value === "PRINTING" ? "TINTA" : value;
 }
 
-export const OPPORTUNITY_DETAIL_TABS = ["peluang", "po", "invoice", "deal", "aktivitas"] as const;
+// Tab peluang dimulai dari PO: kualifikasi disimpan saat peluang dibuat dan
+// halaman detail (dibuka dari kartu Negosiasi ke atas) fokus ke dokumen kerja.
+export const OPPORTUNITY_DETAIL_TABS = ["po", "invoice", "deal", "aktivitas"] as const;
 
 export type OpportunityDetailTab = (typeof OPPORTUNITY_DETAIL_TABS)[number];
 
@@ -140,7 +152,7 @@ export function parseOpportunityDetailTab(value: string | string[] | undefined):
   const candidate = Array.isArray(value) ? value[0] : value;
   return OPPORTUNITY_DETAIL_TABS.includes(candidate as OpportunityDetailTab)
     ? candidate as OpportunityDetailTab
-    : "peluang";
+    : "po";
 }
 
 export const PAYMENT_KIND_LABEL = {

@@ -6,7 +6,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OpportunityDetailTab } from "@/lib/crm/constants";
 
 const TAB_LABELS: Array<[OpportunityDetailTab, string]> = [
-  ["peluang", "Peluang"],
   ["po", "PO"],
   ["invoice", "Invoice"],
   ["deal", "Deal"],

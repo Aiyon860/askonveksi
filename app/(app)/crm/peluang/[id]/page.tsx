@@ -1,15 +1,13 @@
 import Link from "next/link";
 import { Fragment, Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, CheckCircle2, FileDown, FileText, Paperclip, Save } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileDown, FileText, Paperclip } from "lucide-react";
 
-import { updateOpportunityAction } from "@/app/actions/crm";
 import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
 import { CommunicationHistory } from "@/components/crm/communication-history";
 import { DealPaymentForm } from "@/components/crm/deal-payment-form";
 import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceWorkflowSection } from "@/components/crm/invoice-workflow-section";
-import { OpportunityFields } from "@/components/crm/opportunity-fields";
 import { OpportunityProcessPanel, OpportunityProcessTabs } from "@/components/crm/opportunity-process-tabs";
 import { IssueInvoiceAction } from "@/components/crm/issue-invoice-action";
 import { PurchaseOrderAgreementAction } from "@/components/crm/purchase-order-agreement-action";
@@ -20,7 +18,6 @@ import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
-import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,9 +26,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CRM_OPERATOR_ROLES, DEAL_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
-import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
-import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories, getCustomerFormOptions } from "@/lib/master-data";
+import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
 type OpportunityDetail = NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>;
@@ -98,10 +95,9 @@ async function OpportunityHeader({ id }: { id: string }) {
 }
 
 async function OpportunityContent({ id, initialTab, historyPage }: { id: string; initialTab: OpportunityDetailTab; historyPage: number }) {
-  const [opportunity, actor, formOptions, communicationHistory, sizeOptions, categoryOptions, paymentMethods] = await Promise.all([
+  const [opportunity, actor, communicationHistory, sizeOptions, categoryOptions, paymentMethods] = await Promise.all([
     getOpportunityDetail(id),
     getCurrentActor(),
-    getCustomerFormOptions(),
     getCommunicationTimeline({ opportunityId: id, page: historyPage }),
     getActiveGarmentSizes(),
     getActiveProductCategories(),
@@ -177,40 +173,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
     <OpportunityProcessTabs
       initialTab={initialTab}
       status={{
-        peluang: STAGE_LABEL[opportunity.stage],
         po: poTabStatus,
         invoice: invoiceTabStatus,
         deal: dealTabStatus,
         aktivitas: `${communicationHistory.total} entri`,
       }}
     >
-      <OpportunityProcessPanel value="peluang">
-      <Card>
-        <CardHeader>
-          <CardTitle>Kualifikasi dan next action</CardTitle>
-          <CardDescription>Informasi awal peluang tetap terpisah dari PO dan invoice.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {canOperate ? (
-            <form action={updateOpportunityAction}>
-              <input type="hidden" name="opportunityId" value={opportunity.id} />
-              <input type="hidden" name="version" value={opportunity.version} />
-              <OpportunityFields idPrefix="opportunity" leadSources={formOptions.leadSources} salesUsers={formOptions.salesUsers} categoryOptions={categoryOptions} values={opportunity} />
-              <div className="mt-7 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">Simpan setelah mengubah kualifikasi atau next action.</p>
-                <SubmitButton className="w-full sm:w-auto" size="lg" pendingLabel="Memperbarui...">
-                  <Save data-icon="inline-start" aria-hidden="true" />
-                  Simpan kualifikasi
-                </SubmitButton>
-              </div>
-            </form>
-          ) : (
-            <OpportunityReadOnly opportunity={opportunity} />
-          )}
-        </CardContent>
-      </Card>
-      </OpportunityProcessPanel>
-
       <OpportunityProcessPanel value="po">
       <Card id="purchase-orders">
         <CardHeader>
@@ -506,17 +474,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
       />
       </OpportunityProcessPanel>
     </OpportunityProcessTabs>
-  );
-}
-
-function OpportunityReadOnly({ opportunity }: { opportunity: OpportunityDetail }) {
-  return (
-    <dl className="grid gap-4 text-sm sm:grid-cols-2">
-      <div><dt className="text-xs text-muted-foreground">Produk awal</dt><dd className="mt-1">{opportunity.productName ?? "-"}</dd></div>
-      <div><dt className="text-xs text-muted-foreground">PIC sales</dt><dd className="mt-1">{opportunity.salesPic?.name ?? "-"}</dd></div>
-      <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Spesifikasi awal</dt><dd className="mt-1 whitespace-pre-wrap">{opportunity.specification ?? "-"}</dd></div>
-      <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Next action</dt><dd className="mt-1">{opportunity.nextAction ? `${opportunity.nextAction} · ${formatDate(opportunity.nextActionAt, true)}` : "-"}</dd></div>
-    </dl>
   );
 }
 
