@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -143,6 +143,8 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   // Pengguna (manajemen akun) tetap Owner/Developer saja; Admin Customer hanya Data Master.
   const canManageUsers = isDeveloper || role === "OWNER";
   const canViewAnalytics = isDeveloper || role === "OWNER" || role === "KEUANGAN";
+  // Log aktivitas: Owner, Keuangan, dan Developer.
+  const canViewAudit = isDeveloper || role === "OWNER" || role === "KEUANGAN";
   const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "ADMIN_PO";
   const canViewDashboard = canViewCrm || role === "KEUANGAN";
   // Admin Customer hanya melihat modul Produksi (mode lihat saja); aksi tetap terbatas tim Produksi.
@@ -182,6 +184,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           {canManageUsers ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />) : null}
         </NavGroup>
       ) : null}
+      {canViewAudit ? <NavLink pathname={pathname} item={{ href: "/log-aktivitas", label: "Log aktivitas", icon: History }} onNavigate={onNavigate} /> : null}
       {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: SlidersHorizontal }} onNavigate={onNavigate} /> : null}
     </nav>
   );

@@ -234,3 +234,27 @@ Empat permintaan client dikerjakan sekaligus: kartu AOV, kunci kartu Follow Up, 
 **Verifikasi (nyata):** `npx tsc --noEmit` bersih · **210/210 tes** (`node --test`; 4 tes baru: kartu Follow Up terkunci, jalur lain (dashboard/Prospek/riwayat komunikasi/customer) ikut terkunci, tab Peluang dihapus, dan menu analytics satu item aktif — plus asersi tab fallback & redirect diperbarui ke `po`, serta tes baru "card AOV dihapus dari baris hasil sales" di `tests/dashboard-documents.test.mjs`) · eslint **0 error** (2 warning lama di `app/actions/crm.ts`) · `next build` **sukses, exit 0** ("Compiled successfully"; hanya warning custom cache-control bawaan Next.js).
 - **Belum diverifikasi:** tampilan langsung di browser (lingkungan ini tanpa browser dan tanpa kredensial login Supabase) — perilaku dikunci lewat tsc/eslint/build/tes sumber. Kartu Follow Up juga belum bisa dilihat langsung karena 8 kartu di DB lokal berisi 3 Negosiasi, 4 Deal, 1 Lost, **0 Follow Up**; aturan klik & warna dipastikan dari kode dan tes
 
+---
+
+## 17 Okt (lanjutan) — Halaman Log Aktivitas (versi kilat)
+
+Permintaan client: semua aktivitas user tercatat lengkap dan bisa dilihat Owner/Keuangan/Developer di website. Temuan penting: **data auditnya sudah tertulis sejak 27 Agu** — tabel `AuditEvent` (515 baris di DB lokal ≈ 472 kB, ditulis in-transaction oleh 11+ file action), termasuk pindah tahap peluang, hapus dokumen, dan unggah bukti bayar. Yang belum ada hanya **penampilnya**, jadi versi kilat ini membangun penampil tanpa migrasi apa pun. Penyimpanan tetap di Postgres (transaksional, ikut backup, gampang difilter); file `.jsonl.gz` di VPS tetap disiapkan nanti hanya untuk arsip 24 bulan + log teknis, bukan untuk log aktif.
+
+### Yang dibuat
+- [x] `lib/audit/labels.ts` — registry label Indonesia: **98 kode aksi** (`OPPORTUNITY_STAGE_CHANGED` → "Pindah tahap peluang", `PAYMENT_RECORDED` → "Catat pembayaran", dst) + **22 jenis entitas**; kode baru yang belum dipetakan tetap tampil lewat fallback yang merapikan kodenya (tidak pernah kosong atau mentah ber-underscore)
+- [x] `lib/audit/data.ts` — `getAuditEventPage` (filter rentang tanggal opsional, pelaku, jenis entitas; pencarian nama/email pelaku + kode aksi/entitas mode insensitive; urut terbaru dulu; pagination pola `DATA_PAGE_SIZE`) dan `getAuditLogFilterOptions` (pelaku dari AppUser termasuk nonaktif; jenis entitas dari `groupBy` yang benar-benar tercatat — dropdown tidak pernah menawarkan entitas kosong). Keduanya digerbangi `requireActor(AUDIT_VIEW_ROLES)`
+- [x] `AUDIT_VIEW_ROLES` di `lib/auth/permissions.ts` — Owner & Developer lolos otomatis lewat `hasRole`, ditambah KEUANGAN; ADMIN_CUSTOMER/ADMIN_PO/DESIGNER **tidak** (halaman ditolak, sama pola dengan /analytics)
+- [x] Halaman `app/(app)/log-aktivitas/page.tsx` — tabel: Waktu · Pelaku (+role) · Aksi bahasa Indonesia · Entitas · Field berubah + tombol "Lihat"; filter Dari/Sampai tanggal, Pelaku, Jenis entitas, pencarian debounce, Reset, pagination + pilih baris per halaman. Tanpa filter = semua data terbaru dulu (data masih kecil; rentang tanggal tersedia kalau mulai padat)
+- [x] `components/audit-event-detail.tsx` — dialog detail: nama/role/email pelaku, daftar `changedFields` sebagai badge, metadata JSON, kode aksi, tipe entitas, ID entitas & ID log (untuk telusur Developer)
+- [x] Item menu "Log aktivitas" (ikon History) di `components/app-nav.tsx`, tampil hanya untuk 3 role itu — **Developer selalu bisa mengakses** (sesuai aturan proyek), terpasang sebelum Pengaturan
+
+### Verifikasi (nyata)
+- `npx tsc --noEmit` bersih · **219/219 tes** (`node --test`; 9 tes baru di `tests/audit-log.test.mjs` — fixture **97 kode aksi & 22 entitas diverifikasi punya label eksplisit**, gerbang role, gating menu, query, dialog) · eslint 0 error pada semua file baru/berubah · `npm run build` **exit 0** ("Compiled successfully", route `ƒ /log-aktivitas` terdaftar)
+- Query data layer dijalankan terhadap DB lokal: 515 baris; filter entitas memilih 66 peluang; pencarian contains-insensitive memilih 33 invoice; rentang 30 hari memilih 299; pencarian nama pelaku & groupBy entitas benar
+- **Uji render end-to-end nyata** (instance aplikasi terpisah di port 3002 + Supabase lokal — server dev utama di port 3000 tidak disentuh; 2 user sementara KEUANGAN & ADMIN_CUSTOMER dibuat lewat admin API lokal lalu **dihapus kembali**, tidak ada sisa): **26/26 pemeriksaan lolos** — halaman 200 dengan judul/kolom/filter/pagination/label Indonesia, filter entitas & pencarian pelaku bekerja, menu tampil untuk KEUANGAN, menu **tersembunyi** untuk ADMIN_CUSTOMER, ADMIN_CUSTOMER ditolak saat membuka paksa URL, tamu dialihkan ke /login
+- **Belum diverifikasi:** interaksi klik "Lihat" membuka dialog di browser (lingkungan ini tanpa browser; tombolnya ter-render dan komponennya lolos build)
+
+### Catatan untuk versi lengkap (menyusul, tanpa membongkar ini)
+- Pencarian nomor dokumen (PO-/INV-) butuh kolom label entitas pada `AuditEvent` (migrasi kecil) — sementara pencarian mencakup pelaku, jenis aksi, dan jenis entitas
+- Nilai before→after untuk field nominal/tanggal, event login/logout (butuh `actorId` nullable untuk login gagal), timeline per order, dan arsip otomatis 24 bulan ke VPS — arsip harus **mengecualikan** event yang direferensikan `CommunicationActivity` (FK `onDelete: Restrict`), kalau tidak prune akan gagal
+

@@ -17,6 +17,8 @@ export const OWNER_ACTION_ROLES = ["OWNER"] as const satisfies readonly AppRole[
 export const MASTER_DATA_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const WHATSAPP_ACCOUNT_MANAGER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const ANALYTICS_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
+// Log aktivitas (audit trail): Owner & Developer lolos otomatis lewat hasRole.
+export const AUDIT_VIEW_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
 export const FINANCE_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
 export const PRODUCTION_ROLES = ["ADMIN_PO"] as const satisfies readonly AppRole[];
 // G2: Admin Customer boleh melihat modul Produksi (kanban, detail Work Order, detail desain)
