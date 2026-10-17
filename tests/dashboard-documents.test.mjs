@@ -69,6 +69,11 @@ test("dashboard tidak lagi menampilkan card dan tombol follow-up mendesak", () =
   assert.doesNotMatch(dashboardPageSource, /canOpenFollowUp/);
 });
 
+test("card AOV dihapus dari baris hasil sales", () => {
+  assert.doesNotMatch(dashboardSource, /label="AOV"/);
+  assert.doesNotMatch(dashboardSource, /Wallet/);
+});
+
 test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
   assert.match(dataSource, /const canViewFinancialData = hasRole\(actor\.role, FINANCE_ROLES\)/);
   assert.match(dataSource, /canViewFinancialData \? prisma\.salesOrder\.aggregate/);

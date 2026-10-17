@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { OPEN_STAGES } from "@/lib/crm/constants";
+import { canOpenOpportunityDetail, OPEN_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 
@@ -111,9 +111,13 @@ export function CustomerDetail({
                       {detail.opportunities.map((opportunity) => (
                         <TableRow key={opportunity.id}>
                           <TableCell>
-                            <Link href={`/crm/peluang/${opportunity.id}`} className="font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-                              {opportunity.title}
-                            </Link>
+                            {canOpenOpportunityDetail(opportunity.stage) ? (
+                              <Link href={`/crm/peluang/${opportunity.id}`} className="font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                                {opportunity.title}
+                              </Link>
+                            ) : (
+                              <span className="font-medium text-muted-foreground">{opportunity.title}</span>
+                            )}
                             <p className="mt-1 font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</p>
                           </TableCell>
                           <TableCell><OpportunityStatusBadge stage={opportunity.stage} /></TableCell>

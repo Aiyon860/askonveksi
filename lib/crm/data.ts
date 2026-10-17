@@ -791,7 +791,7 @@ const communicationActivitySelect = {
   occurredAt: true,
   createdAt: true,
   author: { select: { name: true, role: true } },
-  opportunity: { select: { id: true, opportunityNo: true, title: true } },
+  opportunity: { select: { id: true, opportunityNo: true, title: true, stage: true } },
 } satisfies Prisma.CommunicationActivitySelect;
 
 export type CommunicationTimelineItem = Prisma.CommunicationActivityGetPayload<{
@@ -886,7 +886,7 @@ export async function getSalesDashboardData() {
     prisma.opportunity.count({ where: { stage: { in: openStages }, nextActionAt: { gte: start, lt: tomorrow }, customer: { archivedAt: null } } }),
     prisma.opportunity.findMany({
       where: { stage: { in: openStages }, nextActionAt: { not: null }, customer: { archivedAt: null } },
-      select: { id: true, title: true, nextAction: true, nextActionAt: true, customer: { select: { name: true } } },
+      select: { id: true, title: true, nextAction: true, nextActionAt: true, stage: true, customer: { select: { name: true } } },
       orderBy: { nextActionAt: "asc" },
       take: 5,
     }),

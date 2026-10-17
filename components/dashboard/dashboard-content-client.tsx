@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { CalendarClock, CircleDollarSign, Factory, FileText, HandCoins, Percent, Receipt, Repeat2, TrendingUp, TriangleAlert, UsersRound, Wallet } from "lucide-react";
+import { CalendarClock, CircleDollarSign, Factory, FileText, HandCoins, Percent, Receipt, Repeat2, TrendingUp, TriangleAlert, UsersRound } from "lucide-react";
 import Link from "next/link";
 
 import { fetcher } from "@/lib/fetcher";
@@ -22,7 +22,7 @@ import { InvoiceStatusBadge, PurchaseOrderStatusBadge } from "@/components/statu
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
+import { canOpenOpportunityDetail, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -53,6 +53,7 @@ export type DashboardData = {
     title: string;
     nextAction: string | null;
     nextActionAt: string | null;
+    stage: OpportunityStage;
     customer: { name: string };
   }>;
   latestPurchaseOrders: Array<{
@@ -130,13 +131,6 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
             />
             <DashStatTile
               className={DASH_SALES_SPANS[2]}
-              label="AOV"
-              value={formatCurrency(data.businessKpis?.averageOrderValue)}
-              icon={Wallet}
-              meta={`${data.businessKpis?.orderCount ?? 0} order bulan ini`}
-            />
-            <DashStatTile
-              className={DASH_SALES_SPANS[3]}
               label="Repeat rate"
               value={formatPercentage(data.businessKpis?.repeatRate ?? 0)}
               icon={Repeat2}
@@ -145,7 +139,7 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
               meta={`${data.businessKpis?.repeatCustomerCount ?? 0} customer repeat`}
             />
             <DashStatTile
-              className={DASH_SALES_SPANS[4]}
+              className={DASH_SALES_SPANS[3]}
               label="Gross margin"
               value={data.businessKpis?.grossMargin === null ? "-" : formatPercentage(data.businessKpis?.grossMargin ?? 0)}
               icon={TrendingUp}
@@ -339,7 +333,11 @@ export function DashboardContentClient({ initialData }: { initialData: Dashboard
                   <article key={item.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
                     <DashRowIcon icon={CalendarClock} tone="warning" />
                     <div className="min-w-0 flex-1">
-                      <Link href={`/crm/peluang/${item.id}`} className="font-medium underline-offset-4 hover:underline">{item.nextAction}</Link>
+                      {canOpenOpportunityDetail(item.stage) ? (
+                        <Link href={`/crm/peluang/${item.id}`} className="font-medium underline-offset-4 hover:underline">{item.nextAction}</Link>
+                      ) : (
+                        <span className="font-medium text-muted-foreground">{item.nextAction}</span>
+                      )}
                       <p className="mt-1 text-sm text-muted-foreground">{item.customer.name} · {item.title}</p>
                       <p className="mt-1 font-mono text-xs tabular-nums text-muted-foreground">{formatDate(item.nextActionAt, true)}</p>
                     </div>

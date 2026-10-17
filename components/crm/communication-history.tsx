@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  canOpenOpportunityDetail,
   COMMUNICATION_CHANNEL_LABEL,
   COMMUNICATION_DIRECTION_LABEL,
   COMMUNICATION_SYSTEM_EVENT_LABEL,
@@ -124,9 +125,13 @@ export function CommunicationHistory({
                     <TableCell>{activity.author.name}</TableCell>
                     <TableCell className="whitespace-normal">
                       {activity.opportunity ? (
-                        <Link href={`/crm/peluang/${activity.opportunity.id}`} className="text-xs font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                          {activity.opportunity.opportunityNo} · {activity.opportunity.title}
-                        </Link>
+                        canOpenOpportunityDetail(activity.opportunity.stage) ? (
+                          <Link href={`/crm/peluang/${activity.opportunity.id}`} className="text-xs font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            {activity.opportunity.opportunityNo} · {activity.opportunity.title}
+                          </Link>
+                        ) : (
+                          <span className="text-xs font-medium text-muted-foreground">{activity.opportunity.opportunityNo} · {activity.opportunity.title}</span>
+                        )
                       ) : "-"}
                     </TableCell>
                   </TableRow>

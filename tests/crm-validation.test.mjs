@@ -526,13 +526,59 @@ test("owner menjadi role tertinggi pada permission aplikasi", () => {
   assert.equal(hasRole("ADMIN_CUSTOMER", DEAL_ROLES), true);
 });
 
-test("tab peluang dan label dekorasi memiliki fallback yang aman", () => {
-  assert.equal(parseOpportunityDetailTab(undefined), "peluang");
+test("tab detail peluang dimulai dari PO dan label dekorasi memiliki fallback yang aman", () => {
+  assert.equal(parseOpportunityDetailTab(undefined), "po");
   assert.equal(parseOpportunityDetailTab("invoice"), "invoice");
   assert.equal(parseOpportunityDetailTab(["aktivitas", "po"]), "aktivitas");
-  assert.equal(parseOpportunityDetailTab("tidak-valid"), "peluang");
+  // Halaman detail peluang dimulai dari PO; tautan lama ?tab=peluang ikut jatuh ke PO.
+  assert.equal(parseOpportunityDetailTab("peluang"), "po");
+  assert.equal(parseOpportunityDetailTab("tidak-valid"), "po");
   assert.equal(decorationMethodLabel("BORDIR"), "Bordir");
   assert.equal(decorationMethodLabel("Nilai lama"), "Nilai lama");
+});
+
+test("kartu Follow Up tidak bisa dibuka: hanya Negosiasi dan seterusnya", async () => {
+  const constantsSource = await readFile(new URL("../lib/crm/constants.ts", import.meta.url), "utf8");
+  const boardSource = await readFile(new URL("../components/crm/pipeline-board.tsx", import.meta.url), "utf8");
+  const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  const tabsSource = await readFile(new URL("../components/crm/opportunity-process-tabs.tsx", import.meta.url), "utf8");
+  // Aturan tunggal dipakai semua daftar: hanya Follow Up yang terkunci.
+  assert.match(constantsSource, /export function canOpenOpportunityDetail\(stage: string\) \{\s*return stage !== "FOLLOW_UP";\s*\}/);
+  // Judul hanya menjadi tautan saat kartu boleh dibuka; Follow Up memakai teks redup.
+  assert.match(boardSource, /const canOpenDetail = canOpenOpportunityDetail\(opportunity\.stage\)/);
+  assert.match(boardSource, /canOpenDetail \? \(/);
+  assert.match(boardSource, /"border-muted-foreground\/25 bg-muted\/60"/);
+  // Tab Peluang dihapus: panel kualifikasi tidak lagi dirender, daftar tab mulai dari PO.
+  assert.doesNotMatch(detailPageSource, /OpportunityProcessPanel value="peluang"/);
+  assert.doesNotMatch(detailPageSource, /Kualifikasi dan next action/);
+  assert.match(tabsSource, /\["po", "PO"\]/);
+  assert.doesNotMatch(tabsSource, /\["peluang", "Peluang"\]/);
+});
+
+test("jalur lain ke detail peluang Follow Up juga terkunci", async () => {
+  const [dashboardSource, prospectsSource, timelineSource, historiesSource, customerDetailSource, dataSource] = await Promise.all([
+    readFile(new URL("../components/dashboard/dashboard-content-client.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/prospek/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/communication-history.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/customer-histories.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/customer-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
+  ]);
+  // Tiap daftar memutuskan lewat helper yang sama sebelum merender tautan.
+  assert.match(dashboardSource, /canOpenOpportunityDetail\(item\.stage\) \? \(/);
+  assert.match(prospectsSource, /\{canOpenOpportunityDetail\(item\.stage\) \? <Link/);
+  assert.match(timelineSource, /canOpenOpportunityDetail\(activity\.opportunity\.stage\) \? \(/);
+  assert.match(historiesSource, /canOpenOpportunityDetail\(item\.opportunity\.stage\) \? <Link/);
+  assert.match(historiesSource, /canOpenOpportunityDetail\(opportunity\.stage\) \? <Link/);
+  assert.match(customerDetailSource, /canOpenOpportunityDetail\(opportunity\.stage\) \? \(/);
+  // Payload riwayat & dashboard ikut membawa tahap agar klien bisa memutuskan.
+  assert.match(dataSource, /select: \{ id: true, title: true, nextAction: true, nextActionAt: true, stage: true, customer: \{ select: \{ name: true \} \} \}/);
+  assert.match(dataSource, /opportunity: \{ select: \{ id: true, opportunityNo: true, title: true, stage: true \} \},\s*\} satisfies Prisma\.CommunicationActivitySelect;/);
+});
+
+test("menu analytics hanya menyalakan satu item sidebar", async () => {
+  const navSource = await readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8");
+  assert.match(navSource, /if \(href === "\/analytics"\) return pathname === href;/);
 });
 
 test("lead baru dapat divalidasi untuk langsung masuk negosiasi", () => {
@@ -542,7 +588,7 @@ test("lead baru dapat divalidasi untuk langsung masuk negosiasi", () => {
 test("aksi pindah status dari detail peluang tidak fallback ke board", async () => {
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
   const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
-  assert.match(actionSource, /function opportunityRedirectPath[\s\S]+const fallback = opportunityTabFallback\(formData, "peluang"\)/);
+  assert.match(actionSource, /function opportunityRedirectPath[\s\S]+const fallback = opportunityTabFallback\(formData, "po"\)/);
   assert.match(actionSource, /export async function moveOpportunityStageAction[\s\S]+const redirectPath = opportunityRedirectPath\(formData\)/);
   // Panel Status pipeline dihapus dari semua tab detail peluang; pindah status hanya via board.
   assert.doesNotMatch(detailPageSource, /Status pipeline/);
