@@ -11,16 +11,17 @@ import { EXPENSE_CATEGORIES } from "@/lib/finance/expense-categories";
 import { getPrismaClient } from "@/lib/prisma";
 import { deletePaymentProof, uploadPaymentProof } from "@/lib/payment-proof";
 
-const expenseSchema = z.object({ id: z.string().cuid().optional(), purpose: z.string().trim().min(2, "Keperluan minimal 2 karakter.").max(500), spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid."), amount: z.coerce.number().finite().positive("Nominal harus lebih dari 0."), category: z.enum(EXPENSE_CATEGORIES), paymentMethodId: z.string().trim().min(1, "Metode pembayaran wajib dipilih.").max(40), isReimbursable: z.boolean(), customerName: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().trim().max(160).optional()), salesOrderId: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().cuid().optional()) });
+function blankToUndefined(value: unknown) { return value == null || (typeof value === "string" && value.trim() === "") ? undefined : value; }
+const expenseSchema = z.object({ id: z.string().cuid().optional(), purpose: z.string().trim().min(2, "Keperluan minimal 2 karakter.").max(500), spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid."), amount: z.coerce.number().finite().positive("Nominal harus lebih dari 0."), category: z.enum(EXPENSE_CATEGORIES), paymentMethodId: z.string().trim().min(1, "Metode pembayaran wajib dipilih.").max(40), isReimbursable: z.boolean(), customerName: z.preprocess(blankToUndefined, z.string().trim().max(160).optional()), salesOrderId: z.preprocess(blankToUndefined, z.string().cuid().optional()) });
 const idSchema = z.string().cuid();
 const deleteExpenseSchema = z.object({ id: z.string().cuid(), reason: z.string().trim().max(500).optional() });
 const HPP_KEYS = ["kain", "zipper", "jahit", "pres", "dtfPlastisol", "bordir", "lainnya"] as const;
 const optionalHppDate = z.preprocess(
-  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  blankToUndefined,
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal pengeluaran tidak valid.").optional(),
 );
 const optionalHppMethod = z.preprocess(
-  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  blankToUndefined,
   z.string().trim().max(40).optional(),
 );
 const salesOrderCostSchema = z.object({ salesOrderId: z.string().cuid(), version: z.coerce.number().int().positive(), kain: z.coerce.number().finite().nonnegative(), zipper: z.coerce.number().finite().nonnegative(), jahit: z.coerce.number().finite().nonnegative(), pres: z.coerce.number().finite().nonnegative(), dtfPlastisol: z.coerce.number().finite().nonnegative(), bordir: z.coerce.number().finite().nonnegative(), lainnya: z.coerce.number().finite().nonnegative(), expenseMethodKain: optionalHppMethod, expenseMethodZipper: optionalHppMethod, expenseMethodJahit: optionalHppMethod, expenseMethodPres: optionalHppMethod, expenseMethodDtfPlastisol: optionalHppMethod, expenseMethodBordir: optionalHppMethod, expenseMethodLainnya: optionalHppMethod, expenseSpentAtKain: optionalHppDate, expenseSpentAtZipper: optionalHppDate, expenseSpentAtJahit: optionalHppDate, expenseSpentAtPres: optionalHppDate, expenseSpentAtDtfPlastisol: optionalHppDate, expenseSpentAtBordir: optionalHppDate, expenseSpentAtLainnya: optionalHppDate });
@@ -33,7 +34,7 @@ const FINANCE_TRANSACTION_OPTIONS = {
   timeout: 20_000,
 } as const;
 
-function input(formData: FormData) { const id = formData.get("id"); return { id: typeof id === "string" && id ? id : undefined, purpose: formData.get("purpose"), spentAt: formData.get("spentAt"), amount: formData.get("amount"), category: formData.get("category"), paymentMethodId: formData.get("paymentMethodId"), isReimbursable: formData.get("isReimbursable") === "on", customerName: formData.get("customerName"), salesOrderId: formData.get("salesOrderId") }; }
+function input(formData: FormData) { const id = formData.get("id"); return { id: typeof id === "string" && id ? id : undefined, purpose: formData.get("purpose"), spentAt: formData.get("spentAt"), amount: formData.get("amount"), category: formData.get("category"), paymentMethodId: formData.get("paymentMethodId"), isReimbursable: formData.get("isReimbursable") === "on", customerName: blankToUndefined(formData.get("customerName")), salesOrderId: blankToUndefined(formData.get("salesOrderId")) }; }
 async function assertPaymentMethod(paymentMethodId: string) { const method = await getPrismaClient().paymentMethod.findFirst({ where: { id: paymentMethodId, isActive: true }, select: { id: true } }); if (!method) throw new UserFacingError("Metode pembayaran tidak ditemukan atau tidak aktif."); }
 function date(value: string) { const result = new Date(`${value}T00:00:00.000Z`); if (Number.isNaN(result.getTime())) throw new UserFacingError("Tanggal tidak valid."); return result; }
 async function audit(tx: Prisma.TransactionClient, actorId: string, entityId: string, action: string, changedFields: string[]) { await tx.auditEvent.create({ data: { actorId, entityType: "Expense", entityId, action, changedFields } }); }
@@ -56,13 +57,13 @@ export async function updateExpenseAction(formData: FormData) {
     const actor = await requireActor(FINANCE_ROLES); const parsed = expenseSchema.safeParse(input(formData));
     if (!parsed.success || !parsed.data.id) throw new UserFacingError(parsed.error?.issues[0]?.message ?? "Data pengeluaran tidak valid.");
     const id = parsed.data.id;
-    const current = await getPrismaClient().expense.findUnique({ where: { id, deletedAt: null }, select: { reimbursedAt: true, proofPath: true } });
+    const current = await getPrismaClient().expense.findUnique({ where: { id, deletedAt: null }, select: { reimbursedAt: true, proofPath: true, salesOrderId: true } });
     if (!current) throw new UserFacingError("Pengeluaran tidak ditemukan.");
     if (current.reimbursedAt) throw new UserFacingError("Pengeluaran yang sudah diganti tidak dapat diubah.");
     const proof = await uploadPaymentProof(formData.get("proof"), actor.id);
     if (!proof && !current.proofPath) throw new UserFacingError("Bukti pengeluaran wajib dilampirkan.");
     await assertPaymentMethod(parsed.data.paymentMethodId);
-    try { await getPrismaClient().$transaction(async (tx) => { await tx.expense.update({ where: { id }, data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethodId: parsed.data.paymentMethodId, isReimbursable: parsed.data.isReimbursable, customerName: parsed.data.customerName ?? null, salesOrderId: parsed.data.salesOrderId ?? null, ...(proof ?? {}) } }); await audit(tx, actor.id, id, "EXPENSE_UPDATED", ["purpose", "spentAt", "amount", "category", "paymentMethodId", "isReimbursable", "customerName", ...(proof ? ["proofPath"] : [])]); }, FINANCE_TRANSACTION_OPTIONS); } catch (error) { await deletePaymentProof(proof?.proofPath); throw error; }
+    try { await getPrismaClient().$transaction(async (tx) => { await tx.expense.update({ where: { id }, data: { purpose: parsed.data.purpose, spentAt: date(parsed.data.spentAt), amount: new Prisma.Decimal(parsed.data.amount), category: parsed.data.category, paymentMethodId: parsed.data.paymentMethodId, isReimbursable: parsed.data.isReimbursable, customerName: parsed.data.customerName ?? null, salesOrderId: parsed.data.salesOrderId ?? current.salesOrderId, ...(proof ?? {}) } }); await audit(tx, actor.id, id, "EXPENSE_UPDATED", ["purpose", "spentAt", "amount", "category", "paymentMethodId", "isReimbursable", "customerName", ...(proof ? ["proofPath"] : [])]); }, FINANCE_TRANSACTION_OPTIONS); } catch (error) { await deletePaymentProof(proof?.proofPath); throw error; }
     if (proof) await deletePaymentProof(current.proofPath);
     refresh(); return flashMessagePath(PATH, "notice", "Pengeluaran berhasil diperbarui.");
   });
