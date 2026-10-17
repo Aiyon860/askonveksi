@@ -9,23 +9,24 @@
 -- ============================================================
 BEGIN;
 
--- 0) PENGAMAN: reset sequence hanya aman bila tidak ada baris lama tersisa
+-- 0) PENGAMAN: 382 customer lama (impor 8 Sep 2026) DIPERTAHANKAN, sehingga
+-- counter 'customer' TIDAK boleh di-reset (nomor CRM- lanjut). Counter lain
+-- aman di-reset karena tabel bernomor selain Customer tidak punya baris lama.
 DO $$
 DECLARE
   sisa int;
 BEGIN
   SELECT count(*) INTO sisa FROM (
-    SELECT 1 FROM "Customer" WHERE "createdAt" < '2026-10-09 00:00:00+07'
-    UNION ALL SELECT 1 FROM "Opportunity" WHERE "createdAt" < '2026-10-09 00:00:00+07'
+    SELECT 1 FROM "Opportunity" WHERE "createdAt" < '2026-10-09 00:00:00+07'
     UNION ALL SELECT 1 FROM "PurchaseOrder" WHERE "createdAt" < '2026-10-09 00:00:00+07'
     UNION ALL SELECT 1 FROM "Invoice" WHERE "createdAt" < '2026-10-09 00:00:00+07'
     UNION ALL SELECT 1 FROM "SalesOrder" WHERE "createdAt" < '2026-10-09 00:00:00+07'
     UNION ALL SELECT 1 FROM "ProductionWorkOrder" WHERE "createdAt" < '2026-10-09 00:00:00+07'
   ) t;
   IF sisa > 0 THEN
-    RAISE EXCEPTION 'BATAL: ada % baris LAMA (< 9 Okt 2026). Reset sequence akan merusak penomoran. Putuskan: hapus total atau jangan reset.', sisa;
+    RAISE EXCEPTION 'BATAL: ada % baris LAMA (< 9 Okt 2026) di tabel bernomor selain Customer. Hubungi developer.', sisa;
   END IF;
-  RAISE NOTICE 'Pengaman lolos: tidak ada baris lama di tabel bernomor.';
+  RAISE NOTICE 'Pengaman lolos: hanya Customer yang punya baris lama (dipertahankan).';
 END $$;
 
 -- 1) Kumpulkan id yang akan dihapus
@@ -84,11 +85,11 @@ DELETE FROM "AuditEvent" WHERE "createdAt" >= '2026-10-09 00:00:00+07';
 DELETE FROM "Customer" WHERE id IN (SELECT id FROM del_customer);
 DELETE FROM "PublicRateLimitBucket" WHERE "updatedAt" >= '2026-10-09 00:00:00+07';
 
--- 6) Reset penomoran (aman: pengaman di langkah 0 lolos)
-TRUNCATE "SequenceCounter";
+-- 6) Reset penomoran KECUALI 'customer' (counter CRM- lanjut dari 382 lama)
+DELETE FROM "SequenceCounter" WHERE key <> 'customer';
 
 -- 7) Verifikasi sisa
-SELECT 'Customer' t, count(*) FROM "Customer" UNION ALL
+SELECT 'Customer (sisa 382 lama = benar)' t, count(*) FROM "Customer" UNION ALL
 SELECT 'Opportunity', count(*) FROM "Opportunity" UNION ALL
 SELECT 'PurchaseOrder', count(*) FROM "PurchaseOrder" UNION ALL
 SELECT 'Invoice', count(*) FROM "Invoice" UNION ALL
