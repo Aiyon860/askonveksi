@@ -307,6 +307,7 @@ function purchaseOrderInput(formData: FormData) {
     return {
       key,
       name: formValue(formData, `${prefix}name`),
+      pola: formValue(formData, `${prefix}pola`),
       productCategoryId: formValue(formData, `${prefix}productCategoryId`) || undefined,
       decorationMethods: formData.getAll(`${prefix}decorationMethod`).map((value) => String(value)),
       designNotes: formValue(formData, `${prefix}designNotes`),
@@ -331,7 +332,6 @@ function purchaseOrderInput(formData: FormData) {
     garmentType: formValue(formData, "garmentType"),
     productCategoryId: formValue(formData, "productCategoryId") || undefined,
     instansi: formValue(formData, "instansi"),
-    pola: formValue(formData, "pola"),
     material: formValue(formData, "material"),
     baseColor: formValue(formData, "baseColor"),
     variationColor: formValue(formData, "variationColor"),
@@ -379,6 +379,7 @@ async function importedPurchaseOrderRoster(formData: FormData, fieldName: string
 type ParsedPoItem = {
   key: string;
   name: string;
+  pola: string;
   productCategoryId?: string;
   decorationMethods: string[];
   designNotes?: string | null;
@@ -1516,9 +1517,9 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
             revision: 1,
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.pola,
+            // Kolom legacy: label dokumen & data lama — kini diisi otomatis dari nama produk item pertama.
+            productName: parsed.data.items[0]?.name ?? "",
             instansi: parsed.data.instansi,
-            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
@@ -1538,6 +1539,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
                 id: item.itemId,
                 position,
                 name: item.name,
+                pola: item.pola,
                 productCategoryId: itemCategories[position]?.productCategoryId ?? null,
                 garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
                 decorationMethods: [...new Set(item.decorationMethods)],
@@ -1550,7 +1552,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_DRAFT_CREATED", [
-          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ], { opportunityId: parsed.data.opportunityId });
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1586,9 +1588,8 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
           data: {
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.pola,
+            productName: parsed.data.items[0]?.name ?? "",
             instansi: parsed.data.instansi,
-            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
@@ -1610,14 +1611,14 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
         await tx.purchaseOrderSize.deleteMany({ where: { purchaseOrderId } });
         await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId } });
         await tx.purchaseOrderItem.createMany({
-          data: preparedItems.map((item, position) => ({ id: item.itemId, purchaseOrderId, position, name: item.name, productCategoryId: itemCategories[position]?.productCategoryId ?? null, garmentType: itemCategories[position]?.garmentType ?? category.garmentType, decorationMethods: [...new Set(item.decorationMethods)], designNotes: item.designNotes ?? null })),
+          data: preparedItems.map((item, position) => ({ id: item.itemId, purchaseOrderId, position, name: item.name, pola: item.pola, productCategoryId: itemCategories[position]?.productCategoryId ?? null, garmentType: itemCategories[position]?.garmentType ?? category.garmentType, decorationMethods: [...new Set(item.decorationMethods)], designNotes: item.designNotes ?? null })),
         });
         await tx.purchaseOrderSize.createMany({
           data: rows.sizes.map((item) => ({ purchaseOrderId, ...item })),
         });
         if (rows.roster.length) await tx.purchaseOrderRosterEntry.createMany({ data: rows.roster.map((item) => ({ purchaseOrderId, ...item })) });
         await audit(tx, actor, "PurchaseOrder", purchaseOrderId, "PURCHASE_ORDER_DRAFT_UPDATED", [
-          "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
+          "garmentType", "productCategoryId", "productName", "instansi", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ]);
     }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
     timer.mark("transaction");
@@ -1981,6 +1982,8 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             status: true,
             revision: true,
             version: true,
+            // Deadline penjahit per posisi item disalin ke PO revisi; desain penjahit tidak disalin (unggah ulang lewat Edit PDF Penjahit).
+            items: { orderBy: { position: "asc" }, select: { penjahitDeadline: true } },
             opportunity: {
               select: {
                 stage: true,
@@ -2020,9 +2023,8 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             revision: source.revision + 1,
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
-            productName: parsed.data.pola,
+            productName: parsed.data.items[0]?.name ?? "",
             instansi: parsed.data.instansi,
-            pola: parsed.data.pola,
             material: parsed.data.material,
             color: parsed.data.baseColor,
             baseColor: parsed.data.baseColor,
@@ -2042,6 +2044,8 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
                 id: item.itemId,
                 position,
                 name: item.name,
+                pola: item.pola,
+                penjahitDeadline: source.items[position]?.penjahitDeadline ?? null,
                 productCategoryId: itemCategories[position]?.productCategoryId ?? null,
                 garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
                 decorationMethods: [...new Set(item.decorationMethods)],
@@ -2054,7 +2058,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           select: { id: true },
         });
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
-          "revision", "garmentType", "productCategoryId", "productName", "instansi", "pola", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
+          "revision", "garmentType", "productCategoryId", "productName", "instansi", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ], { sourcePurchaseOrderId: source.id, fromStatus: source.status });
         return source.opportunityId;
     }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

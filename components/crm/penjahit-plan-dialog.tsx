@@ -120,7 +120,12 @@ export function PenjahitPlanDialog({
                             type="file"
                             accept="image/png,image/jpeg"
                             name={`design-${item.id}`}
-                            onChange={(event) => setFileNames((prev) => ({ ...prev, [item.id]: event.currentTarget.files?.[0]?.name ?? "" }))}
+                            onChange={(event) => {
+                              // Tangkap nama file di luar updater setState — event.currentTarget
+                              // sudah null saat updater dijalankan ulang oleh React.
+                              const fileName = event.currentTarget.files?.[0]?.name ?? "";
+                              setFileNames((prev) => ({ ...prev, [item.id]: fileName }));
+                            }}
                           />
                           <Button variant="outline" size="sm" render={<label htmlFor={`penjahit-design-${item.id}`} />} nativeButton={false}>
                             <FileUp data-icon="inline-start" aria-hidden="true" />

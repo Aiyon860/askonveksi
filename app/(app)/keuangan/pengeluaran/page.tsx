@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Check, Download, ReceiptText, Trash2 } from "lucide-react";
+import { Check, ReceiptText, Trash2 } from "lucide-react";
 
 import { deleteExpenseAction, reimburseExpenseAction } from "@/app/actions/finance";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -8,6 +8,7 @@ import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { ExpenseForm } from "@/components/finance/expense-form";
+import { ExpenseExportButton } from "@/components/finance/expense-export-button";
 import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
@@ -56,11 +57,12 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
   const pageSize = parsePageSizeParam(params.pageSize);
   const data = await getExpenses({ query, customer: "", from: range?.start ?? null, to: range?.end ?? null, category, expenseType, method, creatorId: "all", order, page, pageSize });
   const persistent = { q: query || undefined, from: range?.from, to: range?.to, category: category === "all" ? undefined : category, expenseType: expenseType === "all" ? undefined : expenseType, method: method === "all" ? undefined : method, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
-  const exportParams = new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
+  // Filter export = filter tabel (termasuk sort); rentang 90 hari bawaan diterapkan di route data.
+  const exportParams = { ...persistent, pageSize: undefined, order: order === "desc" ? undefined : order };
 
   return <>
     <AutoRefresh />
-    <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><Button variant="outline" render={<a href={`/api/keuangan/pengeluaran/export?${exportParams}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Export Excel</Button><ExpenseForm methods={methods} /></div>} />
+    <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><ExpenseExportButton params={exportParams} /><ExpenseForm methods={methods} /></div>} />
     <PageMessage />
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -82,7 +84,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
         <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
           <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted">
             <SortableTableHead label="Tanggal" href={dateSortHref(persistent, order)} active direction={order} />
-            <TableHead>Keperluan</TableHead><TableHead>Customer</TableHead><TableHead>Kategori</TableHead><TableHead>Metode</TableHead><TableHead>Bukti</TableHead><TableHead>Dicatat oleh</TableHead><TableHead className="text-right">Nominal</TableHead><TableHead>Status Ganti</TableHead><TableHead className="w-48 text-right">Aksi</TableHead>
+            <TableHead>Keperluan</TableHead><TableHead>Customer</TableHead><TableHead>Kategori</TableHead><TableHead>Metode</TableHead><TableHead>Bukti</TableHead><TableHead>Dicatat oleh</TableHead><TableHead className="text-right">Nominal</TableHead><TableHead>Deskripsi</TableHead><TableHead>Status Ganti</TableHead><TableHead className="w-48 text-right">Aksi</TableHead>
           </TableRow></TableHeader>
           <TableBody>{data.groups.flatMap((group) => {
             const totalRows = group.operasional.length + group.projects.reduce((sum, project) => sum + 1 + project.items.length, 0);
@@ -96,7 +98,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
               rowIndex += 1;
               return <TableRow key={item.id}>
                 {showDate ? <TableCell rowSpan={totalRows}>{formatDate(group.spentAt)}</TableCell> : null}
-                <TableCell>{item.purpose}</TableCell><TableCell>{item.customerName ?? "-"}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{item.paymentMethod.name}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell>
+                <TableCell>{item.purpose}</TableCell><TableCell>{item.customerName ?? "-"}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{item.paymentMethod.name}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell>                <TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell><TableCell>{item.description || "-"}</TableCell>
                 <TableCell>{reimbursable ? item.reimbursedAt ? <span className="text-success">Diganti {formatDate(item.reimbursedAt, true)}</span> : "Belum diganti" : "-"}</TableCell>
                 <TableCell className="text-right">{canManage && !item.reimbursedAt ? <div className="flex justify-end gap-2">
                   {reimbursable ? <form action={reimburseExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="success" pendingLabel="Memproses..." confirmTitle="Tandai uang sudah diganti?" confirmDescription="Pengeluaran ini tidak dapat diedit atau dihapus setelah ditandai." confirmLabel="Ya, sudah diganti"><Check data-icon="inline-start" aria-hidden="true" />Reimburse</ConfirmSubmitButton></form> : null}
@@ -113,13 +115,13 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
                 {showDate ? <TableCell rowSpan={totalRows}>{formatDate(group.spentAt)}</TableCell> : null}
                 <TableCell colSpan={6} className="font-semibold">Project: {project.label}</TableCell>
                 <TableCell className="text-right font-mono font-semibold tabular-nums">{formatCurrency(project.subtotal)}</TableCell>
-                <TableCell colSpan={2} />
+                <TableCell colSpan={3} />
               </TableRow>);
               project.items.forEach((item) => nodes.push(renderItem(item)));
             });
             return nodes;
           })}</TableBody>
-          <TableFooter><TableRow><TableCell colSpan={7} className="font-semibold">Total (sesuai filter)</TableCell><TableCell className="text-right font-mono font-semibold tabular-nums">{formatCurrency(data.totalAmount)}</TableCell><TableCell colSpan={2} /></TableRow></TableFooter>
+          <TableFooter><TableRow><TableCell colSpan={7} className="font-semibold">Total (sesuai filter)</TableCell><TableCell className="text-right font-mono font-semibold tabular-nums">{formatCurrency(data.totalAmount)}</TableCell><TableCell colSpan={3} /></TableRow></TableFooter>
         </Table>
         <DataPagination pathname="/keuangan/pengeluaran" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={{ ...persistent, order: order === "desc" ? undefined : order }} className="border-t px-4 py-3" />
       </div> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada pengeluaran</EmptyTitle><EmptyDescription>Tambahkan catatan biaya melalui tombol Pengeluaran.</EmptyDescription></EmptyHeader></Empty>}

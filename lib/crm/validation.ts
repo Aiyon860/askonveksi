@@ -324,6 +324,8 @@ const purchaseOrderRosterSchema = z.object({
 const purchaseOrderItemSchema = z.object({
   key: z.string().trim().min(1).max(40),
   name: z.string().trim().min(2, "Nama produk wajib diisi.").max(120),
+  // Revisi: Pola per produk (sebelumnya global di header PO).
+  pola: z.string().trim().min(2, "Pola wajib diisi.").max(120),
   productCategoryId: optionalEntityId,
   decorationMethods: z.array(z.enum(DECORATION_METHODS)).min(1, "Pilih minimal satu metode dekorasi.").max(7),
   designNotes: optionalText(4000),
@@ -339,7 +341,8 @@ export const purchaseOrderDraftSchema = z.object({
   garmentType: z.enum(["JERSEY", "NON_JERSEY", "AKSESORI"], { message: "Jenis pakaian wajib dipilih." }),
   productCategoryId: entityIdSchema.optional(),
   instansi: z.string().trim().min(2, "Instansi wajib diisi.").max(160),
-  pola: z.string().trim().min(2, "Pola wajib diisi.").max(120),
+  // Revisi: isian global "Nama Produk" dihapus dari form — kolom DB productName diisi otomatis
+  // dari nama produk item pertama (tetap dibutuhkan label dokumen & data lama).
   material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
   baseColor: optionalText(120),
   variationColor: optionalText(240),

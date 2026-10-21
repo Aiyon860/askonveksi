@@ -54,7 +54,7 @@ export async function getExpenses(state: ExpenseListState) {
     prisma.expense.aggregate({ where, _sum: { amount: true } }),
   ]);
   const pageDates = dates.slice((bounded.page - 1) * bounded.pageSize, bounded.page * bounded.pageSize).map((item) => item.spentAt);
-  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, salesOrderId: true, customerName: true, hppKey: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } }, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
+  const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, description: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, salesOrderId: true, customerName: true, hppKey: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } }, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
   const grouped = new Map(pageDates.map((spentAt) => [spentAt.getTime(), { spentAt, items: [] as typeof items }]));
   items.forEach((item) => grouped.get(item.spentAt.getTime())?.items.push(item));
   const groups = [...grouped.values()].map((group) => {
@@ -80,11 +80,22 @@ export function projectGroupLabel(salesOrder: { invoiceNo: string; snapshotCusto
   return `${customer} · ${salesOrder.purchaseOrder.productName} · ${salesOrder.invoiceNo}`;
 }
 
-export async function getExpensesForExport(state: Omit<ExpenseListState, "order" | "page" | "pageSize">) {
+// Cap ekspor Excel: satu baris penanda supaya file memberi tahu bila data terpotong.
+export const EXPENSE_EXPORT_LIMIT = 5000;
+export const INCOME_EXPORT_LIMIT = 5000;
+
+export async function getExpensesForExport(state: Omit<ExpenseListState, "page" | "pageSize">) {
   await requireActor(FINANCE_ROLES);
-  // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
-  const rows = await getPrismaClient().expense.findMany({ where: expenseWhere(state), select: { purpose: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, proofPath: true, createdBy: { select: { name: true } }, reimbursedAt: true, customerName: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], take: 5000 });
-  return rows.map((row) => ({ ...row, amount: row.amount.toString(), category: row.category as ExpenseCategory, project: row.category === "PROJECT" ? projectGroupLabel(row.salesOrder, row.customerName) : "" }));
+  // Ekspor mengikuti tabel: tanpa filter memakai jendela 90 hari yang sama (bukan seluruh riwayat),
+  // dan memakai urutan sort yang sedang aktif di halaman.
+  const bounded = !state.from && !state.to
+    ? { ...state, ...defaultExpenseWindow() }
+    : state;
+  // Ambil LIMIT+1 baris agar tahu apakah data terpotong; tetap murah di VPS 600M.
+  const fetched = await getPrismaClient().expense.findMany({ where: expenseWhere(bounded), select: { purpose: true, description: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, proofPath: true, createdBy: { select: { name: true } }, reimbursedAt: true, customerName: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }], take: EXPENSE_EXPORT_LIMIT + 1 });
+  const truncated = fetched.length > EXPENSE_EXPORT_LIMIT;
+  const rows = (truncated ? fetched.slice(0, EXPENSE_EXPORT_LIMIT) : fetched).map((row) => ({ ...row, spentAt: row.spentAt.toISOString().slice(0, 10), reimbursedAt: row.reimbursedAt ? row.reimbursedAt.toISOString() : null, amount: row.amount.toString(), category: row.category as ExpenseCategory, project: row.category === "PROJECT" ? projectGroupLabel(row.salesOrder, row.customerName) : "" }));
+  return { rows, truncated };
 }
 
 export async function getDeletedExpenses(page: number, pageSize: number) {
@@ -172,7 +183,9 @@ export async function getIncome(state: IncomeListState) {
 export async function getIncomeForExport(state: Omit<IncomeListState, "page" | "pageSize">) {
   await requireActor(FINANCE_ROLES);
   // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
-  return (await getIncomeOrders(incomeWhere(state), 0, 5000)).map(mapIncome);
+  const fetched = await getIncomeOrders(incomeWhere(state), 0, INCOME_EXPORT_LIMIT + 1);
+  const truncated = fetched.length > INCOME_EXPORT_LIMIT;
+  return { rows: (truncated ? fetched.slice(0, INCOME_EXPORT_LIMIT) : fetched).map(mapIncome), truncated };
 }
 
 export type ProjectExpensePrefill = { id: string; hppKey: string | null; purpose: string; description: string | null; amount: string; spentAt: string; paymentMethodId: string; proofPath: string | null; proofFileName: string | null; proofMimeType: string | null };

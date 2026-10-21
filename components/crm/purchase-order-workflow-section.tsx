@@ -15,6 +15,7 @@ type SizeOption = { id: string; name: string };
 export type PurchaseOrderItemDraftValues = {
   key: string;
   name: string;
+  pola: string;
   productCategoryId: string;
   decorationMethods: string[];
   designNotes: string;
@@ -28,7 +29,6 @@ type PurchaseOrderDraftValues = {
   garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   productCategoryId: string | null;
   instansi: string;
-  pola: string;
   material: string;
   baseColor: string;
   variationColor: string;
