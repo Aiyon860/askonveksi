@@ -1,0 +1,2080 @@
+{
+  "schemaVersion": 1,
+  "version": 0,
+  "updatedAt": "2026-10-18T00:00:00.000Z",
+  "updatedBy": {
+    "id": "seed",
+    "name": "Konten awal"
+  },
+  "brand": {
+    "name": "Askonveksi",
+    "logo": null
+  },
+  "site": {
+    "url": "https://askonveksi.web.id/",
+    "title": "Konveksi di Semarang untuk Seragam Custom | Askonveksi",
+    "description": "Askonveksi melayani pembuatan seragam dan apparel custom di Semarang untuk perusahaan, instansi, sekolah, komunitas, dan kebutuhan di Jawa Tengah.",
+    "ogImage": {
+      "src": "/hero.jpg",
+      "alt": "Produksi seragam custom Askonveksi di Semarang"
+    },
+    "whatsapp": "6281912924898",
+    "email": "email@askonveksi.com",
+    "addressLines": [
+      "Jl. Contoh No. 123,",
+      "Semarang, Jawa Tengah"
+    ],
+    "phones": [
+      {
+        "label": "Admin 1",
+        "value": "08xx-xxxx-xxxx",
+        "href": "tel:+6280000000000"
+      },
+      {
+        "label": "Admin 2",
+        "value": "08xx-xxxx-xxxx",
+        "href": "tel:+6280000000000"
+      }
+    ],
+    "socials": [
+      {
+        "platform": "instagram",
+        "url": "https://www.instagram.com/askonveksi_/",
+        "visible": true
+      },
+      {
+        "platform": "facebook",
+        "url": "",
+        "visible": false
+      },
+      {
+        "platform": "youtube",
+        "url": "",
+        "visible": false
+      }
+    ],
+    "analyticsId": "G-Y62NZQ54D0",
+    "searchConsoleVerification": "zpSFhEruGw-d1qYEo8_X9PNJdEwqRgTwUsUk3mhqIPs",
+    "areaServed": [
+      "Semarang",
+      "Jawa Tengah"
+    ]
+  },
+  "nav": {
+    "items": [
+      {
+        "type": "link",
+        "label": "Beranda",
+        "href": "/#beranda",
+        "visible": true
+      },
+      {
+        "type": "link",
+        "label": "Tentang Kami",
+        "href": "/#tentang-kami",
+        "visible": true
+      },
+      {
+        "type": "link",
+        "label": "Testimoni",
+        "href": "/#testimoni",
+        "visible": true
+      },
+      {
+        "type": "link",
+        "label": "Portofolio",
+        "href": "/portofolio",
+        "visible": true
+      },
+      {
+        "type": "link",
+        "label": "Size Chart",
+        "href": "/size-chart",
+        "visible": true
+      },
+      {
+        "type": "products",
+        "label": "Produk",
+        "visible": true
+      },
+      {
+        "type": "link",
+        "label": "Katalog Kain",
+        "href": "/katalog-kain",
+        "visible": true
+      },
+      {
+        "type": "link",
+        "label": "Contact",
+        "href": "/contact",
+        "visible": true
+      }
+    ],
+    "mobileTitle": "Navigasi utama",
+    "cta": {
+      "label": "Hubungi Kami",
+      "href": "/#kontak",
+      "visible": true
+    }
+  },
+  "home": {
+    "sections": [
+      {
+        "id": "hero",
+        "visible": true
+      },
+      {
+        "id": "products",
+        "visible": true
+      },
+      {
+        "id": "process",
+        "visible": true
+      },
+      {
+        "id": "why",
+        "visible": true
+      },
+      {
+        "id": "clients",
+        "visible": true
+      },
+      {
+        "id": "testimonials",
+        "visible": true
+      },
+      {
+        "id": "cta",
+        "visible": true
+      }
+    ],
+    "hero": {
+      "eyebrow": "Konveksi di Semarang",
+      "titleLine1": "Konveksi di Semarang untuk",
+      "titleLine2": "Seragam dan Apparel Custom",
+      "description": "Askonveksi melayani pembuatan seragam dan apparel custom untuk perusahaan, instansi, sekolah, komunitas, dan brand di Semarang serta berbagai wilayah Jawa Tengah.",
+      "primaryCta": {
+        "label": "Konsultasi Sekarang",
+        "href": "https://wa.me/6281912924898?text=Halo%20Askonveksi%2C%20saya%20ingin%20konsultasi%20pembuatan%20seragam.",
+        "whatsappMessage": "Halo Askonveksi, saya ingin konsultasi pembuatan seragam."
+      },
+      "secondaryCta": {
+        "label": "Lihat Keunggulan",
+        "href": "#keunggulan"
+      },
+      "image": {
+        "src": "/hero.jpg",
+        "alt": "Dua pekerja konveksi meninjau desain pakaian di ruang jahit"
+      },
+      "benefits": [
+        {
+          "icon": "shirt",
+          "title": "Bahan Berkualitas",
+          "description": "Pilihan bahan yang nyaman dan tahan lama",
+          "visible": true
+        },
+        {
+          "icon": "spool",
+          "title": "Jahitan Presisi",
+          "description": "Hasil rapi dan kuat dengan standar tinggi",
+          "visible": true
+        },
+        {
+          "icon": "paintbrush",
+          "title": "Custom Desain",
+          "description": "Bebas desain, warna, ukuran, dan logo",
+          "visible": true
+        },
+        {
+          "icon": "clock",
+          "title": "On Time Production",
+          "description": "Komitmen pada ketepatan waktu produksi",
+          "visible": true
+        }
+      ]
+    },
+    "products": {
+      "eyebrow": "Produk Kami",
+      "title": "Berbagai Pilihan Apparel Sesuai Kebutuhan Anda",
+      "description": "Kami memproduksi berbagai jenis seragam dan apparel dengan kualitas terbaik, cocok untuk kebutuhan perusahaan, instansi, komunitas, sekolah, dan brand.",
+      "cta": {
+        "label": "Lihat Semua Produk",
+        "href": "/#katalog-produk",
+        "visible": true
+      }
+    },
+    "process": {
+      "eyebrow": "Proses Produksi Kami",
+      "title": "Terlengkap, Modern, dan Terpercaya",
+      "description": "Dengan dukungan tenaga kerja berpengalaman dan mesin modern, kami memastikan setiap tahap produksi berjalan dengan standar kualitas tinggi.",
+      "image": {
+        "src": "/tailor.jpg",
+        "alt": "Proses pemotongan kain di workshop Askonveksi"
+      },
+      "overlayLine1": "Dari Desain",
+      "overlayLine2": "Hingga Siap Pakai",
+      "steps": [
+        {
+          "icon": "chat",
+          "title": "Konsultasi & Desain",
+          "description": "Diskusi kebutuhan, konsep, dan desain",
+          "visible": true
+        },
+        {
+          "icon": "clipboard",
+          "title": "Pemilihan Bahan",
+          "description": "Bahan sesuai spesifikasi",
+          "visible": true
+        },
+        {
+          "icon": "shirt",
+          "title": "Produksi",
+          "description": "Cutting, jahit, bordir/sablon",
+          "visible": true
+        },
+        {
+          "icon": "badge-check",
+          "title": "Finishing",
+          "description": "Quality control dan packing",
+          "visible": true
+        },
+        {
+          "icon": "truck",
+          "title": "Pengiriman",
+          "description": "Tepat waktu ke seluruh Indonesia",
+          "visible": true
+        }
+      ]
+    },
+    "why": {
+      "eyebrow": "Mengapa Memilih Askonveksi?",
+      "title": "Layanan Konveksi di Jawa Tengah untuk Kebutuhan Bisnis",
+      "description": "Kami melayani kebutuhan seragam custom untuk bisnis di Semarang dan berbagai wilayah Jawa Tengah, dari konsultasi desain hingga produk siap dikirim.",
+      "image": {
+        "src": "/hero.jpg",
+        "alt": ""
+      },
+      "cta": {
+        "label": "Konsultasikan Kebutuhan",
+        "href": "#kontak",
+        "visible": true
+      },
+      "advantages": [
+        {
+          "icon": "handshake",
+          "title": "Pengalaman",
+          "description": "Bertahun-tahun di industri konveksi dan apparel",
+          "visible": true
+        },
+        {
+          "icon": "user-check",
+          "title": "Tim Profesional",
+          "description": "Didukung oleh tenaga kerja terampil dan berpengalaman",
+          "visible": true
+        },
+        {
+          "icon": "factory",
+          "title": "Kapasitas Produksi Besar",
+          "description": "Siap menangani pemesanan dalam jumlah kecil maupun besar",
+          "visible": true
+        },
+        {
+          "icon": "dollar",
+          "title": "Harga Kompetitif",
+          "description": "Kualitas terbaik dengan harga yang bersaing",
+          "visible": true
+        }
+      ]
+    },
+    "clients": {
+      "title": "Dipercaya oleh Berbagai Perusahaan & Instansi",
+      "description": "Kami telah melayani ratusan perusahaan, instansi, komunitas, dan brand di seluruh Indonesia.",
+      "items": [
+        {
+          "name": "Pertamina",
+          "logo": {
+            "src": "/client/pertamina.webp",
+            "alt": "Pertamina"
+          },
+          "visible": true
+        },
+        {
+          "name": "Bank Jateng",
+          "logo": {
+            "src": "/client/bankjateng.webp",
+            "alt": "Bank Jateng"
+          },
+          "visible": true
+        },
+        {
+          "name": "BRI",
+          "logo": {
+            "src": "/client/bri.webp",
+            "alt": "BRI"
+          },
+          "visible": true
+        },
+        {
+          "name": "PNM",
+          "logo": {
+            "src": "/client/pnm.webp",
+            "alt": "PNM"
+          },
+          "visible": true
+        },
+        {
+          "name": "J&T Express",
+          "logo": {
+            "src": "/client/jnt.webp",
+            "alt": "J&T Express"
+          },
+          "visible": true
+        },
+        {
+          "name": "Otorita Ibu Kota Nusantara",
+          "logo": {
+            "src": "/client/oikn.webp",
+            "alt": "Otorita Ibu Kota Nusantara"
+          },
+          "visible": true
+        },
+        {
+          "name": "Akpol",
+          "logo": {
+            "src": "/client/akpol.webp",
+            "alt": "Akpol"
+          },
+          "visible": true
+        },
+        {
+          "name": "Bareskrim",
+          "logo": {
+            "src": "/client/bareskim.webp",
+            "alt": "Bareskrim"
+          },
+          "visible": true
+        },
+        {
+          "name": "Polantas",
+          "logo": {
+            "src": "/client/polantas.webp",
+            "alt": "Polantas"
+          },
+          "visible": true
+        },
+        {
+          "name": "Universitas Diponegoro",
+          "logo": {
+            "src": "/client/undip.webp",
+            "alt": "Universitas Diponegoro"
+          },
+          "visible": true
+        },
+        {
+          "name": "Universitas Negeri Semarang",
+          "logo": {
+            "src": "/client/unnes.webp",
+            "alt": "Universitas Negeri Semarang"
+          },
+          "visible": true
+        }
+      ]
+    },
+    "testimonials": {
+      "title": "Testimoni Klien",
+      "description": "Kepuasan pelanggan adalah prioritas kami.",
+      "items": [
+        {
+          "quote": "CAKEUPPP POLLL!!! Sablon Dtf nya high quality, bahannya juga bagus, pengerjaannya cepet bgtt!! Makasih as konveksii Recommendedd bangett si inehhh",
+          "name": "Muhammad Alaudin Candra Pratama",
+          "company": "Customer",
+          "avatar": null,
+          "visible": true
+        },
+        {
+          "quote": "Hasil sablon nya bagus, bahan nya juga enak pokoknya sesuai sama desain yg dikirim, keren bgtt",
+          "name": "Nisrina Salsabila",
+          "company": "Customer",
+          "avatar": null,
+          "visible": true
+        },
+        {
+          "quote": "tempatnya oke, menawarkan kualitas bahan yang baik dengan harga yang bersaing, cocok untuk kebutuhan seragam, workshirt atau custom",
+          "name": "Prokopton",
+          "company": "Customer",
+          "avatar": null,
+          "visible": true
+        }
+      ]
+    },
+    "cta": {
+      "title": "Siap Membuat Seragam Impian Anda?",
+      "description": "<p>Konsultasikan kebutuhan apparel bisnis Anda sekarang juga.</p><p>Tim kami siap membantu memberikan solusi terbaik.</p>",
+      "buttonLabel": "Hubungi Kami Sekarang",
+      "whatsappMessage": "Halo Askonveksi, saya ingin berkonsultasi mengenai pembuatan seragam.",
+      "image": {
+        "src": "/cta.jpg",
+        "alt": "Koleksi pakaian produksi Askonveksi"
+      }
+    }
+  },
+  "footer": {
+    "description": "<p>Konveksi di Semarang untuk seragam dan apparel custom — kemeja, wearpack, kaos, jaket, hingga merchandise.</p>",
+    "productTitle": "Produk",
+    "navTitle": "Navigasi",
+    "links": [
+      {
+        "label": "Beranda",
+        "href": "/#beranda",
+        "visible": true
+      },
+      {
+        "label": "Tentang Kami",
+        "href": "/#tentang-kami",
+        "visible": true
+      },
+      {
+        "label": "Testimoni",
+        "href": "/#testimoni",
+        "visible": true
+      },
+      {
+        "label": "Portofolio",
+        "href": "/portofolio",
+        "visible": true
+      },
+      {
+        "label": "Size Chart",
+        "href": "/size-chart",
+        "visible": true
+      },
+      {
+        "label": "Katalog Kain",
+        "href": "/katalog-kain",
+        "visible": true
+      },
+      {
+        "label": "Contact",
+        "href": "/contact",
+        "visible": true
+      },
+      {
+        "label": "Kontak",
+        "href": "/#kontak",
+        "visible": true
+      }
+    ],
+    "socials": [
+      {
+        "platform": "instagram",
+        "url": "https://www.instagram.com/askonveksi_/",
+        "visible": true
+      },
+      {
+        "platform": "facebook",
+        "url": "",
+        "visible": false
+      },
+      {
+        "platform": "youtube",
+        "url": "",
+        "visible": false
+      }
+    ],
+    "copyright": "© {year} Askonveksi. All rights reserved.",
+    "tagline": "Konveksi di Semarang untuk Seragam dan Apparel Custom"
+  },
+  "whatsappFab": {
+    "visible": true,
+    "message": "Halo Askonveksi, saya ingin konsultasi pembuatan seragam."
+  },
+  "products": [
+    {
+      "id": "kemeja",
+      "name": "Kemeja",
+      "tagline": "Formal, rapi, dan nyaman untuk identitas tim Anda",
+      "description": "Kemeja custom dengan potongan presisi dan jahitan rapi, diproduksi dari bahan pilihan yang nyaman dipakai seharian. Cocok untuk seragam kantor, instansi, dan komunitas yang ingin tampil profesional dan konsisten.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 0,
+      "catalogVisible": true,
+      "catalogOrder": 0,
+      "cardImage": {
+        "src": "/product/kemeja.png",
+        "alt": "Produk Kemeja Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan pilihan: katun, TC, atau sesuai permintaan",
+        "Sablon logo & bordir nama di dada",
+        "Ukuran S sampai XXL, bisa custom ukuran",
+        "Jahitan presisi dengan finishing rapi"
+      ],
+      "useCases": [
+        "Seragam kantor",
+        "Instansi & pegawai",
+        "Komunitas",
+        "Event"
+      ],
+      "seoTitle": "Kemeja",
+      "seoDescription": "Kemeja custom dengan potongan presisi dan jahitan rapi, diproduksi dari bahan pilihan yang nyaman dipakai seharian. Cocok untuk seragam kantor, instansi, dan komunitas yang ingin tampil profesional dan konsisten.",
+      "published": true
+    },
+    {
+      "id": "celana",
+      "name": "Celana",
+      "tagline": "Celana custom untuk kebutuhan formal maupun aktivitas sehari-hari",
+      "description": "Celana custom dengan potongan rapi dan bahan yang nyaman dipakai seharian. Tersedia dalam model formal untuk kebutuhan kerja dan training untuk aktivitas yang lebih dinamis, lengkap dengan pilihan warna dan ukuran sesuai kebutuhan tim Anda.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 1,
+      "catalogVisible": false,
+      "catalogOrder": 25,
+      "cardImage": null,
+      "gallery": [],
+      "features": [
+        "Pilihan model formal dan training",
+        "Bahan nyaman dengan jahitan rapi",
+        "Ukuran S sampai XXL, bisa custom ukuran",
+        "Warna dapat disesuaikan dengan identitas tim"
+      ],
+      "useCases": [
+        "Seragam kantor",
+        "Sekolah & instansi",
+        "Komunitas",
+        "Event"
+      ],
+      "seoTitle": "Celana",
+      "seoDescription": "Celana custom dengan potongan rapi dan bahan yang nyaman dipakai seharian. Tersedia dalam model formal untuk kebutuhan kerja dan training untuk aktivitas yang lebih dinamis, lengkap dengan pilihan warna dan ukuran sesuai kebutuhan tim Anda.",
+      "published": true
+    },
+    {
+      "id": "celana-formal",
+      "name": "Celana Formal",
+      "tagline": "Potongan rapi untuk tampilan kerja yang profesional",
+      "description": "Celana formal custom dengan potongan lurus dan finishing rapi untuk melengkapi penampilan kerja sehari-hari. Dibuat dari bahan yang nyaman dan tidak mudah kusut, cocok dipadukan dengan kemeja atau seragam kantor Anda.",
+      "parentSlug": "celana",
+      "menuVisible": true,
+      "menuOrder": 0,
+      "catalogVisible": false,
+      "catalogOrder": 26,
+      "cardImage": null,
+      "gallery": [],
+      "features": [
+        "Potongan lurus dengan finishing rapi",
+        "Bahan nyaman dan tidak mudah kusut",
+        "Pilihan warna netral dan gelap",
+        "Ukuran S sampai XXL, bisa custom ukuran"
+      ],
+      "useCases": [
+        "Seragam kantor",
+        "Instansi",
+        "Sekolah",
+        "Acara formal"
+      ],
+      "seoTitle": "Celana Formal",
+      "seoDescription": "Celana formal custom dengan potongan lurus dan finishing rapi untuk melengkapi penampilan kerja sehari-hari. Dibuat dari bahan yang nyaman dan tidak mudah kusut, cocok dipadukan dengan kemeja atau seragam kantor Anda.",
+      "published": true
+    },
+    {
+      "id": "celana-training",
+      "name": "Celana Training",
+      "tagline": "Nyaman digerakkan untuk latihan dan aktivitas lapangan",
+      "description": "Celana training custom dengan bahan lentur dan ringan untuk mendukung aktivitas olahraga maupun kerja lapangan. Dilengkapi pinggang karet dan saku fungsional agar tetap nyaman digunakan dalam waktu lama.",
+      "parentSlug": "celana",
+      "menuVisible": true,
+      "menuOrder": 1,
+      "catalogVisible": false,
+      "catalogOrder": 27,
+      "cardImage": null,
+      "gallery": [],
+      "features": [
+        "Bahan lentur dan ringan",
+        "Pinggang karet yang nyaman",
+        "Saku fungsional",
+        "Ukuran S sampai XXL, bisa custom ukuran"
+      ],
+      "useCases": [
+        "Latihan & olahraga",
+        "Komunitas",
+        "Event",
+        "Seragam tim"
+      ],
+      "seoTitle": "Celana Training",
+      "seoDescription": "Celana training custom dengan bahan lentur dan ringan untuk mendukung aktivitas olahraga maupun kerja lapangan. Dilengkapi pinggang karet dan saku fungsional agar tetap nyaman digunakan dalam waktu lama.",
+      "published": true
+    },
+    {
+      "id": "pdh",
+      "name": "PDH",
+      "tagline": "Pakaian Dinas Harian yang tegas dan tahan pakai",
+      "description": "PDH custom untuk kebutuhan dinas harian instansi dan perusahaan. Diproduksi dengan bahan yang kuat namun tetap nyaman, lengkap dengan atribut sesuai standar instansi Anda.",
+      "parentSlug": null,
+      "menuVisible": false,
+      "menuOrder": 999,
+      "catalogVisible": true,
+      "catalogOrder": 1,
+      "cardImage": {
+        "src": "/product/pdh.png",
+        "alt": "Produk PDH Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan dril / twill yang kokoh dan adem",
+        "Pita & atribut dinas sesuai standar",
+        "Bordir logo dan nama pegawai",
+        "Konsistensi warna untuk pemesanan lanjutan"
+      ],
+      "useCases": [
+        "Instansi pemerintah",
+        "Badan usaha",
+        "Satpam & operator"
+      ],
+      "seoTitle": "PDH",
+      "seoDescription": "PDH custom untuk kebutuhan dinas harian instansi dan perusahaan. Diproduksi dengan bahan yang kuat namun tetap nyaman, lengkap dengan atribut sesuai standar instansi Anda.",
+      "published": true
+    },
+    {
+      "id": "jaket",
+      "name": "Jaket",
+      "tagline": "Hangat, awet, dan siap jadi identitas komunitas",
+      "description": "Jaket custom dengan bahan tebal berkualitas dan jahitan kuat, dirancang untuk pemakaian rutin. Pilihan tepat untuk seragam komunitas, almamater, hingga merchandise brand.",
+      "parentSlug": null,
+      "menuVisible": false,
+      "menuOrder": 999,
+      "catalogVisible": true,
+      "catalogOrder": 2,
+      "cardImage": {
+        "src": "/product/jaket.png",
+        "alt": "Produk Jaket Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan waterproof / fleece sesuai kebutuhan",
+        "Bordir & sablon logo yang tahan lama",
+        "Varian jaket yarndye, bomber, dan hoodie",
+        "Resleting & aksesoris berkualitas"
+      ],
+      "useCases": [
+        "Komunitas & klub",
+        "Almamater",
+        "Merchandise brand"
+      ],
+      "seoTitle": "Jaket",
+      "seoDescription": "Jaket custom dengan bahan tebal berkualitas dan jahitan kuat, dirancang untuk pemakaian rutin. Pilihan tepat untuk seragam komunitas, almamater, hingga merchandise brand.",
+      "published": true
+    },
+    {
+      "id": "rompi",
+      "name": "Rompi",
+      "tagline": "Fungsional dan mudah dikenali untuk tim lapangan",
+      "description": "Rompi custom untuk kebutuhan kerja lapangan, event, dan organisasi. Dirancang fungsional dengan saku dan detail yang bisa disesuaikan, tetap nyaman dipakai dalam waktu lama.",
+      "parentSlug": null,
+      "menuVisible": false,
+      "menuOrder": 999,
+      "catalogVisible": true,
+      "catalogOrder": 3,
+      "cardImage": {
+        "src": "/product/rompi.png",
+        "alt": "Produk Rompi Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan kuat dengan jahitan Reinforced stitch",
+        "Desain saku dan detail fungsional",
+        "Sablon / bordir logo instansi",
+        "Warna mencolok untuk visibilitas tim"
+      ],
+      "useCases": [
+        "Relawan & event",
+        "Petugas lapangan",
+        "Organisasi"
+      ],
+      "seoTitle": "Rompi",
+      "seoDescription": "Rompi custom untuk kebutuhan kerja lapangan, event, dan organisasi. Dirancang fungsional dengan saku dan detail yang bisa disesuaikan, tetap nyaman dipakai dalam waktu lama.",
+      "published": true
+    },
+    {
+      "id": "jersey",
+      "name": "Jersey",
+      "tagline": "Performa di lapangan, desain bebas",
+      "description": "Jersey custom dengan bahan performance yang ringan, menyerap keringat, dan cepat kering. Tersedia dalam model kerah dan oblong, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor untuk tampil solid di lapangan.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 5,
+      "catalogVisible": true,
+      "catalogOrder": 4,
+      "cardImage": {
+        "src": "/product/jersey.png",
+        "alt": "Produk Jersey Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan microfiber yang ringan dan adem",
+        "Model kerah dan oblong sesuai kebutuhan",
+        "Sablon full print / sublim yang tidak pecah",
+        "Nama, nomor punggung, dan logo sponsor",
+        "Tersedia setelan lengkap dengan celana"
+      ],
+      "useCases": [
+        "Tim futsal & sepak bola",
+        "Komunitas sepeda",
+        "Turnamen"
+      ],
+      "seoTitle": "Jersey",
+      "seoDescription": "Jersey custom dengan bahan performance yang ringan, menyerap keringat, dan cepat kering. Tersedia dalam model kerah dan oblong, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor untuk tampil solid di lapangan.",
+      "published": true
+    },
+    {
+      "id": "jersey-kerah",
+      "name": "Jersey Kerah",
+      "tagline": "Rapi dengan kerah, performa tetap maksimal",
+      "description": "Jersey kerah custom dengan bahan performance yang ringan, menyerap keringat, dan cepat kering. Model berkerah memberi kesan rapi semi-formal, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor.",
+      "parentSlug": "jersey",
+      "menuVisible": true,
+      "menuOrder": 0,
+      "catalogVisible": false,
+      "catalogOrder": 5,
+      "cardImage": {
+        "src": "/product/jersey.png",
+        "alt": "Produk Jersey Kerah Askonveksi"
+      },
+      "gallery": [
+        {
+          "src": "/assets/jerysey-webp/AKPOL.webp",
+          "alt": "Jersey kerah pesanan AKPOL produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/CORPORATE%20PADEL%20(2).webp",
+          "alt": "Jersey kerah pesanan Corporate Padel produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/CORPORATE%20PADEL.webp",
+          "alt": "Jersey kerah pesanan Corporate Padel produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/INDUSTRIPOLIS.webp",
+          "alt": "Jersey kerah pesanan Industripolis produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/JERSEY%20KOPASUS%20RAJAWALI.webp",
+          "alt": "Jersey kerah pesanan Kopasus Rajawali produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/KANWIL%20BPN%20JAWA%20TENGAH.webp",
+          "alt": "Jersey kerah pesanan Kanwil BPN Jawa Tengah produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/ONSEVEN%20COFFE.webp",
+          "alt": "Jersey kerah pesanan Onseven Coffe produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PBPI%20JATENG.webp",
+          "alt": "Jersey kerah pesanan PBPI Jateng produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PIP.webp",
+          "alt": "Jersey kerah pesanan PIP produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PNM.webp",
+          "alt": "Jersey kerah pesanan PNM produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/POLRES%20PEKALONGAN.webp",
+          "alt": "Jersey kerah pesanan Polres Pekalongan produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PSIS.webp",
+          "alt": "Jersey kerah pesanan PSIS produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/USM.webp",
+          "alt": "Jersey kerah pesanan USM produksi Askonveksi"
+        }
+      ],
+      "features": [
+        "Bahan microfiber yang ringan dan adem",
+        "Kerah rib yang tidak melar",
+        "Sablon full print / sublim yang tidak pecah",
+        "Nama, nomor punggung, dan logo sponsor",
+        "Tersedia setelan lengkap dengan celana"
+      ],
+      "useCases": [
+        "Tim futsal & sepak bola",
+        "Komunitas sepeda",
+        "Turnamen"
+      ],
+      "seoTitle": "Jersey Kerah",
+      "seoDescription": "Jersey kerah custom dengan bahan performance yang ringan, menyerap keringat, dan cepat kering. Model berkerah memberi kesan rapi semi-formal, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor.",
+      "published": true
+    },
+    {
+      "id": "jersey-oblong",
+      "name": "Jersey Oblong",
+      "tagline": "Ringan tanpa kerah, bebas bergerak",
+      "description": "Jersey oblong custom dengan leher O tanpa kerah untuk tampilan sporty yang simpel. Diproduksi dari bahan performance yang ringan, menyerap keringat, dan cepat kering, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor.",
+      "parentSlug": "jersey",
+      "menuVisible": true,
+      "menuOrder": 1,
+      "catalogVisible": false,
+      "catalogOrder": 6,
+      "cardImage": {
+        "src": "/product/jersey.png",
+        "alt": "Produk Jersey Oblong Askonveksi"
+      },
+      "gallery": [
+        {
+          "src": "/assets/jerysey-webp/AKPOL.webp",
+          "alt": "Jersey oblong pesanan AKPOL produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/CORPORATE%20PADEL%20(2).webp",
+          "alt": "Jersey oblong pesanan Corporate Padel produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/CORPORATE%20PADEL.webp",
+          "alt": "Jersey oblong pesanan Corporate Padel produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/INDUSTRIPOLIS.webp",
+          "alt": "Jersey oblong pesanan Industripolis produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/JERSEY%20KOPASUS%20RAJAWALI.webp",
+          "alt": "Jersey oblong pesanan Kopasus Rajawali produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/KANWIL%20BPN%20JAWA%20TENGAH.webp",
+          "alt": "Jersey oblong pesanan Kanwil BPN Jawa Tengah produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/ONSEVEN%20COFFE.webp",
+          "alt": "Jersey oblong pesanan Onseven Coffe produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PBPI%20JATENG.webp",
+          "alt": "Jersey oblong pesanan PBPI Jateng produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PIP.webp",
+          "alt": "Jersey oblong pesanan PIP produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PNM.webp",
+          "alt": "Jersey oblong pesanan PNM produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/POLRES%20PEKALONGAN.webp",
+          "alt": "Jersey oblong pesanan Polres Pekalongan produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/PSIS.webp",
+          "alt": "Jersey oblong pesanan PSIS produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jerysey-webp/USM.webp",
+          "alt": "Jersey oblong pesanan USM produksi Askonveksi"
+        }
+      ],
+      "features": [
+        "Bahan microfiber yang ringan dan adem",
+        "Leher O oblong dengan rib yang nyaman",
+        "Sablon full print / sublim yang tidak pecah",
+        "Nama, nomor punggung, dan logo sponsor",
+        "Tersedia setelan lengkap dengan celana"
+      ],
+      "useCases": [
+        "Tim futsal & sepak bola",
+        "Komunitas sepeda",
+        "Turnamen"
+      ],
+      "seoTitle": "Jersey Oblong",
+      "seoDescription": "Jersey oblong custom dengan leher O tanpa kerah untuk tampilan sporty yang simpel. Diproduksi dari bahan performance yang ringan, menyerap keringat, dan cepat kering, dengan desain bebas full print: nama, nomor punggung, hingga logo sponsor.",
+      "published": true
+    },
+    {
+      "id": "kaos",
+      "name": "Kaos",
+      "tagline": "Nyaman dipakai harian, desain sesuai karakter",
+      "description": "Kaos custom dengan bahan lembut dan sablon berkualitas yang tidak mudah luntur. Pilihan populer untuk seragam komunitas, event, hingga merchandise brand yang ingin tampil beda.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 4,
+      "catalogVisible": true,
+      "catalogOrder": 7,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Kaos Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan cotton combed 30s, 24s, hingga supersoft",
+        "Sablon DTF, plastisol, dan digital",
+        "Ukuran anak sampai XXXL",
+        "Desain bebas, konsultasi gratis"
+      ],
+      "useCases": [
+        "Komunitas",
+        "Event & reunion",
+        "Merchandise brand"
+      ],
+      "seoTitle": "Kaos",
+      "seoDescription": "Kaos custom dengan bahan lembut dan sablon berkualitas yang tidak mudah luntur. Pilihan populer untuk seragam komunitas, event, hingga merchandise brand yang ingin tampil beda.",
+      "published": true
+    },
+    {
+      "id": "apron",
+      "name": "Apron",
+      "tagline": "Pelindung kerja yang tetap rapi dan profesional",
+      "description": "Apron custom untuk UMKM, kafe, dapur produksi, dan workshop. Dibuat dari bahan yang kuat dan mudah dibersihkan, dengan detail saku serta tali yang dapat disesuaikan kebutuhan kerja Anda.",
+      "parentSlug": null,
+      "menuVisible": false,
+      "menuOrder": 999,
+      "catalogVisible": true,
+      "catalogOrder": 8,
+      "cardImage": {
+        "src": "/product/apron.png",
+        "alt": "Produk Apron Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan canvas / twill yang tebal dan awet",
+        "Model dada dan pinggang sesuai permintaan",
+        "Sablon logo bisnis Anda",
+        "Tali yang dapat disesuaikan"
+      ],
+      "useCases": [
+        "Kafe & restoran",
+        "UMKM & workshop",
+        "Kelas memasak"
+      ],
+      "seoTitle": "Apron",
+      "seoDescription": "Apron custom untuk UMKM, kafe, dapur produksi, dan workshop. Dibuat dari bahan yang kuat dan mudah dibersihkan, dengan detail saku serta tali yang dapat disesuaikan kebutuhan kerja Anda.",
+      "published": true
+    },
+    {
+      "id": "polo",
+      "name": "Polo",
+      "tagline": "Kasual namun tetap tampil rapi",
+      "description": "Polo custom dengan kerah yang tetap tersusun meski dipakai seharian. Kombinasi sempurna antara kasual dan formal untuk seragam tim, klub, maupun event perusahaan.",
+      "parentSlug": null,
+      "menuVisible": false,
+      "menuOrder": 999,
+      "catalogVisible": true,
+      "catalogOrder": 9,
+      "cardImage": {
+        "src": "/product/polo.png",
+        "alt": "Produk Polo Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan cotton pique / lacoste yang adem",
+        "Kerah dan manset yang tidak melar",
+        "Bordir dada yang presisi",
+        "Ukuran S sampai XXL"
+      ],
+      "useCases": [
+        "Seragam tim",
+        "Event perusahaan",
+        "Klub & komunitas"
+      ],
+      "seoTitle": "Polo",
+      "seoDescription": "Polo custom dengan kerah yang tetap tersusun meski dipakai seharian. Kombinasi sempurna antara kasual dan formal untuk seragam tim, klub, maupun event perusahaan.",
+      "published": true
+    },
+    {
+      "id": "kemeja-pdh-pdl",
+      "name": "Kemeja PDH/PDL",
+      "tagline": "Seragam dinas harian dan lapangan sesuai standar instansi",
+      "description": "Kemeja PDH/PDL custom untuk kebutuhan dinas harian maupun pakaian dinas lapangan. Diproduksi dengan bahan yang kuat namun tetap nyaman, lengkap dengan atribut, pita, dan bordir sesuai standar instansi Anda.",
+      "parentSlug": "kemeja",
+      "menuVisible": true,
+      "menuOrder": 0,
+      "catalogVisible": false,
+      "catalogOrder": 10,
+      "cardImage": {
+        "src": "/product/kemeja.png",
+        "alt": "Produk Kemeja PDH/PDL Askonveksi"
+      },
+      "gallery": [
+        {
+          "src": "/assets/pdh-kemeja/APJII.webp",
+          "alt": "Kemeja PDH pesanan APJII produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/ARTA%20JAYA.webp",
+          "alt": "Kemeja PDH pesanan Arta Jaya produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/BANK%20JATENG.webp",
+          "alt": "Kemeja PDH pesanan Bank Jateng produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/BUANA.webp",
+          "alt": "Kemeja PDH pesanan Buana produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/BUMN.webp",
+          "alt": "Kemeja PDH pesanan BUMN produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/GEKRAF.webp",
+          "alt": "Kemeja PDH pesanan Gekraf produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/HRGA.webp",
+          "alt": "Kemeja PDH pesanan HRGA produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/KOV%20(2).webp",
+          "alt": "Kemeja PDH pesanan KOV produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/MES%20JATENG.webp",
+          "alt": "Kemeja PDH pesanan MES Jateng produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/ORADO.webp",
+          "alt": "Kemeja PDH pesanan Orado produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/PMR%20SMA%20SULA.webp",
+          "alt": "Kemeja PDH pesanan PMR SMA Sula produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/PRUMNAS.webp",
+          "alt": "Kemeja PDH pesanan Prumnas produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/PT%20AEGIST%20JAYA%20METALINDO.webp",
+          "alt": "Kemeja PDH pesanan PT Aegist Jaya Metalindo produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/PUSKESMAS%20BANGETAYU.webp",
+          "alt": "Kemeja PDH pesanan Puskesmas Bangetayu produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/SMA%20N%209%20SMG.webp",
+          "alt": "Kemeja PDH pesanan SMA N 9 Semarang produksi Askonveksi"
+        }
+      ],
+      "features": [
+        "Bahan dril / twill yang kokoh dan adem",
+        "Atribut, pita, dan pangkat sesuai standar",
+        "Bordir logo dan nama pegawai",
+        "Potongan PDH dan PDL sesuai kebutuhan"
+      ],
+      "useCases": [
+        "Instansi pemerintah",
+        "Perusahaan",
+        "Satpam & operator"
+      ],
+      "seoTitle": "Kemeja PDH/PDL",
+      "seoDescription": "Kemeja PDH/PDL custom untuk kebutuhan dinas harian maupun pakaian dinas lapangan. Diproduksi dengan bahan yang kuat namun tetap nyaman, lengkap dengan atribut, pita, dan bordir sesuai standar instansi Anda.",
+      "published": true
+    },
+    {
+      "id": "workshirt",
+      "name": "Workshirt",
+      "tagline": "Kemeja kerja yang rapi untuk aktivitas operasional",
+      "description": "Workshirt custom untuk seragam kerja operasional harian. Bahannya kuat dan mudah dirawat, dengan potongan yang tetap rapi dipakai bergerak dan detail saku yang fungsional untuk kebutuhan kerja.",
+      "parentSlug": "kemeja",
+      "menuVisible": true,
+      "menuOrder": 1,
+      "catalogVisible": false,
+      "catalogOrder": 11,
+      "cardImage": {
+        "src": "/product/kemeja.png",
+        "alt": "Produk Workshirt Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan twill / drill yang tahan pakai",
+        "Saku dada fungsional",
+        "Bordir logo perusahaan",
+        "Ukuran S sampai XXL, bisa custom ukuran"
+      ],
+      "useCases": [
+        "Tim operasional",
+        "Teknisi",
+        "Logistik & gudang"
+      ],
+      "seoTitle": "Workshirt",
+      "seoDescription": "Workshirt custom untuk seragam kerja operasional harian. Bahannya kuat dan mudah dirawat, dengan potongan yang tetap rapi dipakai bergerak dan detail saku yang fungsional untuk kebutuhan kerja.",
+      "published": true
+    },
+    {
+      "id": "seragam-kerja",
+      "name": "Seragam Kerja",
+      "tagline": "Identitas tim yang konsisten untuk operasional harian",
+      "description": "Seragam kerja custom untuk perusahaan, instansi, dan tim operasional. Didesain agar nyaman dipakai seharian dengan bahan yang awet, warna yang konsisten antar-batch, dan identitas perusahaan yang jelas.",
+      "parentSlug": "kemeja",
+      "menuVisible": true,
+      "menuOrder": 2,
+      "catalogVisible": false,
+      "catalogOrder": 12,
+      "cardImage": {
+        "src": "/product/pdh.png",
+        "alt": "Produk Seragam Kerja Askonveksi"
+      },
+      "gallery": [
+        {
+          "src": "/assets/seragam-kerja/VIRGIN%20BAKERY%20CEWEK.webp",
+          "alt": "Seragam kerja pesanan Virgin Bakery model cewek produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/VIRGIN%20BAKERY.webp",
+          "alt": "Seragam kerja pesanan Virgin Bakery produksi Askonveksi"
+        }
+      ],
+      "features": [
+        "Bahan drill / twill yang kokoh dan adem",
+        "Konsistensi warna untuk pemesanan lanjutan",
+        "Bordir logo dan nama karyawan",
+        "Model atasan dan bawahan sesuai kebutuhan"
+      ],
+      "useCases": [
+        "Perusahaan & pabrik",
+        "Instansi",
+        "Tim lapangan"
+      ],
+      "seoTitle": "Seragam Kerja",
+      "seoDescription": "Seragam kerja custom untuk perusahaan, instansi, dan tim operasional. Didesain agar nyaman dipakai seharian dengan bahan yang awet, warna yang konsisten antar-batch, dan identitas perusahaan yang jelas.",
+      "published": true
+    },
+    {
+      "id": "wearpack",
+      "name": "Wearpack",
+      "tagline": "Pakaian safety menyatu untuk kerja lapangan",
+      "description": "Wearpack custom untuk kebutuhan kerja lapangan, proyek, dan industri. Model menyatu dari atas sampai bawah dengan bahan yang kuat, dilengkapi reflektor opsional serta saku fungsional untuk peralatan kerja.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 2,
+      "catalogVisible": false,
+      "catalogOrder": 13,
+      "cardImage": {
+        "src": "/product/jaket.png",
+        "alt": "Produk Wearpack Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan drill / kanvas yang tebal dan kuat",
+        "Reflektor safety opsional",
+        "Saku fungsional untuk peralatan",
+        "Bordir logo perusahaan dan nama"
+      ],
+      "useCases": [
+        "Proyek & konstruksi",
+        "Tambang & industri",
+        "Mekanik & teknisi"
+      ],
+      "seoTitle": "Wearpack",
+      "seoDescription": "Wearpack custom untuk kebutuhan kerja lapangan, proyek, dan industri. Model menyatu dari atas sampai bawah dengan bahan yang kuat, dilengkapi reflektor opsional serta saku fungsional untuk peralatan kerja.",
+      "published": true
+    },
+    {
+      "id": "poloshirt",
+      "name": "Poloshirt",
+      "tagline": "Kasual namun tetap tampil rapi",
+      "description": "Poloshirt custom dengan kerah yang tetap tersusun meski dipakai seharian. Kombinasi sempurna antara kasual dan formal untuk seragam tim, klub, maupun event perusahaan.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 3,
+      "catalogVisible": false,
+      "catalogOrder": 14,
+      "cardImage": {
+        "src": "/product/polo.png",
+        "alt": "Produk Poloshirt Askonveksi"
+      },
+      "gallery": [
+        {
+          "src": "/assets/polo-webp/BPKAD.webp",
+          "alt": "Poloshirt pesanan BPKAD produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/GITA%20JAYA%20WIRATAMA.webp",
+          "alt": "Poloshirt pesanan Gita Jaya Wiratama produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/KORPS%20GITA%20JAYA%20WIRATAMA.webp",
+          "alt": "Poloshirt pesanan Korps Gita Jaya Wiratama produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/KORPS%20TEROMPET%20GITA%20JAYA%20WIRATAMA.webp",
+          "alt": "Poloshirt pesanan Korps Terompet Gita Jaya Wiratama produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/KORPS%20TUBA%20GITA%20JAYA%20WIRATAMA.webp",
+          "alt": "Poloshirt pesanan Korps Tuba Gita Jaya Wiratama produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/MELLOPHONE%20GITA%20JAYA%20WIRATAMA.webp",
+          "alt": "Poloshirt pesanan Mellophone Gita Jaya Wiratama produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/SAGARA%20GLOBAL%20MANAGEMENT%20LENGAN%20PANJANG.webp",
+          "alt": "Poloshirt lengan panjang pesanan Sagara Global Management produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/SAGARA%20GLOBAL%20MANAGEMENT%20LENGAN%20PENDEK.webp",
+          "alt": "Poloshirt lengan pendek pesanan Sagara Global Management produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/SNARE%20DRUM%20GITA%20JAYA%20WIRATAMA.webp",
+          "alt": "Poloshirt pesanan Snare Drum Gita Jaya Wiratama produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/SPPG%20(2).webp",
+          "alt": "Poloshirt pesanan SPPG produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/SPPG%20(3).webp",
+          "alt": "Poloshirt pesanan SPPG produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/SPPG.webp",
+          "alt": "Poloshirt pesanan SPPG produksi Askonveksi"
+        }
+      ],
+      "features": [
+        "Bahan cotton pique / lacoste yang adem",
+        "Kerah dan manset yang tidak melar",
+        "Bordir dada yang presisi",
+        "Ukuran S sampai XXL"
+      ],
+      "useCases": [
+        "Seragam tim",
+        "Event perusahaan",
+        "Klub & komunitas"
+      ],
+      "seoTitle": "Poloshirt",
+      "seoDescription": "Poloshirt custom dengan kerah yang tetap tersusun meski dipakai seharian. Kombinasi sempurna antara kasual dan formal untuk seragam tim, klub, maupun event perusahaan.",
+      "published": true
+    },
+    {
+      "id": "kaos-sablon",
+      "name": "Sablon DTF/Plastisol",
+      "tagline": "Kaos sablon tajam dengan hasil yang tahan lama",
+      "description": "Kaos sablon custom dengan pilihan teknik DTF atau plastisol sesuai kebutuhan desain Anda. Hasil sablon tajam, warnanya keluar, dan tidak mudah pecah, dicetak di atas bahan kaos yang lembut dan nyaman.",
+      "parentSlug": "kaos",
+      "menuVisible": true,
+      "menuOrder": 0,
+      "catalogVisible": false,
+      "catalogOrder": 15,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Kaos Sablon Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Teknik DTF untuk desain full color detail",
+        "Plastisol untuk hasil timbul yang awet",
+        "Bahan cotton combed 30s hingga 24s",
+        "Desain bebas, konsultasi gratis"
+      ],
+      "useCases": [
+        "Merchandise brand",
+        "Komunitas",
+        "Event & reunion"
+      ],
+      "seoTitle": "Sablon DTF/Plastisol",
+      "seoDescription": "Kaos sablon custom dengan pilihan teknik DTF atau plastisol sesuai kebutuhan desain Anda. Hasil sablon tajam, warnanya keluar, dan tidak mudah pecah, dicetak di atas bahan kaos yang lembut dan nyaman.",
+      "published": true
+    },
+    {
+      "id": "kaos-vneck",
+      "name": "Vneck",
+      "tagline": "Kaos kerah V yang simpel dan modern",
+      "description": "Kaos Vneck custom dengan potongan kerah V yang simpel dan modern. Nyaman untuk pemakaian harian dengan bahan yang lembut, cocok untuk seragam komunitas, merchandise, maupun pakaian santai tim.",
+      "parentSlug": "kaos",
+      "menuVisible": true,
+      "menuOrder": 1,
+      "catalogVisible": false,
+      "catalogOrder": 16,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Kaos Vneck Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan cotton combed yang lembut",
+        "Rib kerah V yang tidak melar",
+        "Sablon DTF, plastisol, dan digital",
+        "Ukuran anak sampai XXXL"
+      ],
+      "useCases": [
+        "Komunitas",
+        "Merchandise brand",
+        "Seragam santai"
+      ],
+      "seoTitle": "Vneck",
+      "seoDescription": "Kaos Vneck custom dengan potongan kerah V yang simpel dan modern. Nyaman untuk pemakaian harian dengan bahan yang lembut, cocok untuk seragam komunitas, merchandise, maupun pakaian santai tim.",
+      "published": true
+    },
+    {
+      "id": "kaos-raglan",
+      "name": "Raglan",
+      "tagline": "Kaos lengan raglan dengan kombinasi warna bebas",
+      "description": "Kaos raglan custom dengan potongan lengan khas dan kombinasi warna badan-lengan yang bebas Anda tentukan. Model yang populer untuk jersey santai, seragam komunitas, dan merchandise dengan karakter kuat.",
+      "parentSlug": "kaos",
+      "menuVisible": true,
+      "menuOrder": 2,
+      "catalogVisible": false,
+      "catalogOrder": 17,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Kaos Raglan Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Kombinasi warna badan dan lengan bebas",
+        "Bahan cotton combed yang adem",
+        "Sablon sesuai desain Anda",
+        "Ukuran anak sampai XXXL"
+      ],
+      "useCases": [
+        "Komunitas & klub",
+        "Jersey santai",
+        "Merchandise"
+      ],
+      "seoTitle": "Raglan",
+      "seoDescription": "Kaos raglan custom dengan potongan lengan khas dan kombinasi warna badan-lengan yang bebas Anda tentukan. Model yang populer untuk jersey santai, seragam komunitas, dan merchandise dengan karakter kuat.",
+      "published": true
+    },
+    {
+      "id": "jacket",
+      "name": "Jacket",
+      "tagline": "Hangat, awet, dan siap jadi identitas komunitas",
+      "description": "Jacket custom dengan bahan tebal berkualitas dan jahitan kuat, dirancang untuk pemakaian rutin. Pilihan tepat untuk seragam komunitas, almamater, hingga merchandise brand.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 6,
+      "catalogVisible": false,
+      "catalogOrder": 18,
+      "cardImage": {
+        "src": "/product/jaket.png",
+        "alt": "Produk Jacket Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan waterproof / fleece sesuai kebutuhan",
+        "Bordir & sablon logo yang tahan lama",
+        "Varian jaket yarndye, bomber, dan hoodie",
+        "Resleting & aksesoris berkualitas"
+      ],
+      "useCases": [
+        "Komunitas & klub",
+        "Almamater",
+        "Merchandise brand"
+      ],
+      "seoTitle": "Jacket",
+      "seoDescription": "Jacket custom dengan bahan tebal berkualitas dan jahitan kuat, dirancang untuk pemakaian rutin. Pilihan tepat untuk seragam komunitas, almamater, hingga merchandise brand.",
+      "published": true
+    },
+    {
+      "id": "lanyard",
+      "name": "Lanyard",
+      "tagline": "Tali ID custom untuk identitas acara dan kantor",
+      "description": "Lanyard custom untuk kebutuhan ID card karyawan, kepanitiaan event, dan aksesoris komunitas. Dicetak dengan desain dan warna sesuai identitas Anda, lengkap dengan pilihan pengait dan stopper.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 7,
+      "catalogVisible": false,
+      "catalogOrder": 19,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Lanyard Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Cetak desain full color dua sisi",
+        "Lebar tali 1,5 cm dan 2 cm",
+        "Pilihan pengait besi dan plastik",
+        "Stopper dan aksesoris opsional"
+      ],
+      "useCases": [
+        "ID karyawan",
+        "Kepanitiaan event",
+        "Komunitas"
+      ],
+      "seoTitle": "Lanyard",
+      "seoDescription": "Lanyard custom untuk kebutuhan ID card karyawan, kepanitiaan event, dan aksesoris komunitas. Dicetak dengan desain dan warna sesuai identitas Anda, lengkap dengan pilihan pengait dan stopper.",
+      "published": true
+    },
+    {
+      "id": "rompi-vest-apron",
+      "name": "Rompi / Vest / Apron",
+      "tagline": "Pelapis fungsional untuk kerja dan usaha",
+      "description": "Rompi, vest, dan apron custom untuk kebutuhan kerja lapangan, event, hingga usaha kuliner. Dirancang fungsional dengan saku dan detail yang bisa disesuaikan, tetap nyaman dipakai dalam waktu lama.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 8,
+      "catalogVisible": false,
+      "catalogOrder": 20,
+      "cardImage": {
+        "src": "/product/rompi.png",
+        "alt": "Produk Rompi Vest Apron Askonveksi"
+      },
+      "gallery": [
+        {
+          "src": "/assets/rompi-apron/DISHUB.webp",
+          "alt": "Rompi pesanan Dishub produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/HK%20BUCG.webp",
+          "alt": "Rompi pesanan HK BUCG produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/LPH%20UIN%20WALISONGO.webp",
+          "alt": "Rompi pesanan LPH UIN Walisongo produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/OIKN.webp",
+          "alt": "Rompi pesanan OIKN produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/POLRES.webp",
+          "alt": "Rompi pesanan Polres produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/SPPG%20MANGUNHARJO%2003.webp",
+          "alt": "Rompi pesanan SPPG Mangunharjo 03 produksi Askonveksi"
+        }
+      ],
+      "features": [
+        "Bahan kuat dengan jahitan rapi",
+        "Model rompi, vest, dan apron dada / pinggang",
+        "Sablon / bordir logo usaha Anda",
+        "Saku dan tali yang dapat disesuaikan"
+      ],
+      "useCases": [
+        "Relawan & event",
+        "Kafe & UMKM",
+        "Petugas lapangan"
+      ],
+      "seoTitle": "Rompi / Vest / Apron",
+      "seoDescription": "Rompi, vest, dan apron custom untuk kebutuhan kerja lapangan, event, hingga usaha kuliner. Dirancang fungsional dengan saku dan detail yang bisa disesuaikan, tetap nyaman dipakai dalam waktu lama.",
+      "published": true
+    },
+    {
+      "id": "totebag-topi",
+      "name": "Totebag / Topi",
+      "tagline": "Aksesoris custom untuk brand dan souvenir",
+      "description": "Totebag dan topi custom untuk merchandise brand, souvenir event, maupun kebutuhan komunitas. Totebag tersedia dalam bahan kanvas dan spunbond, topi dalam model snapback, trucker, dan baseball dengan bordir atau sablon logo.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 9,
+      "catalogVisible": false,
+      "catalogOrder": 21,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Totebag Topi Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Totebag kanvas dan spunbond berbagai ukuran",
+        "Topi snapback, trucker, dan baseball",
+        "Sablon atau bordir logo",
+        "Cocok untuk souvenir dan merchandise"
+      ],
+      "useCases": [
+        "Souvenir event",
+        "Merchandise brand",
+        "Komunitas"
+      ],
+      "seoTitle": "Totebag / Topi",
+      "seoDescription": "Totebag dan topi custom untuk merchandise brand, souvenir event, maupun kebutuhan komunitas. Totebag tersedia dalam bahan kanvas dan spunbond, topi dalam model snapback, trucker, dan baseball dengan bordir atau sablon logo.",
+      "published": true
+    },
+    {
+      "id": "gantungan-kunci",
+      "name": "Gantungan Kunci",
+      "tagline": "Souvenir kecil yang mudah dibawa pulang",
+      "description": "Gantungan kunci custom untuk souvenir event, merchandise komunitas, maupun pelengkap paket seminar kit. Tersedia dalam bahan akrilik, karet, dan besi dengan desain dua sisi sesuai identitas Anda.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 10,
+      "catalogVisible": false,
+      "catalogOrder": 22,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Gantungan Kunci Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan akrilik, karet, dan besi",
+        "Desain dua sisi full color",
+        "Ring dan rantai berkualitas",
+        "Mulai dari jumlah kecil"
+      ],
+      "useCases": [
+        "Souvenir event",
+        "Seminar kit",
+        "Merchandise komunitas"
+      ],
+      "seoTitle": "Gantungan Kunci",
+      "seoDescription": "Gantungan kunci custom untuk souvenir event, merchandise komunitas, maupun pelengkap paket seminar kit. Tersedia dalam bahan akrilik, karet, dan besi dengan desain dua sisi sesuai identitas Anda.",
+      "published": true
+    },
+    {
+      "id": "stiker",
+      "name": "Stiker",
+      "tagline": "Label dan branding kecil yang menempel kuat",
+      "description": "Stiker custom untuk label produk, kemasan, dan promosi brand. Tersedia dalam bahan vinyl, chromo, dan transparan dengan potongan kiss-cut atau die-cut mengikuti bentuk desain, lengkap dengan pilihan finishing laminasi glossy atau doff.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 11,
+      "catalogVisible": false,
+      "catalogOrder": 23,
+      "cardImage": {
+        "src": "/product/kaos.png",
+        "alt": "Produk Stiker Askonveksi"
+      },
+      "gallery": [],
+      "features": [
+        "Bahan vinyl, chromo, dan transparan",
+        "Potongan kiss-cut atau die-cut bentuk bebas",
+        "Finishing laminasi glossy atau doff",
+        "Ukuran dan jumlah custom sesuai kebutuhan"
+      ],
+      "useCases": [
+        "Label produk",
+        "Kemasan UMKM",
+        "Promosi brand"
+      ],
+      "seoTitle": "Stiker",
+      "seoDescription": "Stiker custom untuk label produk, kemasan, dan promosi brand. Tersedia dalam bahan vinyl, chromo, dan transparan dengan potongan kiss-cut atau die-cut mengikuti bentuk desain, lengkap dengan pilihan finishing laminasi glossy atau doff.",
+      "published": true
+    }
+  ],
+  "portfolio": {
+    "seo": {
+      "title": "Portofolio",
+      "description": "Portofolio hasil produksi seragam dan apparel custom Askonveksi di Semarang untuk perusahaan, instansi, komunitas, dan brand.",
+      "ogImage": null
+    },
+    "sections": [
+      {
+        "id": "header",
+        "visible": true
+      },
+      {
+        "id": "grid",
+        "visible": true
+      },
+      {
+        "id": "cta",
+        "visible": true
+      }
+    ],
+    "eyebrow": "Dipercaya 27 perusahaan & instansi",
+    "title": "Portofolio Kami",
+    "description": "Kumpulan hasil produksi seragam dan apparel custom untuk perusahaan, instansi, komunitas, dan brand yang telah memercayakan kebutuhannya kepada Askonveksi.",
+    "items": [
+      {
+        "name": "BRI",
+        "logo": {
+          "src": "/client/bri.webp",
+          "alt": "Logo BRI"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Aegis Jaya Metalindo",
+        "logo": {
+          "src": "/client/aegis.webp",
+          "alt": "Logo PT Aegis Jaya Metalindo"
+        },
+        "visible": true
+      },
+      {
+        "name": "OIKN Nusantara",
+        "logo": {
+          "src": "/client/oikn.webp",
+          "alt": "Logo OIKN Nusantara"
+        },
+        "visible": true
+      },
+      {
+        "name": "Orado",
+        "logo": {
+          "src": "/client/orado.webp",
+          "alt": "Logo Orado"
+        },
+        "visible": true
+      },
+      {
+        "name": "Gekraf",
+        "logo": {
+          "src": "/client/gekraf.webp",
+          "alt": "Logo Gekraf"
+        },
+        "visible": true
+      },
+      {
+        "name": "KOV",
+        "logo": {
+          "src": "/client/kov.webp",
+          "alt": "Logo KOV"
+        },
+        "visible": true
+      },
+      {
+        "name": "AKPOL",
+        "logo": {
+          "src": "/client/akpol.webp",
+          "alt": "Logo AKPOL"
+        },
+        "visible": true
+      },
+      {
+        "name": "KHAF",
+        "logo": {
+          "src": "/client/kahf.webp",
+          "alt": "Logo KHAF"
+        },
+        "visible": true
+      },
+      {
+        "name": "BUCG HK",
+        "logo": {
+          "src": "/client/BUCGHK.webp",
+          "alt": "Logo BUCG HK"
+        },
+        "visible": true
+      },
+      {
+        "name": "PNM",
+        "logo": {
+          "src": "/client/pnm.webp",
+          "alt": "Logo PNM"
+        },
+        "visible": true
+      },
+      {
+        "name": "Bareskrim Polri",
+        "logo": {
+          "src": "/client/bareskim.webp",
+          "alt": "Logo Bareskrim Polri"
+        },
+        "visible": true
+      },
+      {
+        "name": "Dishub Kota Semarang",
+        "logo": {
+          "src": "/client/dishub-semarang.webp",
+          "alt": "Logo Dishub Kota Semarang"
+        },
+        "visible": true
+      },
+      {
+        "name": "Pertamina",
+        "logo": {
+          "src": "/client/pertamina.webp",
+          "alt": "Logo Pertamina"
+        },
+        "visible": true
+      },
+      {
+        "name": "U-Winfly",
+        "logo": {
+          "src": "/client/uwinfly.webp",
+          "alt": "Logo U-Winfly"
+        },
+        "visible": true
+      },
+      {
+        "name": "Polantas",
+        "logo": {
+          "src": "/client/polantas.webp",
+          "alt": "Logo Polantas"
+        },
+        "visible": true
+      },
+      {
+        "name": "Polres Bojonegoro",
+        "logo": {
+          "src": "/client/polres-bojonegoro.webp",
+          "alt": "Logo Polres Bojonegoro"
+        },
+        "visible": true
+      },
+      {
+        "name": "Bank Jateng",
+        "logo": {
+          "src": "/client/bankjateng.webp",
+          "alt": "Logo Bank Jateng"
+        },
+        "visible": true
+      },
+      {
+        "name": "J&T Express",
+        "logo": {
+          "src": "/client/jnt.webp",
+          "alt": "Logo J&T Express"
+        },
+        "visible": true
+      },
+      {
+        "name": "BPN Kab Semarang",
+        "logo": {
+          "src": "/client/bpn.webp",
+          "alt": "Logo BPN Kab Semarang"
+        },
+        "visible": true
+      },
+      {
+        "name": "Virgin Bakery",
+        "logo": {
+          "src": "/client/virgin.webp",
+          "alt": "Logo Virgin Bakery"
+        },
+        "visible": true
+      },
+      {
+        "name": "UNDIP",
+        "logo": {
+          "src": "/client/undip.webp",
+          "alt": "Logo UNDIP"
+        },
+        "visible": true
+      },
+      {
+        "name": "UNNES",
+        "logo": {
+          "src": "/client/unnes.webp",
+          "alt": "Logo UNNES"
+        },
+        "visible": true
+      },
+      {
+        "name": "Unisula",
+        "logo": {
+          "src": "/client/unisula.webp",
+          "alt": "Logo Unisula"
+        },
+        "visible": true
+      },
+      {
+        "name": "USM",
+        "logo": {
+          "src": "/client/usm.webp",
+          "alt": "Logo USM"
+        },
+        "visible": true
+      },
+      {
+        "name": "Udinus",
+        "logo": {
+          "src": "/client/udinus.webp",
+          "alt": "Logo Udinus"
+        },
+        "visible": true
+      },
+      {
+        "name": "Unika",
+        "logo": {
+          "src": "/client/unika.webp",
+          "alt": "Logo Unika"
+        },
+        "visible": true
+      },
+      {
+        "name": "Puskesmas Bangetayu",
+        "logo": {
+          "src": "/client/puskesmas-bangetayu.webp",
+          "alt": "Logo Puskesmas Bangetayu"
+        },
+        "visible": true
+      }
+    ]
+  },
+  "sizeChart": {
+    "seo": {
+      "title": "Size Chart",
+      "description": "Panduan ukuran pakaian Askonveksi untuk memastikan seragam dan apparel custom Anda pas dipakai.",
+      "ogImage": null
+    },
+    "sections": [
+      {
+        "id": "header",
+        "visible": true
+      },
+      {
+        "id": "grid",
+        "visible": true
+      }
+    ],
+    "title": "Size chart",
+    "description": "Panduan ukuran pakaian Askonveksi untuk memastikan seragam dan apparel custom Anda pas dipakai.",
+    "images": [
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.07%20AM.webp",
+        "alt": "Size chart Askonveksi 1"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.08%20AM.webp",
+        "alt": "Size chart Askonveksi 2"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.08%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 3"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.09%20AM.webp",
+        "alt": "Size chart Askonveksi 4"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.09%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 5"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.09%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 6"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.10%20AM.webp",
+        "alt": "Size chart Askonveksi 7"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.10%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 8"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.10%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 9"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.11%20AM.webp",
+        "alt": "Size chart Askonveksi 10"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.11%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 11"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.11%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 12"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.12%20AM.webp",
+        "alt": "Size chart Askonveksi 13"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.12%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 14"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.12%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 15"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.12%20AM%20%283%29.webp",
+        "alt": "Size chart Askonveksi 16"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.13%20AM.webp",
+        "alt": "Size chart Askonveksi 17"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.13%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 18"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.13%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 19"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.14%20AM.webp",
+        "alt": "Size chart Askonveksi 20"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.14%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 21"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.14%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 22"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.15%20AM.webp",
+        "alt": "Size chart Askonveksi 23"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.15%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 24"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.15%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 25"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.16%20AM.webp",
+        "alt": "Size chart Askonveksi 26"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.16%20AM%20%281%29.webp",
+        "alt": "Size chart Askonveksi 27"
+      },
+      {
+        "src": "/size-chart/WhatsApp%20Image%202026-10-10%20at%2010.14.16%20AM%20%282%29.webp",
+        "alt": "Size chart Askonveksi 28"
+      }
+    ]
+  },
+  "fabric": {
+    "seo": {
+      "title": "Katalog Kain",
+      "description": "Katalog pilihan kain Askonveksi untuk seragam dan apparel custom Anda.",
+      "ogImage": null
+    },
+    "sections": [
+      {
+        "id": "header",
+        "visible": true
+      },
+      {
+        "id": "grid",
+        "visible": true
+      }
+    ],
+    "title": "Katalog Kain",
+    "description": "Katalog pilihan kain Askonveksi untuk seragam dan apparel custom Anda.",
+    "comingSoon": true,
+    "comingSoonTitle": "Segera Hadir",
+    "comingSoonDescription": "Galeri foto {pageName} sedang kami siapkan. Silakan kembali lagi nanti atau hubungi kami untuk melihat hasil produksi terbaru.",
+    "comingSoonImage": {
+      "src": "/cooming-soon.svg",
+      "alt": ""
+    },
+    "comingSoonButtonLabel": "Kembali ke Beranda",
+    "comingSoonHref": "/#beranda",
+    "items": []
+  },
+  "contact": {
+    "seo": {
+      "title": "Kontak Kami",
+      "description": "Hubungi Askonveksi untuk konsultasi dan pemesanan seragam serta apparel custom.",
+      "ogImage": null
+    },
+    "sections": [
+      {
+        "id": "header",
+        "visible": true
+      },
+      {
+        "id": "info",
+        "visible": true
+      },
+      {
+        "id": "faq",
+        "visible": true
+      },
+      {
+        "id": "map",
+        "visible": true
+      },
+      {
+        "id": "cta",
+        "visible": true
+      }
+    ],
+    "title": "Kontak Kami",
+    "email": {
+      "label": "Email",
+      "value": "email@askonveksi.com",
+      "href": "mailto:email@askonveksi.com"
+    },
+    "address": {
+      "label": "Alamat",
+      "lines": [
+        "Jl. Contoh No. 123,",
+        "Semarang, Jawa Tengah"
+      ]
+    },
+    "phones": {
+      "label": "Telepon",
+      "items": [
+        {
+          "label": "Admin 1",
+          "value": "08xx-xxxx-xxxx",
+          "href": "tel:+6280000000000"
+        },
+        {
+          "label": "Admin 2",
+          "value": "08xx-xxxx-xxxx",
+          "href": "tel:+6280000000000"
+        }
+      ]
+    },
+    "faq": {
+      "eyebrow": "FAQ",
+      "title": "Masih ragu? Mungkin jawaban Anda ada di bawah.",
+      "items": [
+        {
+          "question": "Berapa minimum order?",
+          "answer": "Minimum pemesanan custom adalah 12 pcs per model dan desain. Untuk jumlah di bawah itu, hubungi admin — kami bantu carikan opsi yang paling sesuai.",
+          "visible": true
+        },
+        {
+          "question": "Berapa lama waktu pengerjaan?",
+          "answer": "Waktu pengerjaan standar 7–14 hari kerja setelah desain disetujui dan DP diterima, tergantung antrean dan kompleksitas model. Untuk kebutuhan mendesak, diskusikan dengan admin agar bisa diatur prioritasnya.",
+          "visible": true
+        },
+        {
+          "question": "Model apa saja yang bisa dibuat?",
+          "answer": "Kami memproduksi kemeja, PDH/PDL, workshirt, seragam kerja, wearpack, poloshirt, kaos (sablon DTF/plastisol, vneck, raglan), jacket, rompi, vest, apron, topi, totebag, lanyard, hingga gantungan kunci. Desain mengikuti kebutuhan Anda — konsultasi desain gratis.",
+          "visible": true
+        },
+        {
+          "question": "Bagaimana proses pembayaran?",
+          "answer": "Produksi dimulai setelah DP 50% diterima, dan pelunasan dilakukan sebelum barang dikirim atau diambil. Pembayaran via transfer bank, dan progres pengerjaan dikabari berkala melalui WhatsApp.",
+          "visible": true
+        }
+      ]
+    },
+    "form": {
+      "eyebrow": "Hubungi Kami",
+      "title": "Ceritakan kebutuhan Anda.",
+      "nameLabel": "Nama",
+      "namePlaceholder": "Nama lengkap Anda",
+      "emailLabel": "Email",
+      "emailPlaceholder": "nama@email.com",
+      "phoneLabel": "No. WhatsApp",
+      "phonePlaceholder": "08xx-xxxx-xxxx",
+      "subjectLabel": "Kebutuhan",
+      "subjectPlaceholder": "Mis. Seragam kerja 50 pcs",
+      "messageLabel": "Pesan",
+      "messagePlaceholder": "Ceritakan kebutuhan seragam atau apparel Anda",
+      "submitLabel": "Kirim via WhatsApp",
+      "successLabel": "WhatsApp Terbuka",
+      "helperText": "Pesan Anda akan dibuka di WhatsApp dengan format otomatis — tinggal tekan kirim."
+    },
+    "map": {
+      "title": "Peta lokasi Askonveksi",
+      "embedSrc": "https://www.google.com/maps?q=Semarang,+Jawa+Tengah,+Indonesia&output=embed",
+      "visible": true
+    },
+    "cta": {
+      "title": "Dapatkan Penawaran Terbaik",
+      "subtitle": "Konsultasikan Kebutuhan Seragam Anda",
+      "buttonLabel": "Kontak Marketing",
+      "whatsappMessage": "Halo Askonveksi, saya ingin meminta penawaran untuk kebutuhan seragam.",
+      "image": {
+        "src": "/cta.jpg",
+        "alt": ""
+      }
+    }
+  },
+  "comingSoon": {
+    "title": "Segera Hadir",
+    "image": {
+      "src": "/cooming-soon.svg",
+      "alt": ""
+    },
+    "description": "Galeri foto {pageName} sedang kami siapkan. Silakan kembali lagi nanti atau hubungi kami untuk melihat hasil produksi terbaru.",
+    "buttonLabel": "Kembali ke Beranda",
+    "href": "/#beranda"
+  }
+}

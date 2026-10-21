@@ -1,56 +1,64 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
 import { LandingWhatsAppFab } from "@/components/landing-whatsapp-fab";
 import { ProductDetailGrid } from "@/components/product-detail-grid";
-import { getProductChildSlugs, ProductParentGrid } from "@/components/product-parent-grid";
-import { LANDING_PRODUCTS, getLandingProduct } from "@/lib/products";
+import { ProductParentGrid } from "@/components/product-parent-grid";
+import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
+import { childrenOf, getProduct } from "@/lib/cms/selectors";
+import { getSiteContent } from "@/lib/cms/store";
 
-export const dynamic = "force-static";
+export const dynamicParams = true;
 
-export const dynamicParams = false;
-
-export function generateStaticParams() {
-  return LANDING_PRODUCTS.map((product) => ({ slug: product.slug }));
+export async function generateStaticParams() {
+  const content = await getSiteContent();
+  return content.products.filter((product) => product.published).map((product) => ({ slug: product.id }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const product = getLandingProduct(slug);
-
-  if (!product) {
-    return { title: "Produk" };
-  }
-
+  const content = await getSiteContent();
+  const product = getProduct(content, slug);
+  if (!product || !product.published) return { title: "Produk" };
+  const description = product.seoDescription || product.description.replace(/<[^>]+>/g, " ").slice(0, 160);
   return {
-    title: product.name,
-    description: product.description,
+    title: product.seoTitle || product.name,
+    description,
+    robots: { index: true, follow: true },
+    openGraph: {
+      title: product.seoTitle || product.name,
+      description,
+      images: product.cardImage ? [product.cardImage.src] : undefined,
+    },
   };
 }
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const product = getLandingProduct(slug);
+  const content = await getSiteContent();
+  const product = getProduct(content, slug);
+  if (!product || !product.published) notFound();
 
-  if (!product) {
-    notFound();
-  }
-
-  const childSlugs = getProductChildSlugs(slug);
+  const children = childrenOf(content, product.id);
 
   return (
     <main className="flex min-h-dvh flex-col bg-white">
       <SiteNavbar />
       <div className="flex-1">
-        {childSlugs.length > 0 ? (
-          <ProductParentGrid product={product} childSlugs={childSlugs} />
+        {children.length > 0 ? (
+          <ProductParentGrid product={product} comingSoon={content.comingSoon}>
+            {children}
+          </ProductParentGrid>
         ) : (
-          <ProductDetailGrid product={product} />
+          <ProductDetailGrid product={product} comingSoon={content.comingSoon} />
         )}
       </div>
       <SiteFooter />
-      <LandingWhatsAppFab />
+      <LandingWhatsAppFab
+        phone={content.site.whatsapp}
+        message={content.whatsappFab.message}
+        visible={content.whatsappFab.visible}
+      />
     </main>
   );
 }

@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -56,9 +56,14 @@ const ownerMasterItems = [
   { href: "/admin/users", label: "Pengguna", icon: ShieldCheck },
 ] as const;
 
+const websiteItems = [
+  { href: "/cms", label: "Kelola Website", icon: Globe2 },
+  { href: "/cms/riwayat", label: "Riwayat Perubahan", icon: History },
+] as const;
+
 const analyticsItems = [
   { href: "/analytics", label: "Ringkasan", icon: Gauge },
-  { href: "/analytics/lead-sources", label: "Sumber & omzet", icon: Waypoints },
+  { href: "/analytics/lead-sources", label: "Kanal akuisisi", icon: Waypoints },
 ] as const;
 
 function isPathWithin(pathname: string, href: string) {
@@ -150,6 +155,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   // Admin Customer hanya melihat modul Produksi (mode lihat saja); aksi tetap terbatas tim Produksi.
   const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PO" || role === "ADMIN_CUSTOMER";
   const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
+  const canManageWebsite = isDeveloper || role === "OWNER";
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
@@ -171,6 +177,11 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       {canViewProduction ? (
         <NavGroup label={<span>Produksi</span>} icon={Factory} tone="text-nav-tone-production">
           {productionItems.filter((item) => isDeveloper || item.href !== "/detail-desain").map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-production" onNavigate={onNavigate} />)}
+        </NavGroup>
+      ) : null}
+      {canManageWebsite ? (
+        <NavGroup label={<span>Website</span>} icon={Globe2} tone="text-nav-tone-website">
+          {websiteItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-website" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewAnalytics ? (

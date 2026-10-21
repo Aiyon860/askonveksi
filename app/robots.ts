@@ -10,6 +10,8 @@ export default function robots(): MetadataRoute.Robots {
       disallow: [
         "/account/",
         "/admin/",
+        "/cms/",
+        "/cms-preview",
         "/analytics/",
         "/api/",
         "/campaigns/",

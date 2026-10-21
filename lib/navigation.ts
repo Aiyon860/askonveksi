@@ -29,8 +29,8 @@ export type LandingProductMenuEntry =
 
 /**
  * Clean & simple product menu for navbar dropdown + footer.
- * Group headers (Kemeja, Kaos, Jersey) link to the parent aggregate page
- * and expand to their sub-product children.
+ * Group headers (Kemeja, Celana, Kaos, Jersey) link to the parent aggregate
+ * page and expand to their sub-product children.
  * Every menu href has a matching entry in LANDING_PRODUCTS
  * so /produk/[slug] renders a full detail page.
  */
@@ -42,6 +42,14 @@ export const LANDING_PRODUCT_MENU = [
       { label: "Kemeja PDH/PDL", href: "/produk/kemeja-pdh-pdl" },
       { label: "Workshirt", href: "/produk/workshirt" },
       { label: "Seragam Kerja", href: "/produk/seragam-kerja" },
+    ],
+  },
+  {
+    label: "Celana",
+    href: "/produk/celana",
+    children: [
+      { label: "Celana Formal", href: "/produk/celana-formal" },
+      { label: "Celana Training", href: "/produk/celana-training" },
     ],
   },
   { label: "Wearpack", href: "/produk/wearpack" },

@@ -1,185 +1,121 @@
-import { CardHeaderSkeleton, SectionHeaderSkeleton } from "@/components/loading-skeletons";
-import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DASH_SALES_SPANS } from "@/components/dashboard/dashboard-ui";
-import { STAGE_SURFACE_CLASS } from "@/components/crm/stage-theme";
-import { PIPELINE_STAGES } from "@/lib/crm/constants";
-import { cn } from "@/lib/utils";
 
-const accentTileClass = "dash-accent dash-panel flex h-full flex-col gap-4 rounded-xl border border-transparent p-4 sm:p-5";
-
-/** Mengikuti kartu angka aslinya: label di atas, angka di tengah sisa tinggi. */
-const tileValueClass = "flex flex-1 flex-col justify-center gap-2.5";
-
-function StatTileSkeleton({ panel = "card", className }: { panel?: "card" | "tinted"; className?: string }) {
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-4 rounded-xl border p-4 sm:p-5",
-        panel === "tinted" ? "border-border bg-muted" : "dash-panel border-transparent bg-card",
-        className,
-      )}
-    >
-      <div className="flex items-center gap-2.5">
-        <Skeleton className="size-10 shrink-0 rounded-xl" />
-        <Skeleton className="h-4 w-24 max-w-full" />
-      </div>
-      <div className={tileValueClass}>
-        <Skeleton className="h-7 w-28 max-w-full" />
-        <Skeleton className="h-3 w-20 max-w-full" />
-      </div>
-    </div>
-  );
-}
-
-/** Kartu aksen: label di atas, angka di tengah sisa tinggi seperti isi aslinya. */
-function AccentTileSkeleton({ className }: { className?: string }) {
-  return (
-    <div className={cn(accentTileClass, className)}>
-      <div className="flex items-center gap-2.5">
-        <Skeleton className="size-10 shrink-0 rounded-xl bg-accent-surface-line" />
-        <Skeleton className="h-4 w-24 max-w-full bg-accent-surface-line" />
-      </div>
-      <div className={tileValueClass}>
-        <Skeleton className="h-7 w-32 max-w-full bg-accent-surface-line" />
-      </div>
-    </div>
-  );
-}
-
-function ListRowSkeleton() {
-  return (
-    <div className="flex min-h-20 items-center gap-3 border-t border-border py-3 first:border-t-0 first:pt-0 last:pb-0">
-      <Skeleton className="size-10 shrink-0 rounded-xl" />
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <Skeleton className="h-4 w-32 max-w-full" />
-        <Skeleton className="h-3 w-44 max-w-full" />
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <Skeleton className="h-5 w-20" />
-        <Skeleton className="h-3 w-24" />
-      </div>
-    </div>
-  );
-}
-
-function ChartCardSkeleton({ className }: { className?: string }) {
-  return (
-    <Card className={cn("dash-panel rounded-xl border-0 bg-card", className)}>
-      <CardHeaderSkeleton action />
-      <CardContent>
-        <Skeleton className="h-12 w-full rounded-xl" />
-        <Skeleton className="h-64 w-full rounded-lg" />
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Skeleton dashboard; dipakai jalur Suspense halaman maupun berkas loading rute. */
 export function DashboardSkeleton() {
   return (
-    <>
-      <section aria-hidden="true">
-        <div className="mb-4">
-          <SectionHeaderSkeleton titleWidth="w-40" descriptionWidth="w-96 max-w-full" />
+    <div className="flex flex-col gap-6" aria-hidden="true">
+      {/* Top Search & Utilities Skeleton */}
+      <div className="flex h-14 items-center justify-between rounded-2xl neu-card">
+        <Skeleton className="h-9 w-72 rounded-xl" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-9 rounded-xl" />
+          <Skeleton className="size-9 rounded-xl" />
+          <Skeleton className="h-9 w-32 rounded-xl" />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          <AccentTileSkeleton className={DASH_SALES_SPANS[0]} />
-          {DASH_SALES_SPANS.slice(1).map((span, index) => (
-            <StatTileSkeleton key={`sales-tile-${index}`} className={span} />
-          ))}
-        </div>
-      </section>
+      </div>
 
-      <section aria-hidden="true">
-        <Card className="dash-panel rounded-xl border-0 bg-card">
-          <CardHeaderSkeleton action />
-          <CardContent className="grid gap-3 lg:grid-cols-2">
-            <AccentTileSkeleton />
-            <StatTileSkeleton panel="tinted" />
-          </CardContent>
-        </Card>
-      </section>
+      {/* Banner Skeleton */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3.5">
+          <Skeleton className="size-12 rounded-2xl" />
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-6 w-48 rounded-lg" />
+            <Skeleton className="h-4 w-72 rounded-lg" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <Skeleton className="h-10 w-44 rounded-xl" />
+          <Skeleton className="h-10 w-32 rounded-xl" />
+        </div>
+      </div>
 
-      <section aria-hidden="true">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <StatTileSkeleton />
-          <StatTileSkeleton />
-          <StatTileSkeleton panel="tinted" className="sm:col-span-2 xl:col-span-1" />
-        </div>
-      </section>
-
-      <section aria-hidden="true">
-        <div className="mb-4">
-          <SectionHeaderSkeleton titleWidth="w-32" descriptionWidth="w-80 max-w-full" />
-        </div>
-        <div className="grid gap-4 xl:grid-cols-5">
-          <ChartCardSkeleton className="xl:col-span-3" />
-          <ChartCardSkeleton className="xl:col-span-2" />
-        </div>
-      </section>
-
-      <section aria-hidden="true">
-        <div className="mb-4">
-          <SectionHeaderSkeleton titleWidth="w-40" descriptionWidth="w-96 max-w-full" />
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          {Array.from({ length: 2 }, (_, cardIndex) => (
-            <Card key={`document-preview-${cardIndex}`} className="dash-panel rounded-xl border-0 bg-card">
-              <CardHeaderSkeleton action />
-              <CardContent className="gap-0">
-                {Array.from({ length: 5 }, (_, rowIndex) => (
-                  <ListRowSkeleton key={`document-row-${cardIndex}-${rowIndex}`} />
-                ))}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section aria-hidden="true">
-        <div className="mb-4">
-          <SectionHeaderSkeleton titleWidth="w-28" descriptionWidth="w-64 max-w-full" />
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-          {PIPELINE_STAGES.map((stage, index) => (
-            <div
-              key={stage}
-              /* Permukaan tahap diambil dari tema aslinya supaya warnanya tidak berubah saat data masuk. */
-              className={cn(
-                "flex flex-col gap-4 rounded-xl border p-4",
-                STAGE_SURFACE_CLASS[stage],
-                index === PIPELINE_STAGES.length - 1 && "col-span-2 xl:col-span-1",
-              )}
-            >
-              <div className="flex flex-wrap items-center gap-2.5">
-                <Skeleton className="size-10 shrink-0 rounded-xl" />
-                <Skeleton className="h-4 w-16 max-w-full" />
-              </div>
-              <div className={tileValueClass}>
-                <Skeleton className="h-7 w-10" />
-                <Skeleton className="h-1.5 w-full rounded-full" />
-                <Skeleton className="h-3 w-24 max-w-full" />
-              </div>
+      {/* 6 KPI Cards Skeleton */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex flex-col justify-between rounded-2xl neu-card p-5">
+            <div className="flex items-start justify-between">
+              <Skeleton className="size-12 rounded-2xl" />
+              <Skeleton className="h-4 w-12 rounded-md" />
             </div>
+            <div className="mt-4 flex flex-col gap-1.5">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-7 w-24" />
+            </div>
+            <Skeleton className="mt-2 h-3 w-32" />
+          </div>
+        ))}
+      </div>
+
+      {/* Middle Row (3 Cards) Skeleton */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        <div className="rounded-2xl neu-card p-6 xl:col-span-5">
+          <div className="flex items-center justify-between pb-4">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-8 w-36 rounded-lg" />
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+
+        <div className="rounded-2xl neu-card p-6 xl:col-span-3">
+          <Skeleton className="h-5 w-32" />
+          <div className="my-4 flex items-center justify-center">
+            <Skeleton className="size-44 rounded-full" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+        </div>
+
+        <div className="rounded-2xl neu-card p-6 xl:col-span-4">
+          <Skeleton className="h-5 w-44" />
+          <div className="mt-6 flex flex-col gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex flex-col gap-1.5">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-3 w-full rounded-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row Skeleton */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        <div className="rounded-2xl neu-card p-6 xl:col-span-5">
+          <Skeleton className="h-5 w-36" />
+          <div className="mt-4 flex flex-col gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full rounded-lg" />
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl neu-card p-6 xl:col-span-3">
+          <Skeleton className="h-5 w-36" />
+          <div className="my-4 flex items-center justify-center">
+            <Skeleton className="size-44 rounded-full" />
+          </div>
+        </div>
+
+        <div className="rounded-2xl neu-card p-6 xl:col-span-4">
+          <Skeleton className="h-5 w-32" />
+          <div className="mt-4 flex flex-col gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-xl" />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Insights Skeleton */}
+      <div className="rounded-2xl neu-card p-6">
+        <Skeleton className="h-5 w-36" />
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full rounded-xl" />
           ))}
         </div>
-      </section>
-
-      <section aria-hidden="true">
-        <Card className="dash-panel rounded-xl border-0 bg-card">
-          <CardHeader>
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-72 max-w-full" />
-            <CardAction><Skeleton className="h-6 w-20" /></CardAction>
-          </CardHeader>
-          <CardContent className="gap-0">
-            {Array.from({ length: 5 }, (_, index) => (
-              <ListRowSkeleton key={`next-action-${index}`} />
-            ))}
-          </CardContent>
-        </Card>
-      </section>
-    </>
+      </div>
+    </div>
   );
 }

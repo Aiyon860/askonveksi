@@ -1,92 +1,109 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Fragment, type ReactNode } from "react";
 
 import { LandingClients } from "@/components/landing-clients";
 import { LandingCta } from "@/components/landing-cta";
-import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
 import { LandingHero } from "@/components/landing-hero";
 import { LandingProcess } from "@/components/landing-process";
 import { LandingProducts } from "@/components/landing-products";
 import { LandingTestimonials } from "@/components/landing-testimonials";
 import { LandingWhatsAppFab } from "@/components/landing-whatsapp-fab";
 import { LandingWhy } from "@/components/landing-why";
-import { ASKONVEKSI_WHATSAPP } from "@/lib/contact";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
+import { SiteFooter, SiteNavbar } from "@/components/site-chrome";
+import { catalogProducts, visibleSections } from "@/lib/cms/selectors";
+import { getSiteContent } from "@/lib/cms/store";
 
-export const metadata: Metadata = {
-  title: { absolute: SITE_TITLE },
-  description: SITE_DESCRIPTION,
-  alternates: { canonical: "/" },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+export async function generateMetadata(): Promise<Metadata> {
+  const { site } = await getSiteContent();
+  const url = new URL(site.url);
+  const image = site.ogImage?.src ?? "/hero.jpg";
+  return {
+    title: { absolute: site.title },
+    description: site.description,
+    alternates: { canonical: "/" },
+    robots: {
       index: true,
       follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
-    },
-  },
-  openGraph: {
-    type: "website",
-    locale: "id_ID",
-    url: "/",
-    siteName: SITE_NAME,
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
-    images: [{ url: "/hero.jpg", width: 1920, height: 1080, alt: "Produksi seragam custom Askonveksi di Semarang" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
-    images: ["/hero.jpg"],
-  },
-  verification: {
-    google: "zpSFhEruGw-d1qYEo8_X9PNJdEwqRgTwUsUk3mhqIPs",
-  },
-};
-
-const structuredData = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      "@id": `${SITE_URL}#organization`,
-      name: SITE_NAME,
-      alternateName: "AS Konveksi Semarang",
-      url: SITE_URL.toString(),
-      logo: new URL("/new-logo.webp", SITE_URL).toString(),
-      image: new URL("/hero.jpg", SITE_URL).toString(),
-      description: SITE_DESCRIPTION,
-      telephone: `+${ASKONVEKSI_WHATSAPP}`,
-      sameAs: ["https://www.instagram.com/askonveksi_/"],
-      areaServed: [
-        { "@type": "City", name: "Semarang" },
-        { "@type": "AdministrativeArea", name: "Jawa Tengah" },
-      ],
-      contactPoint: {
-        "@type": "ContactPoint",
-        telephone: `+${ASKONVEKSI_WHATSAPP}`,
-        contactType: "customer service",
-        availableLanguage: ["Indonesian"],
-        areaServed: "ID",
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
       },
     },
-    {
-      "@type": "WebSite",
-      "@id": `${SITE_URL}#website`,
-      url: SITE_URL.toString(),
-      name: SITE_NAME,
-      description: SITE_DESCRIPTION,
-      inLanguage: "id-ID",
-      publisher: { "@id": `${SITE_URL}#organization` },
+    openGraph: {
+      type: "website",
+      locale: "id_ID",
+      url: "/",
+      siteName: site.title,
+      title: site.title,
+      description: site.description,
+      images: [{ url: image, width: 1920, height: 1080, alt: site.ogImage?.alt ?? "Askonveksi" }],
     },
-  ],
-};
+    twitter: {
+      card: "summary_large_image",
+      title: site.title,
+      description: site.description,
+      images: [image],
+    },
+    verification: site.searchConsoleVerification ? { google: site.searchConsoleVerification } : undefined,
+    metadataBase: url,
+  };
+}
 
-export default function HomePage() {
+export default async function HomePage() {
+  const content = await getSiteContent();
+  const phone = content.site.whatsapp;
+  const sections = visibleSections(content.home.sections);
+
+  const sectionMap: Record<string, ReactNode> = {
+    hero: <LandingHero hero={content.home.hero} phone={phone} />,
+    products: <LandingProducts section={content.home.products} products={catalogProducts(content)} />,
+    process: <LandingProcess section={content.home.process} />,
+    why: <LandingWhy section={content.home.why} />,
+    clients: <LandingClients section={content.home.clients} />,
+    testimonials: <LandingTestimonials section={content.home.testimonials} />,
+    cta: <LandingCta section={content.home.cta} phone={phone} />,
+  };
+
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": `${content.site.url}#organization`,
+        name: content.brand.name,
+        alternateName: "AS Konveksi Semarang",
+        url: content.site.url,
+        logo: new URL(content.brand.logo?.src ?? "/new-logo.webp", content.site.url).toString(),
+        image: new URL(content.site.ogImage?.src ?? "/hero.jpg", content.site.url).toString(),
+        description: content.site.description,
+        telephone: `+${content.site.whatsapp}`,
+        email: content.site.email,
+        sameAs: content.site.socials.filter((social) => social.visible && social.url).map((social) => social.url),
+        areaServed: content.site.areaServed.map((area) => ({ "@type": "AdministrativeArea", name: area })),
+        contactPoint: {
+          "@type": "ContactPoint",
+          telephone: `+${content.site.whatsapp}`,
+          contactType: "customer service",
+          availableLanguage: ["Indonesian"],
+          areaServed: "ID",
+        },
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${content.site.url}#website`,
+        url: content.site.url,
+        name: content.brand.name,
+        description: content.site.description,
+        inLanguage: "id-ID",
+        publisher: { "@id": `${content.site.url}#organization` },
+      },
+    ],
+  };
+
   return (
     <>
       <script
@@ -95,26 +112,23 @@ export default function HomePage() {
       />
       <main className="bg-white">
         <SiteNavbar />
-        <LandingHero />
-        <LandingProducts />
-        <LandingProcess />
-        <LandingWhy />
-        <LandingClients />
-        <LandingTestimonials />
-        <LandingCta />
+        {sections.map((section) => (
+          <Fragment key={section.id}>{sectionMap[section.id] ?? null}</Fragment>
+        ))}
         <SiteFooter />
-        <LandingWhatsAppFab />
+        <LandingWhatsAppFab phone={phone} message={content.whatsappFab.message} visible={content.whatsappFab.visible} />
       </main>
-      <Script
-        src="https://www.googletagmanager.com/gtag/js?id=G-Y62NZQ54D0"
-        strategy="afterInteractive"
-      />
-      <Script id="google-analytics" strategy="afterInteractive">
-        {`window.dataLayer = window.dataLayer || [];
+      {content.site.analyticsId ? (
+        <>
+          <Script src={`https://www.googletagmanager.com/gtag/js?id=${content.site.analyticsId}`} strategy="afterInteractive" />
+          <Script id="google-analytics" strategy="afterInteractive">
+            {`window.dataLayer = window.dataLayer || [];
 function gtag(){window.dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', 'G-Y62NZQ54D0');`}
-      </Script>
+gtag('config', '${content.site.analyticsId}');`}
+          </Script>
+        </>
+      ) : null}
     </>
   );
 }

@@ -2,21 +2,49 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { LandingReveal } from "@/components/landing-motion";
-import { LANDING_FOOTER_LINKS, LANDING_PRODUCT_MENU } from "@/lib/navigation";
+import { RichText } from "@/components/rich-text";
+import type { CmsProductMenuEntry } from "@/lib/cms/selectors";
+import type { CmsFooter } from "@/lib/cms/types";
 
-const PRODUCT_GROUPS = LANDING_PRODUCT_MENU.filter((entry) => "children" in entry);
-const PRODUCT_SINGLES = LANDING_PRODUCT_MENU.filter((entry) => !("children" in entry));
+const PRODUCT_GROUPS = (menu: CmsProductMenuEntry[]) => menu.filter((entry) => "children" in entry);
+const PRODUCT_SINGLES = (menu: CmsProductMenuEntry[]) => menu.filter((entry) => !("children" in entry));
 
 const footerLinkClassName =
   "inline-flex min-h-10 items-center text-sm text-white/70 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 
+function SocialIcon({ platform }: { platform: string }) {
+  if (platform === "instagram") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-current">
+        <path d="M7.8 2h8.4A5.8 5.8 0 0 1 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8A5.8 5.8 0 0 1 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2Zm-.2 2A3.6 3.6 0 0 0 4 7.6v8.8A3.6 3.6 0 0 0 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6A3.6 3.6 0 0 0 16.4 4H7.6Zm9.65 1.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
+      </svg>
+    );
+  }
+  if (platform === "facebook") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-current">
+        <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.413c0-3.024 1.792-4.694 4.533-4.694 1.312 0 2.686.236 2.686.236v2.973H15.83c-1.491 0-1.956.931-1.956 1.887v2.258h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-current">
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814ZM9.545 15.568V8.432L15.818 12l-6.273 3.568Z" />
+    </svg>
+  );
+}
+
 export function LandingFooter({
-  logoSrc = "/new-logo.webp",
-  brandName = "Askonveksi",
+  footer,
+  menu,
+  brandName,
+  logoSrc,
   logoUnoptimized = false,
 }: {
-  logoSrc?: string;
-  brandName?: string;
+  footer: CmsFooter;
+  menu: CmsProductMenuEntry[];
+  brandName: string;
+  logoSrc: string;
   logoUnoptimized?: boolean;
 }) {
   return (
@@ -40,46 +68,30 @@ export function LandingFooter({
                 />
               </span>
             </Link>
-            <p className="max-w-xs text-sm leading-6 text-white/60">
-              Konveksi di Semarang untuk seragam dan apparel custom — kemeja, wearpack, kaos, jaket, hingga
-              merchandise.
-            </p>
-            <div className="flex items-center gap-2" aria-label="Media sosial Askonveksi">
-              <a
-                href="https://www.instagram.com/askonveksi_/"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Instagram Askonveksi"
-                className="flex size-11 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-current">
-                  <path d="M7.8 2h8.4A5.8 5.8 0 0 1 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8A5.8 5.8 0 0 1 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2Zm-.2 2A3.6 3.6 0 0 0 4 7.6v8.8A3.6 3.6 0 0 0 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6A3.6 3.6 0 0 0 16.4 4H7.6Zm9.65 1.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
-                </svg>
-              </a>
-              <span
-                title="Facebook Askonveksi"
-                className="flex size-11 items-center justify-center rounded-full text-white/40"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-current">
-                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.413c0-3.024 1.792-4.694 4.533-4.694 1.312 0 2.686.236 2.686.236v2.973H15.83c-1.491 0-1.956.931-1.956 1.887v2.258h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073Z" />
-                </svg>
-              </span>
-              <span
-                title="YouTube Askonveksi"
-                className="flex size-11 items-center justify-center rounded-full text-white/40"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true" className="size-5 fill-current">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814ZM9.545 15.568V8.432L15.818 12l-6.273 3.568Z" />
-                </svg>
-              </span>
+            <RichText html={footer.description} className="max-w-xs text-sm leading-6 text-white/60" />
+            <div className="flex items-center gap-2" aria-label={`Media sosial ${brandName}`}>
+              {footer.socials
+                .filter((social) => social.visible && social.url.trim())
+                .map((social) => (
+                  <a
+                    key={social.platform}
+                    href={social.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${social.platform} ${brandName}`}
+                    className="flex size-11 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                  >
+                    <SocialIcon platform={social.platform} />
+                  </a>
+                ))}
             </div>
           </div>
 
-          <nav aria-label="Produk Askonveksi">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45">Produk</p>
+          <nav aria-label={`Produk ${brandName}`}>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45">{footer.productTitle}</p>
             <div className="mt-4 grid grid-cols-1 gap-7 min-[420px]:grid-cols-2">
               <ul className="flex flex-col gap-5">
-                {PRODUCT_GROUPS.map((entry) =>
+                {PRODUCT_GROUPS(menu).map((entry) =>
                   "children" in entry ? (
                     <li key={entry.label}>
                       <Link
@@ -102,7 +114,7 @@ export function LandingFooter({
                 )}
               </ul>
               <ul className="flex flex-col">
-                {PRODUCT_SINGLES.map((entry) =>
+                {PRODUCT_SINGLES(menu).map((entry) =>
                   "children" in entry ? null : (
                     <li key={entry.href}>
                       <Link href={entry.href} className={footerLinkClassName}>
@@ -116,15 +128,17 @@ export function LandingFooter({
           </nav>
 
           <nav aria-label="Navigasi footer">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45">Navigasi</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45">{footer.navTitle}</p>
             <ul className="mt-4 flex flex-col">
-              {LANDING_FOOTER_LINKS.map((link) => (
-                <li key={link.href}>
-                  <Link href={link.href} className={footerLinkClassName}>
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
+              {footer.links
+                .filter((link) => link.visible)
+                .map((link) => (
+                  <li key={`${link.href}-${link.label}`}>
+                    <Link href={link.href} className={footerLinkClassName}>
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
             </ul>
           </nav>
         </LandingReveal>
@@ -133,8 +147,8 @@ export function LandingFooter({
           className="mt-10 flex flex-col gap-2 border-t border-white/15 pt-5 text-sm text-white/55 sm:flex-row sm:items-center sm:justify-between"
           delay={0.08}
         >
-          <p>© {new Date().getFullYear()} Askonveksi. All rights reserved.</p>
-          <p>Konveksi di Semarang untuk Seragam dan Apparel Custom</p>
+          <p>{footer.copyright.replace("{year}", String(new Date().getFullYear()))}</p>
+          <p>{footer.tagline}</p>
         </LandingReveal>
       </div>
     </footer>

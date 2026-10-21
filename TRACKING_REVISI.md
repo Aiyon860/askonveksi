@@ -258,3 +258,45 @@ Permintaan client: semua aktivitas user tercatat lengkap dan bisa dilihat Owner/
 - Pencarian nomor dokumen (PO-/INV-) butuh kolom label entitas pada `AuditEvent` (migrasi kecil) — sementara pencarian mencakup pelaku, jenis aksi, dan jenis entitas
 - Nilai before→after untuk field nominal/tanggal, event login/logout (butuh `actorId` nullable untuk login gagal), timeline per order, dan arsip otomatis 24 bulan ke VPS — arsip harus **mengecualikan** event yang direferensikan `CommunicationActivity` (FK `onDelete: Restrict`), kalau tidak prune akan gagal
 
+---
+
+## 17 Okt (lanjutan) — Import data asli Agustus 2026 (PROJECT AS + CRM)
+
+Permintaan: isi sistem dengan **data asli** Agustus 2026 dari `PROJECT AS BULAN AGUSTUS 2026.xlsx` (sheet PROJECT/DP/PNGELUARAN MURNI/SALDO AKHIR/CATATAN) + tanggal order & customer dari `Data CRM AS Konveksi.xlsx` — bukan dummy. DB lokal dibersihkan dulu, lalu import dijalankan satu transaksi lewat `scripts/import-agustus-2026.mjs` (dry-run default + `--apply`; penjaga angka kunci berhenti sebelum menulis bila ada yang gagal).
+
+### Yang diimpor (23 order, 22 customer — semua baris, tidak ada yang terlewat)
+- [x] Rantai penuh per order: Opportunity → PurchaseOrder (AGREED) → Invoice (ISSUED) → SalesOrder (ACTIVE) + DealPayment + PaymentTerm + PaymentTransaction → SalesOrderCost (7 bucket HPP) + Expense kategori PROJECT per bucket → ProductionWorkOrder COMPLETED (+ step & activity). Nomor dokumen lanjut dari counter: INV-2026-00036..58 · OPP-000042..64 · SALES-ORDER-2026-00025..45 · WO-2026-00025..49
+- [x] Uang masuk **95.191.855** (28 transaksi) mengikuti jadwal SALDO AKHIR/DP; jenis pembayaran mengikuti aturan: LUNAS 1 bayar penuh (Gibran, irgy, Hana, Ridwan, Iko), DEPOSIT (Reza & Celine 100 rb), sisanya DP; Ifana 4 pembayaran
+- [x] HPP **62.205.440** dari sheet DP → 47 baris Expense PROJECT; beban operasional **10.871.167** dari PNGELUARAN MURNI → 69 baris apa adanya (17 kategori, total per kategori cocok 17/17)
+- [x] **ORADO (819.000) & SAGA Kak Edwin (1.480.000) belum dibayar** → mengikuti alur resmi aplikasi (constraint DB melarang deal tanpa pembayaran awal): Invoice ISSUED + PendingDealPayment LUNAS menunggu, **tanpa SalesOrder/WorkOrder**, peluang tetap NEGOSIASI. Tampil di CRM (kartu "Menunggu LUNAS terlewat"), daftar invoice (badge Menunggu LUNAS), dan detail invoice dengan tombol **"Catat pembayaran LUNAS"** — saat uangnya masuk, SO + WO terbentuk otomatis. HPP ORADO (424.125) tetap tercatat sebagai Expense PROJECT tanpa SO
+- [x] Abraham dipecah 5 item (Tshirt 72 · Kemeja chef 16 · Celana chef 12 · Polo 36 · Topi 24) → 5 WO; total 25 WO (209 step)
+- [x] Metode pembayaran baru **"Transfer"** (dipakai semua transaksi import; tidak memicu wajib bukti)
+
+### Verifikasi (nyata, dari DB setelah `--apply`)
+- Semua penjaga + 13 baris verifikasi otomatis `[OK]`: 23 opportunity/PO/invoice · 21 SO + 21 dealPayment + 2 jadwal menunggu · 25 WO · invoice 122.461.000 · Expense PROJECT 62.205.440 · operasional 10.871.167 · uang masuk 95.191.855 · outstanding DealPayment 24.970.145 (21 SO) · jadwal menunggu 2.299.000 · nilai SO 120.162.000 · SalesOrderCost 61.781.315 · **net 22.115.248 = "Bersih" CATATAN**
+- Spot check DB: stage 21 DEAL + 2 NEGOSIASI · Ifana (DP 5.499.000; termin 690 rb & 5.499.000 & 690 rb sudah lunas; sisa 10.000) · Respa sisa 385.000 · Sara sisa 1.674.145 · ORADO HPP kain 354.125 + pres 24.000 + DTF 46.000 = 424.125
+- Data test dibersihkan lebih dulu lewat `scripts/cleanup-transactional-data.sql` (9 customer demo dihapus, 382 customer asli tetap; CommunicationActivity ikut bersih) — WhatsApp/AuditEvent/counter tidak disentuh
+- **Belum diverifikasi:** tampilan di browser (lingkungan ini tanpa kredensial login) — dashboard, laporan keuangan filter Agustus, riwayat order, badge "Menunggu LUNAS" di daftar invoice, dan kanban produksi perlu dicek manual
+- **Catatan lanjutan:** saat ORADO/Edwin membayar nanti, jangan isi ulang HPP ORADO di form HPP Sales Order baru (expense-nya sudah ada tanpa SO — isi ulang = dobel di laporan). Kalau ingin HPP itu menempel ke SO baru, cukup relink `salesOrderId` expense lama (ubah 3 baris data, bukan entri baru)
+- **Catatan produksi:** import & pembersihan baru di DB lokal; eksekusi ke Supabase produksi menyusul atas perintah (urutan: backup → cleanup produksi → import produksi)
+
+---
+
+## CMS WEBSITE — `[x] SELESAI (perlu uji manual UI)`
+
+Studio admin untuk seluruh halaman publik (landing, portofolio, size chart, katalog kain, kontak, detail produk) tanpa menyentuh kode. Rencana lengkap: `docs/RENCANA_CMS_WEBSITE.md`; panduan klien: `docs/PANDUAN_CMS.md`.
+
+- [x] Konten disimpan sebagai satu dokumen JSON berversi di disk server (`CMS_DATA_DIR`), gambar di `CMS_UPLOAD_DIR` — **tanpa tabel/bucket/query Supabase baru**
+- [x] Baca konten lewat `unstable_cache` + tag `cms-content`; simpan memakai tulis atomik (temp → fsync → rename), lock, snapshot otomatis, dan `expectedVersion` (konflik ditolak dengan pesan ramah)
+- [x] Validasi Zod + sanitasi `sanitize-html` (allowlist tag/atribut; `javascript:`/`data:` ditolak; `target=_blank` dipaksa `rel="noopener noreferrer"`), diterapkan saat simpan dan saat render
+- [x] Studio `/cms`: ringkasan, beranda, produk (+ tambah/hapus, induk–anak), portofolio, size chart, katalog kain, kontak, pengaturan website, riwayat (lihat + pulihkan)
+- [x] Editor: urutan/penyembunyian section, daftar item dengan naik/turun, WYSIWYG TipTap (tebal/miring/garis bawah/daftar/tautan/hapus format/undo-redo), unggah gambar WebP otomatis, alt, posisi fokus
+- [x] Pratinjau langsung `/cms-preview` lewat iframe + postMessage dengan perangkat Desktop/Tablet/HP, memakai komponen publik yang sama
+- [x] Akses studio & preview hanya `OWNER` + `DEVELOPER` (role lain 404); menu **Website** hanya muncul untuk keduanya; `robots.txt` men-disallow `/cms` dan `/cms-preview`
+- [x] Media route `/media/[...path]` dengan proteksi path traversal, cache immutable, dan `nosniff`; unggahan divalidasi lewat `sharp` (bukan ekstensi), di-reencode WebP maks 2560 px
+- [x] Skrip: `cms:setup`, `cms:validate`, `cms:backup`, `cms:clean-orphans`; env `CMS_DATA_DIR`, `CMS_UPLOAD_DIR`, `CMS_BACKUP_DIR` di `.env.example`; `data/` masuk `.gitignore`
+- [x] Halaman publik tetap statis/ISR (build: `/`, `/portofolio`, `/size-chart`, `/katalog-kain`, `/contact`, seluruh `/produk/[slug]`); bundle TipTap hanya ada di route `/cms`
+- [x] Terverifikasi: `npx tsc --noEmit` bersih, `npm run lint` 0 error, `npm run build` sukses (13 route CMS terdaftar), `npm test` — 5 tes CMS baru lolos (schema, sanitasi, path, media, store)
+- **Belum diverifikasi:** alur simpan/pulihkan lewat browser (lingkungan ini tanpa kredensial login) — perlu uji manual: edit tiap section, unggah gambar, simpan, buka publik, dan pulihkan versi
+
+

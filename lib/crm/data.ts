@@ -864,6 +864,8 @@ export async function getFollowUpBadgeCount() {
   return cached();
 }
 
+export { getDashboardFullAnalyticsData, type FullDashboardData, type DashboardQueryParams } from "@/lib/crm/dashboard-data";
+
 export async function getSalesDashboardData() {
   const actor = await requireActor(DASHBOARD_ROLES);
   const prisma = getPrismaClient();
