@@ -187,10 +187,19 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
     dedupingInterval: 5000,
   });
 
+  // Data finansial hanya dikirim server untuk role Keuangan (Owner/Developer ikut lolos hasRole).
+  const canViewFinancialData = data.canViewFinancialData;
+
   // UI States
-  const [trendMetric, setTrendMetric] = useState<"omzet" | "order" | "lead" | "pcs">("omzet");
-  const [categoryMetric, setCategoryMetric] = useState<"revenue" | "pcs">("revenue");
-  const [picMetric, setPicMetric] = useState<"revenue" | "deal">("revenue");
+  const [trendMetric, setTrendMetric] = useState<"omzet" | "order" | "lead" | "pcs">(
+    data.canViewFinancialData ? "omzet" : "order",
+  );
+  const [categoryMetric, setCategoryMetric] = useState<"revenue" | "pcs">(
+    data.canViewFinancialData ? "revenue" : "pcs",
+  );
+  const [picMetric, setPicMetric] = useState<"revenue" | "deal">(
+    data.canViewFinancialData ? "revenue" : "deal",
+  );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customFrom, setCustomFrom] = useState(data.period.from);
   const [customTo, setCustomTo] = useState(data.period.to);
@@ -798,15 +807,17 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             )}
           </div>
 
-          {/* Export Laporan Button */}
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="flex h-11 items-center gap-2.5 rounded-xl neu-button-primary px-4.5 text-base font-semibold text-white"
-          >
-            <Download className="size-4.5" />
-            <span>Export Laporan</span>
-          </button>
+          {/* Export Laporan Button (memuat omzet — khusus Keuangan) */}
+          {canViewFinancialData && (
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="flex h-11 items-center gap-2.5 rounded-xl neu-button-primary px-4.5 text-base font-semibold text-white"
+            >
+              <Download className="size-4.5" />
+              <span>Export Laporan</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -949,7 +960,8 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
         </div>
 
-        {/* Card 4: Total Omzet (Indigo Tint) */}
+        {/* Card 4: Total Omzet (Indigo Tint) — khusus Keuangan */}
+        {canViewFinancialData && (
         <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-indigo p-6">
           <div className="flex items-center justify-between">
             <div className="flex size-14 items-center justify-center rounded-2xl neu-icon-indigo text-white">
@@ -978,6 +990,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             <p className="text-base text-slate-500 dark:text-slate-400">Total pendapatan dari semua order</p>
           </div>
         </div>
+        )}
 
         {/* Card 5: Total Volume Pcs Pakaian (Cyan Tint) */}
         <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-cyan p-6">
@@ -1063,18 +1076,20 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             <div className="flex flex-wrap items-center gap-2">
               {/* Metric Switcher Pills */}
               <div className="flex items-center rounded-xl neu-inset p-1">
-                <button
-                  type="button"
-                  onClick={() => setTrendMetric("omzet")}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-base sm:text-lg font-semibold transition",
-                    trendMetric === "omzet"
-                      ? "neu-button-primary font-semibold"
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-                  )}
-                >
-                  Omzet
-                </button>
+                {canViewFinancialData && (
+                  <button
+                    type="button"
+                    onClick={() => setTrendMetric("omzet")}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-base sm:text-lg font-semibold transition",
+                      trendMetric === "omzet"
+                        ? "neu-button-primary font-semibold"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                    )}
+                  >
+                    Omzet
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setTrendMetric("order")}
@@ -1251,18 +1266,20 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
 
             {/* Metric Switcher */}
             <div className="flex items-center rounded-xl neu-inset p-1 shrink-0 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setPicMetric("revenue")}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm sm:text-base font-semibold transition",
-                  picMetric === "revenue"
-                    ? "neu-button-primary text-white"
-                    : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-                )}
-              >
-                Omzet
-              </button>
+              {canViewFinancialData && (
+                <button
+                  type="button"
+                  onClick={() => setPicMetric("revenue")}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm sm:text-base font-semibold transition",
+                    picMetric === "revenue"
+                      ? "neu-button-primary text-white"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                  )}
+                >
+                  Omzet
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setPicMetric("deal")}
@@ -1332,9 +1349,11 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                         return (
                           <div className="rounded-xl neu-popover p-3.5 shadow-xl text-sm space-y-1">
                             <p className="font-bold text-slate-900 dark:text-slate-100">{item.picName}</p>
-                            <p className="text-blue-600 dark:text-blue-400 font-bold font-mono">
-                              Total Omzet: {item.revenue}
-                            </p>
+                            {canViewFinancialData && (
+                              <p className="text-blue-600 dark:text-blue-400 font-bold font-mono">
+                                Total Omzet: {item.revenue}
+                              </p>
+                            )}
                             <p className="text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
                               Deal Closed: {item.dealCount} ({item.winRate}% Win Rate)
                             </p>
@@ -1379,7 +1398,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
               </div>
               <div>
                 <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
-                  Komparasi Omzet Kategori Produk
+                  {canViewFinancialData ? "Komparasi Omzet Kategori Produk" : "Komparasi Kategori Produk"}
                 </h3>
                 <p className="text-base text-slate-500 dark:text-slate-400">
                   Perbandingan visual kontribusi produk terlaris berdasarkan omzet dan kuantitas
@@ -1389,18 +1408,20 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
 
             {/* Metric Switcher */}
             <div className="flex items-center rounded-xl neu-inset p-1 shrink-0 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setCategoryMetric("revenue")}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm sm:text-base font-semibold transition",
-                  categoryMetric === "revenue"
-                    ? "neu-button-primary text-white"
-                    : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-                )}
-              >
-                Omzet (Rp)
-              </button>
+              {canViewFinancialData && (
+                <button
+                  type="button"
+                  onClick={() => setCategoryMetric("revenue")}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm sm:text-base font-semibold transition",
+                    categoryMetric === "revenue"
+                      ? "neu-button-primary text-white"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                  )}
+                >
+                  Omzet (Rp)
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setCategoryMetric("pcs")}
@@ -1416,7 +1437,8 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             </div>
           </div>
 
-          {/* Highlight Banner */}
+          {/* Highlight Banner (memuat omzet — khusus Keuangan) */}
+          {canViewFinancialData && (
           <div className="mt-5 rounded-2xl neu-inset p-3.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
@@ -1435,6 +1457,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
               </div>
             </div>
           </div>
+          )}
 
           {/* Bar Chart: Komparasi Kategori Terlaris */}
           <div className="mt-5 h-56 w-full">
@@ -1467,9 +1490,11 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                       return (
                         <div className="rounded-xl neu-popover p-3.5 shadow-xl text-sm space-y-1">
                           <p className="font-bold text-slate-900 dark:text-slate-100">{item.name}</p>
-                          <p className="text-purple-600 dark:text-purple-400 font-bold font-mono">
-                            Omzet: {item.revenue} ({item.percentage}%)
-                          </p>
+                          {canViewFinancialData && (
+                            <p className="text-purple-600 dark:text-purple-400 font-bold font-mono">
+                              Omzet: {item.revenue} ({item.percentage}%)
+                            </p>
+                          )}
                           <p className="text-slate-500 text-xs">
                             Volume: <span className="font-mono font-semibold">{item.pcs} pcs</span> dari <span className="font-mono font-semibold">{item.orderCount} order</span>
                           </p>
@@ -1770,8 +1795,9 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
       {/* =========================================================================
           EXTENDED SECTION 7: EFEKTIVITAS KANAL MARKETING & KINERJA TIM PIC
           ========================================================================= */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Grafik Komparasi Likuiditas Kas vs Sisa Piutang */}
+      <div className={cn("grid grid-cols-1 gap-6", canViewFinancialData && "lg:grid-cols-2")}>
+        {/* Grafik Komparasi Likuiditas Kas vs Sisa Piutang (khusus Keuangan) */}
+        {canViewFinancialData && (
         <div className="flex flex-col justify-between rounded-2xl neu-card p-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0 flex-1">
@@ -1858,6 +1884,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             </span>
           </div>
         </div>
+        )}
 
         {/* Sales PIC Team Performance */}
         <div className="flex flex-col justify-start rounded-2xl neu-card p-6">
@@ -2022,8 +2049,9 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
       {/* =========================================================================
           EXTENDED SECTION 9: ARUS KAS & TINDAK LANJUT CRM HARI INI
           ========================================================================= */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Cashflow Summary */}
+      <div className={cn("grid grid-cols-1 gap-6", canViewFinancialData && "lg:grid-cols-2")}>
+        {/* Cashflow Summary (khusus Keuangan) */}
+        {canViewFinancialData && (
         <div className="flex flex-col justify-start rounded-2xl neu-card p-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3.5 min-w-0 flex-1">
@@ -2060,6 +2088,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             </div>
           </div>
         </div>
+        )}
 
         {/* CRM Urgent Actions Due Today */}
         <div className="flex flex-col justify-start rounded-2xl neu-card p-6">

@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [dataSource, dashboardSource] = await Promise.all([
+const [dataSource, dashboardDataSource, dashboardSource] = await Promise.all([
   readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
+  readFile(new URL("../lib/crm/dashboard-data.ts", import.meta.url), "utf8"),
   readFile(new URL("../components/dashboard/dashboard-content-client.tsx", import.meta.url), "utf8"),
 ]);
 const [permissionsSource, loginSource, authActionsSource, navSource, dashboardPageSource] = await Promise.all([
@@ -40,12 +41,12 @@ test("payload dokumen dashboard aman untuk serialisasi client", () => {
   assert.match(dataSource, /total: item\.total\.toString\(\)/);
 });
 
-test("preview dokumen menyediakan detail, tautan lengkap, dan empty state", () => {
-  assert.match(dashboardSource, /triggerVariant="preview"/);
-  assert.match(dashboardSource, /href="\/crm\/purchase-orders"/);
-  assert.match(dashboardSource, /href="\/crm\/invoices"/);
-  assert.match(dashboardSource, /Belum ada purchase order/);
-  assert.match(dashboardSource, /Belum ada invoice/);
+// Dashboard baru menampilkan order terbaru (bukan preview PO/invoice seperti desain lama).
+test("dashboard menampilkan order terbaru dengan tautan ke sales order", () => {
+  assert.match(dashboardSource, /Order Terbaru/);
+  assert.match(dashboardSource, /data\.recentOrders\.map/);
+  assert.match(dashboardSource, /href="\/crm\/sales-orders"/);
+  assert.match(dashboardSource, /Lihat Semua/);
 });
 
 test("query dashboard tetap memeriksa aktor sebelum membaca data", () => {
@@ -71,14 +72,20 @@ test("dashboard tidak lagi menampilkan card dan tombol follow-up mendesak", () =
 
 test("card AOV dihapus dari baris hasil sales", () => {
   assert.doesNotMatch(dashboardSource, /label="AOV"/);
-  assert.doesNotMatch(dashboardSource, /Wallet/);
+  assert.doesNotMatch(dashboardSource, /Rata-rata Nilai Order/);
+  // Catatan: ikon Wallet kini dipakai di menu pencarian & kartu arus kas, bukan kartu AOV.
 });
 
 test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
-  assert.match(dataSource, /const canViewFinancialData = hasRole\(actor\.role, FINANCE_ROLES\)/);
-  assert.match(dataSource, /canViewFinancialData \? prisma\.salesOrder\.aggregate/);
-  assert.match(dataSource, /dealRevenue: dealRevenue\?\._sum\.total\?\.toString\(\) \?\? null/);
-  assert.match(dashboardSource, /\{data\.canViewFinancialData \? \(?\s*<section/);
-  assert.match(dashboardSource, /Ringkasan hasil sales/);
-  assert.match(dashboardSource, /\{data\.canViewFinancialData && data\.businessKpis \? \(/);
+  assert.match(dashboardDataSource, /const canViewFinancialData = hasRole\(actor\.role, FINANCE_ROLES\)/);
+  assert.match(dashboardDataSource, /return canViewFinancialData \? payload : maskFinancialData\(payload\)/);
+  // Nilai uang diganti placeholder sebelum dikirim ke client non-Keuangan.
+  assert.match(dashboardDataSource, /totalOmzet: MASKED_MONEY/);
+  assert.match(dashboardDataSource, /moneyInThisMonth: MASKED_MONEY/);
+  assert.match(dashboardDataSource, /canViewFinancialData: boolean/);
+  assert.match(dashboardSource, /const canViewFinancialData = data\.canViewFinancialData/);
+  assert.match(dashboardSource, /canViewFinancialData && \(/);
+  assert.match(dashboardSource, /Kesehatan Arus Kas & Piutang/);
+  // Owner & Developer selalu lolos lewat hasRole.
+  assert.match(permissionsSource, /role === "DEVELOPER" \|\| role === "OWNER"/);
 });
