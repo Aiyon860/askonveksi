@@ -86,10 +86,12 @@ export async function ensureProductionWorkOrder(tx: Tx, actor: { id: string }, s
         },
       },
       invoice: { select: { status: true } },
-      payment: { select: { transactions: { where: { status: "ACTIVE", amount: { gt: 0 } }, select: { id: true }, take: 1 } } },
+      // Cukup Deal terjadi (Sales Order punya jadwal pembayaran) — DP Rp 0 tanpa transaksi pun
+      // tetap membuat WO (R7).
+      payment: { select: { id: true } },
     },
   });
-  if (!order || order.status !== "ACTIVE" || !order.payment?.transactions.length) return null;
+  if (!order || order.status !== "ACTIVE" || !order.payment) return null;
   if (order.purchaseOrder.status !== "AGREED" || order.invoice.status !== "ISSUED" || !order.purchaseOrder.garmentType || !order.purchaseOrder.deadline) {
     throw new Error("PO atau invoice belum memenuhi syarat Work Order otomatis.");
   }

@@ -6,6 +6,7 @@ import { CopyPlus, XCircle } from "lucide-react";
 
 import { cancelPurchaseOrderAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
+import { type PenjahitPlanItem } from "@/components/crm/penjahit-plan-dialog";
 import { PurchaseOrderForm, type ProductCategoryOption } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderPdfDownloadButton } from "@/components/crm/purchase-order-pdf-download-button";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,8 @@ type PurchaseOrderWorkflowSectionProps = {
   draftValues: PurchaseOrderDraftValues;
   purchaseOrderNoPreview: string;
   defaultInstansi?: string;
+  /** Sprint 11 (R3): baris deadline/desain penjahit per item untuk dialog Edit PDF Penjahit. */
+  penjahitItems: PenjahitPlanItem[];
   children: ReactNode;
 };
 
@@ -76,6 +79,7 @@ export function PurchaseOrderWorkflowSection({
   draftValues,
   purchaseOrderNoPreview,
   defaultInstansi,
+  penjahitItems,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
@@ -93,7 +97,15 @@ export function PurchaseOrderWorkflowSection({
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
           {!isCreatingRevision ? (
-            <PurchaseOrderPdfDownloadButton purchaseOrderId={purchaseOrderId} purchaseOrderNo={draftValues.purchaseOrderNo} />
+            <PurchaseOrderPdfDownloadButton
+              purchaseOrderId={purchaseOrderId}
+              purchaseOrderNo={draftValues.purchaseOrderNo}
+              penjahit={{
+                version: purchaseOrderVersion,
+                canEdit: (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED") && canOperate,
+                items: penjahitItems,
+              }}
+            />
           ) : null}
           {canCreateRevision ? (
             <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>

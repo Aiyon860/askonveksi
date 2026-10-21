@@ -9,22 +9,37 @@ import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { EXPENSE_CATEGORIES } from "@/lib/finance/expense-categories";
 import { getPrismaClient } from "@/lib/prisma";
-import { deletePaymentProof, uploadPaymentProof } from "@/lib/payment-proof";
+import { deletePaymentProof, uploadPaymentProof, type PaymentProof } from "@/lib/payment-proof";
 
 function blankToUndefined(value: unknown) { return value == null || (typeof value === "string" && value.trim() === "") ? undefined : value; }
 const expenseSchema = z.object({ id: z.string().cuid().optional(), purpose: z.string().trim().min(2, "Keperluan minimal 2 karakter.").max(500), spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid."), amount: z.coerce.number().finite().positive("Nominal harus lebih dari 0."), category: z.enum(EXPENSE_CATEGORIES), paymentMethodId: z.string().trim().min(1, "Metode pembayaran wajib dipilih.").max(40), isReimbursable: z.boolean(), customerName: z.preprocess(blankToUndefined, z.string().trim().max(160).optional()), salesOrderId: z.preprocess(blankToUndefined, z.string().cuid().optional()) });
 const idSchema = z.string().cuid();
 const deleteExpenseSchema = z.object({ id: z.string().cuid(), reason: z.string().trim().max(500).optional() });
 const HPP_KEYS = ["kain", "zipper", "jahit", "pres", "dtfPlastisol", "bordir", "lainnya"] as const;
-const optionalHppDate = z.preprocess(
-  blankToUndefined,
-  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal pengeluaran tidak valid.").optional(),
-);
-const optionalHppMethod = z.preprocess(
-  blankToUndefined,
-  z.string().trim().max(40).optional(),
-);
-const salesOrderCostSchema = z.object({ salesOrderId: z.string().cuid(), version: z.coerce.number().int().positive(), kain: z.coerce.number().finite().nonnegative(), zipper: z.coerce.number().finite().nonnegative(), jahit: z.coerce.number().finite().nonnegative(), pres: z.coerce.number().finite().nonnegative(), dtfPlastisol: z.coerce.number().finite().nonnegative(), bordir: z.coerce.number().finite().nonnegative(), lainnya: z.coerce.number().finite().nonnegative(), expenseMethodKain: optionalHppMethod, expenseMethodZipper: optionalHppMethod, expenseMethodJahit: optionalHppMethod, expenseMethodPres: optionalHppMethod, expenseMethodDtfPlastisol: optionalHppMethod, expenseMethodBordir: optionalHppMethod, expenseMethodLainnya: optionalHppMethod, expenseSpentAtKain: optionalHppDate, expenseSpentAtZipper: optionalHppDate, expenseSpentAtJahit: optionalHppDate, expenseSpentAtPres: optionalHppDate, expenseSpentAtDtfPlastisol: optionalHppDate, expenseSpentAtBordir: optionalHppDate, expenseSpentAtLainnya: optionalHppDate });
+// Batas server per jenis; UI menyembunyikan tombol tambah baris sebelum batas ini.
+const HPP_ROW_LIMIT = 12;
+const hppRowSchema = z.object({
+  id: z.preprocess(blankToUndefined, z.string().cuid().optional()),
+  amount: z.coerce.number().finite().nonnegative("Nominal tidak valid."),
+  description: z.preprocess(blankToUndefined, z.string().trim().max(240, "Deskripsi maksimal 240 karakter.").optional()),
+  spentAt: z.preprocess(blankToUndefined, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal pengeluaran tidak valid.").optional()),
+  method: z.preprocess(blankToUndefined, z.string().trim().max(40).optional()),
+});
+// Edit HPP multi-baris (R15): tiap jenis boleh punya banyak baris; nominal kosong/0
+// diabaikan — baris existing yang dikosongkan justru dihapus (soft-delete).
+const salesOrderCostSchema = z.object({
+  salesOrderId: z.string().cuid(),
+  version: z.coerce.number().int().positive(),
+  rows: z.object({
+    kain: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Kain."),
+    zipper: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Zipper."),
+    jahit: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Jahit."),
+    pres: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Pres."),
+    dtfPlastisol: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris DTF/Plastisol."),
+    bordir: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Bordir."),
+    lainnya: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Lain-lain."),
+  }),
+});
 const PATH = "/keuangan/pengeluaran";
 
 // Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
@@ -111,79 +126,183 @@ export async function reimburseExpenseAction(formData: FormData) {
 
 const HPP_LABEL: Record<string, string> = { kain: "Kain", zipper: "Zipper", jahit: "Jahit", pres: "Pres", dtfPlastisol: "DTF/Plastisol", bordir: "Bordir", lainnya: "Lain-lain" };
 
+type HppRowForm = { id?: string; amount: string; description?: string; spentAt?: string; method?: string; proof: FormDataEntryValue | null };
+
+// Baca baris per jenis dari field bernama seragam amount_<key>_<i>, id_<key>_<i>, dst.
+// Daftar berhenti saat amount_<key>_<i> tidak ada; lebih dari batas = tolak.
+function readHppRows(formData: FormData, key: (typeof HPP_KEYS)[number]): HppRowForm[] {
+  const rows: HppRowForm[] = [];
+  for (let index = 0; index <= HPP_ROW_LIMIT; index++) {
+    const amount = formData.get(`amount_${key}_${index}`);
+    if (amount === null) break;
+    if (index === HPP_ROW_LIMIT) throw new UserFacingError(`Maksimal ${HPP_ROW_LIMIT} baris ${HPP_LABEL[key]}.`);
+    const id = formData.get(`id_${key}_${index}`);
+    const description = formData.get(`description_${key}_${index}`);
+    const spentAt = formData.get(`spentAt_${key}_${index}`);
+    const method = formData.get(`method_${key}_${index}`);
+    rows.push({
+      id: typeof id === "string" && id ? id : undefined,
+      amount: typeof amount === "string" ? amount : "",
+      description: typeof description === "string" && description.trim() ? description : undefined,
+      spentAt: typeof spentAt === "string" && spentAt ? spentAt : undefined,
+      method: typeof method === "string" && method ? method : undefined,
+      proof: formData.get(`proof_${key}_${index}`),
+    });
+  }
+  return rows;
+}
+
 export async function updateSalesOrderCostAction(formData: FormData) {
   return runRedirectingAction("/keuangan/pemasukan", async () => {
     const actor = await requireActor(FINANCE_ROLES);
-    const parsed = salesOrderCostSchema.safeParse(Object.fromEntries(formData));
+    const raw = Object.fromEntries(HPP_KEYS.map((key) => [key, readHppRows(formData, key)])) as Record<(typeof HPP_KEYS)[number], HppRowForm[]>;
+    const parsed = salesOrderCostSchema.safeParse({
+      salesOrderId: formData.get("salesOrderId"),
+      version: formData.get("version"),
+      rows: Object.fromEntries(HPP_KEYS.map((key) => [key, raw[key].map((row) => ({ id: row.id, amount: row.amount, description: row.description, spentAt: row.spentAt, method: row.method }))])),
+    });
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Biaya HPP tidak valid.");
-    const { salesOrderId, version, expenseMethodKain, expenseMethodZipper, expenseMethodJahit, expenseMethodPres, expenseMethodDtfPlastisol, expenseMethodBordir, expenseMethodLainnya, expenseSpentAtKain, expenseSpentAtZipper, expenseSpentAtJahit, expenseSpentAtPres, expenseSpentAtDtfPlastisol, expenseSpentAtBordir, expenseSpentAtLainnya, ...costs } = parsed.data;
-    const costValues = Object.fromEntries(HPP_KEYS.map((key) => [key, Number((costs as Record<string, unknown>)[key] ?? 0)])) as Record<(typeof HPP_KEYS)[number], number>;
-    const costDates: Record<(typeof HPP_KEYS)[number], string | undefined> = { kain: expenseSpentAtKain, zipper: expenseSpentAtZipper, jahit: expenseSpentAtJahit, pres: expenseSpentAtPres, dtfPlastisol: expenseSpentAtDtfPlastisol, bordir: expenseSpentAtBordir, lainnya: expenseSpentAtLainnya };
-    const costMethods: Record<(typeof HPP_KEYS)[number], string | undefined> = { kain: expenseMethodKain, zipper: expenseMethodZipper, jahit: expenseMethodJahit, pres: expenseMethodPres, dtfPlastisol: expenseMethodDtfPlastisol, bordir: expenseMethodBordir, lainnya: expenseMethodLainnya };
-    const entries = HPP_KEYS.filter((key) => costValues[key] > 0);
-    for (const key of entries) {
-      if (!costDates[key]) throw new UserFacingError(`Tanggal pembayaran ${HPP_LABEL[key]} wajib diisi.`);
-      if (!costMethods[key]) throw new UserFacingError(`Metode pembayaran ${HPP_LABEL[key]} wajib dipilih.`);
+    const { salesOrderId, version, rows } = parsed.data;
+    // Nominal kosong/0 = baris diabaikan; id baris existing yang dikosongkan = dihapus user.
+    // Pakai baris mentah (raw) agar field File bukti tidak hilang saat zod parse.
+    const plans = HPP_KEYS.flatMap((key) => raw[key].map((row) => ({ key, row }))).filter((plan) => plan.row.amount !== "" && Number(plan.row.amount) > 0);
+    const filledIds = new Set(plans.map((plan) => plan.row.id).filter((id): id is string => Boolean(id)));
+    const removedIds = new Set<string>(formData.getAll("removedId").map(String).filter(Boolean));
+    for (const key of HPP_KEYS) for (const row of rows[key]) if (row.id && !filledIds.has(row.id)) removedIds.add(row.id);
+    for (const id of filledIds) removedIds.delete(id);
+    for (const plan of plans) {
+      if (!plan.row.spentAt) throw new UserFacingError(`Tanggal pembayaran ${HPP_LABEL[plan.key]} wajib diisi.`);
+      if (!plan.row.method) throw new UserFacingError(`Metode pembayaran ${HPP_LABEL[plan.key]} wajib dipilih.`);
     }
-    await Promise.all([...new Set(entries.map((key) => costMethods[key] as string))].map((methodId) => assertPaymentMethod(methodId)));
+    await Promise.all([...new Set(plans.map((plan) => plan.row.method as string))].map((methodId) => assertPaymentMethod(methodId)));
     const prisma = getPrismaClient();
-    const previous = await prisma.expense.findMany({ where: { salesOrderId, category: "PROJECT", deletedAt: null }, select: { hppKey: true, purpose: true, proofPath: true, proofFileName: true, proofMimeType: true, proofSize: true } });
-    const previousByKey = (key: string) => previous.find((row) => row.hppKey === key || row.purpose.startsWith(`HPP ${HPP_LABEL[key]} ·`));
+    const previous = await prisma.expense.findMany({ where: { salesOrderId, category: "PROJECT", deletedAt: null }, select: { id: true, proofPath: true } });
+    const previousById = new Map(previous.map((row) => [row.id, row]));
+    // Id baris harus milik order ini, tidak boleh dobel dipakai dua baris, dan tidak
+    // boleh muncul sekaligus sebagai baris terisi dan baris yang dihapus.
+    const usedIds = new Set<string>();
+    const claim = (id: string) => {
+      if (!previousById.has(id)) throw new UserFacingError("Baris HPP lama tidak ditemukan. Muat ulang halaman.");
+      if (usedIds.has(id)) throw new UserFacingError("Terdapat baris HPP ganda. Muat ulang halaman.");
+      usedIds.add(id);
+    };
+    for (const plan of plans) if (plan.row.id) claim(plan.row.id);
+    for (const id of removedIds) claim(id);
+    // Unggah bukti baris terisi di luar transaksi; file lama baru dihapus setelah komit.
     const uploadedPaths: string[] = [];
-    const proofs = {} as Record<(typeof HPP_KEYS)[number], { proofPath: string; proofFileName: string; proofMimeType: string; proofSize: number }>;
     try {
-      for (const key of entries) {
-        const itemProof = await uploadPaymentProof(formData.get(`expenseProof_${key}`), actor.id);
-        if (itemProof) {
-          proofs[key] = itemProof;
-          uploadedPaths.push(itemProof.proofPath);
-          continue;
+      for (const plan of plans) {
+        const uploaded = await uploadPaymentProof(plan.row.proof, actor.id);
+        if (uploaded) {
+          (plan as { proofUpload?: PaymentProof }).proofUpload = uploaded;
+          uploadedPaths.push(uploaded.proofPath);
         }
-        const old = previousByKey(key);
-        if (!old?.proofPath || !old.proofFileName || !old.proofMimeType || old.proofSize == null) throw new UserFacingError(`Bukti TF ${HPP_LABEL[key]} wajib dilampirkan.`);
-        proofs[key] = { proofPath: old.proofPath, proofFileName: old.proofFileName, proofMimeType: old.proofMimeType, proofSize: old.proofSize };
       }
     } catch (error) {
       for (const path of uploadedPaths) await deletePaymentProof(path);
       throw error;
     }
+    const supersededProofPaths: string[] = [];
     try {
       const updated = await prisma.$transaction(async (tx) => {
         const order = await tx.salesOrder.findUnique({
           where: { id: salesOrderId },
-          select: { id: true, status: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } },
+          select: { id: true, status: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } },
         });
         if (!order || order.status !== "ACTIVE") throw new UserFacingError("Order tidak aktif.");
-        const result = await tx.salesOrderCost.updateMany({ where: { salesOrderId, version, salesOrder: { status: "ACTIVE" } }, data: { ...Object.fromEntries(HPP_KEYS.map((key) => [key, new Prisma.Decimal(costValues[key])])), version: { increment: 1 } } });
+        // Kolom agregat per jenis = jumlah baris terisi; jenis tanpa baris kembali null.
+        const totals = Object.fromEntries(HPP_KEYS.map((key) => [key, plans.filter((plan) => plan.key === key).reduce((sum, plan) => sum + Number(plan.row.amount), 0)])) as Record<(typeof HPP_KEYS)[number], number>;
+        const result = await tx.salesOrderCost.updateMany({
+          where: { salesOrderId, version, salesOrder: { status: "ACTIVE" } },
+          data: { ...Object.fromEntries(HPP_KEYS.map((key) => [key, totals[key] > 0 ? new Prisma.Decimal(totals[key]) : null])), version: { increment: 1 } },
+        });
         if (result.count !== 1) throw new UserFacingError("Data HPP sudah berubah atau order tidak aktif. Muat ulang halaman.");
         await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrder", entityId: salesOrderId, action: "SALES_ORDER_HPP_UPDATED", changedFields: [...HPP_KEYS] } });
         const customerName = order.snapshotCompanyName ?? order.snapshotCustomerName;
-        await tx.expense.updateMany({ where: { salesOrderId, category: "PROJECT", deletedAt: null }, data: { deletedAt: new Date(), deletedById: actor.id, deleteReason: "Digantikan sinkronisasi HPP terbaru." } });
-        for (const key of entries) {
+        // (1) Baris existing yang masih terisi: timpa in-place — tidak masuk Riwayat Hapus.
+        for (const plan of plans) {
+          if (!plan.row.id) continue;
+          const proofUpload = (plan as { proofUpload?: PaymentProof }).proofUpload;
+          const old = previousById.get(plan.row.id);
+          await tx.expense.update({
+            where: { id: plan.row.id },
+            data: {
+              amount: new Prisma.Decimal(plan.row.amount),
+              spentAt: date(plan.row.spentAt as string),
+              paymentMethodId: plan.row.method as string,
+              description: plan.row.description ?? null,
+              ...(proofUpload ?? {}),
+            },
+          });
+          if (proofUpload && old?.proofPath && old.proofPath !== proofUpload.proofPath) supersededProofPaths.push(old.proofPath);
+          await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: plan.row.id, action: "EXPENSE_UPDATED", changedFields: ["amount", "spentAt", "paymentMethodId", "description", ...(proofUpload ? ["proofPath"] : [])] } });
+        }
+        // (2) Baris baru.
+        for (const plan of plans) {
+          if (plan.row.id) continue;
+          const proofUpload = (plan as { proofUpload?: PaymentProof }).proofUpload;
           const item = await tx.expense.create({
             data: {
-              purpose: `HPP ${HPP_LABEL[key] ?? key} · ${customerName} · ${order.purchaseOrder.productName} · ${order.invoiceNo}`,
-              spentAt: date(costDates[key] as string),
-              amount: new Prisma.Decimal(costValues[key]),
+              purpose: `HPP ${HPP_LABEL[plan.key] ?? plan.key} · ${customerName} · ${order.purchaseOrder.productName}`,
+              description: plan.row.description ?? null,
+              spentAt: date(plan.row.spentAt as string),
+              amount: new Prisma.Decimal(plan.row.amount),
               category: "PROJECT",
-              paymentMethodId: costMethods[key] as string,
+              paymentMethodId: plan.row.method as string,
               isReimbursable: false,
               customerName,
               salesOrderId,
-              hppKey: key,
-              ...proofs[key],
+              hppKey: plan.key,
+              ...(proofUpload ?? {}),
               createdById: actor.id,
             },
           });
-          await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: item.id, action: "EXPENSE_CREATED", changedFields: ["purpose", "spentAt", "amount", "category", "salesOrderId", "proofPath"] } });
+          await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: item.id, action: "EXPENSE_CREATED", changedFields: ["purpose", "description", "spentAt", "amount", "category", "salesOrderId", "proofPath"] } });
+        }
+        // (3) Baris yang dihapus user (dikosongkan/dihilangkan): soft-delete —
+        // satu-satunya jalur yang masuk Riwayat Hapus (R16).
+        for (const id of removedIds) {
+          await tx.expense.update({ where: { id }, data: { deletedAt: new Date(), deletedById: actor.id, deleteReason: "Dihapus dari form Edit HPP." } });
+          await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: id, action: "EXPENSE_DELETED", changedFields: ["deletedAt", "deletedById"] } });
         }
         return result;
       }, FINANCE_TRANSACTION_OPTIONS);
-      if (updated.count) { revalidatePath("/keuangan/pemasukan"); revalidatePath("/keuangan/pengeluaran"); }
-      return flashMessagePath("/keuangan/pemasukan", "notice", entries.length ? "Biaya HPP diperbarui dan otomatis masuk ke Pengeluaran (kategori Project)." : "Biaya HPP berhasil diperbarui.");
+      // File bukti lama yang terganti dibersihkan setelah komit (best-effort).
+      for (const path of supersededProofPaths) await deletePaymentProof(path).catch(() => undefined);
+      if (updated.count) { revalidatePath("/keuangan/pemasukan"); revalidatePath("/keuangan/pengeluaran"); revalidatePath("/keuangan/pengeluaran/riwayat"); }
+      return flashMessagePath("/keuangan/pemasukan", "notice", plans.length ? "Biaya HPP diperbarui dan otomatis masuk ke Pengeluaran kategori Project." : "Biaya HPP berhasil diperbarui.");
     } catch (error) {
       for (const path of uploadedPaths) await deletePaymentProof(path);
       throw error;
     }
+  });
+}
+
+// Revisi Project — switch Status Lengkap/Belum Lengkap (hppComplete).
+// Total HPP dihitung hanya saat hppComplete true; optimistic lock via version.
+export async function toggleHppCompleteAction(formData: FormData) {
+  return runRedirectingAction("/keuangan/pemasukan", async () => {
+    const actor = await requireActor(FINANCE_ROLES);
+    const parsed = z.object({
+      salesOrderId: z.string().cuid(),
+      version: z.coerce.number().int().positive(),
+      hppComplete: z.boolean(),
+    }).safeParse({
+      salesOrderId: formData.get("salesOrderId"),
+      version: formData.get("version"),
+      hppComplete: formData.get("hppComplete") === "true",
+    });
+    if (!parsed.success) throw new UserFacingError("Status HPP tidak valid.");
+    const { salesOrderId, version, hppComplete } = parsed.data;
+    await getPrismaClient().$transaction(async (tx) => {
+      const result = await tx.salesOrderCost.updateMany({
+        where: { salesOrderId, version, salesOrder: { status: "ACTIVE" } },
+        data: { hppComplete, version: { increment: 1 } },
+      });
+      if (result.count !== 1) throw new UserFacingError("Data HPP sudah berubah. Muat ulang halaman.");
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrder", entityId: salesOrderId, action: "HPP_COMPLETE_TOGGLED", changedFields: ["hppComplete"] } });
+    }, FINANCE_TRANSACTION_OPTIONS);
+    revalidatePath("/keuangan/pemasukan");
+    return flashMessagePath("/keuangan/pemasukan", "notice", hppComplete ? "Status HPP ditandai Lengkap. Total HPP dihitung." : "Status HPP ditandai Belum Lengkap.");
   });
 }

@@ -17,7 +17,8 @@ import {
   publicLeadSchema,
   invoiceDraftSchema,
   purchaseOrderDraftSchema,
-  completeDealSchema,
+  invoiceScheduleSchema,
+  paymentDeadlineUpdateSchema,
   editPaymentTransactionSchema,
   payInvoicePaymentTermSchema,
   payPaymentTermSchema,
@@ -289,6 +290,7 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
   const valid = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
     purchaseOrderId: "cm123456789013",
+    dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
     items: [{ ...itemBase, addons: [{ label: "Kerah", unitAmount: "10000" }] }],
@@ -299,6 +301,7 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
   const withoutAddons = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
     purchaseOrderId: "cm123456789013",
+    dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
     items: [{ ...itemBase }],
@@ -309,6 +312,7 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
   const tooMany = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
     purchaseOrderId: "cm123456789013",
+    dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
     items: [{ ...itemBase, addons: Array.from({ length: 6 }, (_, index) => ({ label: `Add ${index}`, unitAmount: "1000" })) }],
@@ -318,6 +322,7 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
   const badLabel = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
     purchaseOrderId: "cm123456789013",
+    dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
     items: [{ ...itemBase, addons: [{ label: "X", unitAmount: "1000" }] }],
@@ -327,6 +332,7 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
   const badAmount = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
     purchaseOrderId: "cm123456789013",
+    dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
     items: [{ ...itemBase, addons: [{ label: "Kerah", unitAmount: "-5" }] }],
@@ -595,47 +601,105 @@ test("aksi pindah status dari detail peluang tidak fallback ke board", async () 
   assert.doesNotMatch(detailPageSource, /OpportunityStageForm/);
 });
 
-test("Deal mewajibkan pembayaran lunas atau DP dengan termin", () => {
-  const base = {
-    opportunityId: "cm123456789012",
-    opportunityVersion: "1",
-    purchaseOrderId: "cm123456789013",
-    invoiceId: "cm123456789014",
-    invoiceVersion: "1",
-    initialValueType: "PERCENTAGE",
-    initialValue: "50",
-  };
-  assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [] }).success, true);
-  assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [] }).success, false);
-  assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", terms: [{ valueType: "PERCENTAGE", value: "50", dueAt: "2026-09-30" }] }).success, true);
-  assert.equal(completeDealSchema.safeParse({ ...base, kind: "DP", initialValue: "100", terms: [] }).success, true);
-  assert.equal(completeDealSchema.safeParse({ ...base, kind: "LUNAS", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-09-30" }] }).success, false);
-  // Deposit nominal bebas tetap butuh termin sisa.
-  const depositBase = { ...base, kind: "DEPOSIT", initialValueType: "NOMINAL", initialValue: "50000" };
-  assert.equal(completeDealSchema.safeParse({ ...depositBase, terms: [] }).success, false);
-  assert.equal(completeDealSchema.safeParse({ ...depositBase, terms: [{ valueType: "NOMINAL", value: "100000", dueAt: "2026-09-30" }] }).success, true);
+test("R10: tab Deal dilebur ke Invoice & Deal dan tautan ?tab=deal diarahkan ke tab invoice", async () => {
+  const [constantsSource, tabsSource, detailPageSource, actionSource, invoiceDetailSource] = await Promise.all([
+    readFile(new URL("../lib/crm/constants.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/opportunity-process-tabs.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+  ]);
+  // Daftar tab resmi tidak lagi memuat "deal"; parser menampung tautan lama ke tab invoice.
+  assert.equal(parseOpportunityDetailTab("deal"), "invoice");
+  assert.equal(parseOpportunityDetailTab(["deal", "po"]), "invoice");
+  assert.match(constantsSource, /export const OPPORTUNITY_DETAIL_TABS = \["po", "invoice", "aktivitas"\] as const;/);
+  assert.match(tabsSource, /\["invoice", "Invoice & Deal"\]/);
+  assert.doesNotMatch(tabsSource, /\["deal"/);
+  // Panel Deal dilebur ke panel invoice: kartu lengkapi deal kini berada di dalamnya.
+  assert.doesNotMatch(detailPageSource, /OpportunityProcessPanel value="deal"/);
+  const invoicePanelAt = detailPageSource.indexOf('<OpportunityProcessPanel value="invoice">');
+  const dealCardAt = detailPageSource.indexOf('<Card id="complete-deal">');
+  assert.ok(invoicePanelAt >= 0 && dealCardAt > invoicePanelAt, "kartu lengkapi deal harus berada di dalam panel invoice");
+  // Tidak ada tautan ?tab=deal tersisa di aplikasi (hanya komentar di parser).
+  assert.doesNotMatch(actionSource, /\?tab=deal/);
+  assert.doesNotMatch(detailPageSource, /\?tab=deal/);
+  assert.doesNotMatch(invoiceDetailSource, /\?tab=deal/);
+  // Flash simpan/revisi jadwal invoice dan Terbitkan (finalize) mengarahkan pengguna ke tab invoice.
+  assert.match(actionSource, /flashMessagePath\(`\/crm\/peluang\/\$\{parsed\.data\.opportunityId\}\?tab=invoice`/);
+  assert.match(actionSource, /flashMessagePath\(`\/crm\/peluang\/\$\{issuedInvoice\.opportunityId\}\?tab=invoice`/);
 });
 
-test("jadwal DP menampilkan nominal pecahan dan dapat mengisi sisa tepat", async () => {
-  const source = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
-  assert.match(source, /const totalAmount = Number\(total\)/);
-  assert.match(source, /valueType === "PERCENTAGE" \? roundPaymentAmount/);
-  assert.match(source, /function fillTermRemainder\(key: string\)/);
-  assert.match(source, /onClick=\{\(\) => fillTermRemainder\(terms\[terms\.length - 1\]\.key\)\}/);
-});
-
-test("deadline termin harus sehari setelah pembayaran awal atau termin sebelumnya", async () => {
-  const formSource = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
+test("Jadwal invoice: LUNAS tanpa termin, DP memakai nominal, deadline opsional di skema", async () => {
+  // Disimpan bersama draft; kewajiban termin DP dinilai server (buildPaymentSchedule) memakai sisa otoritatif.
+  assert.equal(invoiceScheduleSchema.safeParse({ kind: "LUNAS", initialValueType: "PERCENTAGE", initialValue: "100", initialDueAt: "", terms: [] }).success, true);
+  assert.equal(invoiceScheduleSchema.safeParse({ kind: "DP", initialValueType: "NOMINAL", initialValue: "200000", initialDueAt: "", terms: [{ valueType: "NOMINAL", value: "800000", dueAt: "" }] }).success, true);
+  // Deadline DP dan termin boleh kosong (tanpa batas).
+  assert.equal(invoiceScheduleSchema.safeParse({ kind: "DP", initialValueType: "NOMINAL", initialValue: "200000", initialDueAt: "", terms: [{ valueType: "NOMINAL", value: "800000", dueAt: "" }, { valueType: "NOMINAL", value: "1", dueAt: "2026-12-01" }] }).success, true);
+  // LUNAS: tanpa termin dan tanpa deadline sendiri (mengikuti jatuh tempo).
+  assert.equal(invoiceScheduleSchema.safeParse({ kind: "LUNAS", initialValueType: "PERCENTAGE", initialValue: "100", initialDueAt: "2026-12-01", terms: [] }).success, false);
+  assert.equal(invoiceScheduleSchema.safeParse({ kind: "LUNAS", initialValueType: "PERCENTAGE", initialValue: "100", initialDueAt: "", terms: [{ valueType: "NOMINAL", value: "1", dueAt: "2026-12-01" }] }).success, false);
+  // DP tanpa termin lolos skema; kewajiban termin ada di action setelah membaca total & deposit DB.
+  assert.equal(invoiceScheduleSchema.safeParse({ kind: "DP", initialValueType: "NOMINAL", initialValue: "0", initialDueAt: "", terms: [] }).success, true);
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
-  assert.match(formSource, /min=\{addJakartaDays\(index \? terms\[index - 1\]\.dueAt \|\| initialDueAt : initialDueAt, 1\)\}/);
+  assert.match(actionSource, /if \(kind === "DP" && schedule\.terms\.length === 0\) throw new UserFacingError\("DP wajib memiliki minimal satu termin\."\)/);
+  assert.match(actionSource, /if \(kind === "DEPOSIT" && schedule\.terms\.length === 0\) throw new UserFacingError\("Deposit wajib memiliki minimal satu termin sisa\."\)/);
+  assert.match(actionSource, /DP nominal yang menutup sisa tagihan \(setelah deposit\) dihitung Lunas/);
+  assert.match(actionSource, /const coversCollectible = schedule\.kind === "DP" && schedule\.initialValueType === "NOMINAL" && requestedInitial\.gte\(collectibleTotal\)/);
+});
+
+test("Form invoice menyimpan jadwal DP/Lunas bersama draft lewat satu tombol", async () => {
+  const source = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+  // Jatuh tempo diisi manual (tanpa paksa H+7 saat simpan maupun terbit).
+  assert.match(source, /name="dueAt"/);
+  assert.match(source, /Tgl\. jatuh tempo/);
+  assert.doesNotMatch(source, /7 hari/);
+  // Jenis pembayaran default "Belum diatur" — jadwal opsional saat simpan.
+  assert.match(source, /name="kind"/);
+  assert.match(source, /NativeSelectOption value="">Belum diatur</);
+  assert.match(source, /Opsional saat simpan; wajib diatur sebelum invoice diterbitkan\./);
+  // DP memakai nominal MoneyInput; termin punya nilai + deadline opsional.
+  assert.match(source, /name="initialValue"/);
+  assert.match(source, /MoneyInput id=\{`initial-value-\$\{fieldKey\}`\}/);
+  assert.match(source, /name="termValue"/);
+  assert.match(source, /name="termDueAt"/);
+  assert.doesNotMatch(source, /min=\{50\}/);
+  // Tombol simpan menunggu kesiapan jadwal (sisa termin tertutup + urutan deadline).
+  assert.match(source, /disabled=\{!scheduleReady\}/);
+  assert.match(source, /Isi sisa/);
+  // Deposit PO mengurangi sisa yang dijadwalkan.
+  assert.match(source, /const collectibleAmount = Math\.max\(0, previewTotal - depositAmountNumber\)/);
+});
+
+test("deadline termin harus sehari setelah deadline terisi atau jatuh tempo", async () => {
+  const formSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  // Client: min tanggal = baseline (deadline DP / jatuh tempo) atau termin terisi sebelumnya; termin kosong dilewati.
+  assert.match(formSource, /min=\{previous \? addJakartaDays\(previous, 1\) : undefined\}/);
+  assert.match(formSource, /const previous = previousFilledDueAt\(index\) \|\| scheduleBaseline/);
   assert.match(actionSource, /dueAt <= previousDueAt/);
+  assert.match(actionSource, /previousLabel = initialDueAt \? "deadline DP\." : "jatuh tempo\.";/);
 });
 
-test("Invoice terbit menetapkan deadline awal H+7 dan Deal memakai deadline Invoice", async () => {
-  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
-  assert.match(actionSource, /const dueAt = addJakartaDays\(issuedAt, 7\)/);
-  assert.match(actionSource, /issuedAt,\s*dueAt,/);
-  assert.match(actionSource, /const initialDueAt = invoice\.dueAt \?\? addJakartaDays\(invoice\.issuedAt, 7\)/);
+test("Jatuh tempo diisi manual; Terbitkan menagih dueAt + jadwal; DP Rp 0 finalisasi saat Terbitkan", async () => {
+  const [actionSource, validationSource, issueSource] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/issue-invoice-action.tsx", import.meta.url), "utf8"),
+  ]);
+  // dueAt wajib di skema (preprocess kosong → "") dan dijaga saat Terbitkan.
+  assert.match(validationSource, /dueAt: z\.preprocess\(/);
+  assert.match(validationSource, /"Tgl\. jatuh tempo wajib diisi\."\)/);
+  assert.match(actionSource, /if \(!invoice\.dueAt\) throw new UserFacingError\("Tgl\. jatuh tempo wajib diisi sebelum invoice diterbitkan\."\)/);
+  assert.match(actionSource, /if \(!invoice\.pendingPayment\) throw new UserFacingError\("Jadwal pembayaran belum diatur\. Lengkapi jadwal DP\/Lunas pada draft invoice terlebih dahulu\."\)/);
+  // Tidak ada lagi penetapan otomatis H+7 di mana pun.
+  assert.doesNotMatch(actionSource, /addJakartaDays\(issuedAt, 7\)/);
+  assert.doesNotMatch(actionSource, /addJakartaDays\(invoice\.issuedAt, 7\)/);
+  // DP Rp 0 finalisasi dalam transaksi penerbitan (deal + SO + deposit + WO sekaligus).
+  assert.match(actionSource, /invoice\.pendingPayment\.kind === "DP" && invoice\.pendingPayment\.initialAmount\.isZero\(\)/);
+  assert.match(actionSource, /\? await finalizeDeal\(tx, actor, parsed\.data\.invoiceId, null\)/);
+  assert.match(actionSource, /dan Work Order langsung terbentuk karena DP Rp 0\./);
+  // Konfirmasi Terbitkan memberi tahu prasyarat dueAt + jadwal.
+  assert.match(issueSource, /Tgl\. jatuh tempo dan jadwal pembayaran wajib sudah diisi pada draft/);
 });
 
 test("invoice DP terbayar berstatus Menunggu Pelunasan, bukan Belum Terbayar", async () => {
@@ -934,6 +998,29 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.match(pageSource, /Pajak/);
 });
 
+test("R7 keuangan: Deposit terpisah dari DP pada pemasukan, ekspor, dan mutasi", async () => {
+  const [expenseSource, pageSource, exportSource, dataSource] = await Promise.all([
+    readFile(new URL("../lib/finance/expense.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/keuangan/pemasukan/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/keuangan/pemasukan/export/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/finance/data.ts", import.meta.url), "utf8"),
+  ]);
+  // Kolom DP hanya memuat transaksi awal (tanpa termin dan tanpa deposit); deposit diukur sendiri.
+  assert.match(expenseSource, /transactions\.filter\(\(item\) => !item\.paymentTermId && !item\.isDeposit\)/);
+  assert.match(expenseSource, /const depositAmount = transactions\.filter\(\(item\) => item\.isDeposit\)/);
+  assert.match(expenseSource, /isDeposit: true \} \} \} \},/);
+  // Tabel & footer pemasukan punya kolom Deposit sebelum DP, kosong jadi "-".
+  assert.match(pageSource, /"Margin %", "Deposit", "DP", "Lunas"/);
+  assert.match(pageSource, /item\.deposit \? formatCurrency\(item\.deposit\) : "-"/);
+  assert.match(pageSource, /const totalDeposit = sumMoney\(data\.items\.map\(\(item\) => item\.deposit\)\)/);
+  assert.match(pageSource, /formatCurrency\(totalDeposit\)/);
+  // Ekspor XLSX menyertakan kolom Deposit dengan nilai "-" bila nol.
+  assert.match(exportSource, /"Margin", "Deposit", "DP", "Lunas"/);
+  assert.match(exportSource, /Deposit: row\.deposit \? Number\(row\.deposit\) : "-"/);
+  // Mutasi pembayaran membedakan Termin / Deposit / Pembayaran awal untuk ditampilkan.
+  assert.match(dataSource, /transactionKind: item\.paymentTermId \? "Termin" : item\.isDeposit \? "Deposit" : "Pembayaran awal"/);
+});
+
 test("flash message tidak membocorkan isi notifikasi ke URL", async () => {
   const responseSource = await readFile(new URL("../lib/actions/response.ts", import.meta.url), "utf8");
   assert.doesNotMatch(responseSource, /encodeURIComponent\(message\)/);
@@ -1179,8 +1266,8 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   assert.match(workflowSection, /receipts={receipts}/);
   assert.match(opportunityPage, /receipts={invoiceReceipts}/);
   assert.match(opportunityPage, /label: "Lihat Kwitansi"/);
-  // Id transaksi pembayaran (awal + termin) ikut ditarik oleh detail peluang.
-  assert.match(dataSource, /paymentTermId: null \}, select: \{ id: true, amount: true \}/);
+  // Id transaksi pembayaran (awal + termin) ikut ditarik oleh detail peluang; deposit tidak ikut dihitung awal.
+  assert.match(dataSource, /paymentTermId: null, isDeposit: false \}, select: \{ id: true, amount: true \}/);
   assert.match(dataSource, /terms: \{ orderBy: \{ position: "asc" \}, select: \{ position: true, transactions/);
 
   // Daftar invoice di-cache bertag "invoices"; `revalidatePath` saja tidak mengosongkan cache itu.
@@ -1220,19 +1307,26 @@ test("PO multi-produk: instansi, pola, dekorasi multi, dan item", () => {
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), item()] }).success, false);
 });
 
-test("kesepakatan PO memakai konfirmasi customer, bukan gate desain", async () => {
+test("kesepakatan PO menunggu desain terunggah, tanpa langkah konfirmasi customer", async () => {
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
   const detailPageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
   const agreementSource = await readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8");
   assert.match(actionSource, /export async function markPurchaseOrderDesignSentAction/);
+  // Action konfirmasi lama masih tersimpan untuk riwayat/audit, tetapi tidak lagi dipakai UI.
   assert.match(actionSource, /export async function confirmPurchaseOrderCustomerAction/);
   assert.match(actionSource, /PURCHASE_ORDER_DESIGN_SENT/);
   assert.match(actionSource, /PURCHASE_ORDER_CUSTOMER_CONFIRMED/);
-  assert.match(actionSource, /if \(!purchaseOrder\.customerConfirmedAt\) throw new UserFacingError/);
+  // Gate "customerConfirmedAt" diganti: semua desain harus terunggah dulu (kirim & sepakati).
+  assert.match(actionSource, /Unggah desain terlebih dahulu sebelum menyepakati PO\./);
+  assert.doesNotMatch(actionSource, /if \(!purchaseOrder\.customerConfirmedAt\) throw new UserFacingError/);
   assert.doesNotMatch(actionSource, /Desain harus diunggah dan disetujui Owner atau Admin sebelum PO disepakati/);
-  assert.match(detailPageSource, /poDraft\??\.customerConfirmedAt/);
+  // Sepakati PO dihitung dari desain terunggah — aktif bersama "Kirim 1 set PDF".
+  assert.match(detailPageSource, /designUploadedCount === designItems\.length/);
+  assert.doesNotMatch(detailPageSource, /customerConfirmedAt/);
   assert.match(agreementSource, /Kirim 1 set PDF/);
-  assert.match(agreementSource, /Konfirmasi customer/);
+  assert.doesNotMatch(agreementSource, /Konfirmasi customer/);
+  // Pengiriman PDF otomatis menandai customer tidak ada revisi (hidden input, tanpa checkbox).
+  assert.match(agreementSource, /name="customerConfirmed" value="yes"/);
   // Revisi dari PO disepakati dibuka untuk mitigasi H-1.
   assert.match(actionSource, /source\.status !== "DRAFT" && source\.status !== "AGREED"/);
   assert.match(actionSource, /Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati/);
@@ -1267,6 +1361,40 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /const blockHeight = 16 \+ lines\.length \* 16 \+ 6;\n\s*if \(y - blockHeight < margin\) addPage\(\);/);
   assert.match(buttonSource, /PDF Customer/);
   assert.match(buttonSource, /PDF Penjahit/);
+  // Sprint 11 R3: varian penjahit menambah deadline per item (null → "-") + gambar desain penjahit;
+  // sel Deadline pelanggan tetap persis seperti sebelumnya (uji regex di atas tetap cocok).
+  assert.match(pdfSource, /penjahitDeadline/);
+  assert.match(pdfSource, /label: "Deadline penjahit"/);
+  assert.match(pdfSource, /label: "Deadline produksi"/);
+  assert.match(routeSource, /Desain penjahit \$\{item\.name\}/);
+  assert.match(routeSource, /penjahitDesignPath/);
+});
+
+test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desain", async () => {
+  const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../prisma/migrations/20261021010000_purchase_order_item_penjahit/migration.sql", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8");
+  const buttonSource = await readFile(new URL("../components/crm/purchase-order-pdf-download-button.tsx", import.meta.url), "utf8");
+  const serveSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/items/[itemId]/penjahit-design/route.ts", import.meta.url), "utf8");
+  // Skema per item: deadline penjahit + kolom desain (migrasi manual, tanpa backfill).
+  assert.match(schema, /penjahitDeadline\s+DateTime\?\s+@db\.Date/);
+  assert.match(schema, /penjahitDesignPath\s+String\?\s+@db\.VarChar\(500\)/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "penjahitDeadline" DATE/);
+  // Aksi terpisah dari form PO: gate DRAFT/AGREED (developer/owner lolos), optimistic version, audit.
+  assert.match(actionSource, /export async function savePenjahitPlanAction/);
+  assert.match(actionSource, /purchaseOrder\.status !== "DRAFT" && purchaseOrder\.status !== "AGREED"/);
+  assert.match(actionSource, /where: \{ id: purchaseOrder\.id, version: parsed\.data\.version \}/);
+  assert.match(actionSource, /PENJAHIT_PLAN_UPDATED/);
+  // Dialog khusus field penjahit (bukan form PO penuh) + tombol menempel di samping unduh.
+  assert.match(dialogSource, /Edit PDF Penjahit/);
+  assert.match(dialogSource, /savePenjahitPlanAction/);
+  assert.match(dialogSource, /deadline-\$\{item\.id\}/);
+  assert.match(dialogSource, /design-\$\{item\.id\}/);
+  assert.match(buttonSource, /PenjahitPlanDialog/);
+  // Rute preview desain penjahit per item (hanya pemilik PO yang boleh).
+  assert.match(serveSource, /penjahitDesignPath/);
+  assert.match(serveSource, /CRM_VIEW_ROLES/);
 });
 
 test("pratinjau roster mengisi matriks otomatis", async () => {
@@ -1282,12 +1410,11 @@ test("pratinjau roster mengisi matriks otomatis", async () => {
 
 test("upload desain per produk menunggu deposit hanya bila PO memerlukannya", async () => {
   const designSource = await readFile(new URL("../app/actions/design.ts", import.meta.url), "utf8");
-  const dealFormSource = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
   const agreementSource = await readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8");
-  // Deposit dihapus dari dropdown jenis pembayaran Deal; jadwal deposit lama tetap valid di server.
-  assert.doesNotMatch(dealFormSource, /value="DEPOSIT"/);
-  assert.doesNotMatch(dealFormSource, /Nominal deposit/);
-  assert.doesNotMatch(dealFormSource, /isDeposit/);
+  // Dropdown jenis pembayaran kini pada form invoice: Lunas/DP; Deposit hanya untuk prefill data lama.
+  const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+  assert.match(invoiceFormSource, /NativeSelectOption value="DP">DP</);
+  assert.match(invoiceFormSource, /scheduleKind === "DEPOSIT" \? <NativeSelectOption value="DEPOSIT">Deposit \(data lama\)</);
   // Upload desain hanya menunggu deposit bila PO mencentang "Perlu deposit".
   assert.match(designSource, /assertDepositSettled\(task\.purchaseOrder, actor\.role\)/);
   assert.match(designSource, /if \(!purchaseOrder\.depositRequired \|\| purchaseOrder\.deposit \|\| hasRole\(role, GATE_OVERRIDE_ROLES\)\) return;/);
@@ -1307,7 +1434,7 @@ test("upload desain per produk menunggu deposit hanya bila PO memerlukannya", as
   assert.match(agreementSource, /Sepakati PO terbaru/);
   // PDF boleh dikirim berulang: tombol kirim tidak disembunyikan setelah terkirim.
   assert.doesNotMatch(agreementSource, /\!designSentAt \?/);
-  assert.match(agreementSource, /designSentAt && !customerConfirmedAt/);
+  assert.match(agreementSource, /name="customerConfirmed" value="yes"/);
 });
 
 test("checkbox Deposit menjadi gate tombol Isi Deposit dan desain disimpan per produk", async () => {
@@ -1386,7 +1513,7 @@ test("deposit PO: kolom tabel, tombol Isi Deposit, dan alur Upload Desain lalu K
   const depositFormSource = await readFile(new URL("../components/crm/purchase-order-deposit-form.tsx", import.meta.url), "utf8");
   const depositStatusSource = await readFile(new URL("../components/crm/deposit-status.tsx", import.meta.url), "utf8");
   const popupSource = await readFile(new URL("../components/crm/purchase-order-detail.tsx", import.meta.url), "utf8");
-  const dealFormSource = await readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8");
+  const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
   const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
 
@@ -1430,13 +1557,411 @@ test("deposit PO: kolom tabel, tombol Isi Deposit, dan alur Upload Desain lalu K
   assert.match(actionSource, /Unggah desain terlebih dahulu sebelum mengirim 1 set PDF/);
 
   // Deposit mengurangi sisa tagihan: jadwal Deal dan pembentukan Sales Order memakai sisa setelah deposit.
-  assert.match(actionSource, /const collectibleTotal = roundedTotal\.sub\(depositAmount\)/);
-  assert.match(actionSource, /const initialAmount = invoice\.pendingPayment\.initialAmount\.add\(depositAmount\)/);
+  assert.match(actionSource, /const collectibleTotal = invoiceTotal\.sub\(depositAmount\)/);
   assert.match(actionSource, /Jadwal pembayaran tidak sama dengan sisa setelah deposit/);
-  assert.match(dealFormSource, /const collectibleAmount = Math\.max\(0, totalAmount - depositTotal\)/);
+  // R7: deposit tidak lagi dilipat ke pembayaran awal — dicatat terpisah sebagai transaksi isDeposit.
+  assert.match(actionSource, /const initialAmount = invoice\.pendingPayment\.initialAmount;/);
+  assert.match(actionSource, /const outstandingAmount = invoice\.total\.sub\(depositAmount\)\.sub\(initialAmount\)/);
+  assert.match(actionSource, /isDeposit: true/);
+  assert.doesNotMatch(actionSource, /initialAmount\.add\(depositAmount\)/);
+  assert.match(invoiceFormSource, /const collectibleAmount = Math\.max\(0, previewTotal - depositAmountNumber\)/);
 
   // Nominal deposit wajib lebih dari nol.
   const depositInput = { purchaseOrderId: "cm123456789012", paymentMethodId: "cm123456789013", paidAt: "2026-10-11T09:00", amount: "50000" };
   assert.equal(purchaseOrderDepositSchema.safeParse(depositInput).success, true);
   assert.equal(purchaseOrderDepositSchema.safeParse({ ...depositInput, amount: "0" }).success, false);
+});
+
+test("R1/R2: dialog deposit pakai useActionState, error inline, dan bukti punya route sendiri", async () => {
+  const depositFormSource = await readFile(new URL("../components/crm/purchase-order-deposit-form.tsx", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const routeSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/deposit/proof/route.ts", import.meta.url), "utf8");
+  const detailSource = await readFile(new URL("../components/crm/purchase-order-detail.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
+  const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+
+  // Gagal simpan → error tampil inline & dialog tetap terbuka; tidak ada tutup prematur saat submit.
+  assert.match(depositFormSource, /useActionState\(async \(prevState/);
+  assert.match(depositFormSource, /await recordPurchaseOrderDepositAction\(prevState, formData\)/);
+  assert.doesNotMatch(depositFormSource, /onSubmit=\{\(\) => setOpen\(false\)\}/);
+  assert.match(depositFormSource, /state\.error/);
+  assert.match(depositFormSource, /Deposit belum tersimpan/);
+  // Field memakai state terkendali — defaultValue yang berubah antar render memicu warning Base UI.
+  assert.doesNotMatch(depositFormSource, /defaultValue=/);
+  // Tombol Lihat Deposit di sebelah kiri Ubah Deposit; isi pratinjau mengikuti data terbaru.
+  assert.match(depositFormSource, /Lihat Deposit/);
+  assert.match(depositFormSource, /Bukti terbaru sesuai Isi \/ Ubah Deposit/);
+  // Action tidak redirect: sukses/gagal dikembalikan sebagai state form.
+  assert.match(actionSource, /export async function recordPurchaseOrderDepositAction\(_prevState: CrmActionState, formData: FormData\): Promise<CrmActionState>/);
+  // Route bukti deposit membaca PurchaseOrderDeposit dari bucket pembayaran yang sama.
+  assert.match(routeSource, /purchaseOrderDeposit\.findUnique/);
+  assert.match(routeSource, /PAYMENT_PROOF_BUCKET/);
+  assert.match(routeSource, /CRM_VIEW_ROLES/);
+  // Detail PO menampilkan pratinjau bukti + mime type ikut ditransfer ke client.
+  assert.match(detailSource, /deposit\/proof/);
+  assert.match(detailSource, /PaymentProofPreview/);
+  assert.match(pageSource, /proofMimeType: poDraft\.deposit\.proofMimeType/);
+  assert.match(dataSource, /proofFileName: true, proofMimeType: true, paymentMethod/);
+});
+
+test("R9: termin/DP terlambat diwarnai merah utuh di detail invoice", async () => {
+  const invoiceDetail = await readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8");
+
+  // Helper telat memakai ambang hari yang sama dengan peringatan deadline yang sudah ada.
+  assert.match(invoiceDetail, /function isOverdue\(dueAt: Date \| string \| null \| undefined, unpaid: boolean\)/);
+  assert.match(invoiceDetail, /overdueRowClass = "border-destructive bg-destructive\/10"/);
+  // Baris termin (sudah deal) dan jadwal (belum deal) memakai badge Terlambat + latar merah.
+  assert.match(invoiceDetail, /overdue \? "Terlambat" : "Belum dibayar"/);
+  assert.match(invoiceDetail, /termOverdue \? "Terlambat" : "Belum dibayar"/);
+  assert.match(invoiceDetail, /variant=\{overdue \? "destructive" : "secondary"\}/);
+  assert.match(invoiceDetail, /tone=\{overdue \? "destructive" : undefined\}/);
+  // Baris awal di PaymentSummary ikut aturan serupa lewat prop overdue.
+  assert.match(invoiceDetail, /overdue=\{initialOverdue\}/);
+});
+
+test("R7: DP Rp 0 auto-finalize saat Terbitkan, deposit jadi transaksi terpisah, dan WO menunggu Payment", async () => {
+  const [actionSource, serviceSource, formSource, invoiceDetailSource] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/production/service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+  ]);
+  // Terbitkan invoice dengan jadwal DP Rp 0 mem-finalize deal dalam transaksi yang sama.
+  assert.match(actionSource, /const finalized = invoice\.pendingPayment\.kind === "DP" && invoice\.pendingPayment\.initialAmount\.isZero\(\)\s*\? await finalizeDeal\(tx, actor, parsed\.data\.invoiceId, null\)/);
+  assert.match(actionSource, /dan Work Order langsung terbentuk karena DP Rp 0\./);
+  assert.match(actionSource, /revalidatePaymentMutationPaths\(issuedInvoice\.finalized\.id\)/);
+  // Jalur "Catat pembayaran awal" memakai finalizeDeal dan tipe pembayaran yang sama.
+  assert.match(actionSource, /type DealFinalizePayment = \{[\s\S]{0,200}paidAt: Date;[\s\S]{0,200}proof: PaymentProof \| null;\s*\};/);
+  assert.match(actionSource, /\(tx\) => finalizeDeal\(tx, actor, parsed\.data\.invoiceId, payment\)/);
+  // Guard: pembayaran awal > 0 wajib disertakan; DP Rp 0 lolos tanpa payment.
+  assert.match(actionSource, /if \(initialAmount\.gt\(0\) && !initialPayment\) throw new UserFacingError\("Pembayaran awal wajib dicatat\."\)/);
+  assert.match(actionSource, /const payment = initialAmount\.gt\(0\) \? initialPayment : null;/);
+  // Deposit PO dicatat terpisah sebagai transaksi isDeposit (tanpa bukti unggahan).
+  assert.match(actionSource, /await tx\.paymentTransaction\.create\(\{\s*data: \{\s*paymentId,\s*isDeposit: true,/);
+  assert.match(actionSource, /paymentKind: "DEPOSIT"/);
+  // Catat pembayaran awal mengabaikan transaksi deposit dan menolak DP Rp 0.
+  assert.match(actionSource, /transactions: \{ where: \{ paymentTermId: null, isDeposit: false, status: "ACTIVE" \}/);
+  assert.match(actionSource, /if \(payment\.initialAmount\.lte\(0\)\) throw new UserFacingError\("Tidak ada pembayaran awal yang perlu dicatat\."\)/);
+  // Work Order hanya dibentuk bila Sales Order sudah punya Payment terkait.
+  assert.match(serviceSource, /if \(!order \|\| order\.status !== "ACTIVE" \|\| !order\.payment\) return null;/);
+  // Form invoice mengizinkan nominal pembayaran awal Rp 0 (DP Rp 0 disimpan saat draft).
+  assert.match(formSource, /name="initialValue" required min=\{0\}/);
+  // Detail invoice: baris deposit read-only dan DP Rp 0 memakai badge netral.
+  assert.match(invoiceDetailSource, /function DepositRow\(/);
+  assert.match(invoiceDetailSource, /neutral=\{initialZero \? "Tidak ada DP" : undefined\}/);
+  assert.match(invoiceDetailSource, /isOverdue\(initialDueAt, !initialPaid && !initialZero\)/);
+  // Constraint DB lama melarang initialAmount = 0; migrasi R7 melonggarkannya agar jalur DP Rp 0 tembus.
+  const migrationSource = await readFile(new URL("../prisma/migrations/20261018020000_dealpayment_allow_zero_dp/migration.sql", import.meta.url), "utf8");
+  assert.match(migrationSource, /ALTER TABLE "DealPayment" DROP CONSTRAINT "DealPayment_values_valid"/);
+  assert.match(migrationSource, /"initialValue" >= 0 AND "initialAmount" >= 0 AND "outstandingAmount" >= 0/);
+});
+
+test("R4: add on invoice punya qty sendiri (bisa kurang dari qty baris)", async () => {
+  const [schema, validation, form, pdf, detail, data, page] = await Promise.all([
+    readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // Kolom qty pada InvoiceItemAddon.
+  assert.match(schema, /qty\s+Int\s+@default\(1\)/);
+  // Validasi: minimal 1, default 1 supaya data lama (tanpa qty) tetap valid.
+  assert.match(validation, /qty: z\.coerce\.number\(\)\.int\(\)\.min\(1, "Qty add on minimal 1\."\)\.default\(1\)/);
+  // Form: input qty per baris add on.
+  assert.match(form, /item-\$\{rowIndex\}-addon-qty/);
+  // PDF & detail mencetak qty add on, bukan qty baris.
+  assert.match(pdf, /const addonQty = addon\.qty \?\? item\.quantity/);
+  assert.match(detail, /addon\.qty/);
+  // Select Prisma menyertakan qty add on (form & detail).
+  assert.match(data, /qty: true/);
+  assert.match(page, /qty: addon\.qty/);
+});
+
+test("R5: keterangan & S&K multi-baris (kolom TEXT, batas 1000, pecah per baris)", async () => {
+  const [schema, validation, editor, pdf] = await Promise.all([
+    readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/invoice-settings-editor.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(schema, /text\s+String\s+@db\.Text/);
+  assert.match(validation, /INVOICE_SETTING_POINT_TEXT_MAX = 1000/);
+  assert.match(editor, /<Textarea/);
+  assert.match(editor, /name="points"/);
+  assert.doesNotMatch(editor, /Tambah poin/);
+  assert.match(pdf, /split\(\/\\r\?\\n\//);
+});
+
+test("R6: diskon dua level (per baris & total) bisa nominal atau persen, tersimpan terpisah", async () => {
+  const [schema, validation, form, crm, detail, workflow] = await Promise.all([
+    readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(schema, /discountNominal\s+Decimal\s+@default\(0\) @db\.Decimal\(18, 2\)/);
+  assert.match(validation, /invoiceDiscountTypeSchema = z\.enum\(\["NONE", "NOMINAL", "PERCENTAGE"\]\)/);
+  assert.match(validation, /discountNominal: z\.preprocess\(/);
+  // Form menyediakan pemilih tipe + input nominal di kedua level.
+  assert.match(form, /name="itemDiscountType"/);
+  assert.match(form, /name="discountType"/);
+  assert.match(form, /name="itemDiscountNominal"/);
+  assert.match(form, /name="discountNominal"/);
+  // Server menyimpan tipe + nilai diskon hasil kalkulasi (order terpisah dari item).
+  assert.match(crm, /discountType: calculated\.discountType/);
+  assert.match(crm, /discountNominal: calculated\.discountNominal/);
+  // Draft prefill membawa tipe/nominal diskon.
+  assert.match(workflow, /discountNominal\?: string/);
+  // Detail menampilkan nominal & persen otomatis.
+  assert.match(detail, /function discountCellText/);
+});
+
+test("R8: nominal rupiah invoice memakai format id-ID dua desimal (Rp 4.330.000,00)", async () => {
+  const [format, pdf, receipt, detail] = await Promise.all([
+    readFile(new URL("../lib/crm/format.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/receipt-pdf.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(format, /export function formatInvoiceCurrency/);
+  assert.match(format, /minimumFractionDigits: 2,\s*maximumFractionDigits: 2/);
+  // Format global lama tetap tanpa desimal (halaman lain tidak berubah).
+  assert.match(format, /export function formatCurrency[\s\S]*?maximumFractionDigits: 0/);
+  assert.match(pdf, /new Intl\.NumberFormat\("id-ID", \{ minimumFractionDigits: 2, maximumFractionDigits: 2 \}\)/);
+  assert.match(receipt, /new Intl\.NumberFormat\("id-ID", \{ minimumFractionDigits: 2, maximumFractionDigits: 2 \}\)/);
+  // Detail invoice memakai format khusus invoice.
+  assert.match(detail, /import \{ formatInvoiceCurrency/);
+  assert.doesNotMatch(detail, /formatCurrency\(/, "detail invoice tidak memakai format lama");
+});
+
+test("R11-R13: deposit selalu tampil, pajak ber-keterangan, tanpa Pajak Inclusive/Keuntungan", async () => {
+  const [detail, pdf] = await Promise.all([
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
+  ]);
+
+  // R11: baris Deposit selalu dirender (Rp 0 bila belum ada).
+  assert.match(detail, /label="Deposit"/);
+  assert.match(detail, /detail\.purchaseOrder\.depositAmount \?\? "0"/);
+  // R12: keterangan Pajak memuat persen dari setting + nominal.
+  assert.match(detail, /Number\(detail\.taxPercent\)/);
+  assert.match(detail, /detail\.taxAmount/);
+  // R12: baris Keuntungan diganti Deposit.
+  assert.doesNotMatch(detail, /Keuntungan/);
+  assert.doesNotMatch(pdf, /Keuntungan/);
+  // R13: Pajak Inclusive dihapus dari PDF.
+  assert.doesNotMatch(pdf, /Pajak Inclusive/);
+  // R13: label Lunas tetap, nominal dibungkus tanda kurung.
+  assert.match(pdf, /\{ label: "Lunas", value: totalPaid > 0 \? `Rp \(\$\{templateNumber\(totalPaid\)\}\)`/);
+});
+
+test("R4/R5/R6: migrasi Sprint 8 aman untuk data lama", async () => {
+  const [sql, textSql] = await Promise.all([
+    readFile(new URL("../prisma/migrations/20261017020000_invoice_discount_and_addon_qty/migration.sql", import.meta.url), "utf8"),
+    readFile(new URL("../prisma/migrations/20261017030000_invoice_setting_point_text/migration.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "qty" INTEGER NOT NULL DEFAULT 1/);
+  assert.match(sql, /SET "qty" = i\."quantity"/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "discountType" "DiscountType" NOT NULL DEFAULT 'NONE'/);
+  assert.match(sql, /UPDATE "Invoice" SET "discountType" = 'NONE', "discountValue" = 0, "discountNominal" = 0/);
+  assert.match(sql, /UPDATE "SalesOrder" SET "discountType" = 'NONE'/);
+  assert.match(textSql, /ALTER COLUMN "text" TYPE TEXT/);
+});
+
+test("R4/R6: form invoice pakai toggle Rp/%, default 0 lewat placeholder, add on sejajar kolom", async () => {
+  const form = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+
+  // Diskon & diskon total memakai toggle segmen Rp/% (bukan dropdown).
+  assert.match(form, /function DiscountToggle/);
+  assert.match(form, /aria-pressed=\{type === mode\}/);
+  assert.match(form, /\[\["PERCENTAGE", "%"\], \["NOMINAL", "Rp"\]\]/);
+  // NativeSelect hanya untuk pilihan jenis jadwal pembayaran, bukan untuk diskon.
+  assert.match(form, /<NativeSelect[\s\S]{0,300}name="kind"/);
+  assert.doesNotMatch(form, /<NativeSelect[\s\S]{0,300}name="(itemDiscount|discount)/);
+
+  // Diskon, diskon total, dan pajak default kosong → placeholder "0", nilai kosong = 0.
+  assert.match(form, /function initNumber/);
+  assert.match(form, /placeholder="0"/);
+  assert.match(form, /placeholder="0" value=\{taxPercent\}/);
+  assert.match(form, /useState\(\(\) => initNumber\(values\?\.taxPercent\)\)/);
+
+  // Nilai tetap terkirim lewat field tersembunyi (satu nilai per field).
+  assert.match(form, /name="itemDiscountType"/);
+  assert.match(form, /name="itemDiscountPercent"/);
+  assert.match(form, /name="itemDiscountNominal"/);
+  assert.match(form, /name="discountType"/);
+  assert.match(form, /name="discountPercent"/);
+  assert.match(form, /name="discountNominal"/);
+
+  // Add on sejajar kolom atas: keterangan (Produk), deskripsi (Deskripsi), qty, harga; tanpa diskon.
+  assert.match(form, /item-\$\{rowIndex\}-addon-label/);
+  assert.match(form, /item-\$\{rowIndex\}-addon-description/);
+  assert.match(form, /item-\$\{rowIndex\}-addon-qty/);
+  assert.match(form, /variant="destructive"[\s\S]{0,160}Hapus add on/);
+  assert.match(form, /className="w-16 text-right"/);
+});
+
+test("R4 lanjutan: add on punya deskripsi opsional, tersimpan & tampil", async () => {
+  const [schema, validation, calc, crm, form, pdf, detail, data, page, workflow] = await Promise.all([
+    readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-calculation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(schema, /description\s+String\?\s+@db\.VarChar\(240\)/);
+  assert.match(validation, /description: optionalText\(240\)/);
+  assert.match(calc, /description: addon\.description\?\.trim\(\) \|\| null/);
+  assert.match(crm, /formData\.getAll\(`item-\$\{index\}-addon-description`\)/);
+  // Akar bug (regresi): deskripsi add on sempat dibuang saat memetakan input → objek create Prisma.
+  assert.match(crm, /description: String\(addon\.description \?\? ""\)\.trim\(\) \|\| undefined/);
+  assert.match(crm, /description: addon\.description, unitAmount: addon\.unitAmount, qty: addon\.qty/);
+  assert.match(form, /name=\{`item-\$\{rowIndex\}-addon-description`\}/);
+  assert.match(form, /placeholder="Deskripsi add on \(opsional\)\.\.\."/);
+  assert.match(pdf, /const addonDescText = addon\.description\?\.trim\(\) \|\|/);
+  assert.match(detail, /addon\.description\?\.trim\(\) \|\|/);
+  // Snapshot panel invoice: kolom Deskripsi memakai isi form (atau "-"), bukan caption qty × harga.
+  assert.match(page, /item\.description \|\| "-"/);
+  assert.match(page, /addon\.description\?\.trim\(\) \|\| "-"/);
+  assert.doesNotMatch(page, /\{addon\.qty\} × \{formatCurrency\(addon\.unitAmount\)\}/);
+  assert.match(detail, /item\.description \|\| "-"/);
+  assert.match(data, /label: true, description: true, unitAmount: true, qty: true/);
+  assert.match(page, /description: addon\.description \?\? ""/);
+  assert.match(workflow, /addons\?: Array<\{ label\?: string; description\?: string;/);
+
+  const migration = await readFile(new URL("../prisma/migrations/20261017040000_invoice_addon_description/migration.sql", import.meta.url), "utf8");
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "description" VARCHAR\(240\)/);
+});
+
+test("R13 revisi: PDF Disc memakai nominal, deskripsi kosong jadi '-'", async () => {
+  const [pdf, detail, crm] = await Promise.all([
+    readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+  ]);
+
+  // Disc selalu nominal (bukan persen), mengikuti gaya kolom Harga.
+  assert.match(pdf, /\[templateNumber\(item\.discountAmount\?\.toString\(\) \?\? "0"\)\]/);
+  assert.doesNotMatch(pdf, /\[String\(Number\(item\.discountPercent/);
+  // Deskripsi kosong produk & add on → "-".
+  assert.match(pdf, /wrapCell\(item\.description \|\| "-", 1\)/);
+  assert.match(pdf, /const addonDescText = addon\.description\?\.trim\(\) \|\| "-"/);
+  assert.match(detail, /item\.description \|\| "-"/);
+  assert.match(detail, /addon\.description\?\.trim\(\) \|\| "-"/);
+  // Deskripsi produk tidak lagi diisi otomatis oleh server.
+  assert.match(crm, /const description = String\(submitted\.description \|\| ""\)\.trim\(\);/);
+  assert.doesNotMatch(crm, /defaultInvoiceItemDescription/);
+});
+
+test("Decimal tidak dilempar ke Client Component dari getInvoiceDetail", async () => {
+  const data = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(data, /\.\.\.invoice\.purchaseOrder/, "deposit Decimal tidak boleh ikut di-spread");
+  assert.match(data, /depositAmount: invoice\.purchaseOrder\.deposit\?\.amount\.toString\(\) \?\? null/);
+});
+
+test("Draft & revisi invoice menyimpan jadwal bersama transaksi dan diaudit PAYMENT_SCHEDULED", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  // Simpan draft & buat revisi: pending payment dibuat dalam transaksi yang sama dengan invoice.
+  assert.match(actionSource, /await tx\.pendingDealPayment\.create\(\{ data: \{ invoiceId: created\.id, createdById: actor\.id, \.\.\.scheduleData, terms: \{ create: scheduleTerms \} \} \}\);/);
+  const audits = actionSource.match(/"PAYMENT_SCHEDULED"/g) || [];
+  assert.equal(audits.length, 2, "audit PAYMENT_SCHEDULED ada di simpan draft dan buat revisi");
+  assert.match(actionSource, /await audit\(tx, actor, "Invoice", created\.id, "PAYMENT_SCHEDULED", \["paymentSchedule"\], \{ kind: scheduleData\.kind, initialDueAt: scheduleData\.initialDueAt, terms: scheduleTerms\.length \}\);/);
+  // Baseline urutan termin butuh tanggal sumber yang jelas: dueAt wajib saat jadwal disusun.
+  assert.equal((actionSource.match(/if \(!dueAtDate\) throw new UserFacingError\("Tgl\. jatuh tempo wajib diisi\."\);/g) || []).length, 2);
+});
+
+test("Deadline termin opsional, aman-null setelah terbit, dan bisa diubah lewat dialog terpisah", async () => {
+  const [detailSource, actionSource, validationSource] = await Promise.all([
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
+  ]);
+  // Aksi khusus deadline: tanggal saja, hanya invoice terbit, urutan divalidasi, diaudit.
+  assert.match(actionSource, /export async function updateInvoicePaymentDeadlinesAction/);
+  assert.match(actionSource, /Hanya invoice terbit yang deadline pembayarannya dapat diubah\./);
+  assert.match(actionSource, /Jumlah deadline termin berubah\. Muat ulang halaman\./);
+  assert.match(actionSource, /if \(dueAt <= previousDueAt\) throw new UserFacingError\(`Deadline Termin \$\{position \+ 1\} minimal satu hari setelah \$\{previousLabel\}`\)/);
+  assert.match(actionSource, /"PAYMENT_DEADLINES_UPDATED"/);
+  assert.match(actionSource, /revalidatePaymentMutationPaths\(result\.salesOrderId\)/);
+  assert.match(validationSource, /export const paymentDeadlineUpdateSchema = z\.object\(\{/);
+  assert.match(validationSource, /initialDueAt: optionalDateText/);
+  // Skema: tanggal deadline opsional per termin, maksimal 12 termin.
+  assert.equal(paymentDeadlineUpdateSchema.safeParse({ invoiceId: "cm123456789013", initialDueAt: "", termDueAt: ["2026-12-01", ""] }).success, true);
+  assert.equal(paymentDeadlineUpdateSchema.safeParse({ invoiceId: "cm123456789013", initialDueAt: "2026-12-01", termDueAt: [] }).success, true);
+  assert.equal(paymentDeadlineUpdateSchema.safeParse({ invoiceId: "cm123456789013", initialDueAt: "", termDueAt: Array(13).fill("") }).success, false);
+  // UI null-safe: tanggal kosong = "Belum diatur"/"Ikut jatuh tempo", tanpa crash & tanpa "Terlambat" keliru.
+  assert.match(detailSource, /deadline \? formatDate\(deadline\) : detail\.dueAt \? `Ikut jatuh tempo \(\$\{formatDate\(detail\.dueAt\)\}\)` : "Belum diatur"/);
+  assert.match(detailSource, /issued && isOverdue\(payment\.initialDueAt, true\)/);
+  assert.match(detailSource, /issued && isOverdue\(term\.dueAt, true\)/);
+  assert.match(detailSource, /issued \? `Menunggu \$\{label\}` : "Jadwal tersimpan"/);
+  assert.match(detailSource, /initialDueAt=\{detail\.salesOrder\.initialDueAt\}/);
+  assert.match(detailSource, /payment\.initialDueAt \? formatDate\(payment\.initialDueAt\) : "Belum diatur"/);
+  // Dialog di-unmount saat ditutup agar state form reset; nominal tidak bisa diubah dari sini.
+  assert.match(detailSource, /Ubah deadline pembayaran/);
+  assert.match(detailSource, /\{open \? <DeadlineEditDialog/);
+  assert.match(detailSource, /if \(state\.success\) \{ onClose\(\); void onSaved\(\); \}/);
+  assert.match(detailSource, /Hanya tanggal yang diubah; nominal jadwal tetap\. Kosongkan tanggal untuk tanpa batas\./);
+});
+
+test("Migrasi deadline fleksibel: kolom nullable, salinan initialDueAt, backfill Lunas", async () => {
+  const [migration, schema] = await Promise.all([
+    readFile(new URL("../prisma/migrations/20261019010000_payment_deadlines_flexible/migration.sql", import.meta.url), "utf8"),
+    readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
+  ]);
+  // Deadline nullable: tanggal kosong = tanpa batas, tanpa peringatan terlambat.
+  assert.match(migration, /ALTER TABLE "PendingDealPayment" ALTER COLUMN "initialDueAt" DROP NOT NULL;/);
+  assert.match(migration, /ALTER TABLE "PendingPaymentTerm" ALTER COLUMN "dueAt" DROP NOT NULL;/);
+  assert.match(migration, /ALTER TABLE "PaymentTerm" ALTER COLUMN "dueAt" DROP NOT NULL;/);
+  // DealPayment menyimpan salinan jatuh tempo invoice terbit.
+  assert.match(migration, /ALTER TABLE "DealPayment" ADD COLUMN "initialDueAt" DATE;/);
+  assert.match(migration, /SET "initialDueAt" = i\."dueAt"/);
+  // Backfill: invoice terbit tanpa SO & tanpa jadwal → Lunas 100% sisa tagihan.
+  assert.match(migration, /INSERT INTO "PendingDealPayment"/);
+  assert.match(migration, /AND i\.total > COALESCE\(d\.amount, 0\)/);
+  assert.match(migration, /AND NOT EXISTS \(SELECT 1 FROM "SalesOrder" s WHERE s\."invoiceId" = i\.id\)/);
+  assert.match(migration, /AND NOT EXISTS \(SELECT 1 FROM "PendingDealPayment" p WHERE p\."invoiceId" = i\.id\)/);
+  assert.match(migration, /BEGIN;/);
+  assert.match(migration, /COMMIT;/);
+  // Skema Prisma: kolom salinan nullable di DealPayment & PendingDealPayment.
+  assert.match(schema, /initialDueAt\s+DateTime\?\s+@db\.Date/);
+});
+
+test("Jalur DealPaymentForm & completeDealAction dihapus; jadwal hanya lewat form invoice", async () => {
+  await assert.rejects(
+    readFile(new URL("../components/crm/deal-payment-form.tsx", import.meta.url), "utf8"),
+    "form DealPaymentForm lama harus sudah dihapus",
+  );
+  const [pageSource, actionSource] = await Promise.all([
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(pageSource, /DealPaymentForm|deal-payment-form/);
+  assert.doesNotMatch(actionSource, /completeDealAction/);
+  // Pengelolaan jadwal kini lewat form invoice + aksi deadline terpisah.
+  assert.match(actionSource, /export async function updateInvoicePaymentDeadlinesAction/);
+});
+
+test("LUNAS memakai total tagihan (collectible) sebagai pembayaran awal", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  // Tanpa fix ini, deposit non-kelipatan Rp500 membuat Lunas gagal saat finalisasi.
+  assert.match(actionSource, /const initialAmount = kind === "LUNAS" \? collectibleTotal : amountFor\(initialValueType, initialValue\.toString\(\)\);/);
+  assert.match(actionSource, /const outstandingAmount = collectibleTotal\.sub\(initialAmount\);/);
+  assert.match(actionSource, /if \(initialAmount\.lt\(0\) \|\| initialAmount\.gt\(collectibleTotal\)\) throw new UserFacingError\("Nilai pembayaran awal tidak valid\."\)/);
+  assert.match(actionSource, /DP nominal yang menutup sisa tagihan \(setelah deposit\) dihitung Lunas/);
 });

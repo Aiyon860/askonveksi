@@ -43,10 +43,11 @@ type PdfInvoice = {
     description: string;
     quantity: number;
     unitPrice: { toString(): string };
+    discountType?: string | null;
     discountPercent?: { toString(): string } | string | null;
     discountAmount?: { toString(): string } | string | null;
     total: { toString(): string };
-    addons?: Array<{ label: string; unitAmount: { toString(): string } }>;
+    addons?: Array<{ label: string; description?: string | null; unitAmount: { toString(): string }; qty?: number }>;
   }>;
   salesOrder: { payment: { kind?: string; transactions: Array<{ amount: { toString(): string }; status: string }> } | null } | null;
 };
@@ -66,11 +67,11 @@ function safeText(value: string) {
   return value.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\x7e\xa0-\xff]/g, "?");
 }
 
-/** Angka gaya template: 4,330,000.00 (koma ribuan, dua desimal). */
+/** Angka gaya invoice: 4.330.000,00 (id-ID, dua desimal). */
 function templateNumber(value: number | string) {
   const number = Number(value);
   const safe = Number.isFinite(number) ? number : 0;
-  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safe);
+  return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safe);
 }
 
 function templateMoney(value: number | string) {
@@ -171,11 +172,12 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     sectionTitle(title, x, width);
     points.forEach((point, index) => {
       const font = point.isBold ? bold : regular;
-      const lines = wrap(point.text, font, MIN_FONT_SIZE, width - 22);
+      // Poin bisa multi-baris (textarea master): pecah manual per \n dulu, baru wrap tiap segmen.
+      const lines = String(point.text ?? "").split(/\r?\n/).flatMap((segment) => wrap(segment, font, MIN_FONT_SIZE, width - 22));
       ensure(lines.length * 16 + 10);
       page.drawText(`${index + 1}.`, { x, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.4, 0.4, 0.4) });
       lines.forEach((line, lineIndex) => {
-        page.drawText(line, { x: x + 22, y: y - lineIndex * 16, size: MIN_FONT_SIZE, font, color: rgb(0.12, 0.12, 0.12) });
+        page.drawText(line || " ", { x: x + 22, y: y - lineIndex * 16, size: MIN_FONT_SIZE, font, color: rgb(0.12, 0.12, 0.12) });
       });
       y -= lines.length * 16 + 6;
     });
@@ -253,12 +255,12 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   const tableRight = A4.width - margin;
   const tableColumns = [
     { key: "product", label: "Produk", width: 80, align: "left" as const },
-    { key: "description", label: "Deskripsi", width: 106, align: "left" as const },
-    { key: "qty", label: "Qty", width: 40, align: "center" as const },
+    { key: "description", label: "Deskripsi", width: 90, align: "left" as const },
+    { key: "qty", label: "Qty", width: 32, align: "center" as const },
     { key: "price", label: "Harga", width: 80, align: "right" as const },
-    { key: "disc", label: "Disc", width: 52, align: "center" as const },
-    { key: "tax", label: "Pajak", width: 46, align: "center" as const },
-    { key: "total", label: "Jumlah", width: CONTENT_WIDTH - 80 - 106 - 40 - 80 - 52 - 46, align: "right" as const },
+    { key: "disc", label: "Disc", width: 82, align: "center" as const },
+    { key: "tax", label: "Pajak", width: 40, align: "center" as const },
+    { key: "total", label: "Jumlah", width: CONTENT_WIDTH - 80 - 90 - 32 - 80 - 82 - 40, align: "right" as const },
   ];
   const TABLE_HEADER_HEIGHT = 24;
   const TABLE_ROW_MIN = 24;
@@ -304,7 +306,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
         descLines,
         [String(item.quantity)],
         [templateNumber(item.unitPrice.toString())],
-        [String(Number(item.discountPercent?.toString() ?? "0") || 0)],
+        [templateNumber(item.discountAmount?.toString() ?? "0")],
         ["-"],
         [templateNumber(item.total.toString())],
       ],
@@ -312,14 +314,16 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
       addon: false,
     });
     for (const addon of item.addons ?? []) {
-      const addonTotal = Number(addon.unitAmount.toString()) * item.quantity;
+      const addonQty = addon.qty ?? item.quantity;
+      const addonTotal = Number(addon.unitAmount.toString()) * addonQty;
       const addonProductLines = wrapCell(`+ ${addon.label}`, 0);
-      const addonDescLines = wrapCell(`${item.quantity} x ${templateNumber(addon.unitAmount.toString())}`, 1);
+      const addonDescText = addon.description?.trim() || "-";
+      const addonDescLines = wrapCell(addonDescText, 1);
       tableRows.push({
         cells: [
           addonProductLines,
           addonDescLines,
-          [String(item.quantity)],
+          [String(addonQty)],
           [templateNumber(addon.unitAmount.toString())],
           ["-"],
           ["-"],
@@ -371,7 +375,6 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     { label: "Subtotal", value: templateMoney(invoice.subtotal.toString()) },
     { label: "Pajak", value: templateMoney(invoice.taxAmount.toString()) },
     { label: "Total", value: templateMoney(invoice.total.toString()) },
-    { label: "Pajak Inclusive", value: templateMoney(0) },
     { label: "Lunas", value: totalPaid > 0 ? `Rp (${templateNumber(totalPaid)})` : templateMoney(0) },
   ];
   for (const row of summaryRows) {

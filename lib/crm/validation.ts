@@ -20,6 +20,14 @@ const optionalEntityId = z.preprocess(
   entityIdSchema.optional(),
 );
 
+const moneyValueSchema = z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Nominal tidak valid.");
+
+/** Tanggal input type=date (YYYY-MM-DD); kosong → undefined (deadline boleh dibiarkan kosong). */
+const optionalDateText = z.preprocess(
+  (value) => (value === null || (typeof value === "string" && value.trim() === "") ? undefined : value),
+  z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid.").optional(),
+);
+
 export const customerFieldsSchema = z
   .object({
     name: z.string().trim().min(2, "Nama customer minimal 2 karakter.").max(160),
@@ -75,7 +83,7 @@ export const bulkUpdateMasterDataSchema = z
   .max(1_000, "Terlalu banyak data untuk diperbarui sekaligus.");
 
 export const INVOICE_SETTING_POINTS_MAX = 20;
-export const INVOICE_SETTING_POINT_TEXT_MAX = 300;
+export const INVOICE_SETTING_POINT_TEXT_MAX = 1000;
 
 const invoiceSettingPointSchema = z.object({
   id: optionalEntityId,
@@ -206,9 +214,13 @@ export const addCommunicationActivitySchema = z
     }
   });
 
+export const invoiceDiscountTypeSchema = z.enum(["NONE", "NOMINAL", "PERCENTAGE"]);
+
 export const invoiceAddonSchema = z.object({
   label: z.string().trim().min(2, "Keterangan add on minimal 2 karakter.").max(120),
+  description: optionalText(240),
   unitAmount: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga add on tidak valid."),
+  qty: z.coerce.number().int().min(1, "Qty add on minimal 1.").default(1),
 });
 
 export const invoiceItemSchema = z.object({
@@ -219,25 +231,65 @@ export const invoiceItemSchema = z.object({
   description: z.string().trim().max(240),
   quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
+  discountType: invoiceDiscountTypeSchema.default("PERCENTAGE"),
   discountPercent: z.preprocess(
     (v) => (v === undefined || v === null || v === "" ? "0" : v),
     z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Diskon per item tidak valid."),
   ),
+  discountNominal: z.preprocess(
+    (v) => (v === undefined || v === null || v === "" ? "0" : v),
+    z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Diskon nominal per item tidak valid."),
+  ),
   addons: z.array(invoiceAddonSchema).max(5, "Maksimal 5 add on per baris.").default([]),
 });
+
+export const invoiceScheduleTermSchema = z.object({
+  valueType: z.enum(["NOMINAL", "PERCENTAGE"]),
+  value: moneyValueSchema,
+  dueAt: optionalDateText,
+});
+
+/** Jadwal DP/Lunas disimpan bersama draft invoice (satu tombol simpan); deadline bersifat opsional. */
+export const invoiceScheduleSchema = z
+  .object({
+    kind: z.enum(["LUNAS", "DP", "DEPOSIT"]),
+    initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
+    initialValue: moneyValueSchema,
+    initialDueAt: optionalDateText,
+    terms: z.array(invoiceScheduleTermSchema).max(12),
+  })
+  .superRefine((value, context) => {
+    const isLunas = value.kind === "LUNAS" || (value.initialValueType === "PERCENTAGE" && Number(value.initialValue) === 100);
+    if (isLunas && value.terms.length > 0) {
+      context.addIssue({ code: "custom", path: ["terms"], message: "Pembayaran lunas tidak memakai termin." });
+    }
+    if (value.kind === "LUNAS" && value.initialDueAt) {
+      context.addIssue({ code: "custom", path: ["initialDueAt"], message: "Deadline pembayaran Lunas mengikuti jatuh tempo invoice." });
+    }
+  });
 
 export const invoiceDraftSchema = z.object({
   opportunityId: entityIdSchema,
   purchaseOrderId: entityIdSchema,
   invoiceId: entityIdSchema.optional(),
   version: requiredVersion.optional(),
-  dueAt: optionalText(10),
+  // Jatuh tempo diisi manual oleh admin (bukan otomatis H+7 saat terbit).
+  dueAt: z.preprocess(
+    (value) => (value === null || value === undefined || (typeof value === "string" && value.trim() === "") ? "" : value),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tgl. jatuh tempo wajib diisi."),
+  ),
+  discountType: invoiceDiscountTypeSchema.default("PERCENTAGE"),
   discountPercent: z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persentase diskon tidak valid."),
+  discountNominal: z.preprocess(
+    (v) => (v === undefined || v === null || v === "" ? "0" : v),
+    z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Diskon nominal tidak valid."),
+  ),
   taxPercent: z.preprocess(
     (v) => (v === undefined || v === null || v === "" ? "0" : v),
     z.string().trim().regex(/^\d{1,3}(?:\.\d{1,4})?$/, "Persen pajak tidak valid."),
   ),
   notes: optionalText(2000),
+  schedule: invoiceScheduleSchema.optional(),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
 });
 
@@ -334,32 +386,14 @@ export const purchaseOrderIdSchema = z.object({
   version: requiredVersion,
 });
 
-const moneyValueSchema = z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Nominal tidak valid.");
-
-export const dealPaymentTermSchema = z.object({
-  valueType: z.enum(["NOMINAL", "PERCENTAGE"]),
-  value: moneyValueSchema,
-  dueAt: z.string().trim().min(1, "Deadline termin wajib diisi."),
-});
-
-export const completeDealSchema = z.object({
-  opportunityId: entityIdSchema,
-  opportunityVersion: requiredVersion,
-  purchaseOrderId: entityIdSchema,
+/**
+ * Ubah deadline (tanggal saja) pembayaran awal & termin setelah invoice terbit.
+ * Nominal tidak boleh diubah lewat aksi ini; urutan deadline divalidasi di action.
+ */
+export const paymentDeadlineUpdateSchema = z.object({
   invoiceId: entityIdSchema,
-  invoiceVersion: requiredVersion,
-  kind: z.enum(["LUNAS", "DP", "DEPOSIT"]),
-  initialValueType: z.enum(["NOMINAL", "PERCENTAGE"]),
-  initialValue: moneyValueSchema,
-  terms: z.array(dealPaymentTermSchema).max(12),
-}).superRefine((value, context) => {
-  const isLunas = value.kind === "LUNAS" || (value.initialValueType === "PERCENTAGE" && Number(value.initialValue) === 100);
-  if (isLunas && value.terms.length > 0) {
-    context.addIssue({ code: "custom", path: ["terms"], message: "Pembayaran lunas tidak memakai termin." });
-  }
-  if (!isLunas && value.terms.length === 0) {
-    context.addIssue({ code: "custom", path: ["terms"], message: value.kind === "DEPOSIT" ? "Deposit wajib memiliki minimal satu termin sisa." : "DP wajib memiliki minimal satu termin." });
-  }
+  initialDueAt: optionalDateText,
+  termDueAt: z.array(optionalDateText).max(12),
 });
 
 export const payPendingInitialPaymentSchema = z.object({
