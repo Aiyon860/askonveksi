@@ -12,7 +12,7 @@ import {
   stageRouteForGroup,
 } from "../lib/production/workflow.ts";
 
-const [schema, migration, skipMigration, automationMigration, workflow, actions, crmActions, service, seed, packageJson, board, revertMigration, sectionClient, data, obstacleTimestampMigration, productionPage, boardRoute, boardSection, productionDetail, summary, backfillPoScript] = await Promise.all([
+const [schema, migration, skipMigration, automationMigration, workflow, actions, crmActions, service, seed, packageJson, board, revertMigration, sectionClient, data, obstacleTimestampMigration, productionPage, boardRoute, boardSection, productionDetail, summary, backfillPoScript, qcRevertedMigration] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260902000000_production_workflow/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260903000000_non_jersey_stage_skip/migration.sql", import.meta.url), "utf8"),
@@ -34,6 +34,7 @@ const [schema, migration, skipMigration, automationMigration, workflow, actions,
   readFile(new URL("../app/(app)/produksi/[id]/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/production/production-summary.tsx", import.meta.url), "utf8"),
   readFile(new URL("../scripts/backfill-purchase-order-categories.mjs", import.meta.url), "utf8"),
+  readFile(new URL("../prisma/migrations/20261017000000_production_qc_reverted/migration.sql", import.meta.url), "utf8"),
 ]);
 
 test("workflow Produksi memiliki dua jalur yang disepakati", () => {
@@ -113,6 +114,35 @@ test("Kendala kartu dihapus saat proses maju, tidak tersentuh saat masuk Retur",
   assert.match(sectionClient, /\}, \[initialData, mutate\]\)/);
 });
 
+test("alasan Mundur langsung (REVERT) menimpa Text Area Kendala kartu beserta jejak waktunya", () => {
+  const move = actions.slice(actions.indexOf("async function moveProduction"), actions.indexOf("export async function moveProductionOptimisticAction"));
+  assert.ok(move.length > 0);
+  const revertBranch = move.slice(move.indexOf('decision === "REVERT"'), move.indexOf("const nextStage"));
+  // Alasan REVERT (sudah di-trim, dibatasi 2000 karakter) menggantikan isi Kendala lama;
+  // timestamp ikut terisi agar sesuai constraint "obstacle tanpa tanggal" di DB.
+  assert.match(revertBranch, /obstacleUpdate = reason\.slice\(0, 2000\)/);
+  assert.doesNotMatch(revertBranch, /obstacleUpdate = parsed\.data\.note/);
+  // Masuk Retur tetap tidak menyentuh Kendala; alasan retur tercatat sebagai repairReason.
+  const toReturBranch = move.slice(move.indexOf('decision === "TO_RETUR"'), move.indexOf('decision === "REVERT"'));
+  assert.doesNotMatch(toReturBranch, /obstacleUpdate/);
+  // Tulis obstacle + jejak waktu hanya saat obstacleUpdate terisi; ikut tercatat di audit.
+  assert.match(move, /\.\.\.\(obstacleUpdate !== undefined \? \{ obstacle: obstacleUpdate, obstacleUpdatedAt: obstacleUpdate === null \? null : now \} : \{\}\)/);
+  assert.match(move, /\.\.\.\(obstacleUpdate !== undefined \? \["obstacle", "obstacleUpdatedAt"\] : \[\]\)/);
+  // Client optimistik: Text Area Kendala langsung berubah tanpa menunggu refresh SWR.
+  assert.match(board, /obstacle: move\.decision === "REVERT" \? note\?\.trim\(\)\.slice\(0, 2000\) \?\? null : undefined/);
+  assert.match(board, /obstacleUpdatedAt: move\.decision === "REVERT" \? new Date\(\)\.toISOString\(\) : undefined/);
+  assert.match(board, /alasan disimpan ke Kendala/);
+});
+
+test("kartu membawa pil Retur atau Wajib QC selalu di posisi paling atas kolom tahap; kolom Retur tetap terbaru di atas", () => {
+  // Retur hanya "merah" (naik ke atas) sampai Selesai; Wajib QC selalu selama menempel.
+  assert.match(board, /function isHighlightedCard\(item: BoardItem\) \{\s+return Boolean\(item\.qcReverted\) \|\| \(Boolean\(item\.repairReason\) && item\.currentStage !== "SELESAI"\);\s+\}/);
+  // Sort stabil di kolom tahap: kartu merah di atas, urutan asli dijaga di dalam kelompoknya.
+  assert.match(board, /if \(!isReturColumn\) stageItems\.sort\(\(a, b\) => Number\(isHighlightedCard\(b\)\) - Number\(isHighlightedCard\(a\)\)\);/);
+  // Kolom Retur tidak di-sort ulang: semua kartunya memegang pil Retur, terbaru di atas.
+  assert.doesNotMatch(board, /if \(isReturColumn\) stageItems\.sort/);
+});
+
 test("kartu kanban menampilkan tanggal Kendala dan Masuk Pada", () => {
   assert.match(schema, /obstacleUpdatedAt\s+DateTime\?\s+@db\.Timestamptz\(3\)/);
   assert.match(schema, /stageEnteredAt\s+DateTime\?\s+@db\.Timestamptz\(3\)/);
@@ -123,7 +153,7 @@ test("kartu kanban menampilkan tanggal Kendala dan Masuk Pada", () => {
   assert.match(board, /<dt>Masuk Pada<\/dt>/);
   assert.match(board, /DATE_TIME_FORMAT\.format\(new Date\(item\.stageEnteredAt\)\)/);
   assert.match(board, /obstacleUpdatedAt \? <p className="text-xs text-muted-foreground tabular-nums">/);
-  assert.match(data, /obstacleUpdatedAt: true,\n\s+stageEnteredAt: true/);
+  assert.match(data, /obstacleUpdatedAt: true,\n\s+qcReverted: true,\n\s+stageEnteredAt: true/);
   assert.match(data, /stageEnteredAt: row\.stageEnteredAt\?\.toISOString\(\) \?\? null/);
   assert.match(data, /obstacleUpdatedAt: row\.obstacleUpdatedAt\?\.toISOString\(\) \?\? null/);
 });
@@ -170,6 +200,40 @@ test("mundur langsung dengan alasan wajib tanpa parkir Retur; badge Retur menemp
   assert.match(data, /orderBy: \[\{ needsRepair: "desc" \}, \{ updatedAt: "desc" \}, \{ id: "asc" \}\]/);
   assert.match(schema, /enum ProductionActivityType[\s\S]*STAGE_REVERTED/);
   assert.match(revertMigration, /ProductionActivityType[\s\S]*STAGE_REVERTED/);
+});
+
+test("peringatan Wajib QC menempel saat kartu ditarik mundur dari QC dan dilepas saat kartu masuk QC lagi", () => {
+  const move = actions.slice(actions.indexOf("async function moveProduction"), actions.indexOf("export async function moveProductionOptimisticAction"));
+  assert.ok(move.length > 0);
+  // Kolom flag berdiri sendiri dari Retur (default false, tanpa backfill).
+  assert.match(schema, /qcReverted\s+Boolean\s+@default\(false\)/);
+  assert.match(qcRevertedMigration, /ADD COLUMN "qcReverted" BOOLEAN NOT NULL DEFAULT false/);
+  assert.match(move, /qcReverted: true,\n\s+stageSequence: true/);
+  // Set: hanya REVERT dari posisi di QC ke tahap sebelumnya yang menempelkan peringatan.
+  assert.match(move, /if \(order\.currentStage === "QC" && qcIndex >= 0 && targetIndex < qcIndex\) qcRevertedUpdate = true/);
+  const toReturBranch = move.slice(move.indexOf('decision === "TO_RETUR"'), move.indexOf('decision === "REVERT"'));
+  assert.doesNotMatch(toReturBranch, /qcReverted/);
+  const reopenBranch = move.slice(move.indexOf("if (order.status === \"COMPLETED\")"), move.indexOf("const currentStep"));
+  assert.doesNotMatch(reopenBranch, /qcReverted/);
+  // Clear: mendarat di QC (keputusan apa pun) selalu melepas peringatan.
+  assert.match(move, /let qcRevertedUpdate: boolean \| undefined = parsed\.data\.targetStage === "QC" \? false : undefined/);
+  // Gate server: tujuan mendarat setelah QC ditolak selama peringatan menempel.
+  assert.match(move, /order\.qcReverted && qcIndex >= 0 && targetIndex > qcIndex/);
+  assert.match(move, /harus melewati QC terlebih dahulu untuk melepas peringatan Wajib QC/);
+  // Perubahan flag ikut tercatat di audit; hanya ditulis bila berubah.
+  assert.match(move, /\.\.\.\(qcRevertedUpdate !== undefined \? \{ qcReverted: qcRevertedUpdate \} : \{\}\)/);
+  assert.match(move, /\.\.\.\(qcRevertedUpdate !== undefined \? \["qcReverted"\] : \[\]\)/);
+  // Client: papan menyaring tujuan melewati QC, optimistik, dan menampilkan kartu merah + badge.
+  assert.match(board, /item\.qcReverted && qcIndex >= 0/);
+  assert.match(board, /option\.targetStage\) <= qcIndex/);
+  assert.match(board, /qcReverted: move\.targetStage === "QC" \? false : move\.decision === "REVERT" && item\.currentStage === "QC" \? true : undefined/);
+  assert.match(board, /qcWarn = Boolean\(item\.qcReverted\)/);
+  assert.match(board, /\(hot \|\| qcWarn\) && "border-destructive\/70 bg-destructive\/10"/);
+  assert.match(board, />Wajib QC<\/Badge>/);
+  // Data board & halaman detail ikut membawa flag.
+  assert.match(data, /qcReverted: true,\n\s+stageEnteredAt: true/);
+  assert.match(productionDetail, /qcWarning/);
+  assert.match(productionDetail, />Wajib QC</);
 });
 
 test("Non-Jersey dapat melewati tahap dengan kendala opsional dan jejak status", () => {
@@ -297,4 +361,24 @@ test("tanggal kanban diserialisasi di dalam cache sehingga cache hit tetap berup
   assert.match(cached, /activeStepId: steps\[0\]\?\.id \?\? null/);
   assert.doesNotMatch(reader, /\.toISOString\(/);
   assert.doesNotMatch(reader, /steps/);
+});
+
+test("Jersey: kartu ber-badge Retur/Wajib QC boleh melewati tahap; kartu biasa tetap satu-ke-satu", () => {
+  // Server: hak lompat Jersey = badge Retur permanen (repairReason) atau Wajib QC (qcReverted).
+  assert.match(actions, /const badgeSkip = order\.route === "JERSEY" && \(order\.qcReverted \|\| Boolean\(order\.repairReason\)\)/);
+  assert.match(actions, /order\.route !== "NON_JERSEY" && !badgeSkip/);
+  assert.match(actions, /needsRepair: true,\s+repairReason: true,\s+qcReverted: true,/);
+  // Gerbang QC tidak disentuh: kartu Wajib QC tetap maksimal mendarat di kolom QC.
+  assert.match(actions, /if \(order\.qcReverted && qcIndex >= 0 && targetIndex > qcIndex\)/);
+  // Kartu Jersey tanpa badge masih terkunci maju satu tahap; lompat wajib minimal 2 langkah.
+  assert.match(actions, /nextStage !== parsed\.data\.targetStage/);
+  assert.match(actions, /if \(targetIndex <= currentIndex \+ 1\) throw new UserFacingError\("Lewati tahap harus menuju setelah tahap berikutnya\."\)/);
+  // Client: opsi SKIP muncul untuk kartu ber-badge; filter gerbang QC tetap langkah terakhir.
+  assert.match(board, /const canSkip = item\.route === "NON_JERSEY" \|\| Boolean\(item\.qcReverted\) \|\| Boolean\(item\.repairReason\)/);
+  assert.match(board, /return options\.filter\(\(option\) => item\.stageSequence\.indexOf\(option\.targetStage\) <= qcIndex\)/);
+  // Jejak lompatan identik pola SKIP Non-Jersey: antara SKIPPED, aktivitas STAGE_SKIPPED, obstacle dihapus.
+  assert.match(actions, /activityType = "STAGE_SKIPPED"/);
+  assert.match(actions, /data: \{ status: "SKIPPED", startedAt: null, completedAt: now \}/);
+  // Satu drag maju (termasuk keluar parkir Retur) dieksekusi langsung tanpa dialog.
+  assert.match(board, /option\.decision === "ADVANCE" \|\| option\.decision === "SKIP"/);
 });

@@ -7,8 +7,7 @@ import type { OpportunityDetailTab } from "@/lib/crm/constants";
 
 const TAB_LABELS: Array<[OpportunityDetailTab, string]> = [
   ["po", "PO"],
-  ["invoice", "Invoice"],
-  ["deal", "Deal"],
+  ["invoice", "Invoice & Deal"],
   ["aktivitas", "Aktivitas"],
 ];
 

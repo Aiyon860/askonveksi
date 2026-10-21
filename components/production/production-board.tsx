@@ -51,12 +51,20 @@ function stageOptions(item: BoardItem, canReturCompleted: boolean) {
   const currentIndex = item.stageSequence.indexOf(item.currentStage);
   const next = nextProductionStage(item.stageSequence, item.currentStage);
   const options: PendingMove[] = next ? [{ item, targetStage: next, decision: "ADVANCE" }] : [];
-  if (item.route === "NON_JERSEY" && next) {
+  // Lompat tahap: Non-Jersey bebas; Jersey hanya kartu ber-badge Retur atau Wajib QC
+  // (kartu biasa tetap maju satu persatu). Batas Wajib QC difilter di bawah.
+  const canSkip = item.route === "NON_JERSEY" || Boolean(item.qcReverted) || Boolean(item.repairReason);
+  if (canSkip && next) {
     const nextIndex = item.stageSequence.indexOf(next);
     options.push(...item.stageSequence.slice(nextIndex + 1).map((targetStage) => ({ item, targetStage, decision: "SKIP" as const })));
   }
   if (item.currentStage === "PERSETUJUAN_SAMPEL") options.push({ item, targetStage: "TEST_PRINT", decision: "SAMPLE_REJECT" });
   options.push(...item.stageSequence.slice(0, Math.max(0, currentIndex)).map((targetStage) => ({ item, targetStage, decision: "TO_RETUR" as const })));
+  // Gerbang QC: kartu berperingatan "Wajib QC" hanya boleh mendarat di QC atau sebelumnya.
+  const qcIndex = item.stageSequence.indexOf("QC");
+  if (item.qcReverted && qcIndex >= 0) {
+    return options.filter((option) => item.stageSequence.indexOf(option.targetStage) <= qcIndex);
+  }
   return options;
 }
 
@@ -69,6 +77,14 @@ function revertOption(option: PendingMove): PendingMove {
 /** Kartu sedang berparkir di kolom Retur sampai Admin menyeretnya keluar. */
 function isReturParked(item: BoardItem) {
   return item.status === "ACTIVE" && item.needsRepair;
+}
+
+/**
+ * Kartu membawa pil Retur (badge merah, belum Selesai) atau Wajib QC —
+ * selalu diurutkan paling atas di kolom tahapnya.
+ */
+function isHighlightedCard(item: BoardItem) {
+  return Boolean(item.qcReverted) || (Boolean(item.repairReason) && item.currentStage !== "SELESAI");
 }
 
 /**
@@ -94,11 +110,14 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
   // mengubah papan — memindahkan tahap, mengedit kendala, dan menarik kartu Selesai ke Retur.
   const canReturCompleted = canManage;
   const router = useRouter();
-  const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage; needsRepair?: boolean; repairReason?: string }) => current.map((item) => item.id === move.id ? {
+  const [boardItems, moveOptimistically] = useOptimistic(items, (current, move: { id: string; targetStage: ProductionStage; needsRepair?: boolean; repairReason?: string; qcReverted?: boolean; obstacle?: string | null; obstacleUpdatedAt?: string | null }) => current.map((item) => item.id === move.id ? {
     ...item,
     currentStage: move.targetStage,
     ...(move.needsRepair !== undefined ? { needsRepair: move.needsRepair } : {}),
     ...(move.repairReason !== undefined ? { repairReason: move.repairReason } : {}),
+    ...(move.qcReverted !== undefined ? { qcReverted: move.qcReverted } : {}),
+    ...(move.obstacle !== undefined ? { obstacle: move.obstacle } : {}),
+    ...(move.obstacleUpdatedAt !== undefined ? { obstacleUpdatedAt: move.obstacleUpdatedAt } : {}),
   } : item));
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [previewMove, setPreviewMove] = useState<PendingMove | null>(null);
@@ -181,6 +200,11 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
         // proses melepas kartu dari kolom Retur. Badge Retur tetap menempel.
         needsRepair: move.decision === "TO_RETUR" ? true : item.needsRepair ? false : undefined,
         repairReason: move.decision === "TO_RETUR" ? note?.trim() : undefined,
+        // Peringatan Wajib QC: menyala saat REVERT dari kolom QC, lepas saat mendarat di QC.
+        qcReverted: move.targetStage === "QC" ? false : move.decision === "REVERT" && item.currentStage === "QC" ? true : undefined,
+        // Alasan Mundur langsung menimpa Text Area Kendala kartu (tanggal jejak ikut terisi).
+        obstacle: move.decision === "REVERT" ? note?.trim().slice(0, 2000) ?? null : undefined,
+        obstacleUpdatedAt: move.decision === "REVERT" ? new Date().toISOString() : undefined,
       });
       setPreviewMove(null);
       const result = await moveProductionOptimisticAction(formData);
@@ -196,7 +220,7 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
         : move.decision === "TO_RETUR"
           ? `${item.workOrderNo} masuk Retur dan parkir di kolom Retur (kembali ke ${stageLabelForGroup(move.targetStage, group)}).`
           : move.decision === "REVERT"
-            ? `${item.workOrderNo} mundur ke ${stageLabelForGroup(move.targetStage, group)}.`
+            ? `${item.workOrderNo} mundur ke ${stageLabelForGroup(move.targetStage, group)}; alasan disimpan ke Kendala.`
             : `${item.workOrderNo} dipindahkan ke ${stageLabelForGroup(move.targetStage, group)}.`;
       toast.add({ title: "Progres disimpan", description, type: "success" });
       // Tunggu data server terbaru dulu supaya kartu tidak kembali ke kolom lama
@@ -286,7 +310,11 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
             const isReturColumn = stage === RETUR_COLUMN;
             // Kolom Retur adalah rumah kartu Retur sampai Admin menyeretnya keluar;
             // kolom tahap hanya menampilkan kartu yang tidak parkir di Retur.
+            // Kolom Retur dibiarkan urutan server (terbaru di atas — semua kartunya
+            // memegang pil Retur); kolom tahap: kartu merah (Retur/Wajib QC) di atas
+            // kartu polos, urutan asli di dalam kelompok dijaga oleh sort stabil.
             const stageItems = boardItems.filter((item) => itemColumn(item, previewMove, activeSavingMove) === stage);
+            if (!isReturColumn) stageItems.sort((a, b) => Number(isHighlightedCard(b)) - Number(isHighlightedCard(a)));
             return (
               <ProductionStageColumn
                 key={stage}
@@ -421,7 +449,9 @@ function ProductionCardView({ item, overdue, canManage, action }: { item: BoardI
   // Badge Retur menempel permanen di kartu; warna merah hanya sampai kartu masuk Selesai.
   const retur = Boolean(item.repairReason);
   const hot = retur && item.currentStage !== "SELESAI";
-  return <Card size="sm" className={cn("cursor-default", hot && "border-destructive/70 bg-destructive/10")}>
+  // Peringatan Wajib QC: berdiri sendiri dari Retur; merah sampai kartu masuk QC lagi.
+  const qcWarn = Boolean(item.qcReverted);
+  return <Card size="sm" className={cn("cursor-default", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}>
     <CardHeader>
       <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
       <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
@@ -432,6 +462,7 @@ function ProductionCardView({ item, overdue, canManage, action }: { item: BoardI
         <Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge>
         <Badge variant="secondary">{item.quantity} pcs</Badge>
         {retur ? <Badge variant="destructive" className="sticky top-0 z-10 font-bold">Retur</Badge> : null}
+        {qcWarn ? <Badge variant="destructive" className="sticky top-0 z-10 font-bold">Wajib QC</Badge> : null}
         {overdue ? <Badge variant="warning">Terlambat</Badge> : null}
         {item.route === "JERSEY" && item.sampleRevision > 1 ? <Badge variant="warning">Revisi sampel {item.sampleRevision}</Badge> : null}
       </div>
@@ -465,7 +496,8 @@ function DraggableProductionCard({ item, draggable, entering, previewing, saving
 function ProductionDragPreview({ item }: { item: BoardItem }) {
   const retur = Boolean(item.repairReason);
   const hot = retur && item.currentStage !== "SELESAI";
-  return <Card size="sm" className={cn("w-[20rem] scale-[1.02] shadow-lg", hot && "border-destructive/70 bg-destructive/10")}><CardHeader><CardTitle>{item.productName}</CardTitle><CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge><Badge variant="secondary">{item.quantity} pcs</Badge>{retur ? <Badge variant="destructive" className="font-bold">Retur</Badge> : null}</div></CardContent></Card>;
+  const qcWarn = Boolean(item.qcReverted);
+  return <Card size="sm" className={cn("w-[20rem] scale-[1.02] shadow-lg", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}><CardHeader><CardTitle>{item.productName}</CardTitle><CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><Badge variant="outline" className="font-mono">{item.workOrderNo}</Badge><Badge variant="secondary">{item.quantity} pcs</Badge>{retur ? <Badge variant="destructive" className="font-bold">Retur</Badge> : null}{qcWarn ? <Badge variant="destructive" className="font-bold">Wajib QC</Badge> : null}</div></CardContent></Card>;
 }
 
 function useReducedMotion() {

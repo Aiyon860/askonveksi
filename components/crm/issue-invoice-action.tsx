@@ -25,7 +25,7 @@ export function IssueInvoiceAction({
         className="w-full sm:w-auto"
         pendingLabel="Menerbitkan..."
         confirmTitle="Terbitkan dan kunci invoice?"
-        confirmDescription="Invoice akan dikunci dan dikirim ke WhatsApp customer bersama pesan pendamping. Setelah diterbitkan, invoice tidak dapat direvisi."
+        confirmDescription="Tgl. jatuh tempo dan jadwal pembayaran wajib sudah diisi pada draft. Invoice akan dikunci dan dikirim ke WhatsApp customer bersama pesan pendamping. Setelah diterbitkan, invoice tidak dapat direvisi."
         confirmLabel="Ya, terbitkan"
       >
         <Send data-icon="inline-start" aria-hidden="true" />
