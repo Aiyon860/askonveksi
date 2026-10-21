@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
-import { DASHBOARD_ROLES } from "@/lib/auth/permissions";
+import { DASHBOARD_ROLES, FINANCE_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
@@ -22,6 +22,7 @@ export type FullDashboardData = {
     role: string;
     email: string;
   };
+  canViewFinancialData: boolean;
   period: {
     from: string;
     to: string;
@@ -303,8 +304,52 @@ function calcGrowth(curr: number, prev: number): number {
   return Math.round(((curr - prev) / prev) * 100);
 }
 
+// Nilai uang tidak boleh sampai ke role non-Keuangan; tampilkan placeholder netral.
+const MASKED_MONEY = "—";
+
+function maskFinancialData(data: FullDashboardData): FullDashboardData {
+  return {
+    ...data,
+    summary: {
+      ...data.summary,
+      totalOmzet: MASKED_MONEY,
+      totalOmzetNum: 0,
+      prevOmzet: MASKED_MONEY,
+      omzetGrowth: 0,
+    },
+    trendData: data.trendData.map((point) => ({ ...point, omzet: 0 })),
+    leadSourceTable: data.leadSourceTable.map((row) => ({ ...row, revenue: MASKED_MONEY, revenueNum: 0 })),
+    categoryRevenueDonut: data.categoryRevenueDonut.map((row) => ({ ...row, revenue: MASKED_MONEY, revenueNum: 0 })),
+    recentOrders: data.recentOrders.map((order) => ({ ...order, total: MASKED_MONEY, totalNum: 0 })),
+    customerSegmentation: data.customerSegmentation.map((segment) => ({ ...segment, revenue: MASKED_MONEY, revenueNum: 0 })),
+    topCustomers: data.topCustomers.map((customer) => ({ ...customer, revenue: MASKED_MONEY, revenueNum: 0 })),
+    channelEfficiency: data.channelEfficiency.map((channel) => ({ ...channel, revenue: MASKED_MONEY })),
+    picPerformance: data.picPerformance.map((pic) => ({ ...pic, revenue: MASKED_MONEY, revenueNum: 0 })),
+    cashflow: {
+      ...data.cashflow,
+      moneyInThisMonth: MASKED_MONEY,
+      moneyInNum: 0,
+      outstandingAmount: MASKED_MONEY,
+      outstandingNum: 0,
+    },
+    insights: {
+      ...data.insights,
+      omzetStatus: {
+        ...data.insights.omzetStatus,
+        title: "Performa Omzet",
+        description: "Data omzet hanya tersedia untuk role Keuangan.",
+      },
+      bestSellingCategory: {
+        ...data.insights.bestSellingCategory,
+        description: "Data kontribusi omzet kategori hanya tersedia untuk role Keuangan.",
+      },
+    },
+  };
+}
+
 export async function getDashboardFullAnalyticsData(params: DashboardQueryParams = {}): Promise<FullDashboardData> {
   const actor = await requireActor(DASHBOARD_ROLES);
+  const canViewFinancialData = hasRole(actor.role, FINANCE_ROLES);
   const prisma = getPrismaClient();
 
   const period = parsePeriodBounds(params);
@@ -1001,13 +1046,14 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
     },
   };
 
-  return {
+  const payload: FullDashboardData = {
     actor: {
       id: actor.id,
       name: actor.name,
       role: actor.role,
       email: actor.email,
     },
+    canViewFinancialData,
     period,
     filters: {
       sourceId: selectedSourceId,
@@ -1035,4 +1081,6 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
     cashflow,
     urgentActions,
   };
+
+  return canViewFinancialData ? payload : maskFinancialData(payload);
 }

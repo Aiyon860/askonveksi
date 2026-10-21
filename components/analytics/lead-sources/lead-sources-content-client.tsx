@@ -1314,7 +1314,7 @@ export function LeadSourcesContentClient({
               ) : (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-400 text-base">
-                    Tidak ada sumber lead yang sesuai dengan kata kunci "{searchQuery}".
+                    Tidak ada sumber lead yang sesuai dengan kata kunci &ldquo;{searchQuery}&rdquo;.
                   </td>
                 </tr>
               )}

@@ -570,8 +570,7 @@ test("kartu Follow Up tidak bisa dibuka: hanya Negosiasi dan seterusnya", async 
 });
 
 test("jalur lain ke detail peluang Follow Up juga terkunci", async () => {
-  const [dashboardSource, prospectsSource, timelineSource, historiesSource, customerDetailSource, dataSource] = await Promise.all([
-    readFile(new URL("../components/dashboard/dashboard-content-client.tsx", import.meta.url), "utf8"),
+  const [prospectsSource, timelineSource, historiesSource, customerDetailSource, dataSource] = await Promise.all([
     readFile(new URL("../app/(app)/crm/prospek/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/crm/communication-history.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/crm/customer-histories.tsx", import.meta.url), "utf8"),
@@ -579,7 +578,6 @@ test("jalur lain ke detail peluang Follow Up juga terkunci", async () => {
     readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
   ]);
   // Tiap daftar memutuskan lewat helper yang sama sebelum merender tautan.
-  assert.match(dashboardSource, /canOpenOpportunityDetail\(item\.stage\) \? \(/);
   assert.match(prospectsSource, /\{canOpenOpportunityDetail\(item\.stage\) \? <Link/);
   assert.match(timelineSource, /canOpenOpportunityDetail\(activity\.opportunity\.stage\) \? \(/);
   assert.match(historiesSource, /canOpenOpportunityDetail\(item\.opportunity\.stage\) \? <Link/);
@@ -974,17 +972,20 @@ test("conversion rate menghitung Deal dari seluruh lead dan memakai format Indon
 test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async () => {
   const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
   const pageSource = await readFile(new URL("../app/(app)/analytics/lead-sources/page.tsx", import.meta.url), "utf8");
+  const clientSource = await readFile(new URL("../components/analytics/lead-sources/lead-sources-content-client.tsx", import.meta.url), "utf8");
   assert.match(dataSource, /requireActor\(ANALYTICS_ROLES\)/);
   assert.match(dataSource, /mode === "range"/);
   assert.match(dataSource, /o\."leadSourceId"/);
   assert.match(dataSource, /COUNT\(DISTINCT so\."opportunityId"\)/);
   assert.match(dataSource, /so\."status" = 'ACTIVE'/);
-  assert.match(pageSource, /Dari tanggal/);
-  assert.match(pageSource, /Sampai tanggal/);
-  assert.match(pageSource, /Terapkan rentang/);
-  assert.match(pageSource, /Rekapan semua order/);
-  assert.doesNotMatch(pageSource, /Terapkan periode/);
-  assert.doesNotMatch(pageSource, /NativeSelect/);
+  // Filter rentang tanggal pindah ke client component saat redesign analytics.
+  assert.match(pageSource, /LeadSourcesContent/);
+  assert.match(clientSource, /Dari Tanggal/);
+  assert.match(clientSource, /Sampai Tanggal/);
+  assert.match(clientSource, /Terapkan Rentang/);
+  assert.match(clientSource, /id: "all", label: "Semua Data"/);
+  assert.doesNotMatch(clientSource, /Terapkan periode/);
+  assert.doesNotMatch(clientSource, /NativeSelect/);
 });
 
 test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", async () => {
