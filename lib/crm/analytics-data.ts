@@ -754,6 +754,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
     // Trend points grouped by day or month
     prisma.$queryRaw<Array<{
       timeBucket: string;
+      displayDate: string;
       revenue: string;
       hpp: string;
       orderCount: number;
@@ -1039,7 +1040,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
   }));
 
   // Trends
-  const trendData = trendRows.map((r: any) => {
+  const trendData = trendRows.map((r) => {
     const rev = Math.round(Number(r.revenue) || 0);
     const hpp = Math.round(Number(r.hpp) || 0);
     return {

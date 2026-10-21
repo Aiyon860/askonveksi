@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { ContactCta } from "@/components/contact-cta";
 import { ContactFaqForm } from "@/components/contact-faq-form";
@@ -31,17 +31,48 @@ type PreviewState = {
   productId?: string;
 };
 
+const PREVIEW_STORAGE_KEY = "cms-preview-data";
+
+// Cache ditulis oleh panel editor (PreviewPane) dan hanya dibaca sekali saat mount.
+// Pembaruan konten berikutnya selalu datang lewat postMessage, jadi tidak perlu subscribe.
+function subscribeToPreviewCache() {
+  return () => {};
+}
+
+function getCachedPreviewSnapshot(): string | null {
+  try {
+    return window.sessionStorage.getItem(PREVIEW_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function parsePreviewSnapshot(raw: string | null): PreviewState | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PreviewState> | null;
+    if (!parsed?.page || !parsed.content) return null;
+    return {
+      page: parsed.page,
+      content: parsed.content,
+      productId: typeof parsed.productId === "string" ? parsed.productId : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function CmsPreviewApp() {
-  const [state, setState] = useState<PreviewState | null>(null);
+  const cachedSnapshot = useSyncExternalStore(
+    subscribeToPreviewCache,
+    getCachedPreviewSnapshot,
+    () => null,
+  );
+  const cachedState = useMemo(() => parsePreviewSnapshot(cachedSnapshot), [cachedSnapshot]);
+  const [liveState, setLiveState] = useState<PreviewState | null>(null);
+  const state = liveState ?? cachedState;
 
   useEffect(() => {
-    try {
-      const cached = window.sessionStorage.getItem("cms-preview-data");
-      if (cached) {
-        setState(JSON.parse(cached) as PreviewState);
-      }
-    } catch {}
-
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "cms-preview-ping") {
@@ -49,7 +80,7 @@ export function CmsPreviewApp() {
         return;
       }
       if (event.data?.type !== "cms-preview") return;
-      setState({
+      setLiveState({
         page: event.data.page as CmsPreviewTarget,
         content: event.data.content as CmsSiteContent,
         productId: typeof event.data.productId === "string" ? event.data.productId : undefined,
