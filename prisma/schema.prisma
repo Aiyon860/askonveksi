@@ -767,6 +767,8 @@ model PurchaseOrderItem {
   purchaseOrderId    String
   position           Int
   name               String                @db.VarChar(120)
+  // Revisi: Pola pindah dari header PO ke tiap produk (wajib di form; kolom global PO.legacy tetap untuk data lama).
+  pola               String?               @db.VarChar(120)
   productCategoryId  String?
   garmentType        GarmentType?
   decorationMethods  String[]              @default([])

@@ -68,8 +68,7 @@ export function PurchaseOrderDetail({
                 <Info label="Customer" value={detail.opportunity.customer.companyName ?? detail.opportunity.customer.name} />
                 <Info label="Kategori" value={detail.productCategory?.name ?? "-"} />
                 <Info label="Instansi" value={detail.instansi ?? "-"} />
-                <Info label="Pola" value={detail.pola ?? detail.productName} />
-                {detail.items.length ? <Info label="Produk" value={detail.items.map((poItem) => `${poItem.name} (${decorationMethodsLabel(poItem.decorationMethods)})`).join(" · ")} /> : null}
+                {detail.items.length ? <Info label="Produk" value={detail.items.map((poItem) => `${poItem.name} — pola ${poItem.pola ?? detail.pola ?? detail.productName ?? "-"} (${decorationMethodsLabel(poItem.decorationMethods)})`).join(" · ")} /> : <Info label="Pola" value={detail.pola ?? detail.productName} />}
                 <Info label="Material" value={detail.material} />
                 <Info label="Warna" value={detail.color ?? "-"} />
                 <Info label="Deadline produksi" value={formatDate(detail.deadline)} />

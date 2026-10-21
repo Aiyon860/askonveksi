@@ -29,6 +29,8 @@ type RosterRow = { key: string; memberId: string; name: string; sizeId: string; 
 export type PurchaseOrderItemValues = {
   key: string;
   name: string;
+  // Revisi: Pola per produk (wajib) — sebelumnya satu isian global di header PO.
+  pola: string;
   productCategoryId: string;
   decorationMethods: string[];
   designNotes: string;
@@ -42,7 +44,6 @@ type PurchaseOrderFormValues = {
   garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   productCategoryId: string | null;
   instansi: string;
-  pola: string;
   material: string;
   baseColor: string;
   variationColor: string;
@@ -68,7 +69,7 @@ function emptyMatrix(sizeOptions: SizeOption[]) {
 }
 
 function newItem(key: string, sizeOptions: SizeOption[], name = ""): PurchaseOrderItemValues {
-  return { key, name, productCategoryId: "", decorationMethods: [], designNotes: "", matrix: emptyMatrix(sizeOptions), rosterMode: "none", roster: [], accessoryQuantity: "" };
+  return { key, name, pola: "", productCategoryId: "", decorationMethods: [], designNotes: "", matrix: emptyMatrix(sizeOptions), rosterMode: "none", roster: [], accessoryQuantity: "" };
 }
 
 function buildDesiredRoster(sizeOptions: SizeOption[], source: Record<string, number>) {
@@ -111,7 +112,7 @@ function reconcileRoster(prev: RosterRow[], desired: Array<{ sizeId: string; sle
   });
 }
 
-const AUTOSAVE_VERSION = 3;
+const AUTOSAVE_VERSION = 5;
 
 export function PurchaseOrderForm({
   opportunityId,
@@ -152,7 +153,6 @@ export function PurchaseOrderForm({
   const [restoredDraft, setRestoredDraft] = useState(false);
   const [header, setHeader] = useState(() => ({
     instansi: values?.instansi ?? defaultInstansi ?? "",
-    pola: values?.pola ?? "",
     material: values?.material ?? "",
     baseColor: values?.baseColor ?? "",
     variationColor: values?.variationColor ?? "",
@@ -221,8 +221,8 @@ export function PurchaseOrderForm({
           v: AUTOSAVE_VERSION,
           header,
           depositRequired,
-          items: items.map(({ key, name, productCategoryId, decorationMethods, designNotes, matrix, rosterMode, roster, accessoryQuantity }) => ({
-            key, name, productCategoryId, decorationMethods, designNotes, matrix, rosterMode,
+          items: items.map(({ key, name, pola, productCategoryId, decorationMethods, designNotes, matrix, rosterMode, roster, accessoryQuantity }) => ({
+            key, name, pola, productCategoryId, decorationMethods, designNotes, matrix, rosterMode,
             roster: roster.map(({ key: rowKey, memberId, name: rowName, sizeId, sleeveLength }) => ({ key: rowKey, memberId, name: rowName, sizeId, sleeveLength })),
             accessoryQuantity,
           })),
@@ -375,7 +375,6 @@ export function PurchaseOrderForm({
               <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
             )}
             <Field><FieldLabel htmlFor={`po-instansi-${fieldKey}`} required>Instansi</FieldLabel><Input id={`po-instansi-${fieldKey}`} name="instansi" required minLength={2} maxLength={160} value={header.instansi} onChange={(event) => setHeader((prev) => ({ ...prev, instansi: event.target.value }))} placeholder="Contoh: PT Maju / Dinas Pendidikan" /></Field>
-            <Field><FieldLabel htmlFor={`po-pola-${fieldKey}`} required>Pola</FieldLabel><Input id={`po-pola-${fieldKey}`} name="pola" required minLength={2} maxLength={120} value={header.pola} onChange={(event) => setHeader((prev) => ({ ...prev, pola: event.target.value }))} placeholder="Contoh: Jaket komunitas" /></Field>
             <Field><FieldLabel htmlFor={`po-material-${fieldKey}`} required>Bahan</FieldLabel><Input id={`po-material-${fieldKey}`} name="material" required minLength={2} maxLength={120} value={header.material} onChange={(event) => setHeader((prev) => ({ ...prev, material: event.target.value }))} /></Field>
             <Field><FieldLabel htmlFor={`po-base-color-${fieldKey}`}>Warna dasar</FieldLabel><Input id={`po-base-color-${fieldKey}`} name="baseColor" maxLength={120} value={header.baseColor} onChange={(event) => setHeader((prev) => ({ ...prev, baseColor: event.target.value }))} /></Field>
             <Field><FieldLabel htmlFor={`po-variation-color-${fieldKey}`}>Warna variasi</FieldLabel><Input id={`po-variation-color-${fieldKey}`} name="variationColor" maxLength={240} value={header.variationColor} onChange={(event) => setHeader((prev) => ({ ...prev, variationColor: event.target.value }))} /></Field>
@@ -448,7 +447,9 @@ export function PurchaseOrderForm({
               <FieldLegend className="rounded-full bg-primary px-4 py-1 font-semibold text-primary-foreground">{items.length > 1 ? `Produk ${index + 1}${item.name ? ` — ${item.name}` : ""}` : "Produk"}</FieldLegend>
               <input type="hidden" name="itemKey" value={item.key} />
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field className={hasCategoryOptions && items.length > 1 && index > 0 ? undefined : "sm:col-span-2"}><FieldLabel htmlFor={`${prefix}name-${fieldKey}`} required>Nama produk</FieldLabel><Input id={`${prefix}name-${fieldKey}`} name={`${prefix}name`} required minLength={2} maxLength={120} value={item.name} onChange={(event) => updateItem(item.key, { name: event.target.value })} placeholder="Contoh: Jersey home" /></Field>
+                {/* Revisi: isian global "Nama Produk" dihapus — nama + pola kini sebaris per produk. */}
+                <Field><FieldLabel htmlFor={`${prefix}name-${fieldKey}`} required>Nama produk</FieldLabel><Input id={`${prefix}name-${fieldKey}`} name={`${prefix}name`} required minLength={2} maxLength={120} value={item.name} onChange={(event) => updateItem(item.key, { name: event.target.value })} placeholder="Contoh: Jersey home" /></Field>
+                <Field><FieldLabel htmlFor={`${prefix}pola-${fieldKey}`} required>Pola</FieldLabel><Input id={`${prefix}pola-${fieldKey}`} name={`${prefix}pola`} required minLength={2} maxLength={120} value={item.pola} onChange={(event) => updateItem(item.key, { pola: event.target.value })} placeholder="Contoh: Jaket komunitas" /></Field>
                 {hasCategoryOptions && items.length > 1 && index > 0 ? (
                   <Field>
                     <FieldLabel htmlFor={`${prefix}category-${fieldKey}`} required>Kategori Produk {index + 1}</FieldLabel>

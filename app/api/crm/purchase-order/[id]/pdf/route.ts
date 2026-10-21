@@ -33,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       include: {
         opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
         productCategory: { select: { name: true } },
-        items: { select: { id: true, name: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, penjahitDesignType: true, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
+        items: { select: { id: true, name: true, pola: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, penjahitDesignType: true, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
         sizes: { select: { itemId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
         rosterEntries: { select: { itemId: true, memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
         attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },

@@ -242,6 +242,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                         id: "",
                         position: 0,
                         name: purchaseOrder.productName,
+                        pola: purchaseOrder.pola ?? "",
                         productCategoryId: purchaseOrder.productCategoryId,
                         decorationMethods: purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []),
                         designNotes: purchaseOrder.designNotes ?? "",
@@ -251,7 +252,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                         garmentType: purchaseOrder.garmentType,
                         productCategoryId: purchaseOrder.productCategoryId,
                         instansi: purchaseOrder.instansi ?? "",
-                        pola: purchaseOrder.pola ?? purchaseOrder.productName,
                         material: purchaseOrder.material,
                         baseColor: purchaseOrder.baseColor ?? purchaseOrder.color ?? "",
                         variationColor: purchaseOrder.variationColor ?? "",
@@ -276,6 +276,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                           return {
                             key: poItem.id || `saved-${itemIndex}`,
                             name: poItem.name,
+                            pola: poItem.pola ?? purchaseOrder.pola ?? "",
                             productCategoryId: poItem.productCategoryId ?? "",
                             decorationMethods: poItem.decorationMethods,
                             designNotes: poItem.designNotes ?? "",
@@ -502,7 +503,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <div><dt className="text-xs text-muted-foreground">Jenis pakaian</dt><dd className="mt-1">{purchaseOrder.garmentType ? GARMENT_TYPE_LABEL[purchaseOrder.garmentType] : "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Kategori</dt><dd className="mt-1">{purchaseOrder.productCategory?.name ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Instansi</dt><dd className="mt-1">{purchaseOrder.instansi ?? "-"}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Pola</dt><dd className="mt-1">{purchaseOrder.pola ?? purchaseOrder.productName}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Pola</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${poItem.pola ?? purchaseOrder.pola ?? "-"}`).join(" · ") : purchaseOrder.pola ?? purchaseOrder.productName ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Bahan</dt><dd className="mt-1">{purchaseOrder.material}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Warna variasi</dt><dd className="mt-1">{purchaseOrder.variationColor ?? "-"}</dd></div>

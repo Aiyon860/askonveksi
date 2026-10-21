@@ -359,6 +359,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   const itemBase = {
     key: "item-1",
     name: "Jersey home",
+    pola: "Jersey home",
     decorationMethods: ["NONE"],
     sizes: [
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
@@ -374,7 +375,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     opportunityId: "cm123456789012",
     garmentType: "JERSEY",
     instansi: "SMA Negeri 1",
-    pola: "Jersey tim",
+    productName: "Jersey tim",
     material: "Dry fit",
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
@@ -390,7 +391,12 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, designDeadline: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, instansi: "" }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, pola: "" }).success, false);
+  // Revisi: isian global "Nama Produk" dihapus dari schema/form — key asing diabaikan zod
+  // (kolom DB productName diisi server dari nama produk item pertama).
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, productName: "" }).success, true);
+  // Revisi: pola per produk wajib terisi di tiap item (bukan lagi di header).
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, pola: "" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, pola: "Pola B" }] }).success, true);
   const dupSizes = { ...itemBase, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] };
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [dupSizes] }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "none", roster: [] }] }).success, true);
@@ -464,6 +470,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
   const baseItem = {
     key: "item-1",
     name: "Kaos home",
+    pola: "Kaos komunitas",
     decorationMethods: ["SABLON_PLASTISOL"],
     rosterMode: "none",
     roster: [],
@@ -472,7 +479,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     opportunityId: "cm123456789012",
     garmentType: "NON_JERSEY",
     instansi: "Komunitas Lari",
-    pola: "Kaos komunitas",
+    productName: "Kaos komunitas",
     material: "Cotton combed",
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
@@ -496,6 +503,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
   const itemBase = {
     key: "item-1",
     name: "Jersey tim",
+    pola: "Jersey tim",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
     roster: [],
@@ -504,7 +512,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     opportunityId: "cm123456789012",
     garmentType: "JERSEY",
     instansi: "SMA Negeri 1",
-    pola: "Jersey tim",
+    productName: "Jersey tim",
     material: "Dry fit",
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
@@ -982,6 +990,7 @@ test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async (
 test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", async () => {
   const dataSource = await readFile(new URL("../lib/finance/data.ts", import.meta.url), "utf8");
   const pageSource = await readFile(new URL("../app/(app)/keuangan/pemasukan/page.tsx", import.meta.url), "utf8");
+  const exportSource = await readFile(new URL("../app/api/keuangan/pemasukan/export/route.ts", import.meta.url), "utf8");
 
   assert.match(dataSource, /requireActor\(FINANCE_ROLES\)/);
   assert.match(dataSource, /mode === "range"/);
@@ -996,6 +1005,12 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.doesNotMatch(pageSource, /parseFinanceDateRange/);
   assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
   assert.match(pageSource, /Pajak/);
+  // Ekspor mengikuti halaman: tanpa filter = semua data (bug lama: default bulan berjalan).
+  assert.match(exportSource, /parseOptionalFinanceDateRange/);
+  assert.doesNotMatch(exportSource, /parseFinanceDateRange/);
+  // Ekspor memberi tahu bila kena cap 5000 baris (bukan diam-diam).
+  assert.match(exportSource, /Data dipotong pada 5\.000 baris/);
+  assert.match(exportSource, /\{ rows, truncated \} = await getIncomeForExport/);
 });
 
 test("R7 keuangan: Deposit terpisah dari DP pada pemasukan, ekspor, dan mutasi", async () => {
@@ -1014,8 +1029,8 @@ test("R7 keuangan: Deposit terpisah dari DP pada pemasukan, ekspor, dan mutasi",
   assert.match(pageSource, /item\.deposit \? formatCurrency\(item\.deposit\) : "-"/);
   assert.match(pageSource, /const totalDeposit = sumMoney\(data\.items\.map\(\(item\) => item\.deposit\)\)/);
   assert.match(pageSource, /formatCurrency\(totalDeposit\)/);
-  // Ekspor XLSX menyertakan kolom Deposit dengan nilai "-" bila nol.
-  assert.match(exportSource, /"Margin", "Deposit", "DP", "Lunas"/);
+  // Ekspor XLSX menyertakan kolom Deposit dengan nilai "-" bila nol; header Margin memakai "%" seperti tabel.
+  assert.match(exportSource, /"Margin %", "Deposit", "DP", "Lunas"/);
   assert.match(exportSource, /Deposit: row\.deposit \? Number\(row\.deposit\) : "-"/);
   // Mutasi pembayaran membedakan Termin / Deposit / Pembayaran awal untuk ditampilkan.
   assert.match(dataSource, /transactionKind: item\.paymentTermId \? "Termin" : item\.isDeposit \? "Deposit" : "Pembayaran awal"/);
@@ -1276,12 +1291,12 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   assert.match(paymentPaths, /revalidateInvoiceList\(\)/);
 });
 
-test("PO multi-produk: instansi, pola, dekorasi multi, dan item", () => {
+test("PO multi-produk: instansi, pola per produk, dekorasi multi, dan item", () => {
   const base = {
     opportunityId: "cm123456789012",
     garmentType: "JERSEY",
     instansi: "SMA Negeri 1",
-    pola: "Jersey tim",
+    productName: "Jersey tim",
     material: "Dry fit",
     deadline: "2026-09-30",
     designDeadline: "2026-09-20",
@@ -1290,6 +1305,7 @@ test("PO multi-produk: instansi, pola, dekorasi multi, dan item", () => {
   const item = (overrides = {}) => ({
     key: "item-1",
     name: "Jersey home",
+    pola: "Jersey home",
     decorationMethods: ["SABLON_DTF"],
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
@@ -1297,12 +1313,14 @@ test("PO multi-produk: instansi, pola, dekorasi multi, dan item", () => {
     ...overrides,
   });
   // Dua produk satu warna dalam satu PO lolos; beda warna tetap beda PO (satu warna per form).
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away" }) }] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "Jersey away" }) }] }).success, true);
   // Tiap produk boleh beda kategori (2 jenis produk berbeda dalam 1 PO).
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Kemeja", productCategoryId: "cm123456789012" }) }] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Kemeja", pola: "Kemeja formal", productCategoryId: "cm123456789012" }) }] }).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), productCategoryId: "x" }] }).success, false);
   // Tiap produk wajib ada isi matriks sendiri.
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 0 }] }] }).success, false);
+  // Tiap produk wajib punya pola sendiri (revisi: pola per produk, bukan global).
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "" }) }] }).success, false);
   // Kunci produk tidak boleh duplikat.
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), item()] }).success, false);
 });
@@ -1345,8 +1363,8 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /HEADER_LOGO_CELL_WIDTH/);
   assert.match(pdfSource, /borderColor: BORDER/);
   assert.match(pdfSource, /x: \(A4\.width - bold\.widthOfTextAtSize\(polaText, 13\)\) \/ 2/);
-  // Size chart menahan ruang di halaman gambar desainnya.
-  assert.match(pdfSource, /drawAssets\(embeddedAssets\.filter\(\(asset\) => asset\.itemId === item\.id\), item\.name, measureModelTable\(rows\)\)/);
+  // Size chart menahan ruang di halaman gambar desainnya; desain penjahit dikecualikan (halaman penuh sendiri).
+  assert.match(pdfSource, /drawAssets\(embeddedAssets\.filter\(\(asset\) => asset\.itemId === item\.id && asset\.kind !== "PENJAHIT_DESIGN"\), item\.name, measureModelTable\(rows\)\)/);
   assert.match(pdfSource, /drawModelTable/);
   // Size chart selalu mencetak seluruh kolom ukuran baku (XS…5XL) + TOTAL/PENDEK/PANJANG/NOTE
   // walau PO tidak memesan ukuran tersebut; ukuran di luar daftar tetap ditambahkan.
@@ -1361,11 +1379,15 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /const blockHeight = 16 \+ lines\.length \* 16 \+ 6;\n\s*if \(y - blockHeight < margin\) addPage\(\);/);
   assert.match(buttonSource, /PDF Customer/);
   assert.match(buttonSource, /PDF Penjahit/);
-  // Sprint 11 R3: varian penjahit menambah deadline per item (null → "-") + gambar desain penjahit;
-  // sel Deadline pelanggan tetap persis seperti sebelumnya (uji regex di atas tetap cocok).
+  // Sprint 11 R3 + revisi: deadline penjahit satu baris "Deadline" (null → "-"),
+  // desain penjahit dicetak di halaman penuh tersendiri setelah tiap lembar produk (tanpa judul),
+  // bar POLA memakai pola milik produk di lembar itu; sel Deadline customer tetap persis (uji regex di atas).
   assert.match(pdfSource, /penjahitDeadline/);
-  assert.match(pdfSource, /label: "Deadline penjahit"/);
-  assert.match(pdfSource, /label: "Deadline produksi"/);
+  assert.match(pdfSource, /formatDate\(penjahitItem\?\.penjahitDeadline \?\? null\)/);
+  assert.doesNotMatch(pdfSource, /label: "Deadline penjahit"/);
+  assert.doesNotMatch(pdfSource, /label: "Deadline produksi"/);
+  assert.match(pdfSource, /drawPenjahitDesignSheet/);
+  assert.match(pdfSource, /item\?\.pola \|\| data\.pola \|\| data\.productName/);
   assert.match(routeSource, /Desain penjahit \$\{item\.name\}/);
   assert.match(routeSource, /penjahitDesignPath/);
 });

@@ -34,7 +34,7 @@ type PurchaseOrderPdfData = {
   snapshotBusinessEmail: string | null;
   snapshotBusinessAddress: string | null;
   opportunity: { customer: { name: string; companyName: string | null } };
-  items: Array<{ id: string; name: string; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; productCategory: { name: string } | null }>;
+  items: Array<{ id: string; name: string; pola: string | null; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; productCategory: { name: string } | null }>;
   sizes: Array<{ itemId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   rosterEntries: Array<{ itemId: string; memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
@@ -95,7 +95,6 @@ type HeaderCell = {
 type HeaderLine = Array<{ text: string; bold: boolean }>;
 
 export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoBytes: Uint8Array, assets: PdfAsset[], variant: PurchaseOrderPdfVariant = "customer") {
-  const pola = data.pola || data.productName;
   const poDecoration = data.decorationMethods.length
     ? data.decorationMethods
     : data.decorationMethod
@@ -228,20 +227,12 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     const baseColor = data.baseColor ?? data.color;
     const variationColor = data.variationColor;
 
-    // Varian penjahit (Sprint 11 R3): sel Deadline memuat deadline produksi (customer)
-    // + deadline penjahit per item — null tampil "-". Lembar tunggal (tanpa item eksplisit)
-    // memakai satu-satunya produk supaya deadline penjahitnya tetap tercetak.
+    // Varian penjahit (Sprint 11 R3): sel Deadline hanya berisi deadline penjahit per item
+    // (null tampil "-"); lembar tunggal memakai satu-satunya produk. Varian customer tetap deadline PO.
     const penjahitItem = item ?? (variant === "penjahit" && data.items.length === 1 ? data.items[0] : null);
     const deadlineCell: HeaderCell =
       variant === "penjahit"
-        ? {
-            label: "Deadline",
-            extraLines: [
-              { label: "Deadline produksi", value: formatDate(data.deadline) },
-              { label: "Deadline penjahit", value: formatDate(penjahitItem?.penjahitDeadline ?? null) },
-            ],
-            highlight: true,
-          }
+        ? { label: "Deadline", value: formatDate(penjahitItem?.penjahitDeadline ?? null), highlight: true }
         : { label: "Deadline", value: formatDate(data.deadline), highlight: true };
 
     const rows: Array<[HeaderCell, HeaderCell]> = [
@@ -328,8 +319,10 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     });
     y = tableBottom - 12;
 
-    // Judul POLA: bar bergaris dengan teks di tengah.
-    const polaText = clipPdfText(`POLA : ${safe(pola.toUpperCase())}`, bold, 13, CONTENT_WIDTH - 24);
+    // Judul POLA: bar bergaris dengan teks di tengah — pola milik produk di lembar ini
+    // (revisi: pola per produk; fallback ke pola lama / nama produk level PO).
+    const sheetPola = item?.pola || data.pola || data.productName;
+    const polaText = clipPdfText(`POLA : ${safe(sheetPola.toUpperCase())}`, bold, 13, CONTENT_WIDTH - 24);
     page.drawRectangle({ x: margin, y: y - 28, width: CONTENT_WIDTH, height: 28, borderWidth: 0.8, borderColor: BORDER, color: rgb(1, 1, 1) });
     page.drawText(polaText, { x: (A4.width - bold.widthOfTextAtSize(polaText, 13)) / 2, y: y - 19, size: 13, font: bold, color: rgb(0.12, 0.12, 0.12) });
     y -= 40;
@@ -488,14 +481,32 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     const itemKind = item.productCategory?.name ?? (item.garmentType ? GARMENT_TYPE_LABEL[item.garmentType] : null);
     if ((item.garmentType ?? data.garmentType) === "AKSESORI") {
       // Aksesori tidak punya size chart, tapi desainnya tetap menempel di lembar produknya.
-      drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id), item.name);
+      // Desain penjahit sengaja dikecualikan: dicetak di halaman penuh tersendiri setelah lembar ini.
+      drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== "PENJAHIT_DESIGN"), item.name);
       drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`);
       return;
     }
     const rows = data.sizes.filter((row) => row.itemId === item.id);
     // Size chart selalu ikut halaman gambar desain produk ini.
-    drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id), item.name, measureModelTable(rows));
+    drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== "PENJAHIT_DESIGN"), item.name, measureModelTable(rows));
     drawModelTable(rows, item.designNotes);
+  }
+
+  /**
+   * Revisi: gambar Desain Penjahit dicetak di halaman tersendiri 1 halaman penuh (tanpa judul)
+   * tepat setelah lembar produknya — tidak menimpa gambar desain produksi di lembar produk.
+   */
+  function drawPenjahitDesignSheet(item: PurchaseOrderPdfItem) {
+    if (variant !== "penjahit") return;
+    for (const asset of embeddedAssets) {
+      if (asset.kind !== "PENJAHIT_DESIGN" || asset.itemId !== item.id || !asset.image) continue;
+      addPage();
+      markUsed();
+      const scale = Math.min(CONTENT_WIDTH / asset.image.width, (A4.height - margin * 2 - 24) / asset.image.height);
+      const width = asset.image.width * scale;
+      const height = asset.image.height * scale;
+      page.drawImage(asset.image, { x: (A4.width - width) / 2, y: (A4.height - height) / 2, width, height });
+    }
   }
 
   const showPerItem = data.items.length > 1;
@@ -506,24 +517,15 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
       drawSheetHeader(item, sheetIndex > 0);
       sheetIndex += 1;
       drawProductSheet(item);
+      // Revisi: desain penjahit produk ini langsung mengikuti di halaman penuh berikutnya.
+      drawPenjahitDesignSheet(item);
     }
-    // Lembar penutup: ringkasan PO + lampiran yang tidak menempel produk tertentu.
-    drawSheetHeader(null, true);
-    page.drawText(`Total keseluruhan: ${totalQuantity}`, { x: margin, y, size: 14, font: bold });
-    y -= 22;
-    if (!isAccessory) {
-      page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y, size: MIN_FONT_SIZE, font: bold });
-      y -= 20;
-    }
-    drawParagraph("Catatan desain", data.designNotes ?? "-");
-    drawParagraph("Catatan", data.notes ?? "-");
-    // Lampiran umum + desain yatim (itemId tidak cocok produk mana pun, mis. produk
-    // dihapus setelah desain diunggah) tetap dicetak di lembar penutup.
-    drawAssets(embeddedAssets.filter((asset) => !asset.itemId || !itemNameById.has(asset.itemId)), null);
+    // Revisi: lembar penutup "Total keseluruhan" dihapus untuk kedua varian (customer & penjahit) —
+    // PDF berhenti setelah lembar produk terakhir.
   } else {
     drawSheetHeader(null, false);
     if (isAccessory) {
-      drawAssets(embeddedAssets, null);
+      drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null);
       drawAccessoryTotal(totalQuantity, null);
     } else {
       const aggregated = new Map<string, { size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>();
@@ -534,12 +536,14 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
         else aggregated.set(key, { size: row.size, sleeveLength: row.sleeveLength, quantity: row.quantity });
       }
       const rows = [...aggregated.values()];
-      drawAssets(embeddedAssets, null, measureModelTable(rows));
+      drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null, measureModelTable(rows));
       drawModelTable(rows, data.designNotes);
       page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y: y - 4, size: MIN_FONT_SIZE, font: bold });
       y -= 22;
     }
     drawParagraph("Catatan", data.notes ?? "-");
+    // Revisi: lembar penuh desain penjahit untuk PO satu produk mengikuti setelah seluruh lembar produk.
+    if (data.items.length === 1) drawPenjahitDesignSheet(data.items[0]);
   }
 
   if (data.rosterEntries.length) {

@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("..", import.meta.url);
 
 test("finance keeps expense methods via master data, feedback, ownership guards, and income export", async () => {
-  const [schema, actions, income, expenses, expenseData, migration, expenseMethodMigration, incomeExport, expenseExport] = await Promise.all([
+  const [schema, actions, income, expenses, expenseData, migration, expenseMethodMigration, incomeExport, expenseExport, expenseExportLib] = await Promise.all([
     readFile(new URL("prisma/schema.prisma", root), "utf8"),
     readFile(new URL("app/actions/finance.ts", root), "utf8"),
     readFile(new URL("app/(app)/keuangan/pemasukan/page.tsx", root), "utf8"),
@@ -15,6 +15,7 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
     readFile(new URL("prisma/migrations/20260930010000_expense_payment_method_fk/migration.sql", root), "utf8"),
     readFile(new URL("app/api/keuangan/pemasukan/export/route.ts", root), "utf8"),
     readFile(new URL("app/api/keuangan/pengeluaran/export/route.ts", root), "utf8"),
+    readFile(new URL("lib/finance/expense-export.ts", root), "utf8"),
   ]);
   // Metode pembayaran pengeluaran kini memakai Data Master, bukan enum hardcoded.
   assert.match(schema, /paymentMethodId\s+String/);
@@ -39,8 +40,20 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
   assert.match(expenses, /project\.subtotal/);
   assert.match(expenseData, /projectGroupLabel/);
   assert.match(expenseData, /salesOrderId \?\? "none"/);
-  assert.match(expenseExport, /"Project"/);
-  assert.match(expenseExport, /Subtotal Project:/);
+  // Route Pengeluaran kini hanya menyediakan JSON baris; kolom + subtotal pindah ke lib murni
+  // (pembuatan .xlsx terjadi di klien — lihat test "export Pengeluaran dibuat 100% di browser").
+  assert.match(expenseExport, /Response\.json/);
+  assert.match(expenseExport, /buildExpenseExportLines/);
+  assert.doesNotMatch(expenseExport, /exceljs|writeBuffer/);
+  assert.match(expenseExportLib, /"Project"/);
+  assert.match(expenseExportLib, /Subtotal Project:/);
+  // Revisi: kolom Deskripsi (Expense.description per baris) di tabel & export, sebelum Status Ganti.
+  assert.ok(expenses.indexOf("<TableHead>Deskripsi</TableHead>") !== -1, "header tabel pengeluaran punya Deskripsi");
+  assert.ok(expenses.indexOf("<TableHead>Deskripsi</TableHead>") < expenses.indexOf("<TableHead>Status Ganti</TableHead>"), "Deskripsi sebelum Status Ganti");
+  assert.match(expenses, /\{item\.description \|\| "-"\}/);
+  assert.match(expenseExportLib, /"Nominal",\s+"Deskripsi",\s+"Status Ganti"/);
+  assert.match(expenseExportLib, /Deskripsi: row\.description \?\? ""/);
+  assert.match(expenseData, /purpose: true, description: true, spentAt: true/);
   assert.match(expenses, /<SortableTableHead label="Tanggal"/);
   assert.match(expenses, /EXPENSE_CATEGORY_LABEL\[item\.category\]/);
   assert.match(expenses, /name="category"/);
@@ -52,6 +65,8 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
   assert.match(expenseData, /value\.getTime\(\) \+ 7 \* 60 \* 60 \* 1000/);
   assert.match(expenseData, /groupBy\(\{ by: \["spentAt"\]/);
   assert.match(expenseData, /spentAt: (bounded|state)\.order/);
+  // Ekspor memakai jendela default yang sama dengan tabel (90 hari) saat tanpa filter.
+  assert.equal(expenseData.match(/!state\.from && !state\.to/g)?.length, 2, "getExpenses & getExpensesForExport sama-sama menerapkan jendela default");
   for (const column of ["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Harga Asli", "Laba Bersih", "Margin", "Diskon", "Total Invoice", "DP", "Lunas", "Status"]) assert.match(income, new RegExp(column));
   // Harga Asli = subtotal invoice (harga sebelum diskon), posisinya di antara Total HPP dan Diskon.
   assert.match(expenseData, /invoice: \{ select: \{ subtotal: true,/);
@@ -155,4 +170,64 @@ test("R15-R17: Edit HPP multi-baris, in-place reconcile, kolom Deskripsi", async
   assert.doesNotMatch(expenseData, /every\(\(value\) => value !== null\)\)/);
   assert.match(page, /HppCompleteSwitch/);
   assert.match(page, /whitespace-pre-line/);
+});
+
+test("export Pengeluaran dibuat 100% di browser", async () => {
+  const [route, button, lib, page, expenseData] = await Promise.all([
+    readFile(new URL("app/api/keuangan/pengeluaran/export/route.ts", root), "utf8"),
+    readFile(new URL("components/finance/expense-export-button.tsx", root), "utf8"),
+    readFile(new URL("lib/finance/expense-export.ts", root), "utf8"),
+    readFile(new URL("app/(app)/keuangan/pengeluaran/page.tsx", root), "utf8"),
+    readFile(new URL("lib/finance/expense.ts", root), "utf8"),
+  ]);
+  // Route hanya menyediakan baris JSON — tidak ada exceljs / writeBuffer di server.
+  assert.match(route, /Response\.json\(\{ lines: buildExpenseExportLines\(rows, truncated\) \}/);
+  assert.doesNotMatch(route, /exceljs|writeBuffer|Content-Disposition/);
+  // Tombol klien: ambal baris → dynamic import ExcelJS → Blob → unduh.
+  assert.match(button, /"use client"/);
+  assert.match(button, /await import\("exceljs"\)/);
+  assert.match(button, /URL\.createObjectURL/);
+  assert.match(button, /downloadFilename\("pengeluaran", "xlsx"\)/);
+  assert.match(button, /EXPENSE_EXPORT_COLUMNS/);
+  // Halaman memakai tombol klien, filter export = filter tabel (+ sort aktif).
+  assert.match(page, /<ExpenseExportButton params=\{exportParams\} \/>/);
+  assert.match(page, /order: order === "desc" \? undefined : order/);
+  // Ekspor membawa jendela default & urutan sort yang sama dengan tabel.
+  assert.match(expenseData, /const bounded = !state\.from && !state\.to/);
+  assert.match(expenseData, /EXPENSE_EXPORT_LIMIT \+ 1/);
+  assert.match(lib, /Data dipotong pada 5\.000 baris/);
+});
+
+test("export Laporan memuat 4 ringkasan total dengan format rupiah", async () => {
+  const source = await readFile(new URL("app/api/keuangan/laporan/export/route.ts", root), "utf8");
+  // Kartu ringkasan halaman ikut terexport, bukan hanya baris detail.
+  assert.match(source, /Total Pemasukan Keseluruhan/);
+  assert.match(source, /Total Pengeluaran Keseluruhan/);
+  assert.match(source, /Total Pendapatan \$\{periodLabel\}/);
+  assert.match(source, /Total Pengeluaran \$\{periodLabel\}/);
+  // Nilai memakai format rupiah (Rp 150.000), bukan "Rp 150000" mentah.
+  assert.match(source, /formatCurrency\(group\.income\[index\]\.amount\)/);
+  assert.match(source, /formatCurrency\(group\.expenses\[index\]\.amount\)/);
+  assert.match(source, /formatCurrency\(item\.value\)/);
+  assert.doesNotMatch(source, /— Rp \$\{/);
+});
+
+test("export Excel tidak menyertakan gambar di semua endpoint (R14)", async () => {
+  const files = [
+    "app/api/keuangan/pengeluaran/export/route.ts",
+    "app/api/keuangan/pemasukan/export/route.ts",
+    "app/api/keuangan/laporan/export/route.ts",
+    "app/api/customers/export/route.ts",
+    "app/api/master-data/product-categories/export/route.ts",
+    "app/api/master-data/customer-types/export/route.ts",
+    "app/api/master-data/lead-sources/export/route.ts",
+    "app/api/master-data/garment-sizes/export/route.ts",
+    "app/api/master-data/payment-methods/export/route.ts",
+    "components/finance/expense-export-button.tsx",
+    "lib/finance/expense-export.ts",
+  ];
+  for (const file of files) {
+    const source = await readFile(new URL(file, root), "utf8");
+    assert.doesNotMatch(source, /addImage|data:image\/|base64,/, `${file} tidak memuat gambar`);
+  }
 });
