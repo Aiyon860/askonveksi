@@ -1,24 +1,23 @@
 import type { MetadataRoute } from "next";
 
-import { LANDING_PRODUCTS } from "@/lib/products";
-import { SITE_URL } from "@/lib/site";
+import { getSiteContent } from "@/lib/cms/store";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const content = await getSiteContent();
+  const base = content.site.url.replace(/\/$/, "");
+
   return [
-    {
-      url: SITE_URL.toString(),
-      changeFrequency: "weekly",
-      priority: 1,
-    },
-    {
-      url: new URL("/portofolio", SITE_URL).toString(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    ...LANDING_PRODUCTS.map((product) => ({
-      url: new URL(`/produk/${product.slug}`, SITE_URL).toString(),
-      changeFrequency: "monthly" as const,
-      priority: 0.8,
-    })),
+    { url: `${base}/`, changeFrequency: "weekly", priority: 1 },
+    { url: `${base}/portofolio`, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${base}/size-chart`, changeFrequency: "monthly", priority: 0.6 },
+    { url: `${base}/katalog-kain`, changeFrequency: "monthly", priority: 0.6 },
+    { url: `${base}/contact`, changeFrequency: "monthly", priority: 0.7 },
+    ...content.products
+      .filter((product) => product.published)
+      .map((product) => ({
+        url: `${base}/produk/${product.id}`,
+        changeFrequency: "monthly" as const,
+        priority: 0.8,
+      })),
   ];
 }

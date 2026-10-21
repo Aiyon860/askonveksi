@@ -1,5 +1,20 @@
 import type { NextConfig } from "next";
 
+function attendanceSecurityHeaders() {
+  return [
+    { key: "Content-Security-Policy", value: "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" },
+    { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    // Kamera & lokasi dibutuhkan halaman absensi. Mikrofon tetap diblokir.
+    { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self)" },
+    { key: "X-Content-Type-Options", value: "nosniff" },
+    { key: "X-Frame-Options", value: "DENY" },
+    { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+    ...(process.env.NODE_ENV === "production"
+      ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
+      : []),
+  ];
+}
+
 const nextConfig: NextConfig = {
   output: process.env.VERCEL ? undefined : "standalone",
   compress: true,
@@ -43,7 +58,49 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: process.env.NODE_ENV === "production" ? "public, max-age=31536000, immutable" : "no-cache, must-revalidate" }],
       },
       {
-        source: "/:path*",
+        // Khusus rute pratinjau studio website: diizinkan dimuat di dalam iframe
+        // oleh domain aplikasi itu sendiri ('self' / SAMEORIGIN), baik di localhost
+        // maupun saat di-hosting di Vercel (misal: askonveksi.web.id).
+        source: "/cms-preview",
+        headers: [
+          { key: "Content-Security-Policy", value: "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          ...(process.env.NODE_ENV === "production"
+            ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
+            : []),
+        ],
+      },
+      {
+        source: "/cms-preview/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          ...(process.env.NODE_ENV === "production"
+            ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
+            : []),
+        ],
+      },
+      {
+        // Halaman absensi butuh kamera untuk foto dan geolocation untuk bukti lokasi.
+        source: "/absensi",
+        headers: attendanceSecurityHeaders(),
+      },
+      {
+        source: "/absensi/:path*",
+        headers: attendanceSecurityHeaders(),
+      },
+      {
+        // Seluruh halaman lain dilindungi penuh dari framing / clickjacking.
+        // /absensi dikecualikan karena sudah punya blok Permissions-Policy sendiri.
+        source: "/((?!cms-preview|absensi).*)",
         headers: [
           { key: "Content-Security-Policy", value: "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

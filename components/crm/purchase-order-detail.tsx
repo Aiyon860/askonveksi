@@ -7,6 +7,7 @@ import { Paperclip } from "lucide-react";
 import { purchaseOrderDetailAction } from "@/app/actions/crm-details";
 import { DepositStatus } from "@/components/crm/deposit-status";
 import { DocumentDetailTrigger } from "@/components/crm/document-detail-trigger";
+import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -77,6 +78,15 @@ export function PurchaseOrderDetail({
                 <Info label="Tanggal deposit" value={detail.deposit ? formatDate(detail.deposit.paidAt, true) : "-"} />
                 {detail.deposit?.paymentMethod ? <Info label="Metode deposit" value={detail.deposit.paymentMethod.name} /> : null}
                 {detail.deposit?.reference ? <Info label="Referensi deposit" value={detail.deposit.reference} /> : null}
+                {detail.deposit?.proofFileName ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Bukti deposit</dt>
+                    <dd className="mt-1 flex flex-wrap items-center gap-2">
+                      <PaymentProofPreview href={`/api/crm/purchase-order/${detail.id}/deposit/proof`} mimeType={detail.deposit.proofMimeType} label="Bukti deposit" />
+                      <span className="min-w-0 truncate text-xs text-muted-foreground">{detail.deposit.proofFileName}</span>
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
               {detail.garmentType === "AKSESORI" && !detail.items.length ? (
                 <dl className="grid gap-4 sm:grid-cols-2">

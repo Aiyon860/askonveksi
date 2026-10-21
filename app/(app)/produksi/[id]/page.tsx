@@ -50,6 +50,8 @@ export default async function ProductionDetailPage({ params }: { params: Promise
   // Penanda Retur menempel di kartu kanban; status Retur di sini tampil selama
   // WO masih ACTIVE dan belum kembali Selesai (sama dengan warna merah di board).
   const returActive = workOrder.status === "ACTIVE" && Boolean(workOrder.repairReason) && workOrder.currentStage !== "SELESAI";
+  // Peringatan Wajib QC berdiri sendiri dari Retur; lepas saat kartu masuk QC lagi.
+  const qcWarning = workOrder.status === "ACTIVE" && Boolean(workOrder.qcReverted);
 
   return (
     <>
@@ -57,7 +59,7 @@ export default async function ProductionDetailPage({ params }: { params: Promise
       <PageHeader
         title={workOrder.productName}
         description={`${workOrder.workOrderNo} · ${workOrder.salesOrder.salesOrderNo} · ${workOrder.salesOrder.snapshotCustomerName}`}
-        action={<Badge variant={returActive ? "destructive" : workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{returActive ? "Retur" : workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge>}
+        action={<span className="flex flex-wrap items-center gap-2">{qcWarning ? <Badge variant="destructive" className="font-bold">Wajib QC</Badge> : null}<Badge variant={returActive ? "destructive" : workOrder.status === "COMPLETED" ? "success" : workOrder.status === "CANCELLED" ? "destructive" : STAGE_BADGE_VARIANT[workOrder.currentStage]}>{returActive ? "Retur" : workOrder.status === "COMPLETED" ? "Selesai" : workOrder.status === "CANCELLED" ? "Dibatalkan" : PRODUCTION_STAGE_LABEL[workOrder.currentStage]}</Badge></span>}
       />
       <PageMessage />
 
@@ -69,6 +71,8 @@ export default async function ProductionDetailPage({ params }: { params: Promise
       ) : null}
 
       {returActive ? <div className="sticky top-0 z-10 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Retur — Perlu Perbaikan</p><p className="mt-1 text-sm leading-6">{workOrder.repairReason}</p><p className="mt-2 text-xs">Dicatat {formatDate(workOrder.repairRequestedAt, true)}</p></div> : null}
+
+      {qcWarning ? <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-destructive"><p className="font-semibold">Wajib QC</p><p className="mt-1 text-sm leading-6">Kartu pernah ditarik mundur dari QC. Pindahkan kembali melewati tahap QC untuk melepas peringatan; kartu tidak dapat dilewati melewati QC selama peringatan menempel.</p></div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-6">

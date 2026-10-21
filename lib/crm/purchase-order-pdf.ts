@@ -34,7 +34,7 @@ type PurchaseOrderPdfData = {
   snapshotBusinessEmail: string | null;
   snapshotBusinessAddress: string | null;
   opportunity: { customer: { name: string; companyName: string | null } };
-  items: Array<{ id: string; name: string; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; productCategory: { name: string } | null }>;
+  items: Array<{ id: string; name: string; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; productCategory: { name: string } | null }>;
   sizes: Array<{ itemId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   rosterEntries: Array<{ itemId: string; memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
@@ -228,6 +228,22 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     const baseColor = data.baseColor ?? data.color;
     const variationColor = data.variationColor;
 
+    // Varian penjahit (Sprint 11 R3): sel Deadline memuat deadline produksi (customer)
+    // + deadline penjahit per item — null tampil "-". Lembar tunggal (tanpa item eksplisit)
+    // memakai satu-satunya produk supaya deadline penjahitnya tetap tercetak.
+    const penjahitItem = item ?? (variant === "penjahit" && data.items.length === 1 ? data.items[0] : null);
+    const deadlineCell: HeaderCell =
+      variant === "penjahit"
+        ? {
+            label: "Deadline",
+            extraLines: [
+              { label: "Deadline produksi", value: formatDate(data.deadline) },
+              { label: "Deadline penjahit", value: formatDate(penjahitItem?.penjahitDeadline ?? null) },
+            ],
+            highlight: true,
+          }
+        : { label: "Deadline", value: formatDate(data.deadline), highlight: true };
+
     const rows: Array<[HeaderCell, HeaderCell]> = [
       [
         { label: "Nama", value: data.opportunity.customer.name },
@@ -244,7 +260,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
         },
       ],
       [
-        { label: "Deadline", value: formatDate(data.deadline), highlight: true },
+        deadlineCell,
         { label: "Tinta / Bordir", value: decorationMethodsLabel(decoration) || "-" },
       ],
     ];

@@ -5,7 +5,6 @@ import { ArrowLeft, CheckCircle2, FileDown, FileText, Paperclip } from "lucide-r
 
 import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
 import { CommunicationHistory } from "@/components/crm/communication-history";
-import { DealPaymentForm } from "@/components/crm/deal-payment-form";
 import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceWorkflowSection } from "@/components/crm/invoice-workflow-section";
 import { OpportunityProcessPanel, OpportunityProcessTabs } from "@/components/crm/opportunity-process-tabs";
@@ -23,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CRM_OPERATOR_ROLES, DEAL_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
@@ -111,7 +110,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   // D1: Admin PO boleh mengunggah desain langsung (read-only CRM lainnya tetap).
   const canUploadDesignRole = hasRole(actor.role, DESIGN_UPLOADER_ROLES);
   const canCancelDocuments = hasRole(actor.role, OWNER_ACTION_ROLES);
-  const canCompleteDeal = hasRole(actor.role, DEAL_ROLES);
   const inNegotiation = opportunity.stage === "NEGOSIASI";
   const poDraft = opportunity.purchaseOrders.find((item) => item.status === "DRAFT");
   const agreedPo = opportunity.purchaseOrders.find((item) => item.status === "AGREED");
@@ -125,6 +123,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
         garmentType: agreedPo.garmentType,
         items: agreedPo.items.map((item) => ({ id: item.id, name: item.name, garmentType: item.garmentType })),
         sizes: agreedPo.sizes.map((size) => ({ id: size.id, itemId: size.itemId, size: size.size, sleeveLength: size.sleeveLength, quantity: size.quantity })),
+        depositAmount: agreedPo.deposit ? agreedPo.deposit.amount.toString() : null,
       }
     : undefined;
   const cancelledPo = opportunity.purchaseOrders.find((item) => item.status === "CANCELLED");
@@ -136,7 +135,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const poRevisionCount = Math.max(0, opportunity.purchaseOrders.length - 1);
   const poTabStatus = poDraft ? "Draft" : agreedPo ? "Disepakati" : cancelledPo ? "Dibatalkan" : poRevisionCount ? `${poRevisionCount} revisi` : opportunity.purchaseOrders.length ? "Dokumen awal" : "Belum ada";
   const invoiceTabStatus = invoiceDraft ? "Draft" : issuedInvoice ? "Terbit" : cancelledInvoice ? "Dibatalkan" : opportunity.invoices.length ? `${opportunity.invoices.length} revisi` : "Belum ada";
-  const dealTabStatus = opportunity.stage === "DEAL" ? "Selesai" : opportunity.stage === "LOST" ? "Lost" : readyForDeal ? "Siap" : "Belum siap";
   const canShowPurchaseOrderAgreement = canOperate && inNegotiation && (Boolean(poDraft) || opportunity.purchaseOrders.length === 0);
   // Desain diunggah per produk; PO lama tanpa baris produk memakai satu produk implisit.
   const designRevisionByItem = new Map<string, number>();
@@ -157,7 +155,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
       : designUploadedCount > 0 && designUploadedCount < designItems.length
         ? `Desain terunggah untuk ${designUploadedCount}/${designItems.length} produk. Lengkapi sisanya bila sudah siap.`
         : "Unggah desain bila sudah tersedia.";
-  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && poDraft.customerConfirmedAt);
+  const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && designItems.length > 0 && designUploadedCount === designItems.length);
   const depositForDraft = poDraft?.deposit
     ? {
         amount: poDraft.deposit.amount.toString(),
@@ -166,6 +164,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
         reference: poDraft.deposit.reference,
         note: poDraft.deposit.note,
         proofFileName: poDraft.deposit.proofFileName,
+        proofMimeType: poDraft.deposit.proofMimeType,
       }
     : null;
 
@@ -175,7 +174,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
       status={{
         po: poTabStatus,
         invoice: invoiceTabStatus,
-        deal: dealTabStatus,
         aktivitas: `${communicationHistory.total} entri`,
       }}
     >
@@ -196,7 +194,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   designMessage={designMessage}
                   designSentAt={poDraft.designSentAt}
                   designSentByName={poDraft.designSentBy?.name ?? null}
-                  customerConfirmedAt={poDraft.customerConfirmedAt}
                   designTaskId={poDraft.designTask?.id ?? null}
                   designItems={designItems}
                   depositRequired={poDraft.depositRequired}
@@ -298,6 +295,13 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     })()}
                     purchaseOrderNoPreview={purchaseOrderNoPreview}
                     defaultInstansi={opportunity.customer.companyName ?? opportunity.customer.name}
+                    penjahitItems={purchaseOrder.items.map((item) => ({
+                      id: item.id,
+                      name: item.name,
+                      deadline: dateInputValue(item.penjahitDeadline) || null,
+                      hasDesign: Boolean(item.penjahitDesignPath),
+                      designName: item.penjahitDesignName,
+                    }))}
                   >
                     <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
                   </PurchaseOrderWorkflowSection>
@@ -354,7 +358,19 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   : [];
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
+                  dueAt: invoice.dueAt?.toISOString().slice(0, 10) ?? "",
+                  schedule: invoice.pendingPayment
+                    ? {
+                        kind: invoice.pendingPayment.kind,
+                        initialValueType: invoice.pendingPayment.initialValueType,
+                        initialValue: invoice.pendingPayment.initialValue.toString(),
+                        initialDueAt: invoice.pendingPayment.initialDueAt?.toISOString().slice(0, 10) ?? "",
+                        terms: invoice.pendingPayment.terms.map((term) => ({ value: term.value.toString(), dueAt: term.dueAt?.toISOString().slice(0, 10) ?? "" })),
+                      }
+                    : undefined,
+                  discountType: invoice.discountType,
                   discountPercent: invoice.discountValue.toString(),
+                  discountNominal: invoice.discountNominal.toString(),
                   taxPercent: invoice.taxPercent?.toString() ?? "0",
                   items: invoice.items.map((item) => ({
                     productName: item.productName ?? "",
@@ -363,8 +379,10 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     sleeveLength: item.sleeveLength,
                     quantity: item.quantity,
                     unitPrice: item.unitPrice.toString(),
-                    discountPercent: item.discountPercent?.toString() ?? invoice.discountValue.toString(),
-                    addons: item.addons.map((addon) => ({ label: addon.label, amount: addon.unitAmount.toString() })),
+                    discountType: item.discountType,
+                    discountPercent: item.discountPercent?.toString() ?? "0",
+                    discountNominal: item.discountAmount?.toString() ?? "0",
+                    addons: item.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty })),
                   })),
                 };
                 return (
@@ -395,9 +413,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
           )}
         </CardContent>
       </Card>
-      </OpportunityProcessPanel>
 
-      <OpportunityProcessPanel value="deal">
         <Card id="complete-deal">
           <CardHeader>
             <CardTitle>Deal dan Sales Order</CardTitle>
@@ -422,14 +438,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
             ) : scheduledPayment ? (
               <Alert variant="success">
                 <AlertTitle>Jadwal pembayaran sudah tersimpan</AlertTitle>
-                <AlertDescription>Pembayaran awal {scheduledPayment.kind === "LUNAS" ? "Lunas" : "DP"} sudah dijadwalkan. Catat pembayaran awal dari Detail Invoice untuk membentuk Sales Order dan Work Order.</AlertDescription>
+                <AlertDescription>Pembayaran awal {scheduledPayment.kind === "LUNAS" ? "Lunas" : scheduledPayment.kind === "DEPOSIT" ? "Deposit" : "DP"} sudah dijadwalkan. Catat pembayaran awal dari Detail Invoice untuk membentuk Sales Order dan Work Order.</AlertDescription>
               </Alert>
-            ) : canCompleteDeal && readyForDeal && agreedPo && issuedInvoice ? (
-              <DealPaymentForm opportunityId={opportunity.id} opportunityVersion={opportunity.version} purchaseOrderId={agreedPo.id} invoiceId={issuedInvoice.id} invoiceVersion={issuedInvoice.version} total={issuedInvoice.total.toString()} depositAmount={agreedPo.deposit?.amount.toString() ?? "0"} issuedAt={issuedInvoice.issuedAt!.toISOString()} />
             ) : readyForDeal ? (
               <Alert>
-                <AlertTitle>Menunggu konfirmasi Admin</AlertTitle>
-                <AlertDescription>PO dan invoice sudah siap. Hanya akun berwenang yang dapat mengonfirmasi pembayaran dan membentuk Sales Order.</AlertDescription>
+                <AlertTitle>Jadwal pembayaran belum tersedia</AlertTitle>
+                <AlertDescription>Invoice ini terbit tanpa jadwal pembayaran. Jadwal DP/Lunas disimpan bersama draft invoice melalui satu tombol simpan sebelum diterbitkan.</AlertDescription>
               </Alert>
             ) : (
               <Alert>
@@ -562,8 +576,8 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
       <Table>
         <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
         <TableBody>{invoice.items.map((item) => <Fragment key={item.id}>
-          <TableRow><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>
-          {item.addons.map((addon) => <TableRow key={`${item.id}-${addon.label}`}><TableCell className="pl-6 text-muted-foreground">+ {addon.label}</TableCell><TableCell className="text-muted-foreground">{item.quantity} × {formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{item.quantity}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono text-muted-foreground">-</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(Number(addon.unitAmount.toString()) * item.quantity)}</TableCell></TableRow>)}
+          <TableRow><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description || "-"}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>
+          {item.addons.map((addon) => <TableRow key={`${item.id}-${addon.label}`}><TableCell className="pl-6 text-muted-foreground">+ {addon.label}</TableCell><TableCell className="text-muted-foreground">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{addon.qty}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono text-muted-foreground">-</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
         </Fragment>)}</TableBody>
       </Table>
       <dl className="ml-auto grid w-full max-w-xs gap-2 text-sm">

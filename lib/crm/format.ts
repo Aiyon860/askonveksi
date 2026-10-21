@@ -9,6 +9,20 @@ export function formatCurrency(value: { toString(): string } | string | number |
   }).format(amount);
 }
 
+/** Format khusus invoice (UI detail + PDF + kwitansi): id-ID dua desimal, "Rp 4.330.000,00".
+ *  Halaman lain (Project, Pengeluaran, dll.) tetap memakai formatCurrency. */
+export function formatInvoiceCurrency(value: { toString(): string } | string | number | null | undefined) {
+  if (value === null || value === undefined) return "-";
+
+  const amount = Number(typeof value === "object" ? value.toString() : value);
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 export function formatPercentage(value: number) {
   return new Intl.NumberFormat("id-ID", {
     style: "percent",

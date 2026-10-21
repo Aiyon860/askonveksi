@@ -8,7 +8,6 @@ import { CalendarClock, FilePlus2, GripVertical, NotebookText } from "lucide-rea
 import type { AppRole, OpportunityStage } from "@prisma/client";
 
 import { moveOpportunityStageOptimisticAction } from "@/app/actions/crm";
-import { DealPaymentForm } from "@/components/crm/deal-payment-form";
 import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/crm/stage-theme";
 import { OpportunityStatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -220,7 +219,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                             <div className="grid gap-1 border-t pt-2">
                               <div className="flex justify-between gap-3"><dt>PO</dt><dd className="text-right text-foreground">{opportunity.purchaseOrder ? `${opportunity.purchaseOrder.purchaseOrderNo} · ${opportunity.purchaseOrder.status === "AGREED" ? "Disepakati" : opportunity.purchaseOrder.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
                               <div className="flex justify-between gap-3"><dt>Invoice</dt><dd className="text-right text-foreground">{opportunity.invoice ? `${opportunity.invoice.invoiceNo} · ${opportunity.invoice.status === "ISSUED" ? "Terbit" : opportunity.invoice.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
-                              {opportunity.invoice?.pendingPayment ? <div className="flex justify-between gap-3"><dt>{new Date(opportunity.invoice.pendingPayment.initialDueAt).getTime() < new Date(new Date().toDateString()).getTime() ? `Deadline ${opportunity.invoice.pendingPayment.kind} terlewat` : `Menunggu ${opportunity.invoice.pendingPayment.kind}`}</dt><dd className="text-right text-foreground">{formatDate(opportunity.invoice.pendingPayment.initialDueAt)}</dd></div> : null}
+                              {opportunity.invoice?.pendingPayment ? <div className="flex justify-between gap-3"><dt>{opportunity.invoice.pendingPayment.initialDueAt && new Date(opportunity.invoice.pendingPayment.initialDueAt).getTime() < new Date(new Date().toDateString()).getTime() ? `Deadline ${opportunity.invoice.pendingPayment.kind} terlewat` : `Menunggu ${opportunity.invoice.pendingPayment.kind}`}</dt><dd className="text-right text-foreground">{opportunity.invoice.pendingPayment.initialDueAt ? formatDate(opportunity.invoice.pendingPayment.initialDueAt) : "-"}</dd></div> : null}
                               {opportunity.salesOrder ? <div className="flex justify-between gap-3"><dt>Pembayaran</dt><dd className="text-foreground">{opportunity.salesOrder.paymentKind ?? "-"}</dd></div> : null}
                             </div>
                           ) : null}
@@ -280,16 +279,22 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                   </Alert>
                   <Button render={<Link href={`/crm/peluang/${pendingMove.opportunity.id}`} />} nativeButton={false}>Buka detail peluang</Button>
                 </div>
+              ) : !pendingMove.opportunity.invoice.pendingPayment ? (
+                <div className="flex flex-col gap-4">
+                  <Alert variant="destructive">
+                    <AlertTitle>Jadwal pembayaran belum tersedia</AlertTitle>
+                    <AlertDescription>Invoice ini terbit tanpa jadwal pembayaran. Jadwal DP/Lunas disimpan bersama draft invoice sebelum diterbitkan.</AlertDescription>
+                  </Alert>
+                  <Button render={<Link href={`/crm/peluang/${pendingMove.opportunity.id}`} />} nativeButton={false}>Buka detail peluang</Button>
+                </div>
               ) : (
-                <DealPaymentForm
-                  opportunityId={pendingMove.opportunity.id}
-                  opportunityVersion={pendingMove.opportunity.version}
-                  purchaseOrderId={pendingMove.opportunity.purchaseOrder.id}
-                  invoiceId={pendingMove.opportunity.invoice.id}
-                  invoiceVersion={pendingMove.opportunity.invoice.version}
-                  total={pendingMove.opportunity.invoice.total}
-                  issuedAt={pendingMove.opportunity.invoice.issuedAt!}
-                />
+                <div className="flex flex-col gap-4">
+                  <Alert variant="success">
+                    <AlertTitle>Jadwal pembayaran sudah tersimpan</AlertTitle>
+                    <AlertDescription>Catat pembayaran awal dari Detail Invoice untuk membentuk Sales Order dan Work Order. Peluang otomatis berstatus Deal setelah pembayaran awal tercatat.</AlertDescription>
+                  </Alert>
+                  <Button render={<Link href={`/crm/peluang/${pendingMove.opportunity.id}?tab=invoice`} />} nativeButton={false}>Buka tab Invoice</Button>
+                </div>
               )
             ) : (
               <form onSubmit={confirmMove}>

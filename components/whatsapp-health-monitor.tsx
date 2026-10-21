@@ -3,6 +3,7 @@
 import type { AppRole } from "@prisma/client";
 import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -26,6 +27,7 @@ const stateCopy: Record<Exclude<WhatsAppHealthState, "HEALTHY">, string> = {
 };
 
 export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
+  const pathname = usePathname();
   const [health, setHealth] = useState<Health | null>(null);
   const stableRef = useRef<{ state: WhatsAppHealthState | null; count: number }>({ state: null, count: 0 });
   const manager = hasRole(role, WHATSAPP_ACCOUNT_MANAGER_ROLES);
@@ -88,7 +90,7 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
   }, []);
 
   const banner = health ? classifyWhatsAppHealthBanner(health.state, health.failedCount) : null;
-  if (!health || !banner) return null;
+  if (pathname === "/dashboard" || pathname?.startsWith("/dashboard?") || !health || !banner) return null;
   const description = health.state !== "HEALTHY"
     ? stateCopy[health.state]
     : `${health.failedCount} job WhatsApp gagal dan masih memerlukan tindakan.`;

@@ -2,13 +2,12 @@
 
 import { motion, useReducedMotion } from "motion/react";
 
-import { ASKONVEKSI_WHATSAPP } from "@/lib/contact";
+import { waHref } from "@/lib/cms/selectors";
 
-const WHATSAPP_CHAT_MESSAGE = "Halo Askonveksi, saya ingin konsultasi pembuatan seragam.";
-
-export function LandingWhatsAppFab() {
+export function LandingWhatsAppFab({ phone, message, visible = true }: { phone: string; message: string; visible?: boolean }) {
   const reduceMotion = useReducedMotion();
-  const href = `https://wa.me/${ASKONVEKSI_WHATSAPP}?text=${encodeURIComponent(WHATSAPP_CHAT_MESSAGE)}`;
+  if (!visible) return null;
+  const href = waHref(phone, message);
 
   return (
     <motion.div

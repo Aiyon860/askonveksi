@@ -5,8 +5,8 @@ import { createMasterDataWorkbook, PRODUCT_CATEGORY_EXCEL_KIND } from "@/lib/mas
 
 export async function GET() {
   const items = await getProductCategories();
-  const rows = items.map((item) => ({ name: item.name, description: null, kind: GARMENT_TYPE_LABEL[item.kind] }));
-  const body = await createMasterDataWorkbook("Kategori produk", rows, PRODUCT_CATEGORY_EXCEL_KIND);
+  const rows = items.map((item) => ({ name: item.name, description: null, kind: GARMENT_TYPE_LABEL[item.kind], usageCount: item._count.customers }));
+  const body = await createMasterDataWorkbook("Kategori produk", rows, PRODUCT_CATEGORY_EXCEL_KIND, "Pemakaian");
   return new Response(body, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

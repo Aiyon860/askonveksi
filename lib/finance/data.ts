@@ -44,6 +44,7 @@ const getCachedFinanceOverviewData = unstable_cache(
         select: {
           id: true,
           paymentTermId: true,
+          isDeposit: true,
           amount: true,
           paidAt: true,
           reference: true,
@@ -107,7 +108,7 @@ const getCachedFinanceOverviewData = unstable_cache(
         salesOrderNo: item.payment.salesOrder.salesOrderNo,
         customerName: item.payment.salesOrder.snapshotCompanyName ?? item.payment.salesOrder.snapshotCustomerName,
         paymentKind: item.payment.kind,
-        transactionKind: item.paymentTermId ? "Termin" : "Pembayaran awal",
+        transactionKind: item.paymentTermId ? "Termin" : item.isDeposit ? "Deposit" : "Pembayaran awal",
         amount: item.amount.toString(),
         paidAt: item.paidAt.toISOString(),
         reference: item.reference,

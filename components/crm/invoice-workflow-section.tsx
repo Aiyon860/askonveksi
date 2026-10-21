@@ -17,11 +17,24 @@ type PurchaseOrder = {
   productName: string;
   garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
   sizes: Array<{ id: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
+  depositAmount?: string | null;
 };
 
 type InvoiceDraftValues = {
   notes: string;
+  /** Jatuh tempo diisi manual pada form draft. */
+  dueAt?: string;
+  /** Prefill jadwal pembayaran tersimpan (opsional saat simpan, wajib sebelum terbit). */
+  schedule?: {
+    kind: string;
+    initialValueType: "NOMINAL" | "PERCENTAGE";
+    initialValue: string;
+    initialDueAt: string;
+    terms: Array<{ value: string; dueAt: string }>;
+  };
+  discountType?: "NONE" | "NOMINAL" | "PERCENTAGE";
   discountPercent: string;
+  discountNominal?: string;
   taxPercent?: string;
   items: Array<{
     productName?: string;
@@ -30,8 +43,10 @@ type InvoiceDraftValues = {
     sleeveLength: "PENDEK" | "PANJANG" | null;
     quantity: number;
     unitPrice: string;
+    discountType?: "NONE" | "NOMINAL" | "PERCENTAGE";
     discountPercent?: string;
-    addons?: Array<{ label?: string; amount?: string }>;
+    discountNominal?: string;
+    addons?: Array<{ label?: string; description?: string; amount?: string; qty?: number }>;
   }>;
 };
 

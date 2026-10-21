@@ -45,6 +45,57 @@ export const LANDING_PRODUCTS: LandingProduct[] = [
     useCases: ["Seragam kantor", "Instansi & pegawai", "Komunitas", "Event"],
   },
   {
+    slug: "celana",
+    name: "Celana",
+    tagline: "Celana custom untuk kebutuhan formal maupun aktivitas sehari-hari",
+    description:
+      "Celana custom dengan potongan rapi dan bahan yang nyaman dipakai seharian. Tersedia dalam model formal untuk kebutuhan kerja dan training untuk aktivitas yang lebih dinamis, lengkap dengan pilihan warna dan ukuran sesuai kebutuhan tim Anda.",
+    gallery: [],
+    bento: [],
+    features: [
+      "Pilihan model formal dan training",
+      "Bahan nyaman dengan jahitan rapi",
+      "Ukuran S sampai XXL, bisa custom ukuran",
+      "Warna dapat disesuaikan dengan identitas tim",
+    ],
+    useCases: ["Seragam kantor", "Sekolah & instansi", "Komunitas", "Event"],
+    hideFromCatalog: true,
+  },
+  {
+    slug: "celana-formal",
+    name: "Celana Formal",
+    tagline: "Potongan rapi untuk tampilan kerja yang profesional",
+    description:
+      "Celana formal custom dengan potongan lurus dan finishing rapi untuk melengkapi penampilan kerja sehari-hari. Dibuat dari bahan yang nyaman dan tidak mudah kusut, cocok dipadukan dengan kemeja atau seragam kantor Anda.",
+    gallery: [],
+    bento: [],
+    features: [
+      "Potongan lurus dengan finishing rapi",
+      "Bahan nyaman dan tidak mudah kusut",
+      "Pilihan warna netral dan gelap",
+      "Ukuran S sampai XXL, bisa custom ukuran",
+    ],
+    useCases: ["Seragam kantor", "Instansi", "Sekolah", "Acara formal"],
+    hideFromCatalog: true,
+  },
+  {
+    slug: "celana-training",
+    name: "Celana Training",
+    tagline: "Nyaman digerakkan untuk latihan dan aktivitas lapangan",
+    description:
+      "Celana training custom dengan bahan lentur dan ringan untuk mendukung aktivitas olahraga maupun kerja lapangan. Dilengkapi pinggang karet dan saku fungsional agar tetap nyaman digunakan dalam waktu lama.",
+    gallery: [],
+    bento: [],
+    features: [
+      "Bahan lentur dan ringan",
+      "Pinggang karet yang nyaman",
+      "Saku fungsional",
+      "Ukuran S sampai XXL, bisa custom ukuran",
+    ],
+    useCases: ["Latihan & olahraga", "Komunitas", "Event", "Seragam tim"],
+    hideFromCatalog: true,
+  },
+  {
     slug: "pdh",
     name: "PDH",
     tagline: "Pakaian Dinas Harian yang tegas dan tahan pakai",

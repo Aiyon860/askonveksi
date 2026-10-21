@@ -16,33 +16,36 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { LANDING_CONTACT_HREF, LANDING_NAV_LINKS, LANDING_PRODUCT_MENU } from "@/lib/navigation";
+import type { CmsProductMenuEntry } from "@/lib/cms/selectors";
+import type { CmsSiteContent } from "@/lib/cms/types";
 
 const linkClassName =
   "flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-landing-control px-2.5 text-[13px] font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30 2xl:px-3 2xl:text-sm";
 
+function isGroup(entry: CmsProductMenuEntry): entry is Extract<CmsProductMenuEntry, { children: unknown[] }> {
+  return "children" in entry;
+}
+
 export function LandingNavbar({
-  logoSrc = "/new-logo.webp",
-  brandName = "Askonveksi",
+  nav,
+  menu,
+  brandName,
+  logoSrc,
   logoUnoptimized = false,
 }: {
-  logoSrc?: string;
-  brandName?: string;
+  nav: CmsSiteContent["nav"];
+  menu: CmsProductMenuEntry[];
+  brandName: string;
+  logoSrc: string;
   logoUnoptimized?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
   const [openSub, setOpenSub] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
+  const items = nav.items.filter((item) => item.visible);
 
   function closeMobileNav() {
     setProductsOpen(false);
@@ -57,10 +60,7 @@ export function LandingNavbar({
       transition={{ duration: reduceMotion ? 0.3 : 0.58, ease: [0.16, 1, 0.3, 1] }}
       className="landing-motion sticky top-0 z-40 w-full"
     >
-      <nav
-        aria-label="Navigasi Askonveksi"
-        className="h-16 w-full border-b border-landing-border bg-landing-card"
-      >
+      <nav aria-label={`Navigasi ${brandName}`} className="h-16 w-full border-b border-landing-border bg-landing-card">
         <div className="mx-auto flex h-full w-[90%] items-center justify-between gap-2">
           <Link
             href="/#beranda"
@@ -79,197 +79,183 @@ export function LandingNavbar({
           </Link>
 
           <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 xl:flex 2xl:gap-2">
-            {/* Dropdown Produk duduk setelah Portofolio, sebelum Size Chart. */}
-            {LANDING_NAV_LINKS.slice(0, 4).map((link) => (
-              <Link key={link.href} href={link.href} className={linkClassName}>
-                {link.label}
-              </Link>
-            ))}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-landing-control px-2.5 text-[13px] font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30 2xl:px-3 2xl:text-sm aria-expanded:text-landing-accent"
+            {items.map((item) =>
+              item.type === "products" ? (
+                <DropdownMenu key={`products-${item.label}`}>
+                  <DropdownMenuTrigger
+                    render={
+                      <button
+                        type="button"
+                        className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-landing-control px-2.5 text-[13px] font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30 2xl:px-3 2xl:text-sm aria-expanded:text-landing-accent"
+                      >
+                        {item.label}
+                        <ChevronDown aria-hidden="true" className="size-4 transition-transform duration-200 aria-expanded:rotate-180" />
+                      </button>
+                    }
+                  />
+                  <DropdownMenuContent
+                    side="bottom"
+                    align="end"
+                    sideOffset={8}
+                    className="w-56 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]"
                   >
-                    Produk
-                    <ChevronDown aria-hidden="true" className="size-4 transition-transform duration-200 aria-expanded:rotate-180" />
-                  </button>
-                }
-              />
-              <DropdownMenuContent
-                side="bottom"
-                align="end"
-                sideOffset={8}
-                className="w-56 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]"
-              >
-                {LANDING_PRODUCT_MENU.map((entry) =>
-                  "children" in entry ? (
-                    <DropdownMenuSub key={entry.label}>
-                      <DropdownMenuSubTrigger className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-popup-open:bg-landing-fog data-popup-open:text-landing-accent">
-                        <Link
-                          href={entry.href}
-                          className="rounded-landing-control outline-none hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
-                        >
-                          {entry.label}
-                        </Link>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="w-56 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]">
-                        {entry.children.map((child) => (
+                    {menu.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-landing-muted">Belum ada produk tampil.</p>
+                    ) : (
+                      menu.map((entry) =>
+                        isGroup(entry) ? (
+                          <DropdownMenuSub key={entry.label}>
+                            <DropdownMenuSubTrigger className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-popup-open:bg-landing-fog data-popup-open:text-landing-accent">
+                              <Link
+                                href={entry.href}
+                                className="rounded-landing-control outline-none hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                              >
+                                {entry.label}
+                              </Link>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-56 rounded-landing-card border border-landing-border bg-landing-card p-1.5 shadow-[0_12px_28px_rgb(20_37_53/0.14)]">
+                              {entry.children.map((child) => (
+                                <DropdownMenuItem
+                                  key={child.href}
+                                  render={<Link href={child.href} />}
+                                  className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-highlighted:bg-landing-fog data-highlighted:text-landing-accent"
+                                >
+                                  {child.label}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                        ) : (
                           <DropdownMenuItem
-                            key={child.href}
-                            render={<Link href={child.href} />}
+                            key={entry.href}
+                            render={<Link href={entry.href} />}
                             className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-highlighted:bg-landing-fog data-highlighted:text-landing-accent"
                           >
-                            {child.label}
+                            {entry.label}
                           </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  ) : (
-                    <DropdownMenuItem
-                      key={entry.href}
-                      render={<Link href={entry.href} />}
-                      className="rounded-landing-control px-3 py-2 text-sm text-landing-text outline-none focus:bg-landing-fog focus:text-landing-accent data-highlighted:bg-landing-fog data-highlighted:text-landing-accent"
-                    >
-                      {entry.label}
-                    </DropdownMenuItem>
-                  ),
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {LANDING_NAV_LINKS.slice(4).map((link) => (
-              <Link key={link.href} href={link.href} className={linkClassName}>
-                {link.label}
-              </Link>
-            ))}
+                        ),
+                      )
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Link key={`${item.href}-${item.label}`} href={item.href} className={linkClassName}>
+                  {item.label}
+                </Link>
+              ),
+            )}
           </div>
 
-          <a
-            href={LANDING_CONTACT_HREF}
-            className="hidden min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-landing-control bg-landing-accent px-4 text-[13px] font-semibold text-white outline-none transition-[background-color,transform] hover:bg-landing-accent/90 focus-visible:ring-3 focus-visible:ring-landing-accent/30 active:translate-y-px xl:inline-flex 2xl:px-5 2xl:text-sm"
-          >
-            <MessageCircle aria-hidden="true" className="size-4" />
-            Hubungi Kami
-          </a>
+          {nav.cta.visible ? (
+            <a
+              href={nav.cta.href}
+              className="hidden min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-landing-control bg-landing-accent px-4 text-[13px] font-semibold text-white outline-none transition-[background-color,transform] hover:bg-landing-accent/90 focus-visible:ring-3 focus-visible:ring-landing-accent/30 active:translate-y-px xl:inline-flex 2xl:px-5 2xl:text-sm"
+            >
+              <MessageCircle aria-hidden="true" className="size-4" />
+              {nav.cta.label}
+            </a>
+          ) : null}
 
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger
               render={
-                <Button
-                  variant="ghost"
-                  size="icon-lg"
-                   className="size-11 rounded-landing-control xl:hidden"
-                  aria-label="Buka menu utama"
-                />
+                <Button variant="ghost" size="icon-lg" className="size-11 rounded-landing-control xl:hidden" aria-label="Buka menu utama" />
               }
             >
               <Menu aria-hidden="true" />
             </SheetTrigger>
             <SheetContent side="right" className="gap-0 overflow-y-auto bg-landing-card text-landing-text xl:hidden">
               <SheetHeader className="border-b border-landing-border p-5 pr-14">
-                <SheetTitle>Navigasi utama</SheetTitle>
-                <SheetDescription className="sr-only">
-                  Pilih bagian yang ingin Anda lihat.
-                </SheetDescription>
+                <SheetTitle>{nav.mobileTitle}</SheetTitle>
+                <SheetDescription className="sr-only">Pilih bagian yang ingin Anda lihat.</SheetDescription>
               </SheetHeader>
               <nav aria-label="Navigasi seluler" className="flex flex-col gap-2 p-4">
-                {/* Menu Produk duduk setelah Portofolio, sebelum Size Chart. */}
-                {LANDING_NAV_LINKS.slice(0, 4).map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={linkClassName}
-                    onClick={() => setOpen(false)}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-
-                <Collapsible open={productsOpen} onOpenChange={setProductsOpen}>
-                  <CollapsibleTrigger
-                    className="flex min-h-11 w-full items-center gap-2 rounded-landing-control px-3 text-left text-sm font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent"
-                  >
-                    <Shirt aria-hidden="true" className="size-4" />
-                    Produk
-                    <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform duration-200 aria-expanded:rotate-180" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="ml-3 mt-1 flex flex-col gap-0.5 border-l border-landing-border pl-3">
-                      {LANDING_PRODUCT_MENU.map((entry) =>
-                        "children" in entry ? (
-                          <Collapsible
-                            key={entry.label}
-                            open={openSub === entry.label}
-                            onOpenChange={(next) => setOpenSub(next ? entry.label : null)}
-                          >
-                            <div className="flex min-h-10 items-center gap-1">
+                {items.map((item) =>
+                  item.type === "products" ? (
+                    <Collapsible key={`products-${item.label}`} open={productsOpen} onOpenChange={setProductsOpen}>
+                      <CollapsibleTrigger className="flex min-h-11 w-full items-center gap-2 rounded-landing-control px-3 text-left text-sm font-medium text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent">
+                        <Shirt aria-hidden="true" className="size-4" />
+                        {item.label}
+                        <ChevronDown aria-hidden="true" className="ml-auto size-4 transition-transform duration-200 aria-expanded:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="ml-3 mt-1 flex flex-col gap-0.5 border-l border-landing-border pl-3">
+                          {menu.map((entry) =>
+                            isGroup(entry) ? (
+                              <Collapsible
+                                key={entry.label}
+                                open={openSub === entry.label}
+                                onOpenChange={(next) => setOpenSub(next ? entry.label : null)}
+                              >
+                                <div className="flex min-h-10 items-center gap-1">
+                                  <Link
+                                    href={entry.href}
+                                    className="flex min-h-10 flex-1 items-center rounded-landing-control px-3 text-left text-sm font-medium text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                                    onClick={closeMobileNav}
+                                  >
+                                    {entry.label}
+                                  </Link>
+                                  <CollapsibleTrigger
+                                    aria-label={`Tampilkan sub-produk ${entry.label}`}
+                                    className="flex size-10 shrink-0 items-center justify-center rounded-landing-control text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent"
+                                  >
+                                    <ChevronDown
+                                      aria-hidden="true"
+                                      className="size-4 transition-transform duration-200 aria-expanded:rotate-180"
+                                    />
+                                  </CollapsibleTrigger>
+                                </div>
+                                <CollapsibleContent>
+                                  <div className="ml-3 mt-0.5 flex flex-col border-l border-landing-border pl-3">
+                                    {entry.children.map((child) => (
+                                      <Link
+                                        key={child.href}
+                                        href={child.href}
+                                        className="flex min-h-10 items-center rounded-landing-control px-3 text-sm text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                                        onClick={closeMobileNav}
+                                      >
+                                        {child.label}
+                                      </Link>
+                                    ))}
+                                  </div>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            ) : (
                               <Link
+                                key={entry.href}
                                 href={entry.href}
-                                className="flex min-h-10 flex-1 items-center rounded-landing-control px-3 text-left text-sm font-medium text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30"
+                                className="flex min-h-10 items-center rounded-landing-control px-3 text-sm text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
                                 onClick={closeMobileNav}
                               >
                                 {entry.label}
                               </Link>
-                              <CollapsibleTrigger
-                                aria-label={`Tampilkan sub-produk ${entry.label}`}
-                                className="flex size-10 shrink-0 items-center justify-center rounded-landing-control text-landing-muted outline-none transition-colors hover:text-landing-accent focus-visible:ring-3 focus-visible:ring-landing-accent/30 aria-expanded:text-landing-accent"
-                              >
-                                <ChevronDown
-                                  aria-hidden="true"
-                                  className="size-4 transition-transform duration-200 aria-expanded:rotate-180"
-                                />
-                              </CollapsibleTrigger>
-                            </div>
-                            <CollapsibleContent>
-                              <div className="ml-3 mt-0.5 flex flex-col border-l border-landing-border pl-3">
-                                {entry.children.map((child) => (
-                                  <Link
-                                    key={child.href}
-                                    href={child.href}
-                                    className="flex min-h-10 items-center rounded-landing-control px-3 text-sm text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
-                                    onClick={closeMobileNav}
-                                  >
-                                    {child.label}
-                                  </Link>
-                                ))}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        ) : (
-                          <Link
-                            key={entry.href}
-                            href={entry.href}
-                            className="flex min-h-10 items-center rounded-landing-control px-3 text-sm text-landing-muted underline-offset-4 outline-none transition-colors hover:text-landing-accent hover:underline focus-visible:ring-3 focus-visible:ring-landing-accent/30"
-                            onClick={closeMobileNav}
-                          >
-                            {entry.label}
-                          </Link>
-                        ),
-                      )}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                            ),
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ) : (
+                    <Link
+                      key={`${item.href}-${item.label}`}
+                      href={item.href}
+                      className={linkClassName}
+                      onClick={() => setOpen(false)}
+                    >
+                      {item.label}
+                    </Link>
+                  ),
+                )}
 
-                {LANDING_NAV_LINKS.slice(4).map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={linkClassName}
+                {nav.cta.visible ? (
+                  <a
+                    href={nav.cta.href}
+                    className="mt-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-landing-control bg-landing-accent px-5 text-sm font-semibold text-white outline-none transition-colors hover:bg-landing-accent/90 focus-visible:ring-3 focus-visible:ring-landing-accent/30"
                     onClick={() => setOpen(false)}
                   >
-                    {link.label}
-                  </Link>
-                ))}
-
-                <a
-                  href={LANDING_CONTACT_HREF}
-                  className="mt-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-landing-control bg-landing-accent px-5 text-sm font-semibold text-white outline-none transition-colors hover:bg-landing-accent/90 focus-visible:ring-3 focus-visible:ring-landing-accent/30"
-                  onClick={() => setOpen(false)}
-                >
-                  <MessageCircle aria-hidden="true" className="size-4" />
-                  Hubungi Kami
-                </a>
+                    <MessageCircle aria-hidden="true" className="size-4" />
+                    {nav.cta.label}
+                  </a>
+                ) : null}
               </nav>
             </SheetContent>
           </Sheet>

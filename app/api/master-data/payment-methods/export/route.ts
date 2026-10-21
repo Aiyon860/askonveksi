@@ -4,7 +4,7 @@ import { downloadFilename } from "@/lib/download-filename";
 
 export async function GET() {
   const items = await getPaymentMethods();
-  const body = await createMasterDataWorkbook("Metode pembayaran", items);
+  const body = await createMasterDataWorkbook("Metode pembayaran", items.map((item) => ({ name: item.name, description: item.description, usageCount: item._count.customers })), undefined, "Transaksi");
   return new Response(body, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

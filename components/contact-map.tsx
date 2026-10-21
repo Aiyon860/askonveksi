@@ -1,14 +1,14 @@
 import { LandingReveal } from "@/components/landing-motion";
-import { CONTACT_MAP_EMBED_SRC, CONTACT_MAP_TITLE } from "@/lib/contact-page";
+import type { CmsContact } from "@/lib/cms/types";
 
-export function ContactMap() {
+export function ContactMap({ map }: { map: CmsContact["map"] }) {
   return (
     <section aria-label="Peta lokasi" className="bg-white">
       <div className="mx-auto w-[90%] py-16 sm:py-20">
         <LandingReveal className="overflow-hidden rounded-landing-card border border-[#dde6ee]">
           <iframe
-            title={CONTACT_MAP_TITLE}
-            src={CONTACT_MAP_EMBED_SRC}
+            title={map.title}
+            src={map.embedSrc}
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen

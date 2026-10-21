@@ -8,6 +8,8 @@ export type MasterDataExcelRow = {
   name: string;
   description: string | null;
   kind?: string | null;
+  /** Jumlah pemakaian (kolom UI: Pemakaian / Transaksi / Jumlah customer). */
+  usageCount?: number;
 };
 
 export type MasterDataExcelKindOption = {
@@ -29,29 +31,32 @@ const XLSX_MAX_ENTRIES = 100;
 const XLSX_MAX_UNCOMPRESSED_BYTES = 8 * 1024 * 1024;
 const XLSX_MAX_COMPRESSION_RATIO = 100;
 
-export async function createMasterDataWorkbook(title: string, rows: MasterDataExcelRow[], kindOption?: MasterDataExcelKindOption) {
+export async function createMasterDataWorkbook(title: string, rows: MasterDataExcelRow[], kindOption?: MasterDataExcelKindOption, usageHeader?: string) {
   const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ERM Askonveksi";
   workbook.created = new Date();
 
   const worksheet = workbook.addWorksheet(title);
+  const usageColumn = usageHeader ? [{ header: usageHeader, key: "usage", width: 16 }] : [];
   worksheet.columns = kindOption
     ? [
         { header: "No", key: "number", width: 8 },
         { header: "Nama", key: "name", width: 32 },
         { header: kindOption.header, key: "kind", width: 20 },
+        ...usageColumn,
       ]
     : [
         { header: "No", key: "number", width: 8 },
         { header: "Nama", key: "name", width: 32 },
         { header: "Deskripsi", key: "description", width: 60 },
+        ...usageColumn,
       ];
   worksheet.getRow(1).font = { bold: true };
   rows.forEach((row, index) => {
     worksheet.addRow(kindOption
-      ? { number: index + 1, name: row.name, kind: row.kind ?? "" }
-      : { number: index + 1, name: row.name, description: row.description ?? "" });
+      ? { number: index + 1, name: row.name, kind: row.kind ?? "", ...(usageHeader ? { usage: row.usageCount ?? 0 } : {}) }
+      : { number: index + 1, name: row.name, description: row.description ?? "", ...(usageHeader ? { usage: row.usageCount ?? 0 } : {}) });
   });
 
   return workbook.xlsx.writeBuffer();

@@ -42,8 +42,9 @@ function date(value: Date) {
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(value);
 }
 
+/** Angka gaya invoice: id-ID dua desimal, 4.330.000,00 (label baris sudah menyebut "Rp"). */
 function amount(value: { toString(): string }) {
-  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value.toString()));
+  return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value.toString()));
 }
 
 function terbilang(n: number): string {

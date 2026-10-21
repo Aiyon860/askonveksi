@@ -3,6 +3,7 @@ import "server-only";
 import type ExcelJS from "exceljs";
 
 import { UserFacingError } from "@/lib/actions/response";
+import { formatDate } from "@/lib/crm/format";
 
 export type CustomerExcelRow = {
   rowNumber: number;
@@ -22,6 +23,11 @@ export type CustomerExcelRow = {
 
 export type CustomerExcelExportRow = Omit<CustomerExcelRow, "rowNumber"> & {
   archivedAt: Date | null;
+  /** Label aktivitas dari UI (Aktif / Tidak aktif / Belum order / Diarsipkan). */
+  activityStatus: string;
+  lastOrderAt: Date | null;
+  opportunityCount: number;
+  updatedAt: Date;
 };
 
 export const CUSTOMER_EXCEL_MAX_BYTES = 1 * 1024 * 1024;
@@ -44,6 +50,10 @@ const COLUMNS = [
   { header: "Kota", key: "city", width: 20 },
   { header: "Alamat", key: "address", width: 44 },
   { header: "Catatan", key: "notes", width: 44 },
+  { header: "Status aktivitas", key: "activityStatus", width: 16 },
+  { header: "Order terakhir", key: "lastOrderAt", width: 18 },
+  { header: "Peluang", key: "opportunityCount", width: 10 },
+  { header: "Diperbarui", key: "updatedAt", width: 18 },
   { header: "Status arsip", key: "archiveStatus", width: 16 },
 ] as const;
 
@@ -149,6 +159,8 @@ export async function createCustomerWorkbook(rows: CustomerExcelExportRow[]) {
   rows.forEach((row) => {
     worksheet.addRow({
       ...row,
+      lastOrderAt: row.lastOrderAt ? formatDate(row.lastOrderAt) : "Belum ada",
+      updatedAt: formatDate(row.updatedAt),
       archiveStatus: row.archivedAt ? "Diarsipkan" : "Aktif",
     });
   });

@@ -20,6 +20,18 @@ enum AppRole {
   QC
 }
 
+enum AttendanceStatus {
+  HADIR
+  TERLAMBAT
+  IZIN
+  ALPHA
+}
+
+enum AttendanceSource {
+  SELF
+  OWNER
+}
+
 enum DesignRevisionStatus {
   PENDING_REVIEW
   APPROVED
@@ -292,8 +304,8 @@ model AppUser {
   customerReminderReceipts  CustomerReminderReceipt[]
   purchaseOrders            PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
   purchaseOrderDeposits     PurchaseOrderDeposit[]    @relation("PurchaseOrderDepositCreatedBy")
-  purchaseOrdersDesignSent PurchaseOrder[]        @relation("PurchaseOrderDesignSentBy")
-  purchaseOrdersConfirmed PurchaseOrder[]        @relation("PurchaseOrderCustomerConfirmedBy")
+  purchaseOrdersDesignSent  PurchaseOrder[]           @relation("PurchaseOrderDesignSentBy")
+  purchaseOrdersConfirmed   PurchaseOrder[]           @relation("PurchaseOrderCustomerConfirmedBy")
   designRevisions           DesignRevision[]          @relation("DesignRevisionCreatedBy")
   reviewedDesignRevisions   DesignRevision[]          @relation("DesignRevisionReviewedBy")
   invoices                  Invoice[]                 @relation("InvoiceCreatedBy")
@@ -314,6 +326,9 @@ model AppUser {
   updatedWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignUpdatedBy")
   expenses                  Expense[]
   deletedExpenses           Expense[]                 @relation("ExpenseDeletedBy")
+  attendances               Attendance[]              @relation("AttendanceUser")
+  recordedAttendances       Attendance[]              @relation("AttendanceRecordedBy")
+  correctedAttendances      Attendance[]              @relation("AttendanceCorrectedBy")
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -321,31 +336,32 @@ model AppUser {
 }
 
 model Expense {
-  id              String               @id @default(cuid())
-  purpose         String               @db.VarChar(500)
-  spentAt         DateTime             @db.Date
-  amount          Decimal              @db.Decimal(18, 2)
+  id              String          @id @default(cuid())
+  purpose         String          @db.VarChar(500)
+  description     String?         @db.VarChar(240)
+  spentAt         DateTime        @db.Date
+  amount          Decimal         @db.Decimal(18, 2)
   category        ExpenseCategory
   paymentMethodId String
-  isReimbursable  Boolean              @default(false)
-  proofPath       String?              @db.VarChar(500)
-  proofFileName   String?              @db.VarChar(255)
-  proofMimeType   String?              @db.VarChar(100)
+  isReimbursable  Boolean         @default(false)
+  proofPath       String?         @db.VarChar(500)
+  proofFileName   String?         @db.VarChar(255)
+  proofMimeType   String?         @db.VarChar(100)
   proofSize       Int?
   createdById     String
-  reimbursedAt    DateTime?            @db.Timestamptz(3)
+  reimbursedAt    DateTime?       @db.Timestamptz(3)
   salesOrderId    String?
-  customerName    String?              @db.VarChar(160)
-  hppKey          String?              @db.VarChar(32)
-  deletedAt       DateTime?            @db.Timestamptz(3)
+  customerName    String?         @db.VarChar(160)
+  hppKey          String?         @db.VarChar(32)
+  deletedAt       DateTime?       @db.Timestamptz(3)
   deletedById     String?
-  deleteReason    String?              @db.Text
-  paymentMethod   PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
-  createdBy       AppUser              @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  deletedBy       AppUser?             @relation("ExpenseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
-  salesOrder      SalesOrder?          @relation("ExpenseSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
-  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
+  deleteReason    String?         @db.Text
+  paymentMethod   PaymentMethod   @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  createdBy       AppUser         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  deletedBy       AppUser?        @relation("ExpenseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  salesOrder      SalesOrder?     @relation("ExpenseSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
 
   @@index([createdById, spentAt])
   @@index([paymentMethodId, spentAt])
@@ -399,88 +415,130 @@ model GarmentSize {
 }
 
 model PaymentMethod {
-  id                  String               @id @default(cuid())
-  name                String               @unique @db.VarChar(80)
-  description         String?              @db.VarChar(500)
-  position            Int                  @default(0)
-  isActive            Boolean              @default(true)
-  paymentTransactions PaymentTransaction[]
+  id                    String                 @id @default(cuid())
+  name                  String                 @unique @db.VarChar(80)
+  description           String?                @db.VarChar(500)
+  position              Int                    @default(0)
+  isActive              Boolean                @default(true)
+  paymentTransactions   PaymentTransaction[]
   purchaseOrderDeposits PurchaseOrderDeposit[]
-  expenses            Expense[]
-  createdAt           DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
+  expenses              Expense[]
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
 
   @@index([isActive, position, name])
 }
 
 model ProductCategory {
-  id             String           @id @default(cuid())
-  name           String           @unique @db.VarChar(80)
-  garmentType    GarmentType
-  position       Int              @default(0)
-  isActive       Boolean          @default(true)
-  purchaseOrders PurchaseOrder[]
+  id                 String              @id @default(cuid())
+  name               String              @unique @db.VarChar(80)
+  garmentType        GarmentType
+  position           Int                 @default(0)
+  isActive           Boolean             @default(true)
+  purchaseOrders     PurchaseOrder[]
   purchaseOrderItems PurchaseOrderItem[]
-  opportunities  Opportunity[]
-  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+  opportunities      Opportunity[]
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
 
   @@index([isActive, position, name])
 }
 
 model BusinessProfile {
-  id                     String   @id @default("default") @db.VarChar(32)
-  name                   String   @db.VarChar(160)
-  phone                  String?  @db.VarChar(32)
-  email                  String?  @db.VarChar(320)
-  address                String?  @db.Text
-  logoPath               String?  @db.VarChar(500)
-  signaturePath          String?  @db.VarChar(500)
-  signatureName          String?  @db.VarChar(160)
-  signatureTitle         String?  @db.VarChar(120)
-  invoiceNotes           String?  @db.Text
-  invoiceReminderOffsets Int[]    @default([-3, 0, 3])
-  repeatOrderIntervals   Int[]    @default([6, 5])
-  version                Int      @default(1)
-  createdAt              DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+  id                         String   @id @default("default") @db.VarChar(32)
+  name                       String   @db.VarChar(160)
+  phone                      String?  @db.VarChar(32)
+  email                      String?  @db.VarChar(320)
+  address                    String?  @db.Text
+  logoPath                   String?  @db.VarChar(500)
+  signaturePath              String?  @db.VarChar(500)
+  signatureName              String?  @db.VarChar(160)
+  signatureTitle             String?  @db.VarChar(120)
+  invoiceNotes               String?  @db.Text
+  invoiceReminderOffsets     Int[]    @default([-3, 0, 3])
+  repeatOrderIntervals       Int[]    @default([6, 5])
+  attendanceStartDate        DateTime @default(dbgenerated("((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date)")) @db.Date
+  attendanceCheckInTime      String   @default("08:00") @db.VarChar(5)
+  attendanceLateToleranceMin Int      @default(15)
+  attendanceWorkDays         Int[]    @default([1, 2, 3, 4, 5, 6])
+  version                    Int      @default(1)
+  createdAt                  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model Attendance {
+  id             String           @id @default(cuid())
+  userId         String
+  date           DateTime         @db.Date
+  status         AttendanceStatus
+  checkInAt      DateTime?        @db.Timestamptz(3)
+  note           String?          @db.VarChar(500)
+  photoPath      String?          @db.VarChar(500)
+  photoMimeType  String?          @db.VarChar(100)
+  photoSize      Int?
+  latitude       Decimal?         @db.Decimal(9, 6)
+  longitude      Decimal?         @db.Decimal(9, 6)
+  accuracyMeters Int?
+  locationAt     DateTime?        @db.Timestamptz(3)
+  source         AttendanceSource
+  recordedById   String?
+  correctedById  String?
+  correctedAt    DateTime?        @db.Timestamptz(3)
+  user           AppUser          @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Restrict)
+  recordedBy     AppUser?         @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  correctedBy    AppUser?         @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, date])
+  @@index([date, status])
+  @@index([recordedById])
+  @@index([correctedById])
+}
+
+model AttendanceHoliday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model Customer {
-  id                      String                  @id @default(cuid())
-  customerNo              String                  @unique @db.VarChar(24)
-  poCustomerCode          String?                 @unique @db.VarChar(20)
-  name                    String                  @db.VarChar(160)
-  companyName             String?                 @db.VarChar(160)
-  whatsapp                String?                 @db.VarChar(32)
-  email                   String?                 @db.VarChar(320)
-  instagram               String?                 @db.VarChar(80)
-  address                 String?                 @db.Text
-  city                    String?                 @db.VarChar(120)
-  notes                   String?                 @db.Text
+  id                      String                      @id @default(cuid())
+  customerNo              String                      @unique @db.VarChar(24)
+  poCustomerCode          String?                     @unique @db.VarChar(20)
+  name                    String                      @db.VarChar(160)
+  companyName             String?                     @db.VarChar(160)
+  whatsapp                String?                     @db.VarChar(32)
+  email                   String?                     @db.VarChar(320)
+  instagram               String?                     @db.VarChar(80)
+  address                 String?                     @db.Text
+  city                    String?                     @db.VarChar(120)
+  notes                   String?                     @db.Text
   customerTypeId          String
   leadSourceId            String?
   salesPicId              String?
-  lifecycle               CustomerLifecycle        @default(CUSTOMER)
-  archivedAt              DateTime?               @db.Timestamptz(3)
-  version                 Int                     @default(1)
-  whatsappConsentStatus   WhatsAppConsentStatus   @default(UNKNOWN)
-  whatsappOptedInAt       DateTime?               @db.Timestamptz(3)
-  whatsappOptInSource     String?                 @db.VarChar(120)
-  whatsappOptedOutAt      DateTime?               @db.Timestamptz(3)
-  whatsappOptOutReason    String?                 @db.VarChar(500)
-  orderReminderEnabled    Boolean                 @default(false)
-  customerType            CustomerType            @relation(fields: [customerTypeId], references: [id], onDelete: Restrict)
-  leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
-  salesPic                AppUser?                @relation("CustomerSalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
+  lifecycle               CustomerLifecycle           @default(CUSTOMER)
+  archivedAt              DateTime?                   @db.Timestamptz(3)
+  version                 Int                         @default(1)
+  whatsappConsentStatus   WhatsAppConsentStatus       @default(UNKNOWN)
+  whatsappOptedInAt       DateTime?                   @db.Timestamptz(3)
+  whatsappOptInSource     String?                     @db.VarChar(120)
+  whatsappOptedOutAt      DateTime?                   @db.Timestamptz(3)
+  whatsappOptOutReason    String?                     @db.VarChar(500)
+  orderReminderEnabled    Boolean                     @default(false)
+  customerType            CustomerType                @relation(fields: [customerTypeId], references: [id], onDelete: Restrict)
+  leadSource              LeadSource?                 @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  salesPic                AppUser?                    @relation("CustomerSalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
   opportunities           Opportunity[]
   communicationActivities CommunicationActivity[]
   reminders               CustomerReminder[]
   whatsappConversations   WhatsAppConversation[]
   whatsappJobs            WhatsAppAutomationJob[]
   campaignRecipients      WhatsAppCampaignRecipient[]
-  createdAt               DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt               DateTime                @updatedAt @db.Timestamptz(3)
+  createdAt               DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                    @updatedAt @db.Timestamptz(3)
 
   @@index([archivedAt, updatedAt])
   @@index([name])
@@ -607,9 +665,9 @@ model PurchaseOrder {
   version                  Int                        @default(1)
   createdById              String
   opportunity              Opportunity                @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  createdBy                AppUser                  @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  designSentBy             AppUser?                 @relation("PurchaseOrderDesignSentBy", fields: [designSentById], references: [id], onDelete: SetNull)
-  customerConfirmedBy      AppUser?                 @relation("PurchaseOrderCustomerConfirmedBy", fields: [customerConfirmedById], references: [id], onDelete: SetNull)
+  createdBy                AppUser                    @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  designSentBy             AppUser?                   @relation("PurchaseOrderDesignSentBy", fields: [designSentById], references: [id], onDelete: SetNull)
+  customerConfirmedBy      AppUser?                   @relation("PurchaseOrderCustomerConfirmedBy", fields: [customerConfirmedById], references: [id], onDelete: SetNull)
   productCategory          ProductCategory?           @relation(fields: [productCategoryId], references: [id], onDelete: Restrict)
   items                    PurchaseOrderItem[]
   sizes                    PurchaseOrderSize[]
@@ -643,7 +701,7 @@ model PurchaseOrderDeposit {
   createdById     String
   purchaseOrder   PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
-  createdBy       AppUser       @relation("PurchaseOrderDepositCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy       AppUser        @relation("PurchaseOrderDepositCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt       DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
 
@@ -705,18 +763,23 @@ model DesignAttachment {
 }
 
 model PurchaseOrderItem {
-  id                String          @id @default(cuid())
-  purchaseOrderId   String
-  position          Int
-  name              String          @db.VarChar(120)
-  productCategoryId String?
-  garmentType       GarmentType?
-  decorationMethods String[]        @default([])
-  designNotes       String?         @db.Text
-  purchaseOrder     PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  productCategory   ProductCategory? @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
-  workOrders        ProductionWorkOrder[]
-  createdAt         DateTime        @default(now()) @db.Timestamptz(3)
+  id                 String                @id @default(cuid())
+  purchaseOrderId    String
+  position           Int
+  name               String                @db.VarChar(120)
+  productCategoryId  String?
+  garmentType        GarmentType?
+  decorationMethods  String[]              @default([])
+  designNotes        String?               @db.Text
+  // Sprint 11 (R3): deadline penjahit per produk + desain khusus penjahit (maks 1 gambar, timpa = ganti).
+  penjahitDeadline   DateTime?             @db.Date
+  penjahitDesignPath String?               @db.VarChar(500)
+  penjahitDesignName String?               @db.VarChar(255)
+  penjahitDesignType String?               @db.VarChar(64)
+  purchaseOrder      PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  productCategory    ProductCategory?      @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
+  workOrders         ProductionWorkOrder[]
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
 
   @@unique([purchaseOrderId, position])
   @@index([purchaseOrderId])
@@ -776,51 +839,52 @@ model PurchaseOrderAttachment {
 }
 
 model Invoice {
-  id                       String                  @id @default(cuid())
-  invoiceNo                String                  @unique @db.VarChar(28)
-  opportunityId            String
-  purchaseOrderId          String
-  revision                 Int
-  status                   InvoiceStatus           @default(DRAFT)
-  snapshotCustomerName     String                  @db.VarChar(160)
-  snapshotCompanyName      String?                 @db.VarChar(160)
-  snapshotWhatsapp         String?                 @db.VarChar(32)
-  snapshotEmail            String?                 @db.VarChar(320)
-  snapshotInstagram        String?                 @db.VarChar(80)
-  snapshotAddress          String?                 @db.Text
-  snapshotBusinessName     String?                 @db.VarChar(160)
-  snapshotBusinessPhone    String?                 @db.VarChar(32)
-  snapshotBusinessEmail    String?                 @db.VarChar(320)
-  snapshotBusinessAddress  String?                 @db.Text
-  snapshotBusinessLogoPath String?                 @db.VarChar(500)
-  snapshotBankName         String?                 @db.VarChar(120)
-  snapshotBankAccountNumber String?                @db.VarChar(60)
-  snapshotBankAccountHolder String?                @db.VarChar(160)
-  snapshotSignatureName    String?                 @db.VarChar(160)
-  snapshotSignatureTitle   String?                 @db.VarChar(120)
-  snapshotSignaturePath    String?                 @db.VarChar(500)
-  discountType             DiscountType            @default(NONE)
-  discountValue            Decimal                 @default(0) @db.Decimal(7, 4)
-  subtotal                 Decimal                 @db.Decimal(18, 2)
-  totalDiscount            Decimal                 @default(0) @db.Decimal(18, 2)
-  taxPercent               Decimal                 @default(0) @db.Decimal(7, 4)
-  taxAmount                Decimal                 @default(0) @db.Decimal(18, 2)
-  totalProfit              Decimal                 @default(0) @db.Decimal(18, 2)
-  total                    Decimal                 @db.Decimal(18, 2)
-  issuedAt                 DateTime?               @db.Timestamptz(3)
-  dueAt                    DateTime?               @db.Date
-  notes                    String?                 @db.Text
-  version                  Int                     @default(1)
-  createdById              String
-  opportunity              Opportunity             @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  purchaseOrder            PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  createdBy                AppUser                 @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  items                    InvoiceItem[]
-  salesOrder               SalesOrder?
-  pendingPayment           PendingDealPayment?
-  whatsappJobs             WhatsAppAutomationJob[]
-  createdAt                DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt                DateTime                @updatedAt @db.Timestamptz(3)
+  id                        String                  @id @default(cuid())
+  invoiceNo                 String                  @unique @db.VarChar(28)
+  opportunityId             String
+  purchaseOrderId           String
+  revision                  Int
+  status                    InvoiceStatus           @default(DRAFT)
+  snapshotCustomerName      String                  @db.VarChar(160)
+  snapshotCompanyName       String?                 @db.VarChar(160)
+  snapshotWhatsapp          String?                 @db.VarChar(32)
+  snapshotEmail             String?                 @db.VarChar(320)
+  snapshotInstagram         String?                 @db.VarChar(80)
+  snapshotAddress           String?                 @db.Text
+  snapshotBusinessName      String?                 @db.VarChar(160)
+  snapshotBusinessPhone     String?                 @db.VarChar(32)
+  snapshotBusinessEmail     String?                 @db.VarChar(320)
+  snapshotBusinessAddress   String?                 @db.Text
+  snapshotBusinessLogoPath  String?                 @db.VarChar(500)
+  snapshotBankName          String?                 @db.VarChar(120)
+  snapshotBankAccountNumber String?                 @db.VarChar(60)
+  snapshotBankAccountHolder String?                 @db.VarChar(160)
+  snapshotSignatureName     String?                 @db.VarChar(160)
+  snapshotSignatureTitle    String?                 @db.VarChar(120)
+  snapshotSignaturePath     String?                 @db.VarChar(500)
+  discountType              DiscountType            @default(NONE)
+  discountValue             Decimal                 @default(0) @db.Decimal(7, 4)
+  discountNominal           Decimal                 @default(0) @db.Decimal(18, 2)
+  subtotal                  Decimal                 @db.Decimal(18, 2)
+  totalDiscount             Decimal                 @default(0) @db.Decimal(18, 2)
+  taxPercent                Decimal                 @default(0) @db.Decimal(7, 4)
+  taxAmount                 Decimal                 @default(0) @db.Decimal(18, 2)
+  totalProfit               Decimal                 @default(0) @db.Decimal(18, 2)
+  total                     Decimal                 @db.Decimal(18, 2)
+  issuedAt                  DateTime?               @db.Timestamptz(3)
+  dueAt                     DateTime?               @db.Date
+  notes                     String?                 @db.Text
+  version                   Int                     @default(1)
+  createdById               String
+  opportunity               Opportunity             @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  purchaseOrder             PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  createdBy                 AppUser                 @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  items                     InvoiceItem[]
+  salesOrder                SalesOrder?
+  pendingPayment            PendingDealPayment?
+  whatsappJobs              WhatsAppAutomationJob[]
+  createdAt                 DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                @updatedAt @db.Timestamptz(3)
 
   @@unique([opportunityId, revision])
   @@index([opportunityId, status])
@@ -829,28 +893,29 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id                String        @id @default(cuid())
+  id                String             @id @default(cuid())
   invoiceId         String
   position          Int
-  productName       String?       @db.VarChar(120)
+  productName       String?            @db.VarChar(120)
   sizeId            String?
-  size              String        @db.VarChar(40)
+  size              String             @db.VarChar(40)
   sleeveLength      SleeveLength?
-  description       String        @db.VarChar(240)
+  description       String             @db.VarChar(240)
   quantity          Int
-  unitPrice         Decimal       @db.Decimal(18, 2)
-  grossAmount       Decimal       @default(0) @db.Decimal(18, 2)
-  discountPercent   Decimal       @default(0) @db.Decimal(7, 4)
-  discountCapAmount Decimal?      @db.Decimal(18, 2)
-  discountAmount    Decimal       @default(0) @db.Decimal(18, 2)
-  profitPercent     Decimal       @default(0) @db.Decimal(7, 4)
-  profitAmount      Decimal       @default(0) @db.Decimal(18, 2)
-  total             Decimal       @default(0) @db.Decimal(18, 2)
-  subtotal          Decimal       @db.Decimal(18, 2)
-  invoice           Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  garmentSize       GarmentSize?  @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+  unitPrice         Decimal            @db.Decimal(18, 2)
+  grossAmount       Decimal            @default(0) @db.Decimal(18, 2)
+  discountType      DiscountType       @default(NONE)
+  discountPercent   Decimal            @default(0) @db.Decimal(7, 4)
+  discountCapAmount Decimal?           @db.Decimal(18, 2)
+  discountAmount    Decimal            @default(0) @db.Decimal(18, 2)
+  profitPercent     Decimal            @default(0) @db.Decimal(7, 4)
+  profitAmount      Decimal            @default(0) @db.Decimal(18, 2)
+  total             Decimal            @default(0) @db.Decimal(18, 2)
+  subtotal          Decimal            @db.Decimal(18, 2)
+  invoice           Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  garmentSize       GarmentSize?       @relation(fields: [sizeId], references: [id], onDelete: Restrict)
   addons            InvoiceItemAddon[]
-  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
 
   @@unique([invoiceId, position])
   @@index([invoiceId])
@@ -862,7 +927,9 @@ model InvoiceItemAddon {
   invoiceItemId String
   position      Int
   label         String      @db.VarChar(120)
+  description   String?     @db.VarChar(240)
   unitAmount    Decimal     @db.Decimal(18, 2)
+  qty           Int         @default(1)
   invoiceItem   InvoiceItem @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
   createdAt     DateTime    @default(now()) @db.Timestamptz(3)
 
@@ -871,44 +938,45 @@ model InvoiceItemAddon {
 }
 
 model SalesOrder {
-  id                   String               @id @default(cuid())
-  salesOrderNo         String               @unique @db.VarChar(28)
+  id                   String                @id @default(cuid())
+  salesOrderNo         String                @unique @db.VarChar(28)
   opportunityId        String
-  purchaseOrderId      String               @unique
-  invoiceId            String               @unique
-  purchaseOrderNo      String               @db.VarChar(28)
-  invoiceNo            String               @db.VarChar(28)
-  status               SalesOrderStatus     @default(ACTIVE)
-  snapshotCustomerName String               @db.VarChar(160)
-  snapshotCompanyName  String?              @db.VarChar(160)
-  snapshotWhatsapp     String?              @db.VarChar(32)
-  snapshotEmail        String?              @db.VarChar(320)
-  snapshotInstagram    String?              @db.VarChar(80)
-  snapshotAddress      String?              @db.Text
+  purchaseOrderId      String                @unique
+  invoiceId            String                @unique
+  purchaseOrderNo      String                @db.VarChar(28)
+  invoiceNo            String                @db.VarChar(28)
+  status               SalesOrderStatus      @default(ACTIVE)
+  snapshotCustomerName String                @db.VarChar(160)
+  snapshotCompanyName  String?               @db.VarChar(160)
+  snapshotWhatsapp     String?               @db.VarChar(32)
+  snapshotEmail        String?               @db.VarChar(320)
+  snapshotInstagram    String?               @db.VarChar(80)
+  snapshotAddress      String?               @db.Text
   discountType         DiscountType
-  discountValue        Decimal              @db.Decimal(7, 4)
-  subtotal             Decimal              @db.Decimal(18, 2)
-  totalDiscount        Decimal              @default(0) @db.Decimal(18, 2)
-  taxPercent           Decimal              @default(0) @db.Decimal(7, 4)
-  taxAmount            Decimal              @default(0) @db.Decimal(18, 2)
-  total                Decimal              @db.Decimal(18, 2)
-  acceptedAt           DateTime             @db.Timestamptz(3)
+  discountValue        Decimal               @db.Decimal(7, 4)
+  discountNominal      Decimal               @default(0) @db.Decimal(18, 2)
+  subtotal             Decimal               @db.Decimal(18, 2)
+  totalDiscount        Decimal               @default(0) @db.Decimal(18, 2)
+  taxPercent           Decimal               @default(0) @db.Decimal(7, 4)
+  taxAmount            Decimal               @default(0) @db.Decimal(18, 2)
+  total                Decimal               @db.Decimal(18, 2)
+  acceptedAt           DateTime              @db.Timestamptz(3)
   createdById          String
-  cancelledAt          DateTime?            @db.Timestamptz(3)
-  cancelReason         String?              @db.Text
+  cancelledAt          DateTime?             @db.Timestamptz(3)
+  cancelReason         String?               @db.Text
   cancelledById        String?
-  opportunity          Opportunity          @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  purchaseOrder        PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  invoice              Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  createdBy            AppUser              @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  cancelledBy          AppUser?             @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  opportunity          Opportunity           @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  purchaseOrder        PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  invoice              Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  createdBy            AppUser               @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy          AppUser?              @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
   items                SalesOrderItem[]
   payment              DealPayment?
-  customerReminders    CustomerReminder[]   @relation("CustomerReminderSourceOrder")
+  customerReminders    CustomerReminder[]    @relation("CustomerReminderSourceOrder")
   productionWorkOrders ProductionWorkOrder[]
   cost                 SalesOrderCost?
-  expenses             Expense[]            @relation("ExpenseSalesOrder")
-  createdAt            DateTime             @default(now()) @db.Timestamptz(3)
+  expenses             Expense[]             @relation("ExpenseSalesOrder")
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
 
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
@@ -925,6 +993,8 @@ model SalesOrderCost {
   dtfPlastisol Decimal?   @db.Decimal(18, 2)
   bordir       Decimal?   @db.Decimal(18, 2)
   lainnya      Decimal?   @db.Decimal(18, 2)
+  /// Status HPP lengkap (switch manual di kolom Status halaman Project). Saat true, Total HPP dihitung.
+  hppComplete  Boolean    @default(false)
   version      Int        @default(1)
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
   createdAt    DateTime   @default(now()) @db.Timestamptz(3)
@@ -934,38 +1004,40 @@ model SalesOrderCost {
 }
 
 model ProductionWorkOrder {
-  id                String                    @id @default(cuid())
-  workOrderNo       String                    @unique @db.VarChar(28)
-  salesOrderId      String
+  id                  String                    @id @default(cuid())
+  workOrderNo         String                    @unique @db.VarChar(28)
+  salesOrderId        String
   purchaseOrderItemId String?
-  itemName          String?                   @db.VarChar(160)
-  route             ProductionRoute
-  productName       String                    @db.VarChar(160)
-  quantity          Int
-  deadline          DateTime                  @db.Date
-  stageSequence     ProductionStage[]
-  currentStage      ProductionStage
-  status            ProductionWorkOrderStatus @default(ACTIVE)
-  sampleRevision    Int                       @default(1)
+  itemName            String?                   @db.VarChar(160)
+  route               ProductionRoute
+  productName         String                    @db.VarChar(160)
+  quantity            Int
+  deadline            DateTime                  @db.Date
+  stageSequence       ProductionStage[]
+  currentStage        ProductionStage
+  status              ProductionWorkOrderStatus @default(ACTIVE)
+  sampleRevision      Int                       @default(1)
   /// true = kartu sedang parkir di kolom Retur kanban; dilepas saat Admin menyeretnya keluar.
-  needsRepair       Boolean                   @default(false)
+  needsRepair         Boolean                   @default(false)
   /// Penanda status Retur (badge + alasan di kartu); menempel permanen, hanya diganti saat Retur berikutnya.
-  repairReason      String?                   @db.Text
+  repairReason        String?                   @db.Text
   /// Waktu Retur dicatat; tetap tersimpan sebagai riwayat walau kartu sudah Selesai.
-  repairRequestedAt DateTime?                 @db.Timestamptz(3)
-  obstacle          String?                   @db.VarChar(2000)
-  obstacleUpdatedAt DateTime?                 @db.Timestamptz(3)
-  stageEnteredAt    DateTime?                 @db.Timestamptz(3)
-  version           Int                       @default(1)
-  completedAt       DateTime?                 @db.Timestamptz(3)
-  cancelledAt       DateTime?                 @db.Timestamptz(3)
-  designCompletedAt DateTime?                 @db.Timestamptz(3)
-  salesOrder        SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
-  purchaseOrderItem PurchaseOrderItem?        @relation(fields: [purchaseOrderItemId], references: [id], onDelete: SetNull)
-  steps             ProductionStep[]
-  activities        ProductionActivity[]
-  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
+  repairRequestedAt   DateTime?                 @db.Timestamptz(3)
+  obstacle            String?                   @db.VarChar(2000)
+  obstacleUpdatedAt   DateTime?                 @db.Timestamptz(3)
+  /// true = kartu ditarik mundur dari QC; peringatan "Wajib QC" menempel sampai kartu masuk QC lagi.
+  qcReverted          Boolean                   @default(false)
+  stageEnteredAt      DateTime?                 @db.Timestamptz(3)
+  version             Int                       @default(1)
+  completedAt         DateTime?                 @db.Timestamptz(3)
+  cancelledAt         DateTime?                 @db.Timestamptz(3)
+  designCompletedAt   DateTime?                 @db.Timestamptz(3)
+  salesOrder          SalesOrder                @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  purchaseOrderItem   PurchaseOrderItem?        @relation(fields: [purchaseOrderItemId], references: [id], onDelete: SetNull)
+  steps               ProductionStep[]
+  activities          ProductionActivity[]
+  createdAt           DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                  @updatedAt @db.Timestamptz(3)
 
   @@index([salesOrderId])
   @@index([route, status, updatedAt])
@@ -1018,6 +1090,8 @@ model DealPayment {
   initialValueType  PaymentValueType
   initialValue      Decimal              @db.Decimal(18, 2)
   initialAmount     Decimal              @db.Decimal(18, 2)
+  // Deadline pembayaran awal (DP/Lunas) disalin dari jadwal; null = kolom lama sebelum fitur deadline fleksibel.
+  initialDueAt      DateTime?            @db.Date
   outstandingAmount Decimal              @db.Decimal(18, 2)
   createdById       String
   salesOrder        SalesOrder           @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
@@ -1036,7 +1110,7 @@ model PendingDealPayment {
   initialValueType PaymentValueType
   initialValue     Decimal              @db.Decimal(18, 2)
   initialAmount    Decimal              @db.Decimal(18, 2)
-  initialDueAt     DateTime             @db.Date
+  initialDueAt     DateTime?            @db.Date
   createdById      String
   invoice          Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   terms            PendingPaymentTerm[]
@@ -1053,7 +1127,7 @@ model PendingPaymentTerm {
   valueType        PaymentValueType
   value            Decimal            @db.Decimal(18, 2)
   amount           Decimal            @db.Decimal(18, 2)
-  dueAt            DateTime           @db.Date
+  dueAt            DateTime?          @db.Date
   pendingPayment   PendingDealPayment @relation(fields: [pendingPaymentId], references: [id], onDelete: Restrict)
 
   @@unique([pendingPaymentId, position])
@@ -1067,7 +1141,7 @@ model PaymentTerm {
   valueType    PaymentValueType
   value        Decimal              @db.Decimal(18, 2)
   amount       Decimal              @db.Decimal(18, 2)
-  dueAt        DateTime             @db.Date
+  dueAt        DateTime?            @db.Date
   payment      DealPayment          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   transactions PaymentTransaction[] @relation("PaymentTermTransactions")
 
@@ -1082,6 +1156,9 @@ model PaymentTransaction {
   paymentTermId   String?
   paymentMethodId String?
   amount          Decimal                  @db.Decimal(18, 2)
+  // Deposit desain dicatat terpisah dari DP (R7): transaksi ber-flag ini
+  // mewakili uang deposit, bukan pembayaran awal/ketentuan invoice.
+  isDeposit       Boolean                  @default(false)
   paidAt          DateTime                 @db.Timestamptz(3)
   reference       String?                  @db.VarChar(120)
   note            String?                  @db.VarChar(1000)
@@ -1283,25 +1360,25 @@ model WhatsAppMessage {
 }
 
 model WhatsAppCampaign {
-  id                  String                  @id @default(cuid())
-  name                String                  @db.VarChar(120)
-  body                String                  @db.Text
-  scheduledAt         DateTime                @db.Timestamptz(3)
-  status              WhatsAppCampaignStatus  @default(SCHEDULED)
-  version             Int                     @default(1)
+  id                  String                      @id @default(cuid())
+  name                String                      @db.VarChar(120)
+  body                String                      @db.Text
+  scheduledAt         DateTime                    @db.Timestamptz(3)
+  status              WhatsAppCampaignStatus      @default(SCHEDULED)
+  version             Int                         @default(1)
   recipientCursor     String?
-  startedAt           DateTime?               @db.Timestamptz(3)
-  snapshotCompletedAt DateTime?               @db.Timestamptz(3)
-  completedAt         DateTime?               @db.Timestamptz(3)
-  cancelledAt         DateTime?               @db.Timestamptz(3)
+  startedAt           DateTime?                   @db.Timestamptz(3)
+  snapshotCompletedAt DateTime?                   @db.Timestamptz(3)
+  completedAt         DateTime?                   @db.Timestamptz(3)
+  cancelledAt         DateTime?                   @db.Timestamptz(3)
   createdById         String
   updatedById         String
-  createdBy           AppUser                 @relation("WhatsAppCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy           AppUser                 @relation("WhatsAppCampaignUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  createdBy           AppUser                     @relation("WhatsAppCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy           AppUser                     @relation("WhatsAppCampaignUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
   jobs                WhatsAppAutomationJob[]
   recipients          WhatsAppCampaignRecipient[]
-  createdAt           DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime                @updatedAt @db.Timestamptz(3)
+  createdAt           DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                    @updatedAt @db.Timestamptz(3)
 
   @@index([status, scheduledAt])
   @@index([createdById, createdAt])
@@ -1339,13 +1416,13 @@ model WhatsAppAutomationJob {
   createdAt      DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
 
+  @@unique([campaignId, customerId])
   @@index([status, scheduledAt])
   @@index([status, leaseExpiresAt])
   @@index([customerId, status, scheduledAt])
   @@index([invoiceId, type, scheduledAt])
   @@index([opportunityId, type, scheduledAt])
   @@index([campaignId, status, scheduledAt])
-  @@unique([campaignId, customerId])
 }
 
 model WhatsAppCampaignRecipient {
@@ -1371,7 +1448,7 @@ model SequenceCounter {
 model InvoiceSettingPoint {
   id        String                @id @default(cuid())
   section   InvoiceSettingSection
-  text      String                @db.VarChar(300)
+  text      String                @db.Text
   isBold    Boolean               @default(false)
   position  Int                   @default(0)
   createdAt DateTime              @default(now()) @db.Timestamptz(3)

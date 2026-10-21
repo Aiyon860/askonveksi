@@ -144,12 +144,15 @@ export function decorationCostBucket(value: string | null | undefined) {
 
 // Tab peluang dimulai dari PO: kualifikasi disimpan saat peluang dibuat dan
 // halaman detail (dibuka dari kartu Negosiasi ke atas) fokus ke dokumen kerja.
-export const OPPORTUNITY_DETAIL_TABS = ["po", "invoice", "deal", "aktivitas"] as const;
+// R10: tab Deal dilebur ke Invoice — tab "deal" tidak lagi ada.
+export const OPPORTUNITY_DETAIL_TABS = ["po", "invoice", "aktivitas"] as const;
 
 export type OpportunityDetailTab = (typeof OPPORTUNITY_DETAIL_TABS)[number];
 
 export function parseOpportunityDetailTab(value: string | string[] | undefined): OpportunityDetailTab {
   const candidate = Array.isArray(value) ? value[0] : value;
+  // Tautan lama `?tab=deal` (bookmark/riwayat) diarahkan ke tab Invoice, bukan jatuh ke PO.
+  if (candidate === "deal") return "invoice";
   return OPPORTUNITY_DETAIL_TABS.includes(candidate as OpportunityDetailTab)
     ? candidate as OpportunityDetailTab
     : "po";

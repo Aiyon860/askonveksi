@@ -355,6 +355,8 @@ async function moveProduction(formData: FormData) {
         version: true,
         currentStage: true,
         needsRepair: true,
+        repairReason: true,
+        qcReverted: true,
         stageSequence: true,
         steps: { select: { id: true, stage: true, position: true, status: true, assigneeId: true } },
       },
@@ -392,6 +394,17 @@ async function moveProduction(formData: FormData) {
     if (!currentStep) throw new UserFacingError("Tahap aktif tidak valid. Muat ulang halaman.");
     if (!isStageRole(actor.role)) throw new UserFacingError("Role Anda tidak dapat memproses tahap ini.");
     if (!manager && currentStep.assigneeId !== actor.id) throw new UserFacingError("Ambil penugasan PIC tahap ini sebelum memperbarui progres.");
+    // Gerbang QC: kartu yang menempel peringatan "Wajib QC" (ditarik mundur dari
+    // kolom QC) tidak boleh mendarat melewati QC; peringatan dilepas otomatis
+    // saat kartu mendarat kembali di QC.
+    const qcIndex = order.stageSequence.indexOf("QC");
+    const targetIndex = order.stageSequence.indexOf(parsed.data.targetStage);
+    const currentIndex = order.stageSequence.indexOf(order.currentStage);
+    if (order.qcReverted && qcIndex >= 0 && targetIndex > qcIndex) {
+      throw new UserFacingError("Kartu harus melewati QC terlebih dahulu untuk melepas peringatan Wajib QC.");
+    }
+    // undefined = peringatan Wajib QC tidak diubah; mendarat di QC selalu melepasnya.
+    let qcRevertedUpdate: boolean | undefined = parsed.data.targetStage === "QC" ? false : undefined;
     let completed = false;
     let needsRepair: boolean | undefined;
     let repairReason: string | null | undefined;
@@ -405,9 +418,12 @@ async function moveProduction(formData: FormData) {
     if (order.needsRepair) needsRepair = false;
 
     if (parsed.data.decision === "SKIP") {
-      const currentIndex = order.stageSequence.indexOf(order.currentStage);
-      const targetIndex = order.stageSequence.indexOf(parsed.data.targetStage);
-      if (order.route !== "NON_JERSEY" || targetIndex <= currentIndex + 1) throw new UserFacingError("Lewati tahap hanya tersedia untuk alur Non-Jersey dan harus menuju tahap setelah tahap berikutnya.");
+      // Non-Jersey bebas melewati tahap; Jersey hanya untuk kartu ber-badge Retur
+      // (repairReason) atau Wajib QC (qcReverted). Gerbang QC di atas tetap
+      // berlaku: kartu Wajib QC hanya boleh mendarat maksimal di kolom QC.
+      const badgeSkip = order.route === "JERSEY" && (order.qcReverted || Boolean(order.repairReason));
+      if (order.route !== "NON_JERSEY" && !badgeSkip) throw new UserFacingError("Lewati tahap hanya tersedia untuk alur Non-Jersey atau kartu ber-badge Retur/Wajib QC.");
+      if (targetIndex <= currentIndex + 1) throw new UserFacingError("Lewati tahap harus menuju setelah tahap berikutnya.");
       activityType = "STAGE_SKIPPED";
       // Proses maju/kanan → kendala tahap sebelumnya dihapus dari kartu.
       obstacleUpdate = null;
@@ -454,13 +470,17 @@ async function moveProduction(formData: FormData) {
     } else if (parsed.data.decision === "REVERT") {
       // Mundur langsung: wajib alasan (min 3 karakter), pindah bersih ke tahap
       // tujuan tanpa parkir Retur dan tanpa badge Retur. Alasan tercatat di
-      // riwayat aktivitas. Keluar dari parkir Retur ikut dilepas bila ada.
-      const targetIndex = order.stageSequence.indexOf(parsed.data.targetStage);
-      const currentIndex = order.stageSequence.indexOf(order.currentStage);
+      // riwayat aktivitas dan menimpa Text Area Kendala pada kartu.
+      // Keluar dari parkir Retur ikut dilepas bila ada.
       if (targetIndex < 0 || targetIndex >= currentIndex) throw new UserFacingError("Mundur hanya ke tahap sebelum tahap sekarang.");
       const reason = parsed.data.note?.trim() ?? "";
       if (reason.length < 3) throw new UserFacingError("Alasan mundur minimal 3 karakter.");
       activityType = "STAGE_REVERTED";
+      // Alasan Mundur menggantikan isi Kendala yang lama (tanggal jejak ikut dicatat).
+      obstacleUpdate = reason.slice(0, 2000);
+      // Tarik mundur dari kolom QC ke tahap sebelumnya = peringatan "Wajib QC";
+      // independen dari Retur dan hanya dilepas saat kartu masuk QC lagi.
+      if (order.currentStage === "QC" && qcIndex >= 0 && targetIndex < qcIndex) qcRevertedUpdate = true;
       await tx.productionStep.updateMany({
         where: { workOrderId: order.id, position: { gte: targetStep.position } },
         data: { status: "PENDING", startedAt: null, completedAt: null },
@@ -489,6 +509,8 @@ async function moveProduction(formData: FormData) {
         ...(needsRepair !== undefined ? { needsRepair, repairReason, repairRequestedAt } : {}),
         // Kendala dikosongkan saat maju/lewat, jadi tanggal jejaknya ikut dihapus.
         ...(obstacleUpdate !== undefined ? { obstacle: obstacleUpdate, obstacleUpdatedAt: obstacleUpdate === null ? null : now } : {}),
+        // Peringatan Wajib QC: menempel saat REVERT dari QC, lepas saat mendarat di QC.
+        ...(qcRevertedUpdate !== undefined ? { qcReverted: qcRevertedUpdate } : {}),
         // Jejak "Masuk Pada": setiap perpindahan tahap mencatat kapan kartu masuk kolom baru.
         stageEnteredAt: now,
         version: { increment: 1 },
@@ -499,7 +521,7 @@ async function moveProduction(formData: FormData) {
     await tx.productionActivity.create({
       data: { workOrderId: order.id, actorId: actor.id, type: activityType, fromStage: order.currentStage, toStage: parsed.data.targetStage, note: parsed.data.note ?? (parsed.data.decision === "RELEASE_RETUR" ? "Keluarkan dari kolom Retur" : undefined) },
     });
-    await productionAudit(tx, actor.id, order.id, activityType, ["currentStage", "status", "version", "stageEnteredAt", ...(needsRepair !== undefined ? ["needsRepair", "repairReason"] : []), ...(obstacleUpdate !== undefined ? ["obstacle", "obstacleUpdatedAt"] : [])], { from: order.currentStage, to: parsed.data.targetStage });
+    await productionAudit(tx, actor.id, order.id, activityType, ["currentStage", "status", "version", "stageEnteredAt", ...(needsRepair !== undefined ? ["needsRepair", "repairReason"] : []), ...(obstacleUpdate !== undefined ? ["obstacle", "obstacleUpdatedAt"] : []), ...(qcRevertedUpdate !== undefined ? ["qcReverted"] : [])], { from: order.currentStage, to: parsed.data.targetStage });
     return { id: order.id };
   }, MOVE_TRANSACTION_OPTIONS);
 }

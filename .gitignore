@@ -45,6 +45,9 @@ next-env.d.ts
 # Baileys authentication state
 /.data/
 
+# Konten & gambar CMS (disimpan di disk server, bukan di repo)
+/data/
+
 .agent/
 .agents/
 .claude/

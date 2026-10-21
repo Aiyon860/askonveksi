@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, FileUp, Send } from "lucide-react";
 
-import { agreePurchaseOrderAction, confirmPurchaseOrderCustomerAction, markPurchaseOrderDesignSentAction } from "@/app/actions/crm";
+import { agreePurchaseOrderAction, markPurchaseOrderDesignSentAction } from "@/app/actions/crm";
 import { uploadDesignRevisionAction } from "@/app/actions/design";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { PurchaseOrderDepositAction, type PurchaseOrderDepositValues } from "@/components/crm/purchase-order-deposit-form";
@@ -30,7 +30,6 @@ type PurchaseOrderAgreementActionProps = {
   designMessage: string | null;
   designSentAt: Date | string | null;
   designSentByName: string | null;
-  customerConfirmedAt: Date | string | null;
   designTaskId: string | null;
   designItems: PurchaseOrderDesignItem[];
   depositRequired: boolean;
@@ -49,7 +48,6 @@ export function PurchaseOrderAgreementAction({
   designMessage,
   designSentAt,
   designSentByName,
-  customerConfirmedAt,
   designTaskId,
   designItems,
   depositRequired,
@@ -149,10 +147,8 @@ export function PurchaseOrderAgreementAction({
         <input type="hidden" name="opportunityId" value={opportunityId} />
         <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
         <input type="hidden" name="version" value={version} />
-        <label className="flex w-auto cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs">
-          <input type="checkbox" name="customerConfirmed" value="yes" required className="h-3.5 w-3.5" />
-          Customer tidak ada revisi
-        </label>
+        {/* Pengiriman otomatis menandai customer tidak ada revisi (audit), tanpa langkah konfirmasi terpisah. */}
+        <input type="hidden" name="customerConfirmed" value="yes" />
         <ConfirmSubmitButton
           className="w-auto"
           variant="outline"
@@ -160,31 +156,13 @@ export function PurchaseOrderAgreementAction({
           title={sendPdfBlockedReason ?? "Kirim 1 set PDF ke customer"}
           pendingLabel="Menandai..."
           confirmTitle="Kirim 1 set PDF ke customer?"
-          confirmDescription="Unduh PDF PO lalu kirim ke customer. Centang berarti customer menyatakan tidak ada revisi."
+          confirmDescription="Unduh PDF PO lalu kirim ke customer. Pengiriman otomatis menandai customer tidak ada revisi."
           confirmLabel="Ya, sudah dikirim"
         >
           <Send data-icon="inline-start" aria-hidden="true" />
           Kirim 1 set PDF
         </ConfirmSubmitButton>
       </form>
-      {designSentAt && !customerConfirmedAt ? (
-        <form action={confirmPurchaseOrderCustomerAction} className="contents">
-          <input type="hidden" name="opportunityId" value={opportunityId} />
-          <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
-          <input type="hidden" name="version" value={version} />
-          <ConfirmSubmitButton
-            className="w-auto"
-            variant="outline"
-            pendingLabel="Mencatat..."
-            confirmTitle="Customer tidak ada revisi?"
-            confirmDescription="Pastikan customer sudah melihat PDF dan menyatakan tidak ada revisi."
-            confirmLabel="Ya, tidak ada revisi"
-          >
-            <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
-            Konfirmasi customer
-          </ConfirmSubmitButton>
-        </form>
-      ) : null}
       <form action={agreePurchaseOrderAction} className="contents">
         <input type="hidden" name="opportunityId" value={opportunityId} />
         <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
@@ -205,7 +183,6 @@ export function PurchaseOrderAgreementAction({
       {showDepositAction && !depositPaid ? <p className="max-w-xs text-xs text-muted-foreground sm:text-right">Menunggu deposit dibayar. Klik Isi Deposit.</p> : null}
       {depositPaid && !designUploaded && !designMessage ? <p className="max-w-xs text-xs text-muted-foreground sm:text-right">Unggah desain dulu sebelum mengirim 1 set PDF.</p> : null}
       {designSentAt ? <p className="max-w-xs text-xs text-muted-foreground">1 set PDF dikirim {formatDate(designSentAt, true)}{designSentByName ? ` oleh ${designSentByName}` : ""}.</p> : null}
-      {customerConfirmedAt ? <p className="max-w-xs text-xs text-muted-foreground">Customer konfirmasi tidak ada revisi {formatDate(customerConfirmedAt, true)}.</p> : null}
       {designMessage ? <p className="max-w-xs text-xs text-muted-foreground">{designMessage}</p> : null}
     </div>
   );

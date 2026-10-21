@@ -41,7 +41,7 @@ test("master pengaturan invoice punya dua kolom poin dengan urutan manual dan pe
   assert.match(schemaSource, /enum InvoiceSettingSection \{\n  KETERANGAN\n  SYARAT_KETENTUAN\n\}/);
   const model = schemaSource.slice(schemaSource.indexOf("model InvoiceSettingPoint {"));
   assert.match(model, /section\s+InvoiceSettingSection/);
-  assert.match(model, /text\s+String\s+@db\.VarChar\(300\)/);
+  assert.match(model, /text\s+String\s+@db\.Text/);
   assert.match(model, /isBold\s+Boolean\s+@default\(false\)/);
   assert.match(model, /position\s+Int\s+@default\(0\)/);
   assert.match(model, /@@index\(\[section, position\]\)/);
@@ -50,17 +50,20 @@ test("master pengaturan invoice punya dua kolom poin dengan urutan manual dan pe
   assert.match(migrationSource, /REVOKE ALL ON TABLE "InvoiceSettingPoint" FROM anon, authenticated/);
 });
 
-test("halaman pengaturan invoice memuat editor poin dengan tombol tambah, panah, dan bold", () => {
+test("halaman pengaturan invoice memuat editor dua textarea (satu baris = satu poin)", () => {
   assert.match(masterDataSource, /export async function getInvoiceSettingPoints/);
   assert.match(masterDataSource, /requireActor\(MASTER_DATA_ROLES\)/);
   assert.match(pageSource, /InvoiceSettingsEditor/);
   assert.match(pageSource, /saveInvoiceSettingsAction/);
   assert.match(navSource, /href: "\/master-data\/invoice-settings", label: "Pengaturan invoice"/);
+  // R5 revisi: cukup dua textarea, tanpa tombol tambah poin/panah/bold.
+  assert.match(editorSource, /<Textarea/);
+  assert.match(editorSource, /name="points"/);
+  assert.match(editorSource, /splitLines/);
+  assert.doesNotMatch(editorSource, /Tambah poin/);
   for (const icon of ["ArrowUp", "ArrowDown", "Bold", "Plus", "Trash2"]) {
-    assert.match(editorSource, new RegExp(`\\b${icon}\\b`), `editor memakai ikon ${icon}`);
+    assert.doesNotMatch(editorSource, new RegExp(`\\b${icon}\\b`), `editor tidak lagi memakai ikon ${icon}`);
   }
-  assert.match(editorSource, /Tambah poin/);
-  assert.match(editorSource, /aria-pressed=\{point\.bold\}/);
 });
 
 test("action menyimpan dua kolom sekaligus dan menghapus poin yang dibuang user", () => {
@@ -97,6 +100,8 @@ test("PDF invoice mencetak poin keterangan & syarat/ketentuan sebagai ganti blok
   assert.match(invoicePdfSource, /drawPointList\("Keterangan"/);
   assert.match(invoicePdfSource, /drawPointList\("Syarat & Ketentuan"/);
   assert.match(invoicePdfSource, /point\.isBold \? bold : regular/);
+  // R5: satu poin boleh multi-baris (textarea) — pecah per \n sebelum wrap.
+  assert.match(invoicePdfSource, /split\(\/\\r\?\\n\//);
   assert.doesNotMatch(invoicePdfSource, /invoice\.notes/, "blok Catatan lama tidak dicetak lagi");
   assert.match(invoiceRouteSource, /invoiceSettingPoint\.findMany\(\{ orderBy: \[\{ section: "asc" \}, \{ position: "asc" \}\]/);
 });

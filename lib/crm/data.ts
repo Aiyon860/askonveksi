@@ -15,6 +15,7 @@ import { requireActor } from "@/lib/auth/session";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
 import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "@/lib/crm/numbers";
+import { activityStatusFromSchedule, CUSTOMER_ACTIVITY_LABELS } from "@/lib/crm/reminder-types";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type PipelineOpportunity = {
@@ -44,6 +45,7 @@ export type PipelineOpportunity = {
     productName: string;
     garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
     totalQuantity: number;
+    depositAmount: string | null;
   } | null;
   invoice: {
     id: string;
@@ -53,7 +55,7 @@ export type PipelineOpportunity = {
     version: number;
     total: string;
     issuedAt: string | null;
-    pendingPayment: { kind: "LUNAS" | "DP" | "DEPOSIT"; initialDueAt: string } | null;
+    pendingPayment: { kind: "LUNAS" | "DP" | "DEPOSIT"; initialDueAt: string | null } | null;
   } | null;
   salesOrder: {
     id: string;
@@ -91,6 +93,7 @@ const opportunitySummarySelect = {
       productName: true,
       garmentType: true,
       sizes: { select: { quantity: true } },
+      deposit: { select: { amount: true } },
     },
     orderBy: { revision: "desc" },
     take: 1,
@@ -144,8 +147,9 @@ const getCachedPipelineData = unstable_cache(
       productName: row.purchaseOrders[0].productName,
       garmentType: row.purchaseOrders[0].garmentType,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
+      depositAmount: row.purchaseOrders[0].deposit?.amount.toString() ?? null,
     } : null,
-    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), issuedAt: row.invoices[0].issuedAt?.toISOString() ?? null, pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt.toISOString() } : null } : null,
+    invoice: row.invoices[0] ? { ...row.invoices[0], total: row.invoices[0].total.toString(), issuedAt: row.invoices[0].issuedAt?.toISOString() ?? null, pendingPayment: row.invoices[0].pendingPayment ? { ...row.invoices[0].pendingPayment, initialDueAt: row.invoices[0].pendingPayment.initialDueAt?.toISOString() ?? null } : null } : null,
     salesOrder: row.salesOrders[0] ? {
       id: row.salesOrders[0].id,
       salesOrderNo: row.salesOrders[0].salesOrderNo,
@@ -322,6 +326,7 @@ export async function getCustomersForExport({
   const actor = await requireActor(MASTER_DATA_ROLES);
   const items = await getPrismaClient().customer.findMany({
     where: customerWhere(actor, query, segment),    select: {
+      id: true,
       customerNo: true,
       name: true,
       companyName: true,
@@ -331,16 +336,42 @@ export async function getCustomersForExport({
       address: true,
       city: true,
       notes: true,
+      updatedAt: true,
       customerType: { select: { name: true } },
       leadSource: { select: { name: true } },
       salesPic: { select: { name: true } },
       archivedAt: true,
+      _count: { select: { opportunities: true } },
+      opportunities: {
+        select: { updatedAt: true, stage: true },
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+      },
+      reminders: {
+        where: { resolvedAt: null, type: "REACTIVATION" },
+        select: {
+          type: true,
+          dueAt: true,
+          sourceSalesOrder: {
+            select: { id: true, salesOrderNo: true, acceptedAt: true },
+          },
+        },
+        orderBy: { dueAt: "asc" },
+      },
     },
     orderBy: customerOrderBy(sort, direction),
     // ponytail: cap 5000 agar export muat 600M.
     take: 5000,
   });
-
+  const customerIds = items.map((item) => item.id);
+  const openOpportunities = customerIds.length
+    ? await getPrismaClient().opportunity.findMany({
+        where: { customerId: { in: customerIds }, stage: { in: OPEN_STAGES } },
+        select: { customerId: true },
+        distinct: ["customerId"],
+      })
+    : [];
+  const openCustomerIds = new Set(openOpportunities.map((item) => item.customerId));
   return items.map((item) => ({
     customerNo: item.customerNo,
     name: item.name,
@@ -355,6 +386,10 @@ export async function getCustomersForExport({
     address: item.address ?? "",
     notes: item.notes ?? "",
     archivedAt: item.archivedAt,
+    activityStatus: item.archivedAt ? "Diarsipkan" : CUSTOMER_ACTIVITY_LABELS[activityStatusFromSchedule(item.reminders, new Date(), openCustomerIds.has(item.id))],
+    lastOrderAt: item.reminders[0]?.sourceSalesOrder?.acceptedAt ?? null,
+    opportunityCount: item._count.opportunities,
+    updatedAt: item.opportunities[0]?.updatedAt ?? item.updatedAt,
   }));
 }
 
@@ -704,14 +739,14 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           version: true,
           createdAt: true,
           createdBy: { select: { name: true } },
-          items: { select: { id: true, position: true, name: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true }, orderBy: { position: "asc" } },
+          items: { select: { id: true, position: true, name: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true }, orderBy: { position: "asc" } },
           sizes: { select: { id: true, position: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
           // Desain diunggah per produk, jadi statusnya dihitung dari revisi tiap produk.
           designTask: { select: { id: true, deadline: true, revisions: { select: { itemId: true, revision: true } } } },
           depositRequired: true,
-          deposit: { select: { amount: true, paidAt: true, paymentMethodId: true, reference: true, note: true, proofFileName: true, paymentMethod: { select: { name: true } } } },
+          deposit: { select: { amount: true, paidAt: true, paymentMethodId: true, reference: true, note: true, proofFileName: true, proofMimeType: true, paymentMethod: { select: { name: true } } } },
         },
         orderBy: { revision: "desc" },
       },
@@ -723,6 +758,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           status: true,
           discountType: true,
           discountValue: true,
+          discountNominal: true,
           subtotal: true,
           totalDiscount: true,
           taxPercent: true,
@@ -738,14 +774,23 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           items: {
             select: {
               id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
-              unitPrice: true, grossAmount: true, discountPercent: true, discountCapAmount: true,
+              unitPrice: true, grossAmount: true, discountType: true, discountPercent: true, discountCapAmount: true,
               discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
-              addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } },
+              addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } },
             },
             orderBy: { position: "asc" },
           },
-          salesOrder: { select: { id: true, salesOrderNo: true, status: true, payment: { select: { kind: true, transactions: { where: { status: "ACTIVE", paymentTermId: null }, select: { id: true, amount: true } }, terms: { orderBy: { position: "asc" }, select: { position: true, transactions: { where: { status: "ACTIVE" }, orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }], select: { id: true } } } } } } } },
-          pendingPayment: { select: { kind: true, initialDueAt: true } },
+          salesOrder: { select: { id: true, salesOrderNo: true, status: true, payment: { select: { kind: true, transactions: { where: { status: "ACTIVE", paymentTermId: null, isDeposit: false }, select: { id: true, amount: true } }, terms: { orderBy: { position: "asc" }, select: { position: true, transactions: { where: { status: "ACTIVE" }, orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }], select: { id: true } } } } } } } },
+          // Prefill jadwal pembayaran pada form invoice (draft & revisi).
+          pendingPayment: {
+            select: {
+              kind: true,
+              initialValueType: true,
+              initialValue: true,
+              initialDueAt: true,
+              terms: { select: { position: true, valueType: true, value: true, dueAt: true }, orderBy: { position: "asc" } },
+            },
+          },
         },
         orderBy: { revision: "desc" },
       },
@@ -863,6 +908,8 @@ export async function getFollowUpBadgeCount() {
   );
   return cached();
 }
+
+export { getDashboardFullAnalyticsData, type FullDashboardData, type DashboardQueryParams } from "@/lib/crm/dashboard-data";
 
 export async function getSalesDashboardData() {
   const actor = await requireActor(DASHBOARD_ROLES);
@@ -1331,6 +1378,7 @@ export async function getSalesOrderDetail(salesOrderId: string) {
       snapshotAddress: true,
       discountType: true,
       discountValue: true,
+      discountNominal: true,
       subtotal: true,
       total: true,
       acceptedAt: true,
@@ -1823,7 +1871,7 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
       items: { select: { id: true, position: true, name: true, garmentType: true, decorationMethods: true }, orderBy: { position: "asc" } },
       sizes: { select: { id: true, itemId: true, size: true, quantity: true }, orderBy: { position: "asc" } },
       attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
-      deposit: { select: { amount: true, paidAt: true, reference: true, note: true, proofFileName: true, paymentMethod: { select: { name: true } }, createdBy: { select: { name: true } } } },
+      deposit: { select: { amount: true, paidAt: true, reference: true, note: true, proofFileName: true, proofMimeType: true, paymentMethod: { select: { name: true } }, createdBy: { select: { name: true } } } },
       opportunity: { select: { id: true, opportunityNo: true, customer: { select: { name: true, companyName: true } } } },
     },
   }).then((order) => order
@@ -1844,6 +1892,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       status: true,
       discountType: true,
       discountValue: true,
+      discountNominal: true,
       subtotal: true,
       totalDiscount: true,
       taxPercent: true,
@@ -1854,10 +1903,11 @@ export async function getInvoiceDetail(invoiceId: string) {
       dueAt: true,
       notes: true,
       createdAt: true,
+      purchaseOrderId: true,
       opportunity: { select: { id: true, opportunityNo: true } },
-      purchaseOrder: { select: { purchaseOrderNo: true, deadline: true } },
+      purchaseOrder: { select: { purchaseOrderNo: true, deadline: true, deposit: { select: { amount: true, paidAt: true, reference: true, note: true, proofFileName: true, proofMimeType: true, paymentMethod: { select: { name: true } } } } } },
       pendingPayment: { select: { kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true }, orderBy: { position: "asc" } } } },
-      items: { select: { id: true, productName: true, size: true, description: true, quantity: true, unitPrice: true, discountPercent: true, discountAmount: true, subtotal: true, total: true, addons: { select: { label: true, unitAmount: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } },
+      items: { select: { id: true, productName: true, size: true, description: true, quantity: true, unitPrice: true, discountType: true, discountPercent: true, discountAmount: true, subtotal: true, total: true, addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } },
       salesOrder: {
         select: {
           id: true,
@@ -1866,9 +1916,10 @@ export async function getInvoiceDetail(invoiceId: string) {
             select: {
               kind: true,
               initialAmount: true,
+              initialDueAt: true,
               outstandingAmount: true,
               transactions: {
-                where: { paymentTermId: null, status: "ACTIVE" },
+                where: { paymentTermId: null, isDeposit: false, status: "ACTIVE" },
                 select: { id: true, version: true, amount: true, paidAt: true, reference: true, note: true, paymentMethodId: true, proofPath: true, proofMimeType: true, paymentMethod: { select: { name: true } } },
                 take: 1,
               },
@@ -1898,12 +1949,28 @@ export async function getInvoiceDetail(invoiceId: string) {
   return invoice ? {
     ...invoice,
     discountValue: invoice.discountValue.toString(),
+    discountNominal: invoice.discountNominal.toString(),
     subtotal: invoice.subtotal.toString(),
     totalDiscount: invoice.totalDiscount.toString(),
     taxPercent: invoice.taxPercent.toString(),
     taxAmount: invoice.taxAmount.toString(),
     totalProfit: invoice.totalProfit.toString(),
     total: invoice.total.toString(),
+    // Rakit bidang datar saja: `deposit` (berisi Decimal) tidak boleh dilempar ke Client Component.
+    purchaseOrder: {
+      purchaseOrderNo: invoice.purchaseOrder.purchaseOrderNo,
+      deadline: invoice.purchaseOrder.deadline,
+      depositAmount: invoice.purchaseOrder.deposit?.amount.toString() ?? null,
+      deposit: invoice.purchaseOrder.deposit ? {
+        amount: invoice.purchaseOrder.deposit.amount.toString(),
+        paidAt: invoice.purchaseOrder.deposit.paidAt.toISOString(),
+        reference: invoice.purchaseOrder.deposit.reference,
+        note: invoice.purchaseOrder.deposit.note,
+        proofFileName: invoice.purchaseOrder.deposit.proofFileName,
+        proofMimeType: invoice.purchaseOrder.deposit.proofMimeType,
+        paymentMethod: invoice.purchaseOrder.deposit.paymentMethod,
+      } : null,
+    },
     items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), discountPercent: item.discountPercent.toString(), discountAmount: item.discountAmount.toString(), total: item.total.toString(), subtotal: item.subtotal.toString(), addons: item.addons.map((addon) => ({ ...addon, unitAmount: addon.unitAmount.toString() })) })),
     canRecordPayment: hasRole(actor.role, DEAL_ROLES),
     paymentMethods,
@@ -1912,6 +1979,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       status: invoice.salesOrder.status,
       kind: invoice.salesOrder.payment.kind,
       initialAmount: invoice.salesOrder.payment.initialAmount.toString(),
+      initialDueAt: invoice.salesOrder.payment.initialDueAt,
       outstandingAmount: invoice.salesOrder.payment.outstandingAmount.toString(),
       initialTransaction: invoice.salesOrder.payment.transactions[0] ? { ...invoice.salesOrder.payment.transactions[0], amount: invoice.salesOrder.payment.transactions[0].amount.toString() } : null,
       terms: invoice.salesOrder.payment.terms.map(({ transactions, amount, ...term }) => ({ ...term, amount: amount.toString(), transaction: transactions[0] ? { ...transactions[0], amount: transactions[0].amount.toString() } : null })),
