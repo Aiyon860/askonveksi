@@ -82,9 +82,10 @@ Dikerjakan di cabang `feat/sprint-4-crm-broadcast` (kerja B & H sendiri tidak me
 - [ ] I2c — Portofolio hanya logo customer (butuh file logo)
 - [ ] I2d — Logo WA resmi + perbesar
 
-## SPRINT 6 — Absensi QR (J) — modul baru, terakhir
+## SPRINT 6 — Absensi kamera (J) — `[x] SELESAI (kode; uji kamera di HTTPS masih manual)`
 
-- [ ] Skema + generate/scan QR + halaman karyawan/admin + anti-titip + timezone Asia/Jakarta — **belum ada apa-apa di kode**: tidak ada model Prisma karyawan/absensi, tidak ada route QR, tidak ada kata "absensi" di `app/`/`lib/` (dicek setelah merge)
+- [x] Skema absensi + foto kamera + halaman pegawai/owner + timezone Asia/Jakarta — **dikerjakan 21 Okt 2026**. Permintaan akhir tidak memakai QR/anti-titip: absen memakai foto langsung dari kamera, lokasi sebagai bukti, dan koreksi Owner. Detail ada di bagian **Absensi** di bawah.
+- Catatan: modul lama berjudul "Absensi QR" tidak pernah ada di kode; implementasi yang disepakati adalah kamera tanpa QR.
 
 ## Masuk lewat merge `3011dac` (belum ada nomor item)
 
@@ -300,3 +301,65 @@ Studio admin untuk seluruh halaman publik (landing, portofolio, size chart, kata
 - **Belum diverifikasi:** alur simpan/pulihkan lewat browser (lingkungan ini tanpa kredensial login) — perlu uji manual: edit tiap section, unggah gambar, simpan, buka publik, dan pulihkan versi
 
 
+
+---
+
+## Absensi pegawai — kamera, laporan, dan penyimpanan VPS `[x] SELESAI (kode)`
+
+Permintaan: absensi harian dengan foto langsung dari kamera, pengaturan Owner, laporan, catatan manual, koreksi, izin, Alpha otomatis, kalender hari libur, riwayat pegawai, dan export Excel. Foto disimpan di filesystem VPS; Supabase/Postgres hanya menyimpan path relatif. Panduan operasional: `docs/PANDUAN_ABSENSI.md`.
+
+### Keputusan utama
+- [x] **Tanpa QR, check-out, payroll, radius/geofence, liveness, shift, atau pengajuan izin oleh pegawai.** Kamera adalah satu-satunya sumber foto; tidak ada `<input type="file">`/galeri.
+- [x] **Pegawai = semua `AppUser` aktif selain `OWNER`/`DEVELOPER`.** Owner/Developer tidak dihitung Alpha dan tidak memiliki tombol absen. Developer tetap dapat membuka laporan, catatan manual, koreksi, pengaturan, dan hari libur.
+- [x] **Status DB** `HADIR`, `TERLAMBAT`, `IZIN`, `ALPHA`; **`BELUM_ABSEN` hanya status tampilan/laporan** untuk hari ini tanpa record.
+- [x] **Satu record per pegawai per tanggal** (unique `userId + date`). Alpha diturunkan saat baca untuk hari kerja yang sudah lewat tanpa record, sejak tanggal akun dibuat dan **sejak Mulai berlaku absensi**, kecuali hari libur; record eksplisit selalu menang.
+- [x] **Mulai berlaku absensi** dapat diatur Owner/Developer dan tidak boleh melewati hari ini. Tanpa filter tanggal eksplisit, laporan dimulai dari tanggal ini agar simulasi dapat dimulai dari nol.
+- [x] **Foto lokal VPS**, bukan Supabase Storage. `ATTENDANCE_UPLOAD_DIR` default `./data/attendance`; produksi wajib volume persisten di luar release.
+- [x] **Lokasi hanya bukti**, tanpa radius. GPS ditolak/tidak tersedia tetap boleh absen dan ditandai "Lokasi tidak tersedia".
+
+### Skema & data
+- [x] `prisma/schema.prisma`: enum `AttendanceStatus`/`AttendanceSource`; model `Attendance` (foto, lokasi, sumber `SELF`/`OWNER`, pencatat, koreksi, audit timestamp) dan `AttendanceHoliday`; kolom `BusinessProfile.attendanceStartDate`, `attendanceCheckInTime`, `attendanceLateToleranceMin`, `attendanceWorkDays`.
+- [x] Migration manual `prisma/migrations/20261022010000_attendance/migration.sql` dan `20261022020000_attendance_start_date/migration.sql`: tabel, unique/index, FK, check constraint, RLS, revoke `anon`/`authenticated`, dan batas mulai absensi. **Sudah diterapkan ke database lokal; produksi belum.**
+- [x] `PRISMA_SCHEMA_VERSION` + delegate check di `lib/prisma.ts` diperbarui agar Prisma Client dev tidak memakai delegate lama.
+- [x] Pengaturan memakai optimistic lock `BusinessProfile.version`; koreksi memakai optimistic lock `Attendance.updatedAt`.
+
+### Alur pegawai (`/absensi`)
+- [x] Kartu absen menampilkan tanggal/jam server WIB, jam masuk, toleransi, dan status hari libur/non-kerja.
+- [x] Dialog kamera `getUserMedia` + pratinjau, ambil foto ke canvas, retake, kirim lewat Server Action. Foto klien diperkecil, server memvalidasi dan re-encode WebP (EXIF hilang).
+- [x] Hadir/Terlambat dihitung dari jam masuk + toleransi; contoh 08:00 + 15 menit → 08:15 masih Hadir.
+- [x] Setelah sukses dialog menampilkan status dan jam; halaman di-refresh saat ditutup.
+- [x] Riwayat bulanan dengan pemilih bulan, foto, lokasi, keterangan, dan status Alpha/Belum absen.
+- [x] Halaman memakai lebar penuh area kerja: hero dua kolom di `xl`, strip ringkasan enam metrik, pemilih bulan ringkas, dan tabel lima kolom dengan scroll horizontal yang dapat difokuskan keyboard.
+- [x] `Permissions-Policy: camera=(self), geolocation=(self)` khusus `/absensi`; global tetap memblokir kamera. Produksi wajib HTTPS.
+
+### Owner/Developer (`/absensi/laporan` + `/settings#absensi`)
+- [x] Filter rentang tanggal (maks 366 hari), pegawai, status, dan jumlah baris; ringkasan Hadir/Terlambat/Izin/Alpha/Belum absen/tingkat kehadiran.
+- [x] Catat manual: Hadir/Terlambat dengan jam, Izin wajib keterangan satu tanggal, Alpha tanpa jam; tanggal tidak boleh masa depan/sebelum akun dibuat.
+- [x] Koreksi status/jam/keterangan kapan saja dengan audit before/after (isi keterangan tidak disalin ke log); record mandiri tidak dihapus.
+- [x] Hapus hanya record `source=OWNER`; setelah dihapus tanggal kembali mengikuti Alpha/Belum absen otomatis.
+- [x] Export Excel mengikuti filter aktif dan mengekspor **semua** baris, bukan hanya halaman tabel.
+- [x] Pengaturan tanggal mulai absensi, jam masuk, toleransi 0–180 menit, hari kerja Senin–Minggu, dan tambah/hapus hari libur; hanya Owner/Developer yang melihat kartu.
+- [x] Laporan memakai lebar penuh area kerja: ringkasan satu strip, filter responsif, dan tabel lebar tetap agar aksi tidak terpotong.
+- [x] Foto disajikan lewat `/api/absensi/[id]/foto` yang terautentikasi: pegawai hanya foto sendiri, Owner/Developer semua; path traversal/absolut/backslash/ekstensi lain ditolak.
+- [x] Audit: clock-in, catat manual, koreksi, hapus manual, ubah pengaturan, tambah/hapus hari libur; label Indonesia ditambahkan di `lib/audit/labels.ts`.
+
+### Navigasi & tema
+- [x] Grup sidebar **Absensi** dengan tone `--nav-tone-attendance`; pegawai melihat **Absen**, Owner/Developer melihat **Laporan absensi**. Developer tetap melihat menu dan dapat membuka semua fitur baru.
+- [x] `isNavItemActive("/absensi")` exact-match supaya tidak menyalakan menu saat di `/absensi/laporan`.
+
+### Berkas utama
+- `app/actions/attendance.ts`, `lib/attendance/{constants,time,status,types,validation,report,photo,data}.ts`
+- `app/(app)/absensi/page.tsx`, `app/(app)/absensi/laporan/page.tsx`
+- `components/attendance/*`, `app/api/absensi/[id]/foto/route.ts`, `app/api/absensi/laporan/export/route.ts`
+- `app/(app)/settings/page.tsx`, `components/app-nav.tsx`, `next.config.ts`, `prisma/schema.prisma`, migration, `.env.example`
+- `docs/PANDUAN_ABSENSI.md`, tes `tests/attendance-*.test.mjs`
+
+### Verifikasi
+- [x] `node --test tests/attendance-time.test.mjs tests/attendance-report.test.mjs tests/attendance-validation.test.mjs tests/attendance-storage.test.mjs` — **22/22 lolos** (termasuk Alpha/libur/tanggal mulai, filter/ringkasan, validasi status dan tanggal mulai, path traversal, simpan/baca/hapus foto, foto bukan gambar).
+- [x] Laporan diverifikasi headless pada viewport **1920×1080** dan **390×844** dengan sesi Developer: lebar konten 1536 px, tidak ada overflow body; tabel menggeser horizontal di mobile; data awal hanya 4 baris **Belum absen** hari ini, tanpa Alpha historis.
+- [x] Halaman pegawai diverifikasi headless pada **1920×1080, 1440×900, 1280×800, 1024×768, dan 390×844**: tidak ada overflow body, ringkasan dan tabel tetap terbaca, serta dialog kamera/GPS diuji dengan perangkat simulasi. Record uji dihapus sehingga data absensi kembali 0.
+- [x] `npx tsc --noEmit` bersih; ESLint file absensi bersih; detector layout Impeccable tidak menemukan temuan; `npm run db:validate` lolos; `npm run build` sukses (route `/absensi`, `/absensi/laporan`, `/api/absensi/[id]/foto`, `/api/absensi/laporan/export` terdaftar).
+- [x] `npm test` penuh: **298/303 lolos**; 5 kegagalan lama di luar absensi (dashboard documents, CRM, analytics).
+- [ ] **Belum diuji di browser nyata**: izin kamera/GPS, tampilan dialog, dan alur retake memerlukan HTTPS + perangkat berkamera.
+- [ ] **Migration sudah diterapkan ke database lokal**, tetapi **belum ke produksi**; belum ada commit.
+- Catatan build: Turbopack masih memberi 3 peringatan dynamic filesystem access dari modul CMS yang sudah ada; modul foto absensi tidak memicu peringatan. Build tetap exit 0.

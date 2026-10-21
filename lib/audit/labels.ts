@@ -77,6 +77,15 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   EXPENSE_DELETED: "Hapus pengeluaran",
   EXPENSE_RESTORED: "Pulihkan pengeluaran",
   EXPENSE_REIMBURSED: "Tandai pengeluaran sudah diganti",
+  // Absensi
+  ATTENDANCE_CLOCKED_IN: "Absen masuk",
+  ATTENDANCE_MANUAL_RECORDED: "Catat absensi manual",
+  ATTENDANCE_CORRECTED: "Koreksi absensi",
+  ATTENDANCE_MANUAL_DELETED: "Hapus absensi manual",
+  ATTENDANCE_SETTINGS_UPDATED: "Ubah pengaturan absensi",
+  ATTENDANCE_HOLIDAY_CREATED: "Tambah hari libur",
+  ATTENDANCE_HOLIDAY_UPDATED: "Ubah hari libur",
+  ATTENDANCE_HOLIDAY_DELETED: "Hapus hari libur",
   // Campaign promo & WhatsApp
   CAMPAIGN_CREATED: "Buat campaign promo",
   CAMPAIGN_UPDATED: "Ubah campaign promo",
@@ -120,6 +129,9 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {
   AppUser: "Pengguna",
+  Attendance: "Absensi",
+  AttendanceHoliday: "Hari libur absensi",
+  AttendanceSetting: "Pengaturan absensi",
   BusinessProfile: "Profil perusahaan",
   CRMNote: "Catatan CRM",
   Customer: "Customer",

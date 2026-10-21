@@ -1,13 +1,14 @@
 # ERM Askonveksi
 
-Aplikasi operasional internal berbasis Next.js 16, Prisma, PostgreSQL Supabase, dan Supabase Auth. Implementasi saat ini mencakup CRM pipeline, customer, revisi Purchase Order dan invoice, pencatatan DP/lunas, Sales Order immutable, RBAC, serta audit log.
+Aplikasi operasional internal berbasis Next.js 16, Prisma, PostgreSQL Supabase, dan Supabase Auth. Implementasi saat ini mencakup CRM pipeline, customer, revisi Purchase Order dan invoice, pencatatan DP/lunas, Sales Order immutable, absensi pegawai berbasis kamera, RBAC, serta audit log.
 
 ## Menjalankan secara lokal
 
 1. Salin `.env.example` menjadi `.env` dan isi seluruh konfigurasi Supabase/database.
-2. Isi `DIRECT_DATABASE_URL` dengan direct connection atau Supavisor session mode. Untuk migration reset CRM 2026-09-02, siapkan storage melalui Storage API, lalu terapkan migration dan buat Prisma Client. Perintah storage mengosongkan serta menghapus bucket bukti persetujuan lama secara permanen.
-3. Buat Owner pertama satu kali.
-4. Jalankan development server.
+2. Isi `DIRECT_URL` dengan direct connection atau Supavisor session mode. Untuk migration reset CRM 2026-09-02, siapkan storage melalui Storage API, lalu terapkan migration dan buat Prisma Client. Perintah storage mengosongkan serta menghapus bucket bukti persetujuan lama secara permanen.
+3. Isi `ATTENDANCE_UPLOAD_DIR` (opsional di lokal, default `./data/attendance`). Di produksi gunakan folder persisten di luar release, misalnya `/var/lib/askonveksi/attendance`.
+4. Buat Owner pertama satu kali.
+5. Jalankan development server.
 
 ```bash
 rtk npm run crm:reset-storage
@@ -39,11 +40,15 @@ Script aman dijalankan ulang, menolak berjalan saat `NODE_ENV=production`, dan m
 - Tabel aplikasi mengaktifkan RLS serta mencabut akses langsung role `anon`/`authenticated`.
 - PO Disepakati, invoice Terbit, dan Sales Order disimpan sebagai dokumen historis yang tidak diedit langsung.
 - Lampiran desain PO berada di bucket privat dan hanya diunduh melalui route yang terautentikasi.
+- Foto absensi disimpan di filesystem VPS (`ATTENDANCE_UPLOAD_DIR`); database hanya menyimpan path relatif. Foto diambil langsung dari kamera (tanpa unggah galeri), di-reencode ke WebP, dan disajikan lewat route terautentikasi.
+- Absensi memakai jam WIB, toleransi keterlambatan, hari kerja, dan kalender hari libur. Owner/Developer mengelola laporan, koreksi, catatan manual, dan pengaturan; Developer tetap memiliki akses penuh ke fitur baru.
 
 ## Verifikasi
 
 ```bash
 rtk npm test
+# tes absensi saja
+rtk node --test tests/attendance-time.test.mjs tests/attendance-report.test.mjs tests/attendance-validation.test.mjs tests/attendance-storage.test.mjs
 rtk npm run db:validate
 rtk npm run db:generate
 rtk npm run lint
@@ -54,4 +59,4 @@ rtk npm run build -- --webpack
 
 Build webpack disediakan sebagai jalur verifikasi bila Turbopack tidak diizinkan membuka port proses oleh environment sandbox.
 
-Dokumentasi database lebih lanjut tersedia di [docs/PRISMA_SETUP.md](docs/PRISMA_SETUP.md). Keputusan terbaru pipeline CRM tersedia di [PipelineCRM_Baru.md](PipelineCRM_Baru.md).
+Dokumentasi database lebih lanjut tersedia di [docs/PRISMA_SETUP.md](docs/PRISMA_SETUP.md). Panduan absensi, termasuk konfigurasi kamera/HTTPS, penyimpanan VPS, migration, dan backup, tersedia di [docs/PANDUAN_ABSENSI.md](docs/PANDUAN_ABSENSI.md). Keputusan terbaru pipeline CRM tersedia di [PipelineCRM_Baru.md](PipelineCRM_Baru.md).

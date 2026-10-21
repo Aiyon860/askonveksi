@@ -14,6 +14,12 @@ export const ARCHIVE_ROLES = CRM_OPERATOR_ROLES;
 export const REVERSE_DEAL_ROLES = DEAL_ROLES;
 export const USER_ADMIN_ROLES = ["DEVELOPER"] as const satisfies readonly AppRole[];
 export const OWNER_ACTION_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
+// Absensi: Owner mengelola pengaturan, laporan, koreksi, dan hari libur.
+// Developer selalu lolos lewat hasRole. Pegawai = semua role selain Owner/Developer.
+export const ATTENDANCE_ADMIN_ROLES = OWNER_ACTION_ROLES;
+export function isAttendanceEmployee(role: AppRole) {
+  return role !== "OWNER" && role !== "DEVELOPER";
+}
 // Konten website dikelola Owner; Developer selalu lolos lewat hasRole.
 export const CMS_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
 export const MASTER_DATA_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];

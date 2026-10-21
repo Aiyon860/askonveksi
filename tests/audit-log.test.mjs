@@ -8,6 +8,13 @@ import { AUDIT_VIEW_ROLES, hasRole } from "../lib/auth/permissions.ts";
 // Daftar aksi yang sudah terbukti tertulis ke AuditEvent (union DB lokal + kode penulis audit).
 // Kalau ada aksi baru, tambahkan ke registry supaya labelnya tetap rapi.
 const KNOWN_ACTIONS = [
+  "ATTENDANCE_CLOCKED_IN",
+  "ATTENDANCE_CORRECTED",
+  "ATTENDANCE_HOLIDAY_CREATED",
+  "ATTENDANCE_HOLIDAY_DELETED",
+  "ATTENDANCE_MANUAL_DELETED",
+  "ATTENDANCE_MANUAL_RECORDED",
+  "ATTENDANCE_SETTINGS_UPDATED",
   "BUSINESS_PROFILE_UPDATED",
   "CAMPAIGN_CREATED",
   "CAMPAIGN_DELETED",
@@ -109,6 +116,9 @@ const KNOWN_ACTIONS = [
 
 const KNOWN_ENTITY_TYPES = [
   "AppUser",
+  "Attendance",
+  "AttendanceHoliday",
+  "AttendanceSetting",
   "BusinessProfile",
   "CRMNote",
   "Customer",

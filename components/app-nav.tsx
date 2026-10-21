@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BarChart3, Building2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,9 @@ import { cn } from "@/lib/utils";
 const mainItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 ] as const;
+
+const attendanceEmployeeItem = { href: "/absensi", label: "Absen", icon: CalendarCheck2 } as const;
+const attendanceReportItem = { href: "/absensi/laporan", label: "Laporan absensi", icon: ClipboardList } as const;
 
 const financeItems = [
   { href: "/keuangan/pemasukan", label: "Project", icon: Wallet },
@@ -71,6 +74,7 @@ function isPathWithin(pathname: string, href: string) {
 }
 
 function isNavItemActive(pathname: string, href: string) {
+  if (href === "/absensi") return pathname === href;
   if (href === "/crm") return pathname === href || isPathWithin(pathname, "/crm/peluang");
   if (href === "/crm/sales-orders") return isPathWithin(pathname, href) || isPathWithin(pathname, "/sales-orders");
   if (href === "/crm/follow-up") return pathname === href;
@@ -155,10 +159,16 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   // Admin Customer hanya melihat modul Produksi (mode lihat saja); aksi tetap terbatas tim Produksi.
   const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PO" || role === "ADMIN_CUSTOMER";
   const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
+  const canClockIn = role !== "OWNER" && role !== "DEVELOPER";
+  const canViewAttendanceReport = isDeveloper || role === "OWNER";
   const canManageWebsite = isDeveloper || role === "OWNER";
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
+      <NavGroup label={<span>Absensi</span>} icon={CalendarCheck2} tone="text-nav-tone-attendance">
+        {canClockIn ? <NavLink pathname={pathname} item={attendanceEmployeeItem} nested tone="text-nav-tone-attendance" onNavigate={onNavigate} /> : null}
+        {canViewAttendanceReport ? <NavLink pathname={pathname} item={attendanceReportItem} nested tone="text-nav-tone-attendance" onNavigate={onNavigate} /> : null}
+      </NavGroup>
       {canViewFinance ? (
         <NavGroup label={<span>Keuangan</span>} icon={Banknote} tone="text-nav-tone-finance">
           {financeItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-finance" onNavigate={onNavigate} />)}

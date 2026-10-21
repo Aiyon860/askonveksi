@@ -20,6 +20,18 @@ enum AppRole {
   QC
 }
 
+enum AttendanceStatus {
+  HADIR
+  TERLAMBAT
+  IZIN
+  ALPHA
+}
+
+enum AttendanceSource {
+  SELF
+  OWNER
+}
+
 enum DesignRevisionStatus {
   PENDING_REVIEW
   APPROVED
@@ -314,6 +326,9 @@ model AppUser {
   updatedWhatsAppCampaigns  WhatsAppCampaign[]        @relation("WhatsAppCampaignUpdatedBy")
   expenses                  Expense[]
   deletedExpenses           Expense[]                 @relation("ExpenseDeletedBy")
+  attendances               Attendance[]              @relation("AttendanceUser")
+  recordedAttendances       Attendance[]              @relation("AttendanceRecordedBy")
+  correctedAttendances      Attendance[]              @relation("AttendanceCorrectedBy")
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -430,21 +445,63 @@ model ProductCategory {
 }
 
 model BusinessProfile {
-  id                     String   @id @default("default") @db.VarChar(32)
-  name                   String   @db.VarChar(160)
-  phone                  String?  @db.VarChar(32)
-  email                  String?  @db.VarChar(320)
-  address                String?  @db.Text
-  logoPath               String?  @db.VarChar(500)
-  signaturePath          String?  @db.VarChar(500)
-  signatureName          String?  @db.VarChar(160)
-  signatureTitle         String?  @db.VarChar(120)
-  invoiceNotes           String?  @db.Text
-  invoiceReminderOffsets Int[]    @default([-3, 0, 3])
-  repeatOrderIntervals   Int[]    @default([6, 5])
-  version                Int      @default(1)
-  createdAt              DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+  id                         String   @id @default("default") @db.VarChar(32)
+  name                       String   @db.VarChar(160)
+  phone                      String?  @db.VarChar(32)
+  email                      String?  @db.VarChar(320)
+  address                    String?  @db.Text
+  logoPath                   String?  @db.VarChar(500)
+  signaturePath              String?  @db.VarChar(500)
+  signatureName              String?  @db.VarChar(160)
+  signatureTitle             String?  @db.VarChar(120)
+  invoiceNotes               String?  @db.Text
+  invoiceReminderOffsets     Int[]    @default([-3, 0, 3])
+  repeatOrderIntervals       Int[]    @default([6, 5])
+  attendanceStartDate        DateTime @default(dbgenerated("((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')::date)")) @db.Date
+  attendanceCheckInTime      String   @default("08:00") @db.VarChar(5)
+  attendanceLateToleranceMin Int      @default(15)
+  attendanceWorkDays         Int[]    @default([1, 2, 3, 4, 5, 6])
+  version                    Int      @default(1)
+  createdAt                  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model Attendance {
+  id             String           @id @default(cuid())
+  userId         String
+  date           DateTime         @db.Date
+  status         AttendanceStatus
+  checkInAt      DateTime?        @db.Timestamptz(3)
+  note           String?          @db.VarChar(500)
+  photoPath      String?          @db.VarChar(500)
+  photoMimeType  String?          @db.VarChar(100)
+  photoSize      Int?
+  latitude       Decimal?         @db.Decimal(9, 6)
+  longitude      Decimal?         @db.Decimal(9, 6)
+  accuracyMeters Int?
+  locationAt     DateTime?        @db.Timestamptz(3)
+  source         AttendanceSource
+  recordedById   String?
+  correctedById  String?
+  correctedAt    DateTime?        @db.Timestamptz(3)
+  user           AppUser          @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Restrict)
+  recordedBy     AppUser?         @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  correctedBy    AppUser?         @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, date])
+  @@index([date, status])
+  @@index([recordedById])
+  @@index([correctedById])
+}
+
+model AttendanceHoliday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model Customer {
