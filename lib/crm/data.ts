@@ -739,7 +739,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           version: true,
           createdAt: true,
           createdBy: { select: { name: true } },
-          items: { select: { id: true, position: true, name: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true }, orderBy: { position: "asc" } },
+          items: { select: { id: true, position: true, name: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true }, orderBy: { position: "asc" } },
           sizes: { select: { id: true, position: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },

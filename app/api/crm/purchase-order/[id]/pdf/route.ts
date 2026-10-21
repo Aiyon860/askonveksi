@@ -33,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       include: {
         opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
         productCategory: { select: { name: true } },
-        items: { select: { id: true, name: true, garmentType: true, decorationMethods: true, designNotes: true, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
+        items: { select: { id: true, name: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, penjahitDesignType: true, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
         sizes: { select: { itemId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
         rosterEntries: { select: { itemId: true, memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
         attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
@@ -65,7 +65,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     itemId,
     caption: itemNames.get(itemId) ? `Desain produksi ${itemNames.get(itemId)}` : "Desain produksi",
   })));
-  const assets = (await Promise.all([...purchaseOrder.attachments, ...designAttachments].map(async (item) => {
+  // Sprint 11 R3: varian penjahit menampilkan Desain Penjahit tiap produk di atas
+  // gambar desain produksi; varian customer tidak menyertakannya (PDF customer tak berubah).
+  const penjahitAssets =
+    variant === "penjahit"
+      ? (await Promise.all(
+          purchaseOrder.items.map(async (item) => {
+            const path = item.penjahitDesignPath;
+            if (!path) return null;
+            const label = `Desain penjahit ${item.name}`;
+            const originalName = item.penjahitDesignName ?? label;
+            const { data } = await storage.from("crm-po-designs").download(path);
+            if (!data) return null;
+            try {
+              return { kind: "PENJAHIT_DESIGN", label, originalName, contentType: "image/png", bytes: await normalizePdfImage(new Uint8Array(await data.arrayBuffer())), itemId: item.id as string | null };
+            } catch {
+              return { kind: "PENJAHIT_DESIGN", label, originalName, contentType: item.penjahitDesignType ?? "image/png", bytes: new Uint8Array(), itemId: item.id as string | null };
+            }
+          }),
+        )).filter((asset): asset is NonNullable<typeof asset> => asset !== null)
+      : [];
+  const assets = [...penjahitAssets, ...(await Promise.all([...purchaseOrder.attachments, ...designAttachments].map(async (item) => {
     const label = item.caption || ATTACHMENT_LABEL[item.kind] || item.originalName;
     // `itemId` wajib diteruskan agar gambar desain menempel di lembar produknya,
     // bukan jatuh ke lembar penutup di akhir dokumen.
@@ -78,7 +98,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     } catch {
       return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array(), itemId };
     }
-  }))).filter((item): item is NonNullable<typeof item> => item !== null);
+  }))).filter((item): item is NonNullable<typeof item> => item !== null)];
   const profile = purchaseOrder.status === "DRAFT" ? currentBusiness : null;
   const pdf = await createPurchaseOrderPdf({
     ...purchaseOrder,

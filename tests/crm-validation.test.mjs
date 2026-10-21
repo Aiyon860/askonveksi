@@ -1361,6 +1361,40 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /const blockHeight = 16 \+ lines\.length \* 16 \+ 6;\n\s*if \(y - blockHeight < margin\) addPage\(\);/);
   assert.match(buttonSource, /PDF Customer/);
   assert.match(buttonSource, /PDF Penjahit/);
+  // Sprint 11 R3: varian penjahit menambah deadline per item (null → "-") + gambar desain penjahit;
+  // sel Deadline pelanggan tetap persis seperti sebelumnya (uji regex di atas tetap cocok).
+  assert.match(pdfSource, /penjahitDeadline/);
+  assert.match(pdfSource, /label: "Deadline penjahit"/);
+  assert.match(pdfSource, /label: "Deadline produksi"/);
+  assert.match(routeSource, /Desain penjahit \$\{item\.name\}/);
+  assert.match(routeSource, /penjahitDesignPath/);
+});
+
+test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desain", async () => {
+  const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../prisma/migrations/20261021010000_purchase_order_item_penjahit/migration.sql", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8");
+  const buttonSource = await readFile(new URL("../components/crm/purchase-order-pdf-download-button.tsx", import.meta.url), "utf8");
+  const serveSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/items/[itemId]/penjahit-design/route.ts", import.meta.url), "utf8");
+  // Skema per item: deadline penjahit + kolom desain (migrasi manual, tanpa backfill).
+  assert.match(schema, /penjahitDeadline\s+DateTime\?\s+@db\.Date/);
+  assert.match(schema, /penjahitDesignPath\s+String\?\s+@db\.VarChar\(500\)/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "penjahitDeadline" DATE/);
+  // Aksi terpisah dari form PO: gate DRAFT/AGREED (developer/owner lolos), optimistic version, audit.
+  assert.match(actionSource, /export async function savePenjahitPlanAction/);
+  assert.match(actionSource, /purchaseOrder\.status !== "DRAFT" && purchaseOrder\.status !== "AGREED"/);
+  assert.match(actionSource, /where: \{ id: purchaseOrder\.id, version: parsed\.data\.version \}/);
+  assert.match(actionSource, /PENJAHIT_PLAN_UPDATED/);
+  // Dialog khusus field penjahit (bukan form PO penuh) + tombol menempel di samping unduh.
+  assert.match(dialogSource, /Edit PDF Penjahit/);
+  assert.match(dialogSource, /savePenjahitPlanAction/);
+  assert.match(dialogSource, /deadline-\$\{item\.id\}/);
+  assert.match(dialogSource, /design-\$\{item\.id\}/);
+  assert.match(buttonSource, /PenjahitPlanDialog/);
+  // Rute preview desain penjahit per item (hanya pemilik PO yang boleh).
+  assert.match(serveSource, /penjahitDesignPath/);
+  assert.match(serveSource, /CRM_VIEW_ROLES/);
 });
 
 test("pratinjau roster mengisi matriks otomatis", async () => {

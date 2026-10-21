@@ -11,6 +11,7 @@ import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/sess
 import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
+import { designImageContentType, designImageExtensionFor, designImageRejection, type DesignImageMime } from "@/lib/design/image";
 import { calculateInvoiceLines, roundInvoiceTotal, type InvoiceDiscountType, type InvoiceOrderDiscountInput, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
@@ -34,6 +35,7 @@ import {
   invoiceDraftSchema,
   invoiceIdSchema,
   paymentDeadlineUpdateSchema,
+  PURCHASE_ORDER_ATTACHMENT_MAX_BYTES,
   purchaseOrderDraftSchema,
   purchaseOrderIdSchema,
   payInvoicePaymentTermSchema,
@@ -50,6 +52,7 @@ import {
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { proofRequired, uploadPaymentProof, type PaymentProof } from "@/lib/payment-proof";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { ensureProductionWorkOrder } from "@/lib/production/service";
 import { enqueueIssuedInvoiceWhatsAppJob, enqueueManualWhatsAppMessage } from "@/lib/whatsapp/jobs";
 import { DEFAULT_ORDER_REMINDER_TEMPLATE, renderWhatsAppTemplate } from "@/lib/whatsapp/core";
@@ -1774,6 +1777,119 @@ export async function recordPurchaseOrderDepositAction(_prevState: CrmActionStat
     revalidatePath("/crm");
     revalidatePurchaseOrderList();
     revalidatePath(`/crm/peluang/${opportunityId}`);
+    return crmActionSuccess();
+  } catch (error) {
+    return crmActionFailure(error);
+  }
+}
+
+/**
+ * Sprint 11 (R3): dialog "Edit PDF Penjahit" — deadline penjahit per produk + desain
+ * penjahit (maks 1 gambar per item; file baru menimpa yang lama). Aksi terpisah dari
+ * form PO supaya data customer tidak ikut tersentuh dan alur revisi PO tidak terpicu.
+ * Kunci form per item: `deadline-<itemId>` ("" = kosong), `design-<itemId>` (file),
+ * `removeDesign-<itemId>` = "1" (hapus desain lama tanpa file baru).
+ */
+type PenjahitDesignUpload = { itemId: string; bytes: Uint8Array; contentType: DesignImageMime; originalName: string; path: string };
+
+async function preparePenjahitDesign(file: File, itemId: string): Promise<PenjahitDesignUpload> {
+  if (file.size > PURCHASE_ORDER_ATTACHMENT_MAX_BYTES) throw new UserFacingError(`Gambar desain penjahit maksimal 5 MB (${file.name}).`);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const contentType = designImageContentType(file.name, bytes);
+  if (!contentType) throw new UserFacingError(designImageRejection(file.name));
+  return {
+    itemId,
+    bytes,
+    contentType,
+    originalName: file.name.replace(/[\\/\r\n]/g, "-").slice(0, 255) || "desain-penjahit",
+    path: `penjahit/${itemId}/${randomUUID()}.${designImageExtensionFor(contentType)}`,
+  };
+}
+
+export async function savePenjahitPlanAction(_prevState: CrmActionState, formData: FormData): Promise<CrmActionState> {
+  try {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderIdSchema.safeParse({ purchaseOrderId: formValue(formData, "purchaseOrderId"), version: formValue(formData, "version") });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    const prisma = getPrismaClient();
+    const purchaseOrder = await prisma.purchaseOrder.findUnique({
+      where: { id: parsed.data.purchaseOrderId },
+      select: {
+        id: true,
+        purchaseOrderNo: true,
+        status: true,
+        opportunityId: true,
+        version: true,
+        items: { orderBy: { position: "asc" }, select: { id: true, name: true, penjahitDesignPath: true } },
+      },
+    });
+    if (!purchaseOrder) throw new UserFacingError("Purchase order tidak ditemukan.");
+    if (!purchaseOrder.items.length) throw new UserFacingError("PO belum memiliki produk, jadi deadline penjahit belum bisa diisi.");
+    if ((purchaseOrder.status !== "DRAFT" && purchaseOrder.status !== "AGREED") && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("Deadline & desain penjahit hanya dapat diubah selama PO berstatus Draft atau Disepakati.");
+    if (purchaseOrder.version !== parsed.data.version) throw new UserFacingError("PO sudah berubah di tab lain. Muat ulang halaman lalu coba lagi.");
+
+    const deadlines = new Map<string, Date | null>();
+    const uploads: PenjahitDesignUpload[] = [];
+    const removals: Array<{ itemId: string; oldPath: string }> = [];
+    const supersededPaths: string[] = [];
+    for (const item of purchaseOrder.items) {
+      const rawDeadline = formData.get(`deadline-${item.id}`);
+      // Kunci selalu ada di dialog; "" berarti mengosongkan deadline, kehilangan kunci = tidak diubah.
+      if (typeof rawDeadline === "string") deadlines.set(item.id, optionalDate(rawDeadline.trim() || undefined));
+      const design = formData.get(`design-${item.id}`);
+      if (design instanceof File && design.size > 0) {
+        uploads.push(await preparePenjahitDesign(design, item.id));
+        if (item.penjahitDesignPath) supersededPaths.push(item.penjahitDesignPath);
+      } else if (formData.get(`removeDesign-${item.id}`) === "1" && item.penjahitDesignPath) {
+        removals.push({ itemId: item.id, oldPath: item.penjahitDesignPath });
+      }
+    }
+    if (!deadlines.size && !uploads.length && !removals.length) throw new UserFacingError("Tidak ada perubahan untuk disimpan.");
+
+    const storage = createAdminClient().storage.from("crm-po-designs");
+    try {
+      for (const upload of uploads) {
+        const { error } = await storage.upload(upload.path, upload.bytes, { contentType: upload.contentType, upsert: false });
+        if (error) throw new UserFacingError("Gambar desain penjahit belum dapat disimpan.");
+      }
+      await prisma.$transaction(async (tx) => {
+        const guarded = await tx.purchaseOrder.updateMany({ where: { id: purchaseOrder.id, version: parsed.data.version }, data: { version: { increment: 1 } } });
+        if (guarded.count === 0) throw new UserFacingError("PO sudah berubah di tab lain. Muat ulang halaman lalu coba lagi.");
+        const current = await tx.purchaseOrder.findUnique({ where: { id: purchaseOrder.id }, select: { status: true } });
+        if (!current || ((current.status !== "DRAFT" && current.status !== "AGREED") && !hasRole(actor.role, GATE_OVERRIDE_ROLES))) throw new UserFacingError("PO tidak lagi berstatus Draft atau Disepakati.");
+        for (const item of purchaseOrder.items) {
+          const upload = uploads.find((entry) => entry.itemId === item.id);
+          const removal = removals.find((entry) => entry.itemId === item.id);
+          const hasDeadline = deadlines.has(item.id);
+          if (!hasDeadline && !upload && !removal) continue;
+          await tx.purchaseOrderItem.update({
+            where: { id: item.id },
+            data: {
+              ...(hasDeadline ? { penjahitDeadline: deadlines.get(item.id) ?? null } : {}),
+              ...(upload ? { penjahitDesignPath: upload.path, penjahitDesignName: upload.originalName, penjahitDesignType: upload.contentType } : {}),
+              ...(removal ? { penjahitDesignPath: null, penjahitDesignName: null, penjahitDesignType: null } : {}),
+            },
+          });
+        }
+        await audit(tx, actor, "PurchaseOrder", purchaseOrder.id, "PENJAHIT_PLAN_UPDATED", ["penjahitDeadline", "penjahitDesign"], {
+          purchaseOrderNo: purchaseOrder.purchaseOrderNo,
+          deadlineCount: deadlines.size,
+          uploadCount: uploads.length,
+          removalCount: removals.length,
+        });
+      }, DOCUMENT_DRAFT_TRANSACTION_OPTIONS);
+    } catch (error) {
+      // Berkas baru dibatalkan; berkas lama masih dirujuk DB lama sehingga PDF lama tetap tampil.
+      await Promise.all(uploads.map((upload) => storage.remove([upload.path])));
+      throw error;
+    }
+    // File lama dilepas hanya setelah transaksi sukses (best-effort): object storage bukan sumber data.
+    await Promise.all([...supersededPaths, ...removals.map((entry) => entry.oldPath)].map((path) => storage.remove([path])));
+
+    revalidatePath("/crm");
+    revalidatePurchaseOrderList();
+    revalidatePath(`/crm/peluang/${purchaseOrder.opportunityId}`);
     return crmActionSuccess();
   } catch (error) {
     return crmActionFailure(error);

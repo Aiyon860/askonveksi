@@ -295,6 +295,13 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     })()}
                     purchaseOrderNoPreview={purchaseOrderNoPreview}
                     defaultInstansi={opportunity.customer.companyName ?? opportunity.customer.name}
+                    penjahitItems={purchaseOrder.items.map((item) => ({
+                      id: item.id,
+                      name: item.name,
+                      deadline: dateInputValue(item.penjahitDeadline) || null,
+                      hasDesign: Boolean(item.penjahitDesignPath),
+                      designName: item.penjahitDesignName,
+                    }))}
                   >
                     <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
                   </PurchaseOrderWorkflowSection>

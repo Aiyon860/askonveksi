@@ -2,9 +2,19 @@
 
 import { Eye } from "lucide-react";
 
+import { PenjahitPlanDialog, type PenjahitPlanItem } from "@/components/crm/penjahit-plan-dialog";
 import { Button } from "@/components/ui/button";
 
-export function PurchaseOrderPdfDownloadButton({ purchaseOrderId, purchaseOrderNo }: { purchaseOrderId: string; purchaseOrderNo: string }) {
+export function PurchaseOrderPdfDownloadButton({
+  purchaseOrderId,
+  purchaseOrderNo,
+  penjahit,
+}: {
+  purchaseOrderId: string;
+  purchaseOrderNo: string;
+  /** Sprint 11 (R3): tombol Edit PDF Penjahit menempel di samping dua tombol unduh varian. */
+  penjahit: { version: number; canEdit: boolean; items: PenjahitPlanItem[] };
+}) {
   return (
     <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
       <Button
@@ -26,6 +36,7 @@ export function PurchaseOrderPdfDownloadButton({ purchaseOrderId, purchaseOrderN
         <Eye data-icon="inline-start" aria-hidden="true" />
         PDF Penjahit
       </Button>
+      <PenjahitPlanDialog purchaseOrderId={purchaseOrderId} purchaseOrderNo={purchaseOrderNo} version={penjahit.version} canEdit={penjahit.canEdit} items={penjahit.items} />
     </div>
   );
 }
