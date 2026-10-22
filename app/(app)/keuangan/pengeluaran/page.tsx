@@ -62,7 +62,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
 
   return <>
     <AutoRefresh />
-    <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><ExportButton dataset="pengeluaran" params={exportParams} /><ExpenseForm methods={methods} /></div>} />
+    <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><ExportButton workbookScope="pengeluaran" params={exportParams} /><ExpenseForm methods={methods} /></div>} />
     <PageMessage />
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">

@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { runFinanceWorkbookExport } from "@/lib/export/run-finance-workbook";
 import { ExportCancelledError, runExcelExport, type ExportProgress } from "@/lib/export/run-export";
+import type { FinanceWorkbookScope } from "@/lib/export/workbook-types";
 import { cn } from "@/lib/utils";
 
 function progressDescription(progress: ExportProgress) {
@@ -23,7 +25,11 @@ function progressDescription(progress: ExportProgress) {
     : `Menyusun ${rows} dari ${total} baris${percent}`;
 }
 
-async function exportWithToast(dataset: string, params: Record<string, string | undefined>) {
+type ExportTarget =
+  | { dataset: string; params: Record<string, string | undefined> }
+  | { workbookScope: FinanceWorkbookScope; params: Record<string, string | undefined> };
+
+async function exportWithToast(target: ExportTarget) {
   const controller = new AbortController();
   const toastId = toast.add({
     type: "loading",
@@ -38,12 +44,10 @@ async function exportWithToast(dataset: string, params: Record<string, string | 
   });
 
   try {
-    const result = await runExcelExport({
-      dataset,
-      params,
-      signal: controller.signal,
-      onProgress: (progress) => toast.update(toastId, { description: progressDescription(progress) }),
-    });
+    const onProgress = (progress: ExportProgress) => toast.update(toastId, { description: progressDescription(progress) });
+    const result = "workbookScope" in target
+      ? await runFinanceWorkbookExport({ scope: target.workbookScope, params: target.params, signal: controller.signal, onProgress })
+      : await runExcelExport({ dataset: target.dataset, params: target.params, signal: controller.signal, onProgress });
 
     if (!result.rows) {
       toast.update(toastId, {
@@ -95,20 +99,27 @@ type SharedProps = {
 
 export function ExportButton({
   dataset,
+  workbookScope,
   params,
   label = "Export Excel",
   size = "default",
   variant = "outline",
   className,
   disabled,
-}: SharedProps & { dataset: string }) {
+}: SharedProps & { dataset?: string; workbookScope?: FinanceWorkbookScope }) {
   const [pending, setPending] = useState(false);
 
   async function handleClick() {
     if (pending) return;
+    const target: ExportTarget | null = workbookScope
+      ? { workbookScope, params: params ?? {} }
+      : dataset
+        ? { dataset, params: params ?? {} }
+        : null;
+    if (!target) return;
     setPending(true);
     try {
-      await exportWithToast(dataset, params ?? {});
+      await exportWithToast(target);
     } finally {
       setPending(false);
     }
@@ -131,6 +142,13 @@ export function ExportButton({
   );
 }
 
+type ExportMenuItem = {
+  dataset?: string;
+  workbookScope?: FinanceWorkbookScope;
+  label: string;
+  params?: Record<string, string | undefined>;
+};
+
 /** Satu tombol untuk beberapa dataset (mis. Customer, Follow-up, Riwayat komunikasi). */
 export function ExportMenu({
   items,
@@ -140,16 +158,24 @@ export function ExportMenu({
   variant = "outline",
   className,
   disabled,
-}: SharedProps & { items: Array<{ dataset: string; label: string; params?: Record<string, string | undefined> }> }) {
-  const [pendingDataset, setPendingDataset] = useState<string | null>(null);
+}: SharedProps & { items: ExportMenuItem[] }) {
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
-  async function handleSelect(dataset: string, itemParams?: Record<string, string | undefined>) {
-    if (pendingDataset) return;
-    setPendingDataset(dataset);
+  async function handleSelect(item: ExportMenuItem) {
+    if (pendingKey) return;
+    const merged = { ...(params ?? {}), ...(item.params ?? {}) };
+    const target: ExportTarget | null = item.workbookScope
+      ? { workbookScope: item.workbookScope, params: merged }
+      : item.dataset
+        ? { dataset: item.dataset, params: merged }
+        : null;
+    if (!target) return;
+    const key = item.workbookScope ?? item.dataset ?? item.label;
+    setPendingKey(key);
     try {
-      await exportWithToast(dataset, { ...(params ?? {}), ...(itemParams ?? {}) });
+      await exportWithToast(target);
     } finally {
-      setPendingDataset(null);
+      setPendingKey(null);
     }
   }
 
@@ -162,11 +188,11 @@ export function ExportMenu({
             variant={variant}
             size={size}
             className={className}
-            disabled={disabled || Boolean(pendingDataset)}
-            aria-busy={Boolean(pendingDataset) || undefined}
+            disabled={disabled || Boolean(pendingKey)}
+            aria-busy={Boolean(pendingKey) || undefined}
           >
-            {pendingDataset ? <Spinner data-icon="inline-start" aria-hidden="true" /> : <Download data-icon="inline-start" aria-hidden="true" />}
-            {pendingDataset ? "Mengexport…" : label}
+            {pendingKey ? <Spinner data-icon="inline-start" aria-hidden="true" /> : <Download data-icon="inline-start" aria-hidden="true" />}
+            {pendingKey ? "Mengexport…" : label}
             <ChevronDown data-icon="inline-end" aria-hidden="true" />
           </Button>
         }
@@ -174,9 +200,9 @@ export function ExportMenu({
       <DropdownMenuContent align="end" className="w-56">
         {items.map((item) => (
           <DropdownMenuItem
-            key={item.dataset}
-            disabled={Boolean(pendingDataset)}
-            onClick={() => void handleSelect(item.dataset, item.params)}
+            key={item.workbookScope ?? item.dataset ?? item.label}
+            disabled={Boolean(pendingKey)}
+            onClick={() => void handleSelect(item)}
             className={cn("gap-2")}
           >
             <Download aria-hidden="true" />

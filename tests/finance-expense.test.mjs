@@ -231,7 +231,7 @@ test("semua export Excel dibuat 100% di browser lewat Web Worker", async () => {
   assert.match(builder, /await import\("exceljs"\)/);
   assert.match(builder, /wrapText: true/);
   // Halaman memakai tombol klien, filter export = filter tabel (+ sort aktif).
-  assert.match(page, /<ExportButton dataset="pengeluaran" params=\{exportParams\} \/>/);
+  assert.match(page, /<ExportButton workbookScope="pengeluaran" params=\{exportParams\} \/>/);
   assert.match(page, /order: order === "desc" \? undefined : order/);
   // Ekspor membawa jendela default yang sama dengan tabel + paging tanpa cap.
   assert.match(expenseData, /const bounded = !state\.from && !state\.to/);

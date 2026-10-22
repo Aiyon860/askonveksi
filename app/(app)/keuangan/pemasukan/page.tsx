@@ -86,7 +86,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
 
   return <>
     <PageHeader title="Project" description="Pantau pembayaran Invoice, HPP, laba, dan sisa pembayaran order customer. Isi HPP dapat otomatis masuk ke Pengeluaran kategori Project." action={<ExportMenu label="Export Excel" params={exportParams} items={[
-      { dataset: "project", label: "Project / Pemasukan" },
+      { workbookScope: "pemasukan", label: "Project & DP (workbook)" },
       { dataset: "mutasi-pembayaran", label: "Mutasi pembayaran", params: { q: exportParams.q, from: exportParams.from, to: exportParams.to } },
       { dataset: "rincian-hpp", label: "Rincian HPP", params: { q: exportParams.q, from: exportParams.from, to: exportParams.to } },
     ]} />} />

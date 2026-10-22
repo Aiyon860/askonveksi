@@ -6,6 +6,7 @@ import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { formatCurrency } from "@/lib/crm/format";
 import { getPrismaClient } from "@/lib/prisma";
+import { jakartaDateKey } from "@/lib/finance/date-range";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory, type ExpenseTypeFilter } from "@/lib/finance/expense-categories";
 
 export { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory, type ExpenseTypeFilter };
@@ -160,11 +161,12 @@ function incomeWhere(state: Omit<IncomeListState, "page" | "pageSize">) {
 }
 
 function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
-  const transactions = order.payment!.transactions;
+  const payment = order.payment;
+  const transactions = payment?.transactions ?? [];
   const paid = transactions.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-  const dp = order.payment!.kind === "DP" || order.payment!.kind === "DEPOSIT" ? transactions.filter((item) => !item.paymentTermId && !item.isDeposit).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : null;
+  const dp = payment && (payment.kind === "DP" || payment.kind === "DEPOSIT") ? transactions.filter((item) => !item.paymentTermId && !item.isDeposit).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : null;
   const depositAmount = transactions.filter((item) => item.isDeposit).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-  const settled = order.payment!.kind === "LUNAS" ? transactions.filter((item) => !item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : transactions.filter((item) => item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
+  const settled = payment ? (payment.kind === "LUNAS" ? transactions.filter((item) => !item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) : transactions.filter((item) => item.paymentTermId).reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0))) : new Prisma.Decimal(0);
   const costs = order.cost;
   // Status Lengkap = switch manual hppComplete (revisi). Total HPP = jumlah kolom terisi; null dianggap 0.
   const complete = Boolean(costs?.hppComplete);
@@ -176,14 +178,14 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   const netProfit = hpp ? order.invoice.total.sub(hpp) : null;
   const margin = netProfit && !order.invoice.total.isZero() ? netProfit.div(order.invoice.total).toNumber() : null;
   const latest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt > date ? item.paidAt : date, null);
-  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hppComplete: costs?.hppComplete ?? false, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), tax: order.invoice.taxAmount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, deposit: depositAmount.isZero() ? null : depositAmount.toString(), settled: settled.isZero() ? null : settled.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
+  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hppComplete: costs?.hppComplete ?? false, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), tax: order.invoice.taxAmount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, deposit: depositAmount.isZero() ? null : depositAmount.toString(), settled: settled.isZero() ? null : settled.toString(), paid: paid.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, acceptedAt: order.acceptedAt.toISOString(), paymentKind: payment?.kind ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
 }
 
 async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number, take?: number) {
   return getPrismaClient().salesOrder.findMany({
     where,
     select: {
-      id: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true,
+      id: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, acceptedAt: true,
       purchaseOrder: { select: { productName: true, garmentType: true, productCategory: { select: { name: true } } } },
       invoice: { select: { subtotal: true, total: true, totalDiscount: true, taxAmount: true, items: { select: { quantity: true } } } },
       cost: { select: { kain: true, zipper: true, jahit: true, pres: true, dtfPlastisol: true, bordir: true, lainnya: true, hppComplete: true, version: true } },
@@ -214,6 +216,109 @@ export async function getIncomeForExport(state: Omit<IncomeListState, "page" | "
     rows: rows.map((row) => ({ ...row, projectDescription: hppProjectDescription(projectExpenses.get(row.id) ?? []) })),
     total,
   };
+}
+
+export type WorkbookProject = {
+  id: string;
+  invoiceNo: string;
+  customer: string;
+  productName: string;
+  garmentType: string;
+  quantity: number;
+  acceptedAt: string | null;
+  kain: number;
+  zipper: number;
+  jahit: number;
+  pres: number;
+  dtfPlastisol: number;
+  bordir: number;
+  lainnya: number;
+  totalHpp: number;
+  hppComplete: boolean;
+  totalInvoice: number;
+  netProfit: number | null;
+  margin: number | null;
+  deposit: number;
+  dp: number;
+  settled: number;
+  paid: number;
+  remaining: number;
+  periodPaid: number;
+  statusBayar: "LUNAS" | "DP" | "DEPOSIT" | "BELUM BAYAR";
+  latestPaidAt: string | null;
+};
+
+/**
+ * Project untuk workbook: semua project aktif dengan invoice terbit, bukan
+ * hanya yang punya pembayaran pada periode. Rentang tanggal hanya membatasi
+ * kolom "Pembayaran Periode".
+ */
+export async function getProjectsForWorkbook(start: Date, end: Date): Promise<WorkbookProject[]> {
+  await requireActor(FINANCE_ROLES);
+  const orders = await getIncomeOrders({ status: "ACTIVE", invoice: { status: "ISSUED" } });
+  return orders.map((order) => {
+    const item = mapIncome(order);
+    const payment = order.payment;
+    const transactions = payment?.transactions ?? [];
+    // Kolom deposit, DP, dan pelunasan dibuat saling eksklusif agar jumlahnya
+    // sama dengan total dibayar dan tidak menghitung transaksi yang sama dua kali.
+    const deposit = transactions
+      .filter((transaction) => transaction.isDeposit)
+      .reduce((sum, transaction) => sum.add(transaction.amount), new Prisma.Decimal(0));
+    const dp = payment && payment.kind !== "LUNAS"
+      ? transactions
+        .filter((transaction) => !transaction.isDeposit && !transaction.paymentTermId)
+        .reduce((sum, transaction) => sum.add(transaction.amount), new Prisma.Decimal(0))
+      : new Prisma.Decimal(0);
+    const settled = transactions
+      .filter((transaction) => !transaction.isDeposit && (payment?.kind === "LUNAS" || Boolean(transaction.paymentTermId)))
+      .reduce((sum, transaction) => sum.add(transaction.amount), new Prisma.Decimal(0));
+    const periodPaid = transactions
+      .filter((transaction) => transaction.paidAt >= start && transaction.paidAt < end)
+      .reduce((sum, transaction) => sum.add(transaction.amount), new Prisma.Decimal(0));
+    const totalHpp = HPP_ROW_ORDER.reduce((sum, key) => {
+      const value = item[key];
+      return value === null ? sum : sum.add(value);
+    }, new Prisma.Decimal(0));
+    const remaining = Number(item.remaining);
+    const paid = Number(item.paid);
+    const statusBayar: WorkbookProject["statusBayar"] = remaining <= 0
+      ? "LUNAS"
+      : paid <= 0
+        ? "BELUM BAYAR"
+        : deposit.greaterThan(0) && dp.isZero() && settled.isZero()
+          ? "DEPOSIT"
+          : "DP";
+    return {
+      id: item.id,
+      invoiceNo: item.invoiceNo,
+      customer: item.customer,
+      productName: item.orderName,
+      garmentType: item.garmentType,
+      quantity: item.quantity,
+      acceptedAt: jakartaDateKey(new Date(item.acceptedAt)),
+      kain: Number(item.kain ?? 0),
+      zipper: Number(item.zipper ?? 0),
+      jahit: Number(item.jahit ?? 0),
+      pres: Number(item.pres ?? 0),
+      dtfPlastisol: Number(item.dtfPlastisol ?? 0),
+      bordir: Number(item.bordir ?? 0),
+      lainnya: Number(item.lainnya ?? 0),
+      totalHpp: totalHpp.toNumber(),
+      hppComplete: item.hppComplete,
+      totalInvoice: Number(item.totalInvoice),
+      netProfit: item.netProfit === null ? null : Number(item.netProfit),
+      margin: item.margin,
+      deposit: deposit.toNumber(),
+      dp: dp.toNumber(),
+      settled: settled.toNumber(),
+      paid,
+      remaining,
+      periodPaid: periodPaid.toNumber(),
+      statusBayar,
+      latestPaidAt: item.paidAt ? jakartaDateKey(new Date(item.paidAt)) : null,
+    };
+  });
 }
 
 export type ProjectExpensePrefill = { id: string; hppKey: string | null; purpose: string; description: string | null; amount: string; spentAt: string; paymentMethodId: string; proofPath: string | null; proofFileName: string | null; proofMimeType: string | null };

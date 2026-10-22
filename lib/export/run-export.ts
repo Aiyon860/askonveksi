@@ -23,7 +23,7 @@ export type ExportProgress = {
   percent: number | null;
 };
 
-function throwIfAborted(signal?: AbortSignal) {
+export function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new ExportCancelledError();
 }
 
@@ -74,7 +74,7 @@ function mainThreadJob(writer: XlsxWriter): ExcelJob {
   };
 }
 
-function saveBytes(bytes: Uint8Array, filename: string) {
+export function saveBytes(bytes: Uint8Array, filename: string) {
   const blob = new Blob([bytes as unknown as BlobPart], { type: XLSX_MIME });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
