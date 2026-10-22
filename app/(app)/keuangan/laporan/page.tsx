@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
 
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,13 +19,13 @@ export default async function FinanceReportPage({ searchParams }: { searchParams
   const params = await searchParams;
   const range = parseOptionalFinanceDateRange(params.from, params.to);
   const report = await getFinanceReport({ from: range.start, to: range.end });
-  const exportParams = new URLSearchParams(Object.entries({ from: range.from || undefined, to: range.to || undefined }).filter((entry): entry is [string, string] => Boolean(entry[1])));
+  const exportParams = Object.fromEntries(Object.entries({ from: range.from || undefined, to: range.to || undefined }).filter((entry): entry is [string, string] => Boolean(entry[1])));
   const periodLabel = range.from && range.to
     ? `dari ${formatDate(range.from)} ke ${formatDate(range.to)}`
     : "seluruh waktu";
 
   return <div className="flex min-w-0 flex-col gap-6">
-    <PageHeader title="Laporan" description="Rekap pemasukan dan pengeluaran berdasarkan tanggal." action={<Button variant="outline" render={<a href={`/api/keuangan/laporan/export?${exportParams}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Export Excel</Button>} />
+    <PageHeader title="Laporan" description="Rekap pemasukan dan pengeluaran berdasarkan tanggal." action={<ExportButton dataset="laporan" params={exportParams} />} />
     <section className="grid gap-4 sm:grid-cols-2"><Card><CardHeader><CardTitle>Total Pemasukan Keseluruhan</CardTitle></CardHeader><CardContent><p className="font-mono text-2xl font-semibold tabular-nums">{formatCurrency(report.allIncome)}</p></CardContent></Card><Card><CardHeader><CardTitle>Total Pengeluaran Keseluruhan</CardTitle></CardHeader><CardContent><p className="font-mono text-2xl font-semibold tabular-nums">{formatCurrency(report.allExpense)}</p></CardContent></Card></section>
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Detail Laporan">
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between"><h2 className="text-base font-medium">Detail Laporan</h2><form action="/keuangan/laporan" className="flex flex-wrap items-end gap-2 lg:justify-end"><Field className="w-full sm:w-40"><FieldLabel htmlFor="report-from">Dari tanggal</FieldLabel><Input id="report-from" name="from" type="date" defaultValue={range.from} /></Field><Field className="w-full sm:w-40"><FieldLabel htmlFor="report-to">Sampai tanggal</FieldLabel><Input id="report-to" name="to" type="date" defaultValue={range.to} /></Field><Button type="submit" variant="outline">Terapkan</Button><Button variant="secondary" render={<Link href="/keuangan/laporan" />} nativeButton={false}>Reset</Button></form></div>

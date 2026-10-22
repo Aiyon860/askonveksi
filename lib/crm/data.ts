@@ -322,10 +322,13 @@ export async function getCustomersForExport({
   segment,
   sort,
   direction,
-}: CustomerListQuery): Promise<CustomerExcelExportRow[]> {
+  offset = 0,
+  limit = 5000,
+}: CustomerListQuery & { offset?: number; limit?: number }): Promise<{ rows: CustomerExcelExportRow[]; total: number | null }> {
   const actor = await requireActor(MASTER_DATA_ROLES);
-  const items = await getPrismaClient().customer.findMany({
-    where: customerWhere(actor, query, segment),    select: {
+  const where = customerWhere(actor, query, segment);
+  const [items, total] = await Promise.all([getPrismaClient().customer.findMany({
+    where,    select: {
       id: true,
       customerNo: true,
       name: true,
@@ -360,9 +363,9 @@ export async function getCustomersForExport({
       },
     },
     orderBy: customerOrderBy(sort, direction),
-    // ponytail: cap 5000 agar export muat 600M.
-    take: 5000,
-  });
+    skip: offset,
+    take: limit,
+  }), offset === 0 ? getPrismaClient().customer.count({ where }) : Promise.resolve(null)]);
   const customerIds = items.map((item) => item.id);
   const openOpportunities = customerIds.length
     ? await getPrismaClient().opportunity.findMany({
@@ -372,7 +375,7 @@ export async function getCustomersForExport({
       })
     : [];
   const openCustomerIds = new Set(openOpportunities.map((item) => item.customerId));
-  return items.map((item) => ({
+  return { rows: items.map((item) => ({
     customerNo: item.customerNo,
     name: item.name,
     companyName: item.companyName ?? "",
@@ -390,7 +393,7 @@ export async function getCustomersForExport({
     lastOrderAt: item.reminders[0]?.sourceSalesOrder?.acceptedAt ?? null,
     opportunityCount: item._count.opportunities,
     updatedAt: item.opportunities[0]?.updatedAt ?? item.updatedAt,
-  }));
+  })), total };
 }
 
 export type ProspectSort = "opportunityNo" | "customer" | "city" | "createdAt";

@@ -8,7 +8,7 @@ import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { ExpenseForm } from "@/components/finance/expense-form";
-import { ExpenseExportButton } from "@/components/finance/expense-export-button";
+import { ExportButton } from "@/components/export/export-button";
 import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
@@ -62,7 +62,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
 
   return <>
     <AutoRefresh />
-    <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><ExpenseExportButton params={exportParams} /><ExpenseForm methods={methods} /></div>} />
+    <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><ExportButton dataset="pengeluaran" params={exportParams} /><ExpenseForm methods={methods} /></div>} />
     <PageMessage />
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -98,7 +98,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
               rowIndex += 1;
               return <TableRow key={item.id}>
                 {showDate ? <TableCell rowSpan={totalRows}>{formatDate(group.spentAt)}</TableCell> : null}
-                <TableCell>{item.purpose}</TableCell><TableCell>{item.customerName ?? "-"}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{item.paymentMethod.name}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell>                <TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell><TableCell>{item.description || "-"}</TableCell>
+                <TableCell>{item.purpose}</TableCell><TableCell>{item.customerName ?? "-"}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{item.paymentMethod.name}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell><TableCell>{item.description || "-"}</TableCell>
                 <TableCell>{reimbursable ? item.reimbursedAt ? <span className="text-success">Diganti {formatDate(item.reimbursedAt, true)}</span> : "Belum diganti" : "-"}</TableCell>
                 <TableCell className="text-right">{canManage && !item.reimbursedAt ? <div className="flex justify-end gap-2">
                   {reimbursable ? <form action={reimburseExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="success" pendingLabel="Memproses..." confirmTitle="Tandai uang sudah diganti?" confirmDescription="Pengeluaran ini tidak dapat diedit atau dihapus setelah ditandai." confirmLabel="Ya, sudah diganti"><Check data-icon="inline-start" aria-hidden="true" />Reimburse</ConfirmSubmitButton></form> : null}

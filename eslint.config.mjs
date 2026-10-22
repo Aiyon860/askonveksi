@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Bundle vendor yang dihasilkan scripts/sync-export-vendor.mjs (bukan kode aplikasi):
+    "public/vendor/**",
     // Skrip vendor milik AI-agent skills (pihak ketiga, bukan kode aplikasi):
     ".agent/**",
     ".agents/**",

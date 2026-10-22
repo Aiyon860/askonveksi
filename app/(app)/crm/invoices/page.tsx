@@ -9,6 +9,7 @@ import { InvoiceFilterSheet } from "@/components/crm/invoice-filter-sheet";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { SortableTableHead } from "@/components/sortable-table-head";
@@ -127,6 +128,7 @@ async function InvoicesTableSection({ searchParams }: { searchParams: SearchPara
     pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize),
   };
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
+  const exportParams = Object.fromEntries(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   const hasFilters = Boolean(query || status !== "all" || paymentStatus !== "all" || range.start);
   const filterSummaryParts = [
     invoiceStatusLabel(status),
@@ -143,6 +145,7 @@ async function InvoicesTableSection({ searchParams }: { searchParams: SearchPara
         <p className="text-xs text-muted-foreground lg:whitespace-nowrap"><strong className="font-medium text-foreground">{total}</strong> invoice</p>
         <div className="flex items-center gap-2">
           {filterSummaryParts.length ? <p className="hidden max-w-80 truncate text-xs text-muted-foreground xl:block">{activeSummary}</p> : null}
+          <ExportButton dataset="invoice" params={exportParams} />
           <InvoiceFilterSheet
             query={query}
             status={status}

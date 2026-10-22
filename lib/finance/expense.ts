@@ -80,22 +80,43 @@ export function projectGroupLabel(salesOrder: { invoiceNo: string; snapshotCusto
   return `${customer} · ${salesOrder.purchaseOrder.productName} · ${salesOrder.invoiceNo}`;
 }
 
-// Cap ekspor Excel: satu baris penanda supaya file memberi tahu bila data terpotong.
-export const EXPENSE_EXPORT_LIMIT = 5000;
-export const INCOME_EXPORT_LIMIT = 5000;
+// Ekspor dibagi per halaman (offset/limit) supaya bisa tanpa batas tanpa memuat
+// seluruh tabel ke memori server sekaligus; file .xlsx dibuat di browser.
+export type ExportPageRequest = { offset: number; limit: number };
 
-export async function getExpensesForExport(state: Omit<ExpenseListState, "page" | "pageSize">) {
+export async function getExpensesForExport(state: Omit<ExpenseListState, "page" | "pageSize">, page: ExportPageRequest) {
   await requireActor(FINANCE_ROLES);
   // Ekspor mengikuti tabel: tanpa filter memakai jendela 90 hari yang sama (bukan seluruh riwayat),
   // dan memakai urutan sort yang sedang aktif di halaman.
   const bounded = !state.from && !state.to
     ? { ...state, ...defaultExpenseWindow() }
     : state;
-  // Ambil LIMIT+1 baris agar tahu apakah data terpotong; tetap murah di VPS 600M.
-  const fetched = await getPrismaClient().expense.findMany({ where: expenseWhere(bounded), select: { purpose: true, description: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, proofPath: true, createdBy: { select: { name: true } }, reimbursedAt: true, customerName: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }], take: EXPENSE_EXPORT_LIMIT + 1 });
-  const truncated = fetched.length > EXPENSE_EXPORT_LIMIT;
-  const rows = (truncated ? fetched.slice(0, EXPENSE_EXPORT_LIMIT) : fetched).map((row) => ({ ...row, spentAt: row.spentAt.toISOString().slice(0, 10), reimbursedAt: row.reimbursedAt ? row.reimbursedAt.toISOString() : null, amount: row.amount.toString(), category: row.category as ExpenseCategory, project: row.category === "PROJECT" ? projectGroupLabel(row.salesOrder, row.customerName) : "" }));
-  return { rows, truncated };
+  const where = expenseWhere(bounded);
+  const prisma = getPrismaClient();
+  // Urutan id sebagai tiebreaker agar paging offset stabil untuk data bertanggal sama.
+  const [fetched, total] = await Promise.all([
+    prisma.expense.findMany({ where, select: { purpose: true, description: true, spentAt: true, category: true, paymentMethod: { select: { name: true } }, isReimbursable: true, amount: true, proofPath: true, createdBy: { select: { name: true } }, reimbursedAt: true, customerName: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }, { id: "asc" }], skip: page.offset, take: page.limit }),
+    page.offset === 0 ? prisma.expense.count({ where }) : Promise.resolve(null),
+  ]);
+  const rows = fetched.map((row) => ({ ...row, spentAt: row.spentAt.toISOString().slice(0, 10), reimbursedAt: row.reimbursedAt ? row.reimbursedAt.toISOString() : null, amount: row.amount.toString(), category: row.category as ExpenseCategory, project: row.category === "PROJECT" ? projectGroupLabel(row.salesOrder, row.customerName) : "" }));
+  return { rows, total };
+}
+
+export async function getDeletedExpensesForExport(page: ExportPageRequest) {
+  await requireActor(FINANCE_ROLES);
+  const prisma = getPrismaClient();
+  const where = { deletedAt: { not: null } } satisfies Prisma.ExpenseWhereInput;
+  const [items, total] = await Promise.all([
+    prisma.expense.findMany({
+      where,
+      select: { id: true, purpose: true, spentAt: true, amount: true, category: true, customerName: true, deleteReason: true, deletedAt: true, createdBy: { select: { name: true } }, deletedBy: { select: { name: true } } },
+      orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
+      skip: page.offset,
+      take: page.limit,
+    }),
+    page.offset === 0 ? prisma.expense.count({ where }) : Promise.resolve(null),
+  ]);
+  return { items, total };
 }
 
 export async function getDeletedExpenses(page: number, pageSize: number) {
@@ -180,12 +201,19 @@ export async function getIncome(state: IncomeListState) {
   return { items: items.map(mapIncome), total, pageCount: Math.max(1, Math.ceil(total / state.pageSize)) };
 }
 
-export async function getIncomeForExport(state: Omit<IncomeListState, "page" | "pageSize">) {
+export async function getIncomeForExport(state: Omit<IncomeListState, "page" | "pageSize">, page: ExportPageRequest) {
   await requireActor(FINANCE_ROLES);
-  // ponytail: cap 5000 baris agar export tak OOM di 600M. Minta filter tanggal untuk data lebih besar.
-  const fetched = await getIncomeOrders(incomeWhere(state), 0, INCOME_EXPORT_LIMIT + 1);
-  const truncated = fetched.length > INCOME_EXPORT_LIMIT;
-  return { rows: (truncated ? fetched.slice(0, INCOME_EXPORT_LIMIT) : fetched).map(mapIncome), truncated };
+  const where = incomeWhere(state);
+  const [fetched, total] = await Promise.all([
+    getIncomeOrders(where, page.offset, page.limit),
+    page.offset === 0 ? getPrismaClient().salesOrder.count({ where }) : Promise.resolve(null),
+  ]);
+  const rows = fetched.map(mapIncome);
+  const projectExpenses = await getProjectExpensesBySalesOrders(rows.map((row) => row.id));
+  return {
+    rows: rows.map((row) => ({ ...row, projectDescription: hppProjectDescription(projectExpenses.get(row.id) ?? []) })),
+    total,
+  };
 }
 
 export type ProjectExpensePrefill = { id: string; hppKey: string | null; purpose: string; description: string | null; amount: string; spentAt: string; paymentMethodId: string; proofPath: string | null; proofFileName: string | null; proofMimeType: string | null };

@@ -19,7 +19,7 @@ export default async function GarmentSizesPage() {
         bulkUpdateAction={bulkUpdateGarmentSizesAction}
         deleteAction={deleteGarmentSizeAction}
         importAction={importGarmentSizesAction}
-        exportHref="/api/master-data/garment-sizes/export"
+        exportDataset="master-ukuran-pakaian"
         maxNameLength={40}
       />
     </>

@@ -20,7 +20,7 @@ export default async function LeadSourcesPage() {
         bulkUpdateAction={bulkUpdateLeadSourcesAction}
         deleteAction={deleteLeadSourceAction}
         importAction={importLeadSourcesAction}
-        exportHref="/api/master-data/lead-sources/export"
+        exportDataset="master-sumber-lead"
       />
     </>
   );

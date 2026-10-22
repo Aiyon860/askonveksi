@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Download, ReceiptText } from "lucide-react";
+import { ReceiptText } from "lucide-react";
 
 import { DataPagination } from "@/components/data-pagination";
+import { ExportMenu } from "@/components/export/export-button";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { HppCompleteSwitch } from "@/components/finance/hpp-complete-switch";
 import { SalesOrderCostForm, type HppProjectPrefill } from "@/components/finance/sales-order-cost-form";
@@ -58,7 +59,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
   // R17 — kolom Deskripsi per order: gabung baris HPP terisi.
   const projectDescription = new Map(data.items.map((item) => [item.id, hppProjectDescription(projectRows.get(item.id) ?? [])]));
   const persistent = { q: query || undefined, from: range.from || undefined, to: range.to || undefined, status: status === "all" ? undefined : status, hppStatus: hppStatus === "all" ? undefined : hppStatus, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
-  const exportParams = new URLSearchParams(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
+  const exportParams = Object.fromEntries(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   // Total dihitung dari seluruh baris data yang dimuat halaman ini (data.items).
   const totalQuantity = data.items.reduce((sum, item) => sum + item.quantity, 0);
   const numericTotals = [
@@ -84,7 +85,11 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
   const totalSettled = sumMoney(data.items.map((item) => item.settled));
 
   return <>
-    <PageHeader title="Project" description="Pantau pembayaran Invoice, HPP, laba, dan sisa pembayaran order customer. Isi HPP dapat otomatis masuk ke Pengeluaran kategori Project." action={<Button variant="outline" render={<a href={`/api/keuangan/pemasukan/export?${exportParams}`} />} nativeButton={false}><Download data-icon="inline-start" aria-hidden="true" />Export Excel</Button>} />
+    <PageHeader title="Project" description="Pantau pembayaran Invoice, HPP, laba, dan sisa pembayaran order customer. Isi HPP dapat otomatis masuk ke Pengeluaran kategori Project." action={<ExportMenu label="Export Excel" params={exportParams} items={[
+      { dataset: "project", label: "Project / Pemasukan" },
+      { dataset: "mutasi-pembayaran", label: "Mutasi pembayaran", params: { q: exportParams.q, from: exportParams.from, to: exportParams.to } },
+      { dataset: "rincian-hpp", label: "Rincian HPP", params: { q: exportParams.q, from: exportParams.from, to: exportParams.to } },
+    ]} />} />
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
         <DebouncedSearchInput key={query} initialValue={query} pathname="/keuangan/pemasukan" params={persistent} placeholder="Cari customer, invoice, atau order..." ariaLabel="Cari pemasukan" className="lg:max-w-md" />

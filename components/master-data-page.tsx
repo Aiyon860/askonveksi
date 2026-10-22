@@ -1,8 +1,8 @@
-import { Database, Download, Upload } from "lucide-react";
+import { Database, Upload } from "lucide-react";
 
+import { ExportButton } from "@/components/export/export-button";
 import { MasterDataEditor, type MasterAction, type MasterItem, type MasterKindOption } from "@/components/master-data-editor";
 import { SubmitButton } from "@/components/submit-button";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -19,7 +19,7 @@ type MasterDataPageProps = {
   bulkUpdateAction: MasterAction;
   deleteAction: MasterAction;
   importAction: MasterAction;
-  exportHref: string;
+  exportDataset: string;
   maxNameLength?: number;
   usageLabel?: string;
   nameLabel?: string;
@@ -36,7 +36,7 @@ export function MasterDataPage({
   bulkUpdateAction,
   deleteAction,
   importAction,
-  exportHref,
+  exportDataset,
   maxNameLength = 80,
   usageLabel,
   nameLabel = "Nama",
@@ -44,7 +44,7 @@ export function MasterDataPage({
   kindOptions,
   excelHint = "kolom Nama dan Deskripsi",
 }: MasterDataPageProps) {
-  const importInputId = `master-import-${exportHref.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`;
+  const importInputId = `master-import-${exportDataset.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`;
 
   return (
     <div className="grid min-w-0 max-w-full gap-6 overflow-x-clip xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -83,10 +83,7 @@ export function MasterDataPage({
           </CardHeader>
           <CardContent>
             <FieldGroup>
-              <Button variant="outline" render={<a href={exportHref} />} nativeButton={false}>
-                <Download data-icon="inline-start" aria-hidden="true" />
-                Export Excel
-              </Button>
+              <ExportButton dataset={exportDataset} />
               <form action={importAction}>
                 <FieldGroup>
                   <Field>

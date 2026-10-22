@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CalendarX2, CheckCircle2, Clock3, Download, Gauge, ShieldCheck, UserRoundCheck, UserRoundX, type LucideIcon } from "lucide-react";
+import { CalendarX2, CheckCircle2, Clock3, Gauge, ShieldCheck, UserRoundCheck, UserRoundX, type LucideIcon } from "lucide-react";
 
 import { AttendanceLocationDialog, AttendancePhotoDialog } from "@/components/attendance/attendance-detail-dialogs";
 import { AttendanceStatusBadge } from "@/components/attendance/attendance-status-badge";
 import { CorrectionAttendanceDialog, DeleteManualAttendanceButton } from "@/components/attendance/correction-attendance-dialog";
 import { ManualAttendanceDialog } from "@/components/attendance/manual-attendance-dialog";
 import { DataPagination } from "@/components/data-pagination";
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Button } from "@/components/ui/button";
@@ -134,12 +135,9 @@ export default async function AttendanceReportPage({ searchParams }: { searchPar
   if (report.page > 1) returnParams.set("page", String(report.page));
   const returnQuery = returnParams.toString();
   const returnTo = returnQuery ? `/absensi/laporan?${returnQuery}` : "/absensi/laporan";
-  const exportParams = new URLSearchParams();
-  exportParams.set("from", report.range.from);
-  exportParams.set("to", report.range.to);
-  if (report.selectedUserId) exportParams.set("userId", report.selectedUserId);
-  if (report.status !== "ALL") exportParams.set("status", report.status);
-  const exportHref = `/api/absensi/laporan/export?${exportParams.toString()}`;
+  const exportParams: Record<string, string> = { from: report.range.from, to: report.range.to };
+  if (report.selectedUserId) exportParams.userId = report.selectedUserId;
+  if (report.status !== "ALL") exportParams.status = report.status;
 
   const manualEmployees: AttendanceEmployeeOption[] = report.employees
     .filter((employee) => employee.isActive)
@@ -163,14 +161,7 @@ export default async function AttendanceReportPage({ searchParams }: { searchPar
               today={today}
               returnTo={returnTo}
             />
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href={exportHref} />}
-            >
-              <Download data-icon="inline-start" aria-hidden="true" />
-              Export Excel
-            </Button>
+            <ExportButton dataset="absensi" params={exportParams} />
           </div>
         }
       />
