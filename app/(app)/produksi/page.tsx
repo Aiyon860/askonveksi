@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import type { ProductionRoute } from "@prisma/client";
 
 import { ProductionBoardSection } from "@/components/production/production-board-section";
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Button } from "@/components/ui/button";
@@ -50,7 +51,11 @@ export default async function ProductionPage({
 
   return (
     <>
-      <PageHeader title="Produksi" description="Pantau setiap Sales Order dari tahap pertama sampai selesai." />
+      <PageHeader
+        title="Produksi"
+        description="Pantau setiap Sales Order dari tahap pertama sampai selesai."
+        action={<ExportButton dataset="produksi" params={{ jalur: group, ...(kategoriId ? { kategori: kategoriId } : {}) }} />}
+      />
       <PageMessage />
       <div className="flex flex-col gap-3">
         <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1" aria-label="Filter jalur produksi">

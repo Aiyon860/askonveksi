@@ -19,7 +19,7 @@ export default async function PaymentMethodsPage() {
         bulkUpdateAction={bulkUpdatePaymentMethodsAction}
         deleteAction={deletePaymentMethodAction}
         importAction={importPaymentMethodsAction}
-        exportHref="/api/master-data/payment-methods/export"
+        exportDataset="master-metode-pembayaran"
       />
     </>
   );

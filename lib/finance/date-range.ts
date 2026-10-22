@@ -21,7 +21,7 @@ export function parseOptionalFinanceDateRange(fromValue: string | string[] | und
   return { from: rawFrom, to: rawTo, start: from, end: new Date(to.getTime() + 24 * 60 * 60 * 1000) };
 }
 
-function jakartaDateKey(date: Date) {
+export function jakartaDateKey(date: Date) {
   return new Date(date.getTime() + JAKARTA_OFFSET_MS).toISOString().slice(0, 10);
 }
 

@@ -6,7 +6,6 @@ import {
   ArchiveRestore,
   Check,
   ChevronDown,
-  Download,
   ListFilter,
   Upload,
   UsersRound,
@@ -20,6 +19,7 @@ import { CustomerTableRowLink } from "@/components/crm/customer-table-row-link";
 import { NewCustomerForm } from "@/components/crm/new-customer-form";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { DataPagination } from "@/components/data-pagination";
+import { ExportMenu } from "@/components/export/export-button";
 import { FilePicker } from "@/components/ui/file-picker";
 import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { PageHeader } from "@/components/page-header";
@@ -121,14 +121,13 @@ function sortHref(state: TableState, sort: CustomerSort) {
   return tableHref(state, { sort, direction, page: 1 });
 }
 
-function exportHref(state: TableState) {
-  const params = new URLSearchParams();
-  if (state.query) params.set("q", state.query);
-  if (state.segment !== "all") params.set("segment", state.segment);
-  if (state.sort !== "updatedAt") params.set("sort", state.sort);
-  if (state.direction !== defaultDirection(state.sort)) params.set("order", state.direction);
-  const query = params.toString();
-  return query ? `/api/customers/export?${query}` : "/api/customers/export";
+function exportParams(state: TableState) {
+  const params: Record<string, string> = {};
+  if (state.query) params.q = state.query;
+  if (state.segment !== "all") params.segment = state.segment;
+  if (state.sort !== "updatedAt") params.sort = state.sort;
+  if (state.direction !== defaultDirection(state.sort)) params.order = state.direction;
+  return params;
 }
 
 function customerDetailHref(customerId: string, state: TableState) {
@@ -136,13 +135,18 @@ function customerDetailHref(customerId: string, state: TableState) {
   return `/customers/${customerId}?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
-function CustomerExcelActions({ href }: { href: string }) {
+function CustomerExcelActions({ params }: { params: Record<string, string> }) {
+  const searchOnly = params.q ? { q: params.q } : {};
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="outline" render={<a href={href} />} nativeButton={false}>
-        <Download data-icon="inline-start" aria-hidden="true" />
-        Export Excel
-      </Button>
+      <ExportMenu
+        label="Export Excel"
+        items={[
+          { dataset: "customer", label: "Customer", params },
+          { dataset: "follow-up", label: "Follow-up", params: searchOnly },
+          { dataset: "komunikasi", label: "Riwayat komunikasi", params: searchOnly },
+        ]}
+      />
       <Dialog>
         <DialogTrigger render={<Button variant="secondary" />}>
           <Upload data-icon="inline-start" aria-hidden="true" />
@@ -284,7 +288,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
             <p className="text-xs text-muted-foreground">
               <strong className="font-medium text-foreground">{total}</strong> {archived ? "customer diarsipkan" : "customer aktif"}
             </p>
-            {canImportExport ? <CustomerExcelActions href={exportHref(state)} /> : null}
+            {canImportExport ? <CustomerExcelActions params={exportParams(state)} /> : null}
             {canOperate ? <NewCustomerForm key={`new-${segment}-${query}-${total}`} {...formOptions} /> : null}
           </div>
         </div>

@@ -19,6 +19,12 @@ rtk npm run bootstrap:owner
 rtk npm run dev
 ```
 
+Untuk menguji kamera absensi dari HP/perangkat lain di jaringan lokal, gunakan HTTPS. Akses lewat alamat LAN biasa (`http://192.168.x.x:3000`) akan memblokir kamera karena bukan secure context.
+
+```bash
+rtk npm run dev:https
+```
+
 Setelah Owner berhasil login, hapus `BOOTSTRAP_OWNER_PASSWORD` dari environment.
 
 ### Data demo Produksi

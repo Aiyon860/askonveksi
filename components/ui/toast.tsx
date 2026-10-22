@@ -27,6 +27,10 @@ function ToastList() {
         <div className="min-w-0 flex-1">
           <ToastPrimitive.Title className="text-sm font-medium" />
           <ToastPrimitive.Description className="mt-1 text-sm text-muted-foreground" />
+          {/* Aksi opsional (mis. "Batalkan" saat export berjalan). */}
+          {item.actionProps ? (
+            <ToastPrimitive.Action className="mt-2 inline-flex h-7 items-center rounded-md border border-input bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" />
+          ) : null}
         </div>
         <ToastPrimitive.Close aria-label="Tutup notifikasi" render={<Button variant="ghost" size="icon-sm" />} className="-mr-1 -mt-1 shrink-0 text-muted-foreground hover:text-foreground"><X aria-hidden="true" /></ToastPrimitive.Close>
       </ToastPrimitive.Content>
@@ -36,7 +40,7 @@ function ToastList() {
 
 export function Toaster({ children }: { children: React.ReactNode }) {
   return (
-    <ToastPrimitive.Provider toastManager={toast} timeout={6000}>
+    <ToastPrimitive.Provider toastManager={toast} timeout={6000} limit={5}>
       {children}
       <ToastPrimitive.Portal>
         <ToastPrimitive.Viewport className="pointer-events-none fixed right-4 top-4 z-50 flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2 outline-none"><ToastList /></ToastPrimitive.Viewport>

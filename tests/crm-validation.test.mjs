@@ -991,7 +991,7 @@ test("laporan omzet memakai atribusi opportunity dan Sales Order aktif", async (
 test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", async () => {
   const dataSource = await readFile(new URL("../lib/finance/data.ts", import.meta.url), "utf8");
   const pageSource = await readFile(new URL("../app/(app)/keuangan/pemasukan/page.tsx", import.meta.url), "utf8");
-  const exportSource = await readFile(new URL("../app/api/keuangan/pemasukan/export/route.ts", import.meta.url), "utf8");
+  const exportSource = await readFile(new URL("../lib/export/datasets/finance.ts", import.meta.url), "utf8");
 
   assert.match(dataSource, /requireActor\(FINANCE_ROLES\)/);
   assert.match(dataSource, /mode === "range"/);
@@ -1006,19 +1006,19 @@ test("laporan keuangan membaca transaksi aktif dan memakai sisa pembayaran", asy
   assert.doesNotMatch(pageSource, /parseFinanceDateRange/);
   assert.match(pageSource, /Sisa \$\{formatCurrency\(item\.remaining\)\}/);
   assert.match(pageSource, /Pajak/);
-  // Ekspor mengikuti halaman: tanpa filter = semua data (bug lama: default bulan berjalan).
-  assert.match(exportSource, /parseOptionalFinanceDateRange/);
+  // Ekspor mengikuti halaman: tanpa filter tanggal = semua data (bukan bulan berjalan),
+  // dan tidak ada cap baris karena file dibuat bertahap di browser.
+  assert.match(exportSource, /const from = exportDate\(searchParams\.get\("from"\)\)/);
   assert.doesNotMatch(exportSource, /parseFinanceDateRange/);
-  // Ekspor memberi tahu bila kena cap 5000 baris (bukan diam-diam).
-  assert.match(exportSource, /Data dipotong pada 5\.000 baris/);
-  assert.match(exportSource, /\{ rows, truncated \} = await getIncomeForExport/);
+  assert.doesNotMatch(exportSource, /Data dipotong/);
+  assert.match(exportSource, /getIncomeForExport\(/);
 });
 
 test("R7 keuangan: Deposit terpisah dari DP pada pemasukan, ekspor, dan mutasi", async () => {
   const [expenseSource, pageSource, exportSource, dataSource] = await Promise.all([
     readFile(new URL("../lib/finance/expense.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/(app)/keuangan/pemasukan/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/keuangan/pemasukan/export/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/export/datasets/finance.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/finance/data.ts", import.meta.url), "utf8"),
   ]);
   // Kolom DP hanya memuat transaksi awal (tanpa termin dan tanpa deposit); deposit diukur sendiri.
@@ -1031,8 +1031,8 @@ test("R7 keuangan: Deposit terpisah dari DP pada pemasukan, ekspor, dan mutasi",
   assert.match(pageSource, /const totalDeposit = sumMoney\(data\.items\.map\(\(item\) => item\.deposit\)\)/);
   assert.match(pageSource, /formatCurrency\(totalDeposit\)/);
   // Ekspor XLSX menyertakan kolom Deposit dengan nilai "-" bila nol; header Margin memakai "%" seperti tabel.
-  assert.match(exportSource, /"Margin %", "Deposit", "DP", "Lunas"/);
-  assert.match(exportSource, /Deposit: row\.deposit \? Number\(row\.deposit\) : "-"/);
+  assert.ok(exportSource.indexOf('header: "Margin %"') < exportSource.indexOf('header: "Deposit"') && exportSource.indexOf('header: "Deposit"') < exportSource.indexOf('header: "DP"') && exportSource.indexOf('header: "DP"') < exportSource.indexOf('header: "Lunas"'), "export: Margin %, Deposit, DP, Lunas berurutan");
+  assert.match(exportSource, /item\.deposit \? Number\(item\.deposit\) : null/);
   // Mutasi pembayaran membedakan Termin / Deposit / Pembayaran awal untuk ditampilkan.
   assert.match(dataSource, /transactionKind: item\.paymentTermId \? "Termin" : item\.isDeposit \? "Deposit" : "Pembayaran awal"/);
 });
@@ -1133,14 +1133,14 @@ test("customer mendukung menu mandiri, halaman detail, dan import export XLSX ya
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
   const detailActionSource = await readFile(new URL("../app/actions/crm-details.ts", import.meta.url), "utf8");
   const excelSource = await readFile(new URL("../lib/crm/customer-excel.ts", import.meta.url), "utf8");
-  const exportRouteSource = await readFile(new URL("../app/api/customers/export/route.ts", import.meta.url), "utf8");
+  const exportRouteSource = await readFile(new URL("../lib/export/datasets/crm.ts", import.meta.url), "utf8");
   const legacyPageSource = await readFile(new URL("../app/(app)/crm/pelanggan/page.tsx", import.meta.url), "utf8");
 
   assert.match(navSource, /href: "\/customers", label: "Customer"/);
   assert.doesNotMatch(navSource, /isPathWithin\(pathname, "\/crm\/pelanggan"\)/);
   assert.match(pageSource, /function customerDetailHref\(customerId: string, state: TableState\)/);
   assert.match(pageSource, /<CustomerTableRowLink key=\{customer\.id\} href=\{customerDetailHref\(customer\.id, state\)\}>/);
-  assert.match(pageSource, /href=\{exportHref\(state\)\}/);
+  assert.match(pageSource, /params=\{exportParams\(state\)\}/);
   assert.match(pageSource, /form action=\{importCustomersAction\}/);
   assert.match(actionSource, /requireActor\(MASTER_DATA_ROLES\)/);
   assert.match(actionSource, /parseCustomerWorkbook\(customerExcelFile\(formData\)\)/);
@@ -1153,7 +1153,7 @@ test("customer mendukung menu mandiri, halaman detail, dan import export XLSX ya
   assert.match(excelSource, /CUSTOMER_EXCEL_MAX_BYTES = 1 \* 1024 \* 1024/);
   assert.match(excelSource, /Excel Customer tidak boleh berisi formula/);
   assert.match(exportRouteSource, /getCustomersForExport/);
-  assert.match(exportRouteSource, /downloadFilename\("customer", "xlsx"\)/);
+  assert.match(exportRouteSource, /CUSTOMER_COLUMNS/);
   assert.match(legacyPageSource, /redirect\(suffix \? `\/customers\?\$\{suffix\}` : "\/customers"\)/);
 });
 

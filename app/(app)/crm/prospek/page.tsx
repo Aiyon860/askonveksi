@@ -7,6 +7,7 @@ import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
 import { NewLeadForm } from "@/components/crm/new-lead-form";
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { ProspectStatusBadge } from "@/components/status-badge";
@@ -67,6 +68,7 @@ async function ProspectsTable({ searchParams }: { searchParams: SearchParams }) 
   ]);
   const persistent = { q: query || undefined, from: range.from || undefined, to: range.to || undefined, sort: sort === "createdAt" ? undefined : sort, order: direction === defaultDirection(sort) ? undefined : direction, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
+  const exportParams = Object.fromEntries(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   const hasFilters = Boolean(query || range.from || range.to);
 
   return <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card" aria-label="Tabel Prospek">
@@ -81,6 +83,7 @@ async function ProspectsTable({ searchParams }: { searchParams: SearchParams }) 
         <Field className="w-40 gap-1"><FieldLabel htmlFor="prospect-to">Sampai tanggal</FieldLabel><Input id="prospect-to" name="to" type="date" defaultValue={range.to} /></Field>
         <Button type="submit" variant="outline">Terapkan</Button>
         <Button variant="secondary" nativeButton={false} render={<Link href="/crm/prospek" />}>Reset</Button>
+        <ExportButton dataset="peluang" params={exportParams} />
         {actor && hasRole(actor.role, CRM_OPERATOR_ROLES) ? <NewLeadForm {...formOptions} /> : null}
         <p className="ml-auto text-xs text-muted-foreground"><strong className="font-medium text-foreground">{total}</strong> prospek</p>
       </form>

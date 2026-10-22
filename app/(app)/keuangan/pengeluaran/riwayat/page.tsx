@@ -4,6 +4,7 @@ import { History, RotateCcw } from "lucide-react";
 import { restoreExpenseAction } from "@/app/actions/finance";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -29,9 +30,12 @@ export default async function DeletedExpensesPage({ searchParams }: { searchPara
         title="Riwayat Hapus Pengeluaran"
         description="Data yang dihapus (status terhapus) tidak muncul di pencarian dan tabel utama. Tercatat siapa yang menghapus dan kapan."
         action={
-          <Button variant="outline" render={<Link href="/keuangan/pengeluaran" />} nativeButton={false}>
-            Kembali ke Pengeluaran
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton dataset="pengeluaran-terhapus" />
+            <Button variant="outline" render={<Link href="/keuangan/pengeluaran" />} nativeButton={false}>
+              Kembali ke Pengeluaran
+            </Button>
+          </div>
         }
       />
       <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">

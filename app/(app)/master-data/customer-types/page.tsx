@@ -20,7 +20,7 @@ export default async function CustomerTypesPage() {
         bulkUpdateAction={bulkUpdateCustomerTypesAction}
         deleteAction={deleteCustomerTypeAction}
         importAction={importCustomerTypesAction}
-        exportHref="/api/master-data/customer-types/export"
+        exportDataset="master-jenis-customer"
       />
     </>
   );

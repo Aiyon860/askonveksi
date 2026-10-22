@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { SortableTableHead } from "@/components/sortable-table-head";
@@ -58,7 +59,11 @@ export default async function DetailDesainPage({ searchParams }: { searchParams:
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
   const persistentParams = { q: query || undefined, status: status !== "all" ? status : undefined, sort: sort !== "deadline" ? sort : undefined, order: direction !== defaultDirection() ? direction : undefined, pageSize: pageSize !== DATA_PAGE_SIZE ? String(pageSize) : undefined };
   return <>
-    <PageHeader title="Detail Desain" description="Work Order masuk ke kanban Produksi setelah desain diberi keterangan oleh tim Produksi." />
+    <PageHeader
+      title="Detail Desain"
+      description="Work Order masuk ke kanban Produksi setelah desain diberi keterangan oleh tim Produksi."
+      action={<ExportButton dataset="detail-desain" label="Export semua revisi" params={{ q: query || undefined }} />}
+    />
     <PageMessage />
     {!canManage ? (
       <Alert>

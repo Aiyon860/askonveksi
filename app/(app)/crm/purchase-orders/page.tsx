@@ -9,6 +9,7 @@ import { PurchaseOrderFilterSheet } from "@/components/crm/purchase-order-filter
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { FilterBarSkeleton, TableSkeleton } from "@/components/loading-skeletons";
+import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { SortableTableHead } from "@/components/sortable-table-head";
@@ -95,6 +96,7 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
     pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize),
   };
   if (page > pageCount) redirect(tableHref(state, { page: pageCount }));
+  const exportParams = Object.fromEntries(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   const hasFilters = Boolean(query || status !== "all" || range.start);
   const filterSummaryParts = [
     purchaseOrderStatusLabel(status),
@@ -110,6 +112,7 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
         <p className="text-xs text-muted-foreground lg:whitespace-nowrap"><strong className="font-medium text-foreground">{total}</strong> purchase order</p>
         <div className="flex items-center gap-2">
           {filterSummaryParts.length ? <p className="hidden max-w-80 truncate text-xs text-muted-foreground xl:block">{activeSummary}</p> : null}
+          <ExportButton dataset="purchase-order" params={exportParams} />
           <PurchaseOrderFilterSheet
             query={query}
             status={status}

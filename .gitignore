@@ -20,6 +20,9 @@
 # production
 /build
 
+# sertifikat HTTPS development (next dev --experimental-https)
+/certificates/
+
 # misc
 .DS_Store
 *.pem
@@ -55,3 +58,6 @@ next-env.d.ts
 .gemini/
 .impeccable/
 .opencode/
+
+# Aset vendor yang dihasilkan scripts/sync-export-vendor.mjs (Web Worker export)
+public/vendor/exceljs.min.js

@@ -32,7 +32,7 @@ export default async function ProductCategoriesPage() {
         bulkUpdateAction={bulkUpdateProductCategoriesAction}
         deleteAction={deleteProductCategoryAction}
         importAction={importProductCategoriesAction}
-        exportHref="/api/master-data/product-categories/export"
+        exportDataset="master-kategori-produk"
         maxNameLength={80}
       />
     </>
