@@ -12,7 +12,6 @@ import { IssueInvoiceAction } from "@/components/crm/issue-invoice-action";
 import { PurchaseOrderAgreementAction } from "@/components/crm/purchase-order-agreement-action";
 import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderWorkflowSection } from "@/components/crm/purchase-order-workflow-section";
-import { AutoRefresh } from "@/components/auto-refresh";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -61,7 +60,6 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
         </Suspense>
       </div>
       <PageMessage />
-      <AutoRefresh />
 
       <div className="flex min-w-0 max-w-full flex-col">
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>

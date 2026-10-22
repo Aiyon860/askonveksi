@@ -9,16 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { WhatsAppAutoRefresh } from "@/components/whatsapp-auto-refresh";
 import { WhatsAppDeletionMonitor } from "@/components/whatsapp-deletion-monitor";
 import { WhatsAppPairingCode } from "@/components/whatsapp-pairing-code";
 import { getWhatsAppAccounts } from "@/lib/whatsapp/data";
 
 export default async function WhatsAppAccountsPage() {
   const accounts = await getWhatsAppAccounts();
-  const hasPairing = accounts.some((account) => account.status === "PAIRING");
   const hasDeleting = accounts.some((account) => account.deleteRequestedAt);
-  return <main className="flex flex-col gap-6"><WhatsAppAutoRefresh enabled={hasPairing || hasDeleting} /><WhatsAppDeletionMonitor active={hasDeleting} /><PageHeader title="Akun & Koneksi WhatsApp" description="Hubungkan nomor bisnis dan tentukan satu nomor yang dipakai untuk mengirim." />
+  return <main className="flex flex-col gap-6"><WhatsAppDeletionMonitor active={hasDeleting} /><PageHeader title="Akun & Koneksi WhatsApp" description="Hubungkan nomor bisnis dan tentukan satu nomor yang dipakai untuk mengirim." />
     <Card><CardHeader><CardTitle>Tambah nomor</CardTitle><CardDescription>Gunakan kode negara tanpa tanda tambah, misalnya 6281234567890.</CardDescription></CardHeader><CardContent><form action={createWhatsAppAccountAction}><FieldGroup className="gap-4 sm:flex-row sm:items-end"><Field><FieldLabel htmlFor="label">Label</FieldLabel><Input id="label" name="label" required maxLength={80} placeholder="WhatsApp utama" /></Field><Field><FieldLabel htmlFor="phoneNumber">Nomor</FieldLabel><Input id="phoneNumber" name="phoneNumber" required inputMode="tel" maxLength={24} placeholder="6281234567890" /></Field><Button type="submit">Tambah</Button></FieldGroup></form></CardContent></Card>
     <div className="grid gap-4 md:grid-cols-2">{accounts.map((account) => {
       const deleting = Boolean(account.deleteRequestedAt);

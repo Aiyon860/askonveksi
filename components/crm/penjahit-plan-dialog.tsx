@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 
 export type PenjahitPlanItem = {
   id: string;
@@ -52,13 +53,44 @@ export function PenjahitPlanDialog({
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
 
   const [state, formAction, pending] = useActionState(async (prevState: { error: string | null; success: boolean }, formData: FormData) => {
-    const result = await savePenjahitPlanAction(prevState, formData);
-    // Sukses: tutup dialog + muat ulang data server (deadline & thumbnail ikut segar).
-    if (result.success) {
-      setOpen(false);
-      router.refresh();
+    // Notifikasi proses: upload desain bisa lama, jadi beri umpan balik toast
+    // (tombol submit juga menampilkan spinner) sampai server selesai.
+    const toastId = toast.add({
+      type: "loading",
+      title: "Menyimpan perubahan penjahit…",
+      description: "Menunggu deadline dan desain selesai disimpan.",
+      timeout: 0,
+    });
+    try {
+      const result = await savePenjahitPlanAction(prevState, formData);
+      if (result.success) {
+        toast.update(toastId, {
+          type: "success",
+          title: "Perubahan penjahit tersimpan",
+          description: "Deadline dan desain penjahit sudah diperbarui.",
+          timeout: 6000,
+        });
+        // Sukses: tutup dialog + muat ulang data server (deadline & thumbnail ikut segar).
+        setOpen(false);
+        router.refresh();
+      } else {
+        toast.update(toastId, {
+          type: "error",
+          title: "Perubahan penjahit belum tersimpan",
+          description: result.error ?? "Coba lagi.",
+          timeout: 8000,
+        });
+      }
+      return result;
+    } catch (error) {
+      toast.update(toastId, {
+        type: "error",
+        title: "Perubahan penjahit belum tersimpan",
+        description: "Terjadi kesalahan saat menyimpan. Coba lagi.",
+        timeout: 8000,
+      });
+      throw error;
     }
-    return result;
   }, { error: null, success: false });
 
   function openDialog() {

@@ -10,7 +10,7 @@ export default async function InvoiceSettingsPage() {
     <>
       <PageHeader
         title="Pengaturan invoice"
-        description="Poin Keterangan dan Syarat & Ketentuan yang dicetak pada PDF invoice. Urutan poin bisa diatur manual dan tiap poin bisa ditebalkan."
+        description="Poin Keterangan dan Syarat & Ketentuan yang dicetak pada PDF invoice. Enter membuat poin baru, Shift+Enter menambah baris dalam poin yang sama, dan teks bisa ditebalkan, dimiringkan, atau digarisbawahi."
       />
       <PageMessage />
       <InvoiceSettingsEditor
@@ -18,7 +18,6 @@ export default async function InvoiceSettingsPage() {
           id: point.id,
           section: point.section,
           text: point.text,
-          bold: point.isBold,
         }))}
         saveAction={saveInvoiceSettingsAction}
       />

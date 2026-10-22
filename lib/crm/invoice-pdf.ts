@@ -4,8 +4,9 @@ import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } 
 
 import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
 import { MIN_FONT_SIZE, clipPdfText } from "@/lib/crm/pdf-typography";
+import { parseInvoicePointRuns, type InvoicePointRun } from "@/lib/crm/invoice-setting-html";
 
-type PdfInvoiceSettingPoint = { section: "KETERANGAN" | "SYARAT_KETENTUAN"; text: string; isBold: boolean };
+type PdfInvoiceSettingPoint = { section: "KETERANGAN" | "SYARAT_KETENTUAN"; text: string };
 
 type PdfInvoice = {
   invoiceNo: string;
@@ -108,6 +109,56 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number) {
   return lines.length ? lines : [""];
 }
 
+type PointToken = { text: string; font: PDFFont; underline: boolean };
+
+/** Bungkus run bergaya menjadi baris token sesuai lebar kolom; `\n` paksa baris baru. */
+function layoutPointLines(
+  runs: InvoicePointRun[],
+  fonts: { regular: PDFFont; bold: PDFFont; italic: PDFFont; boldItalic: PDFFont },
+  maxWidth: number,
+) {
+  const lines: PointToken[][] = [];
+  let line: PointToken[] = [];
+  let lineWidth = 0;
+  let pendingSpace = false;
+  let pendingBreak = false;
+
+  const newLine = () => {
+    lines.push(line);
+    line = [];
+    lineWidth = 0;
+    pendingSpace = false;
+  };
+  const append = (text: string, font: PDFFont, underline: boolean) => {
+    const tokenWidth = font.widthOfTextAtSize(text, MIN_FONT_SIZE);
+    if (lineWidth > 0 && lineWidth + tokenWidth > maxWidth) newLine();
+    line.push({ text, font, underline: underline && text.trim().length > 0 });
+    lineWidth += tokenWidth;
+  };
+
+  for (const run of runs) {
+    const font = run.bold ? (run.italic ? fonts.boldItalic : fonts.bold) : run.italic ? fonts.italic : fonts.regular;
+    for (const part of run.text.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) {
+        if (part.includes("\n")) pendingBreak = true;
+        else pendingSpace = true;
+        continue;
+      }
+      if (pendingBreak) {
+        if (line.length) newLine();
+        pendingBreak = false;
+      } else if (pendingSpace && line.length) {
+        append(" ", fonts.regular, false);
+      }
+      pendingSpace = false;
+      append(safeText(part), font, run.underline);
+    }
+  }
+  if (line.length || !lines.length) lines.push(line);
+  return lines;
+}
+
 type InvoiceAssets = {
   logo?: Uint8Array;
   signature?: Uint8Array;
@@ -121,6 +172,8 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
+  const italic = await document.embedFont(StandardFonts.HelveticaOblique);
+  const boldItalic = await document.embedFont(StandardFonts.HelveticaBoldOblique);
   const logoBytes = assets.logo ?? await readDefaultBrandLogoPng();
   const logo = await document.embedPng(logoBytes);
   let signature: Awaited<ReturnType<typeof document.embedPng>> | undefined;
@@ -165,19 +218,31 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     y -= 14;
   }
 
-  /** Blok poin berurutan dari master "Pengaturan invoice" (tiap poin bisa bold). */
+  /**
+   * Blok poin dari master "Pengaturan invoice". Tiap poin bisa memuat campuran
+   * tebal/miring/garis bawah (fragmen HTML) dan baris baru di dalam poin.
+   */
   function drawPointList(title: string, points: PdfInvoiceSettingPoint[], x = margin, width = CONTENT_WIDTH) {
     if (!points.length) return;
     ensure(70);
     sectionTitle(title, x, width);
+    const fonts = { regular, bold, italic, boldItalic };
     points.forEach((point, index) => {
-      const font = point.isBold ? bold : regular;
-      // Poin bisa multi-baris (textarea master): pecah manual per \n dulu, baru wrap tiap segmen.
-      const lines = String(point.text ?? "").split(/\r?\n/).flatMap((segment) => wrap(segment, font, MIN_FONT_SIZE, width - 22));
+      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22);
       ensure(lines.length * 16 + 10);
       page.drawText(`${index + 1}.`, { x, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.4, 0.4, 0.4) });
-      lines.forEach((line, lineIndex) => {
-        page.drawText(line || " ", { x: x + 22, y: y - lineIndex * 16, size: MIN_FONT_SIZE, font, color: rgb(0.12, 0.12, 0.12) });
+      lines.forEach((tokens, lineIndex) => {
+        const lineY = y - lineIndex * 16;
+        let cursorX = x + 22;
+        for (const token of tokens) {
+          if (!token.text) continue;
+          page.drawText(token.text, { x: cursorX, y: lineY, size: MIN_FONT_SIZE, font: token.font, color: rgb(0.12, 0.12, 0.12) });
+          const tokenWidth = token.font.widthOfTextAtSize(token.text, MIN_FONT_SIZE);
+          if (token.underline) {
+            page.drawLine({ start: { x: cursorX, y: lineY - 2 }, end: { x: cursorX + tokenWidth, y: lineY - 2 }, thickness: 0.8, color: rgb(0.12, 0.12, 0.12) });
+          }
+          cursorX += tokenWidth;
+        }
       });
       y -= lines.length * 16 + 6;
     });

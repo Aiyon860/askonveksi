@@ -1446,12 +1446,12 @@ model SequenceCounter {
 }
 
 // Master "Pengaturan invoice": dua kolom (keterangan & syarat/ketentuan) berisi poin
-// yang dicetak pada PDF invoice, dengan urutan manual dan penanda tebal per poin.
+// yang dicetak pada PDF invoice, dengan urutan manual. Teks poin menyimpan fragmen
+// HTML ringan (strong, em, u, br) untuk tebal/miring/garis bawah.
 model InvoiceSettingPoint {
   id        String                @id @default(cuid())
   section   InvoiceSettingSection
   text      String                @db.Text
-  isBold    Boolean               @default(false)
   position  Int                   @default(0)
   createdAt DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt DateTime              @updatedAt @db.Timestamptz(3)

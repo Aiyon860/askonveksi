@@ -1246,12 +1246,14 @@ test("peluang memakai nama kategori produk sebagai jenis pakaian", async () => {
 
 test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pembayaran", async () => {
   const page = await readFile(new URL("../app/(app)/crm/invoices/page.tsx", import.meta.url), "utf8");
+  const shell = await readFile(new URL("../components/app-shell.tsx", import.meta.url), "utf8");
   const autoRefresh = await readFile(new URL("../components/auto-refresh.tsx", import.meta.url), "utf8");
   const invoiceDetail = await readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8");
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
 
-  // Halaman memantau perubahan: tabel disegarkan berkala dan saat tab kembali aktif.
-  assert.match(page, /<AutoRefresh \/>/);
+  // Auto refresh global dipasang sekali di AppShell untuk semua halaman aplikasi.
+  assert.match(shell, /<AutoRefresh \/>/);
+  assert.doesNotMatch(page, /<AutoRefresh \/>/, "halaman tidak memasang auto refresh ganda");
   assert.match(autoRefresh, /router\.refresh\(\)/);
   assert.match(autoRefresh, /document\.visibilityState === "visible"/);
   assert.match(autoRefresh, /document\.addEventListener\("visibilitychange", refresh\)/);
@@ -1414,6 +1416,10 @@ test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desai
   assert.match(dialogSource, /savePenjahitPlanAction/);
   assert.match(dialogSource, /deadline-\$\{item\.id\}/);
   assert.match(dialogSource, /design-\$\{item\.id\}/);
+  // Notifikasi proses simpan: toast loading saat upload/aksi berjalan, lalu sukses/gagal.
+  assert.match(dialogSource, /toast\.add\(\{\s*type: "loading",\s*title: "Menyimpan perubahan penjahit…"/);
+  assert.match(dialogSource, /toast\.update\(toastId, \{[\s\S]*?type: "success"/);
+  assert.match(dialogSource, /toast\.update\(toastId, \{[\s\S]*?type: "error"/);
   assert.match(buttonSource, /PenjahitPlanDialog/);
   // Rute preview desain penjahit per item (hanya pemilik PO yang boleh).
   assert.match(serveSource, /penjahitDesignPath/);
@@ -1704,20 +1710,25 @@ test("R4: add on invoice punya qty sendiri (bisa kurang dari qty baris)", async 
   assert.match(page, /qty: addon\.qty/);
 });
 
-test("R5: keterangan & S&K multi-baris (kolom TEXT, batas 1000, pecah per baris)", async () => {
-  const [schema, validation, editor, pdf] = await Promise.all([
+test("R5: keterangan & S&K multi-baris (kolom TEXT, batas 1000, format kaya)", async () => {
+  const [schema, validation, editor, richEditor, pdf] = await Promise.all([
     readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
     readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8"),
     readFile(new URL("../components/invoice-settings-editor.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/invoice-setting-rich-editor.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(schema, /text\s+String\s+@db\.Text/);
   assert.match(validation, /INVOICE_SETTING_POINT_TEXT_MAX = 1000/);
-  assert.match(editor, /<Textarea/);
+  assert.match(validation, /sanitizeInvoicePointHtml/);
+  assert.match(editor, /InvoiceSettingRichEditor/);
   assert.match(editor, /name="points"/);
   assert.doesNotMatch(editor, /Tambah poin/);
-  assert.match(pdf, /split\(\/\\r\?\\n\//);
+  assert.match(richEditor, /toggleBold\(\)/);
+  assert.match(richEditor, /toggleItalic\(\)/);
+  assert.match(richEditor, /toggleUnderline\(\)/);
+  assert.match(pdf, /parseInvoicePointRuns/);
 });
 
 test("R6: diskon dua level (per baris & total) bisa nominal atau persen, tersimpan terpisah", async () => {
