@@ -130,6 +130,14 @@ Pastikan proses aplikasi dapat menulis ke folder tersebut. Folder harus persiste
 
 Kamera (`getUserMedia`) dan lokasi (`navigator.geolocation`) hanya berjalan di **secure context**. Produksi wajib HTTPS; `http://localhost` tetap boleh untuk development.
 
+Jika menguji dari HP atau perangkat lain lewat alamat LAN (misalnya `http://192.168.1.10:3000`), browser akan memblokir kamera karena alamat tersebut bukan secure context. Jalankan server development dengan HTTPS:
+
+```bash
+npm run dev:https
+```
+
+Lalu buka alamat `https://` yang ditampilkan. `next dev --experimental-https` memakai `mkcert`; di perangkat lain, percayai sertifikat lokal yang muncul (atau pasang root CA `mkcert` di perangkat tersebut) agar kamera dapat diakses.
+
 `next.config.ts` sudah mengatur header khusus `/absensi` dan `/absensi/*`:
 
 ```text
@@ -192,7 +200,7 @@ Satu foto WebP biasanya puluhan sampai ratusan KB. Puluhan pegawai × 26 hari ke
 
 ### Kamera tidak dapat dibuka
 
-1. Pastikan alamat memakai **HTTPS** (bukan HTTP biasa, kecuali `localhost`).
+1. Pastikan alamat memakai **HTTPS** (bukan HTTP biasa, kecuali `localhost`). Untuk tes dari HP lewat jaringan lokal, jalankan `npm run dev:https`.
 2. Periksa izin kamera di pengaturan browser untuk situs ini.
 3. Tutup aplikasi lain yang sedang memakai kamera.
 4. Pastikan reverse proxy tidak menimpa `Permissions-Policy`.

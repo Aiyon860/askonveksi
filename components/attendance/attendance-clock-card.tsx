@@ -33,9 +33,17 @@ import { cn } from "@/lib/utils";
 type CameraLocationStatus = "loading" | "ready" | "unavailable";
 
 function cameraErrorMessage(error: unknown) {
+  // Browser hanya mengizinkan getUserMedia di secure context. localhost dianggap
+  // aman, tetapi alamat LAN (mis. http://192.168.x.x:3000) tidak.
+  if (typeof window !== "undefined" && window.isSecureContext === false) {
+    return `Kamera hanya dapat dibuka lewat HTTPS atau http://localhost. Alamat yang sedang dibuka: ${window.location.origin}. Untuk menguji dari HP lewat jaringan lokal, jalankan "npm run dev:https" lalu buka alamat HTTPS yang ditampilkan.`;
+  }
+  if (error instanceof Error && error.message === "MEDIA_DEVICES_UNAVAILABLE") {
+    return "Browser ini tidak menyediakan akses kamera. Gunakan Chrome, Edge, Safari, atau Firefox terbaru.";
+  }
   if (error instanceof DOMException) {
     if (error.name === "NotAllowedError" || error.name === "SecurityError") {
-      return "Izin kamera ditolak. Izinkan akses kamera di pengaturan browser, lalu coba lagi.";
+      return "Izin kamera ditolak. Buka pengaturan izin situs di browser, pilih Izinkan untuk kamera, lalu muat ulang halaman.";
     }
     if (error.name === "NotFoundError") {
       return "Kamera tidak ditemukan. Gunakan perangkat dengan kamera untuk absen.";
@@ -44,7 +52,7 @@ function cameraErrorMessage(error: unknown) {
       return "Kamera sedang dipakai aplikasi lain. Tutup aplikasi tersebut lalu coba lagi.";
     }
   }
-  return "Kamera tidak dapat dibuka. Pastikan situs diakses lewat HTTPS dan izin kamera diberikan.";
+  return "Kamera tidak dapat dibuka. Pastikan situs diakses lewat HTTPS atau localhost, izin kamera diberikan, dan kamera tidak sedang dipakai aplikasi lain.";
 }
 
 function formatAccuracy(accuracy: number | null) {
@@ -592,7 +600,7 @@ function ClockInDialog({ onClose }: { onClose: () => void }) {
                 <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
                   Batal
                 </Button>
-                <Button type="submit" disabled={!photo || pending || state.ok}>
+                <Button type="submit" disabled={!photo || pending}>
                   {pending ? <Spinner data-icon="inline-start" /> : null}
                   {pending ? "Menyimpan..." : "Kirim absensi"}
                 </Button>

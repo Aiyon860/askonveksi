@@ -20,6 +20,9 @@
 # production
 /build
 
+# sertifikat HTTPS development (next dev --experimental-https)
+/certificates/
+
 # misc
 .DS_Store
 *.pem
