@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -131,4 +132,35 @@ test("lokasi opsional tetap absen bila GPS tidak tersedia", () => {
     longitude: "",
     accuracyMeters: null,
   }).ok, false);
+});
+
+test("migrasi absensi aman dijalankan ulang tanpa transaksi sendiri", async () => {
+  const files = [
+    "../prisma/migrations/20261022010000_attendance/migration.sql",
+    "../prisma/migrations/20261022020000_attendance_start_date/migration.sql",
+  ];
+
+  for (const file of files) {
+    const sql = await readFile(new URL(file, import.meta.url), "utf8");
+    const statements = sql.replace(/--.*$/gm, "");
+
+    // Prisma sudah membungkus tiap migrasi dalam satu transaksi. BEGIN/COMMIT
+    // di dalam file membuat kegagalan parsial ter-commit dan retry deploy
+    // berujung "current transaction is aborted".
+    assert.doesNotMatch(statements, /^\s*(BEGIN|COMMIT|ROLLBACK)\s*;/im, file);
+
+    // Harus idempotent supaya deploy tetap jalan kalau object sudah ada
+    // (mis. schema pernah di-push manual ke database produksi).
+    for (const create of statements.matchAll(/CREATE (?:UNIQUE )?(?:TABLE|INDEX)[^;]*;/gi)) {
+      assert.match(create[0], /IF NOT EXISTS/i, `${file}: ${create[0].slice(0, 60)}`);
+    }
+
+    for (const addColumn of statements.matchAll(/ADD COLUMN[^,;]*/gi)) {
+      assert.match(addColumn[0], /ADD COLUMN IF NOT EXISTS/i, `${file}: ${addColumn[0]}`);
+    }
+
+    if (/CREATE TYPE/i.test(statements)) {
+      assert.match(statements, /FROM pg_type[\s\S]*CREATE TYPE/i, file);
+    }
+  }
 });
