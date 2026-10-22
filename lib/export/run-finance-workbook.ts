@@ -12,12 +12,13 @@ import { startWorkbookWorker, WorkerUnavailableError } from "@/lib/export/worker
 import type { FinanceWorkbookScope, WorkbookPayload } from "@/lib/export/workbook-types";
 
 async function fetchWorkbook(
-  scope: FinanceWorkbookScope,
+  endpoint: string,
+  scope: string,
   params: Record<string, string | undefined>,
   signal?: AbortSignal,
 ): Promise<WorkbookPayload> {
   throwIfAborted(signal);
-  const url = new URL("/api/export/finance-workbook", window.location.origin);
+  const url = new URL(endpoint, window.location.origin);
   url.searchParams.set("scope", scope);
   for (const [key, value] of Object.entries(params)) {
     // Scope ditentukan oleh tombol export, bukan oleh filter halaman.
@@ -48,23 +49,25 @@ function percentOf(rows: number, total: number) {
 }
 
 /**
- * Export laporan keuangan multi-sheet. Server hanya mengirim spec JSON; file
+ * Export workbook multi-sheet generik. Server hanya mengirim spec JSON; file
  * .xlsx dibangun di Web Worker agar main thread tetap responsif.
  */
-export async function runFinanceWorkbookExport({
+export async function runWorkbookExport({
+  endpoint,
   scope,
   params,
   onProgress,
   signal,
 }: {
-  scope: FinanceWorkbookScope;
+  endpoint: string;
+  scope: string;
   params: Record<string, string | undefined>;
   onProgress?: (progress: ExportProgress) => void;
   signal?: AbortSignal;
 }): Promise<ExportRunResult> {
   throwIfAborted(signal);
   onProgress?.({ phase: "fetch", rows: 0, total: null, percent: null });
-  const payload = await fetchWorkbook(scope, params, signal);
+  const payload = await fetchWorkbook(endpoint, scope, params, signal);
   throwIfAborted(signal);
 
   if (payload.rowCount === 0) return { rows: 0, filename: null };
@@ -98,4 +101,25 @@ export async function runFinanceWorkbookExport({
   const filename = downloadFilename(payload.subject, "xlsx");
   saveBytes(bytes, filename);
   return { rows: payload.rowCount, filename };
+}
+
+/** Export laporan keuangan multi-sheet. */
+export async function runFinanceWorkbookExport({
+  scope,
+  params,
+  onProgress,
+  signal,
+}: {
+  scope: FinanceWorkbookScope;
+  params: Record<string, string | undefined>;
+  onProgress?: (progress: ExportProgress) => void;
+  signal?: AbortSignal;
+}): Promise<ExportRunResult> {
+  return runWorkbookExport({
+    endpoint: "/api/export/finance-workbook",
+    scope,
+    params,
+    onProgress,
+    signal,
+  });
 }

@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { runAnalysisWorkbookExport } from "@/lib/export/run-analysis-workbook";
 import { runFinanceWorkbookExport } from "@/lib/export/run-finance-workbook";
 import { ExportCancelledError, runExcelExport, type ExportProgress } from "@/lib/export/run-export";
-import type { FinanceWorkbookScope } from "@/lib/export/workbook-types";
+import type { AnalysisWorkbookScope, FinanceWorkbookScope } from "@/lib/export/workbook-types";
 import { cn } from "@/lib/utils";
 
 function progressDescription(progress: ExportProgress) {
@@ -27,7 +28,8 @@ function progressDescription(progress: ExportProgress) {
 
 type ExportTarget =
   | { dataset: string; params: Record<string, string | undefined> }
-  | { workbookScope: FinanceWorkbookScope; params: Record<string, string | undefined> };
+  | { workbookScope: FinanceWorkbookScope; params: Record<string, string | undefined> }
+  | { analysisScope: AnalysisWorkbookScope; params: Record<string, string | undefined> };
 
 async function exportWithToast(target: ExportTarget) {
   const controller = new AbortController();
@@ -47,7 +49,9 @@ async function exportWithToast(target: ExportTarget) {
     const onProgress = (progress: ExportProgress) => toast.update(toastId, { description: progressDescription(progress) });
     const result = "workbookScope" in target
       ? await runFinanceWorkbookExport({ scope: target.workbookScope, params: target.params, signal: controller.signal, onProgress })
-      : await runExcelExport({ dataset: target.dataset, params: target.params, signal: controller.signal, onProgress });
+      : "analysisScope" in target
+        ? await runAnalysisWorkbookExport({ scope: target.analysisScope, params: target.params, signal: controller.signal, onProgress })
+        : await runExcelExport({ dataset: target.dataset, params: target.params, signal: controller.signal, onProgress });
 
     if (!result.rows) {
       toast.update(toastId, {
@@ -100,22 +104,25 @@ type SharedProps = {
 export function ExportButton({
   dataset,
   workbookScope,
+  analysisScope,
   params,
   label = "Export Excel",
   size = "default",
   variant = "outline",
   className,
   disabled,
-}: SharedProps & { dataset?: string; workbookScope?: FinanceWorkbookScope }) {
+}: SharedProps & { dataset?: string; workbookScope?: FinanceWorkbookScope; analysisScope?: AnalysisWorkbookScope }) {
   const [pending, setPending] = useState(false);
 
   async function handleClick() {
     if (pending) return;
     const target: ExportTarget | null = workbookScope
       ? { workbookScope, params: params ?? {} }
-      : dataset
-        ? { dataset, params: params ?? {} }
-        : null;
+      : analysisScope
+        ? { analysisScope, params: params ?? {} }
+        : dataset
+          ? { dataset, params: params ?? {} }
+          : null;
     if (!target) return;
     setPending(true);
     try {
@@ -145,6 +152,7 @@ export function ExportButton({
 type ExportMenuItem = {
   dataset?: string;
   workbookScope?: FinanceWorkbookScope;
+  analysisScope?: AnalysisWorkbookScope;
   label: string;
   params?: Record<string, string | undefined>;
 };
@@ -166,11 +174,13 @@ export function ExportMenu({
     const merged = { ...(params ?? {}), ...(item.params ?? {}) };
     const target: ExportTarget | null = item.workbookScope
       ? { workbookScope: item.workbookScope, params: merged }
-      : item.dataset
-        ? { dataset: item.dataset, params: merged }
-        : null;
+      : item.analysisScope
+        ? { analysisScope: item.analysisScope, params: merged }
+        : item.dataset
+          ? { dataset: item.dataset, params: merged }
+          : null;
     if (!target) return;
-    const key = item.workbookScope ?? item.dataset ?? item.label;
+    const key = item.workbookScope ?? item.analysisScope ?? item.dataset ?? item.label;
     setPendingKey(key);
     try {
       await exportWithToast(target);
@@ -200,7 +210,7 @@ export function ExportMenu({
       <DropdownMenuContent align="end" className="w-56">
         {items.map((item) => (
           <DropdownMenuItem
-            key={item.workbookScope ?? item.dataset ?? item.label}
+            key={item.workbookScope ?? item.analysisScope ?? item.dataset ?? item.label}
             disabled={Boolean(pendingKey)}
             onClick={() => void handleSelect(item)}
             className={cn("gap-2")}

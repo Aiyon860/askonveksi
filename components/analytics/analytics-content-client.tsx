@@ -31,7 +31,6 @@ import {
   CircleDollarSign,
   Clock,
   Crown,
-  Download,
   Factory,
   Filter,
   Globe,
@@ -60,6 +59,7 @@ import {
 import { fetcher } from "@/lib/fetcher";
 import { formatCurrency } from "@/lib/crm/format";
 import type { ExecutiveAnalyticsData } from "@/lib/crm/analytics-data";
+import { ExportButton } from "@/components/export/export-button";
 import { cn } from "@/lib/utils";
 
 function getLeadSourceIcon(sourceName: string) {
@@ -180,63 +180,6 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
       params.set("range", activeData.period.preset);
     }
     router.push(`/analytics?${params.toString()}`);
-  }
-
-  // Export CSV
-  function handleExportCsv() {
-    const rows = [
-      ["Executive Analytics Report", activeData.period.label],
-      [],
-      ["RINGKASAN EKSEKUTIF"],
-      ["Total Omzet", activeData.summary.totalRevenueFormatted],
-      ["Total HPP", activeData.summary.totalHppFormatted],
-      ["Gross Profit (Laba Kotor)", activeData.summary.totalGrossProfitFormatted],
-      ["Gross Margin %", `${activeData.summary.grossMarginPercent}%`],
-      ["Status Margin", activeData.summary.marginStatus],
-      ["Total Sales Order", activeData.summary.totalOrders],
-      ["Total Volume (Pcs)", activeData.summary.totalPcs],
-      ["Average Order Value (AOV)", activeData.summary.aovFormatted],
-      ["Closing Win Rate", `${activeData.summary.winRate}%`],
-      ["Uang Masuk (Cash Inflow)", activeData.summary.cashInflowFormatted],
-      ["Piutang Tertahan (AR)", activeData.summary.outstandingArFormatted],
-      [],
-      ["PROFITABILITAS PRODUK"],
-      ["Nama Produk", "Kategori", "Order", "Qty Pcs", "Omzet", "HPP", "Gross Profit", "Margin %", "ASP", "ACP", "Status"],
-      ...activeData.products.map((p) => [
-        p.productName,
-        p.categoryName,
-        p.orderCount,
-        p.quantity,
-        p.revenue,
-        p.hpp,
-        p.grossProfit,
-        `${p.marginPercent}%`,
-        p.asp,
-        p.acp,
-        p.marginStatus,
-      ]),
-      [],
-      ["SALES FUNNEL"],
-      ["Tahap", "Jumlah Milestone", "Konversi vs Lead", "Step Konversi", "Drop-off"],
-      ...activeData.funnel.map((f) => [f.label, f.count, `${f.conversion}%`, `${f.stepConversion}%`, `${f.dropOffRate}%`]),
-      [],
-      ["EFEKTIVITAS MARKETING CHANNEL"],
-      ["Sumber / Channel", "Leads", "Deals", "Orders", "Omzet", "Win Rate", "AOV", "Efisiensi"],
-      ...activeData.channels.map((c) => [c.channelName, c.leadCount, c.dealCount, c.orderCount, c.revenue, `${c.winRate}%`, c.avgDealValue, c.efficiency]),
-      [],
-      ["PERFORMA PIC SALES"],
-      ["Nama PIC", "Leads Ditangani", "Deal", "Win Rate", "Pcs Volume", "Omzet", "AOV"],
-      ...activeData.pics.map((pic) => [pic.picName, pic.leadCount, pic.dealCount, `${pic.winRate}%`, pic.pcsCount, pic.revenue, pic.aov]),
-    ];
-
-    const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Executive_Analytics_${activeData.period.from || "all"}_to_${activeData.period.to || "all"}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   }
 
   // Filtered products list
@@ -377,15 +320,14 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
             )}
           </div>
 
-          {/* Export Laporan CSV Button */}
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            className="flex h-11 items-center gap-2.5 rounded-xl neu-button-primary px-4.5 text-base font-semibold text-white"
-          >
-            <Download className="size-4.5" />
-            <span>Ekspor CSV</span>
-          </button>
+          {/* Export laporan multi-sheet */}
+          <ExportButton
+            analysisScope="analytics"
+            params={Object.fromEntries(searchParams.entries())}
+            label="Export Excel"
+            variant="default"
+            className="h-11 rounded-xl px-4.5 text-base font-semibold"
+          />
         </div>
       </div>
 

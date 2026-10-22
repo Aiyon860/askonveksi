@@ -1,5 +1,8 @@
 export type FinanceWorkbookScope = "laporan" | "pemasukan" | "pengeluaran";
 
+/** Laporan analisis multi-sheet untuk arsip owner. */
+export type AnalysisWorkbookScope = "dashboard" | "analytics" | "lead-sources";
+
 export type WorkbookFormula = {
   formula: string;
   result?: string | number | null;

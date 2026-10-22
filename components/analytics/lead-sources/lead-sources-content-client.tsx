@@ -47,6 +47,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/crm/format";
+import { ExportButton } from "@/components/export/export-button";
 import type {
   LeadSourceAnalyticsData,
   LeadSourceChannelDetail,
@@ -324,16 +325,25 @@ export function LeadSourcesContentClient({
             )}
           </div>
 
-          {/* Refresh Button */}
-          <button
-            type="button"
-            onClick={() => mutate()}
-            disabled={isValidating}
-            title="Segarkan Data"
-            className="flex size-10 items-center justify-center rounded-xl neu-button text-slate-600 hover:text-blue-600 dark:text-slate-300 transition"
-          >
-            <RefreshCw className={cn("size-4", isValidating && "animate-spin text-blue-600")} />
-          </button>
+          {/* Export & Refresh */}
+          <div className="flex items-center gap-2">
+            <ExportButton
+              analysisScope="lead-sources"
+              params={Object.fromEntries(searchParams.entries())}
+              label="Export Excel"
+              variant="default"
+              className="h-10 rounded-xl px-3.5 text-sm sm:text-base font-semibold"
+            />
+            <button
+              type="button"
+              onClick={() => mutate()}
+              disabled={isValidating}
+              title="Segarkan Data"
+              className="flex size-10 items-center justify-center rounded-xl neu-button text-slate-600 hover:text-blue-600 dark:text-slate-300 transition"
+            >
+              <RefreshCw className={cn("size-4", isValidating && "animate-spin text-blue-600")} />
+            </button>
+          </div>
         </div>
       </div>
 

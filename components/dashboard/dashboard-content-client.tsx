@@ -33,7 +33,6 @@ import {
   Clock,
   Coins,
   Compass,
-  Download,
   Factory,
   Filter,
   Footprints,
@@ -70,6 +69,7 @@ import {
 import { fetcher } from "@/lib/fetcher";
 import { formatCurrency } from "@/lib/crm/format";
 import type { FullDashboardData } from "@/lib/crm/dashboard-data";
+import { ExportButton } from "@/components/export/export-button";
 import { cn } from "@/lib/utils";
 
 function InstagramIcon({ className }: { className?: string }) {
@@ -415,64 +415,6 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
     setIsDarkMode(isDark);
   };
 
-  // Export report as CSV
-  const handleExportCSV = () => {
-    const rows = [
-      ["LAPORAN DASHBOARD PENJUALAN & MARKETING AS KONVEKSI"],
-      ["Periode", data.period.label],
-      ["Tanggal Ekspor", new Date().toLocaleString("id-ID")],
-      [],
-      ["RINGKASAN UTAMA (KPI)"],
-      ["Total Lead", data.summary.totalLead.toString()],
-      ["Total Deal", data.summary.totalDeal.toString()],
-      ["Total Order", data.summary.totalOrder.toString()],
-      ["Total Omzet", data.summary.totalOmzet],
-      ["Total Volume (Pcs)", data.summary.totalVolumePcs.toString()],
-      ["Win Rate Closing", `${data.summary.winRate}%`],
-      [],
-      ["DETAIL SUMBER LEAD"],
-      ["No", "Sumber Lead", "Jumlah Lead", "Deal", "Order", "Omzet", "Konversi (%)"],
-      ...data.leadSourceTable.map((r) => [
-        r.no.toString(),
-        r.name,
-        r.leadCount.toString(),
-        r.dealCount.toString(),
-        r.orderCount.toString(),
-        r.revenue,
-        `${r.conversionRate}%`,
-      ]),
-      [],
-      ["PERFORMA KATEGORI PRODUK"],
-      ["Kategori", "Jumlah Order", "Total Pcs", "Omzet", "Pangsa Pasar (%)"],
-      ...data.categoryRevenueDonut.map((r, i) => [
-        r.name,
-        (data.categoryProgress[i]?.count ?? 0).toString(),
-        (data.categoryProgress[i]?.pcs ?? 0).toString(),
-        r.revenue,
-        `${r.percentage}%`,
-      ]),
-      [],
-      ["TOP 5 PELANGGAN LOYAL"],
-      ["Nama Pelanggan", "Instansi / Perusahaan", "Tipe", "Total Order", "Total Belanja"],
-      ...data.topCustomers.map((c) => [
-        c.name,
-        c.companyName || "-",
-        c.customerType,
-        c.orderCount.toString(),
-        c.revenue,
-      ]),
-    ];
-
-    const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.map((cell) => `"${cell}"`).join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Laporan_Dashboard_ASKonveksi_${data.period.preset}_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   // Helper for trend chart formatting
   const getTrendYAxisTick = (val: number) => {
     if (trendMetric === "omzet") {
@@ -807,16 +749,21 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             )}
           </div>
 
-          {/* Export Laporan Button (memuat omzet — khusus Keuangan) */}
+          {/* Export laporan multi-sheet (memuat omzet — khusus Keuangan) */}
           {canViewFinancialData && (
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              className="flex h-11 items-center gap-2.5 rounded-xl neu-button-primary px-4.5 text-base font-semibold text-white"
-            >
-              <Download className="size-4.5" />
-              <span>Export Laporan</span>
-            </button>
+            <ExportButton
+              analysisScope="dashboard"
+              params={{
+                range: activeRange,
+                from: activeFrom || undefined,
+                to: activeTo || undefined,
+                sourceId: activeSourceId || undefined,
+                categoryId: activeCategoryId || undefined,
+              }}
+              label="Export Excel"
+              variant="default"
+              className="h-11 rounded-xl px-4.5 text-base font-semibold"
+            />
           )}
         </div>
       </div>
