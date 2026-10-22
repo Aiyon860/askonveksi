@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { Check, ReceiptText, Trash2 } from "lucide-react";
 
 import { deleteExpenseAction, reimburseExpenseAction } from "@/app/actions/finance";
-import { AutoRefresh } from "@/components/auto-refresh";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
@@ -61,7 +60,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
   const exportParams = { ...persistent, pageSize: undefined, order: order === "desc" ? undefined : order };
 
   return <>
-    <AutoRefresh />
+    
     <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><ExportButton workbookScope="pengeluaran" params={exportParams} /><ExpenseForm methods={methods} /></div>} />
     <PageMessage />
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">

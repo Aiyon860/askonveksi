@@ -78,7 +78,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     },
   }), prisma.businessProfile.findUnique({ where: { id: "default" } }), prisma.paymentMethod.findMany({ where: { isActive: true }, orderBy: { position: "asc" }, select: { name: true, description: true } }),
     // Poin master "Pengaturan invoice" dibaca langsung (live), sama seperti daftar metode pembayaran.
-    prisma.invoiceSettingPoint.findMany({ orderBy: [{ section: "asc" }, { position: "asc" }], select: { section: true, text: true, isBold: true } })]);
+    prisma.invoiceSettingPoint.findMany({ orderBy: [{ section: "asc" }, { position: "asc" }], select: { section: true, text: true } })]);
   if (!invoice) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
   // Kop identitas memakai snapshot lebih dulu; kolom snapshot yang masih kosong (invoice lama,

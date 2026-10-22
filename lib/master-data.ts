@@ -129,7 +129,7 @@ export async function getActiveGarmentSizes() {
 export async function getInvoiceSettingPoints() {
   await requireActor(MASTER_DATA_ROLES);
   return getPrismaClient().invoiceSettingPoint.findMany({
-    select: { id: true, section: true, text: true, isBold: true, position: true },
+    select: { id: true, section: true, text: true, position: true },
     orderBy: [{ section: "asc" }, { position: "asc" }],
   });
 }

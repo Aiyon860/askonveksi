@@ -755,7 +755,7 @@ async function importProductCategoryRows(actorId: string, rows: MasterDataExcelR
   }, MASTER_DATA_TRANSACTION_OPTIONS);
 }
 
-type InvoiceSettingGroups = Array<{ section: "KETERANGAN" | "SYARAT_KETENTUAN"; rows: Array<{ id?: string | undefined; text: string; bold: boolean }> }>;
+type InvoiceSettingGroups = Array<{ section: "KETERANGAN" | "SYARAT_KETENTUAN"; rows: Array<{ id?: string | undefined; text: string }> }>;
 
 /**
  * Simpan dua kolom master "Pengaturan invoice" sekaligus.
@@ -791,7 +791,7 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
 
     await getPrismaClient().$transaction(async (tx) => {
       const currentRows = await tx.invoiceSettingPoint.findMany({
-        select: { id: true, section: true, text: true, isBold: true, position: true },
+        select: { id: true, section: true, text: true, position: true },
       });
       const currentById = new Map(currentRows.map((row) => [row.id, row]));
       const keptIds = new Set<string>();
@@ -802,12 +802,12 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
           if (row.id && !current) throw new UserFacingError("Poin pengaturan invoice sudah berubah. Muat ulang lalu coba lagi.");
           if (!current) {
             const created = await tx.invoiceSettingPoint.create({
-              data: { section, text: row.text, isBold: row.bold, position },
+              data: { section, text: row.text, position },
               select: { id: true },
             });
             keptIds.add(created.id);
             await tx.auditEvent.create({
-              data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: created.id, action: "INVOICE_SETTING_POINT_CREATED", changedFields: ["section", "text", "isBold", "position"] },
+              data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: created.id, action: "INVOICE_SETTING_POINT_CREATED", changedFields: ["section", "text", "position"] },
             });
             continue;
           }
@@ -815,13 +815,12 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
           const changedFields = [
             current.section !== section ? "section" : null,
             current.text !== row.text ? "text" : null,
-            current.isBold !== row.bold ? "isBold" : null,
             current.position !== position ? "position" : null,
           ].filter((field): field is string => field !== null);
           if (!changedFields.length) continue;
           await tx.invoiceSettingPoint.update({
             where: { id: current.id },
-            data: { section, text: row.text, isBold: row.bold, position },
+            data: { section, text: row.text, position },
           });
           await tx.auditEvent.create({
             data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: current.id, action: "INVOICE_SETTING_POINT_UPDATED", changedFields },
@@ -833,7 +832,7 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
         if (keptIds.has(row.id)) continue;
         await tx.invoiceSettingPoint.delete({ where: { id: row.id } });
         await tx.auditEvent.create({
-          data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: row.id, action: "INVOICE_SETTING_POINT_DELETED", changedFields: ["section", "text", "isBold", "position"] },
+          data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: row.id, action: "INVOICE_SETTING_POINT_DELETED", changedFields: ["section", "text", "position"] },
         });
       }
     }, { ...MASTER_DATA_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

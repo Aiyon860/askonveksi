@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import { logoutAction } from "@/app/actions/auth";
 import { AppNav } from "@/components/app-nav";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { MobileAppNav } from "@/components/mobile-app-nav";
 import { PageMessage } from "@/components/page-message";
 import { SubmitButton } from "@/components/submit-button";
@@ -23,6 +24,7 @@ export async function AppShell({ actor, children }: { actor: Actor; children: Re
   const logo = await getSiteLogo();
   return (
     <div className="min-h-svh w-full max-w-full overflow-x-clip bg-app-canvas lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+      <AutoRefresh />
       <aside className="nav-surface sticky top-0 hidden h-svh self-start flex-col border-r border-nav-line text-nav-ink lg:flex">
         <div className="flex items-center gap-3 px-4 py-5">
           <span className="flex h-10 items-center rounded-xl bg-white px-2 py-1 ring-1 ring-nav-line">
