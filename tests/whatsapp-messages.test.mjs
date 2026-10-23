@@ -43,3 +43,12 @@ test("cache dan loading dipisahkan berdasarkan conversation", () => {
   assert.match(inboxSource, /keepPreviousData: false/);
   assert.match(inboxSource, /provider: \(\) => cache/);
 });
+
+test("kotak masuk punya tombol cek pesan dan kartu peringatan statis", () => {
+  assert.match(inboxSource, /Cek pesan/);
+  assert.match(inboxSource, /Sepertinya Anda mendapat pesan baru/);
+  assert.match(inboxSource, /border-warning\/30 bg-warning-surface/);
+  assert.match(inboxSource, /router\.refresh\(\)/);
+  assert.match(inboxSource, /key\.startsWith\("\/api\/whatsapp\/conversations\/"\)/);
+  assert.doesNotMatch(inboxSource, /location\.reload/);
+});

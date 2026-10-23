@@ -1,18 +1,18 @@
 "use client";
 
 import type { WhatsAppMessageDirection, WhatsAppMessageKind, WhatsAppMessageStatus } from "@prisma/client";
-import { CheckCheck, MessageCircle, Search, Send } from "lucide-react";
+import { CheckCheck, MessageCircle, RefreshCw, Search, Send, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useRef, useState, type MouseEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useRef, useState, useTransition, type MouseEvent } from "react";
 import useSWR, { SWRConfig, useSWRConfig } from "swr";
 
 import { markWhatsAppConversationReadAction, sendWhatsAppMessageAction } from "@/app/actions/whatsapp";
 import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { FilePicker } from "@/components/ui/file-picker";
@@ -191,9 +191,13 @@ function MessagePanel({ conversation, templates, canSeeUnknown, customers, custo
 }
 
 function Inbox(props: Props) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { cache, mutate } = useSWRConfig();
   const prefetching = useRef(new Set<string>());
+  const [pending, startTransition] = useTransition();
+  const [refreshing, setRefreshing] = useState(false);
+  const busy = pending || refreshing;
   const requestedId = searchParams.get("conversation");
   const active = props.conversations.find((item) => item.id === requestedId) ?? props.conversations[0];
 
@@ -216,33 +220,70 @@ function Inbox(props: Props) {
     void mutate(key, fetchMessages(key), { revalidate: false }).catch(() => prefetching.current.delete(key));
   }
 
+  function refreshInbox() {
+    if (busy) return;
+    setRefreshing(true);
+    startTransition(() => router.refresh());
+    void mutate(
+      (key) => typeof key === "string" && key.startsWith("/api/whatsapp/conversations/"),
+      undefined,
+      { revalidate: true },
+    ).catch(() => {}).finally(() => setRefreshing(false));
+  }
+
   return (
-    <div className="grid min-h-[620px] w-full min-w-0 max-w-full gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      <Card size="sm" className="min-w-0">
-        <CardHeader><CardTitle>Percakapan</CardTitle></CardHeader>
-        <CardContent className="gap-1 px-2">
-          <form className="px-1 pb-2"><div className="relative"><Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" /><Input name="q" defaultValue={props.query} placeholder="Cari nama atau nomor" aria-label="Cari percakapan WhatsApp" className="pl-9" /></div></form>
-          {props.conversations.length ? props.conversations.map((conversation) => (
-            <Link
-              key={conversation.id}
-              href={hrefFor(conversation.id)}
-              onClick={(event) => openConversation(event, conversation.id)}
-              onMouseEnter={() => prefetch(conversation.id)}
-              onFocus={() => prefetch(conversation.id)}
-              aria-current={conversation.id === active?.id ? "page" : undefined}
-              className="flex min-w-0 items-start gap-3 rounded-md px-3 py-2.5 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-muted"
-            >
-              <MessageCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2"><span className="truncate font-medium">{conversation.customer?.companyName ?? conversation.customer?.name ?? jidNumber(conversation.remoteJid)}</span>{conversation.unreadCount ? <Badge>{conversation.unreadCount}</Badge> : null}</span>
-                <span className="block truncate text-xs text-muted-foreground">{conversation.lastMessagePreview ?? "Belum ada pesan"}</span>
-              </span>
-            </Link>
-          )) : <Empty><EmptyHeader><EmptyTitle>Belum ada percakapan</EmptyTitle><EmptyDescription>Pesan masuk atau pengiriman pertama akan tampil di sini.</EmptyDescription></EmptyHeader></Empty>}
+    <div className="flex w-full min-w-0 flex-col gap-4">
+      <Card size="sm" className="border-warning/30 bg-warning-surface text-warning-surface-foreground">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium">Sepertinya Anda mendapat pesan baru</p>
+              <p className="mt-1 text-sm">Tekan Cek pesan untuk memuat percakapan terbaru.</p>
+            </div>
+          </div>
+          <Button type="button" size="sm" variant="outline" onClick={refreshInbox} disabled={busy} aria-busy={busy} aria-label="Cek pesan terbaru" title="Cek pesan terbaru" className="self-start">
+            <RefreshCw aria-hidden="true" className={busy ? "animate-spin" : undefined} />
+            Cek pesan
+          </Button>
         </CardContent>
       </Card>
 
-      {active ? <MessagePanel {...props} conversation={active} /> : <Card size="sm" className="min-w-0"><CardContent><Empty><EmptyHeader><EmptyTitle>Pilih percakapan</EmptyTitle><EmptyDescription>Pilih customer di sebelah kiri untuk membuka timeline.</EmptyDescription></EmptyHeader></Empty></CardContent></Card>}
+      <div className="grid min-h-[620px] w-full min-w-0 max-w-full gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <Card size="sm" className="min-w-0">
+          <CardHeader>
+            <CardTitle>Percakapan</CardTitle>
+            <CardAction>
+              <Button type="button" size="sm" variant="outline" onClick={refreshInbox} disabled={busy} aria-busy={busy} aria-label="Cek pesan terbaru" title="Cek pesan terbaru">
+                <RefreshCw aria-hidden="true" className={busy ? "animate-spin" : undefined} />
+                Cek pesan
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="gap-1 px-2">
+            <form className="px-1 pb-2"><div className="relative"><Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" /><Input name="q" defaultValue={props.query} placeholder="Cari nama atau nomor" aria-label="Cari percakapan WhatsApp" className="pl-9" /></div></form>
+            {props.conversations.length ? props.conversations.map((conversation) => (
+              <Link
+                key={conversation.id}
+                href={hrefFor(conversation.id)}
+                onClick={(event) => openConversation(event, conversation.id)}
+                onMouseEnter={() => prefetch(conversation.id)}
+                onFocus={() => prefetch(conversation.id)}
+                aria-current={conversation.id === active?.id ? "page" : undefined}
+                className="flex min-w-0 items-start gap-3 rounded-md px-3 py-2.5 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-muted"
+              >
+                <MessageCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2"><span className="truncate font-medium">{conversation.customer?.companyName ?? conversation.customer?.name ?? jidNumber(conversation.remoteJid)}</span>{conversation.unreadCount ? <Badge>{conversation.unreadCount}</Badge> : null}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{conversation.lastMessagePreview ?? "Belum ada pesan"}</span>
+                </span>
+              </Link>
+            )) : <Empty><EmptyHeader><EmptyTitle>Belum ada percakapan</EmptyTitle><EmptyDescription>Pesan masuk atau pengiriman pertama akan tampil di sini.</EmptyDescription></EmptyHeader></Empty>}
+          </CardContent>
+        </Card>
+
+        {active ? <MessagePanel {...props} conversation={active} /> : <Card size="sm" className="min-w-0"><CardContent><Empty><EmptyHeader><EmptyTitle>Pilih percakapan</EmptyTitle><EmptyDescription>Pilih customer di sebelah kiri untuk membuka timeline.</EmptyDescription></EmptyHeader></Empty></CardContent></Card>}
+      </div>
     </div>
   );
 }
