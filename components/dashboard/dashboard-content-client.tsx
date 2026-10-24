@@ -247,8 +247,8 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
   const scopedMenus = useMemo(() => {
     if (isFullScope) return SEARCHABLE_MENUS;
     const allowedHrefs = isCustomerScope
-      ? ["/dashboard", "/crm", "/customers", "/crm/purchase-orders", "/crm/sales-orders", "/crm/follow-up", "/whatsapp", "/campaigns", "/produksi", "/detail-desain"]
-      : ["/dashboard", "/crm/purchase-orders", "/crm/sales-orders", "/produksi", "/detail-desain"];
+      ? ["/dashboard", "/crm", "/customers", "/crm/purchase-orders", "/crm/sales-orders", "/crm/follow-up", "/whatsapp", "/campaigns", "/produksi"]
+      : ["/dashboard", "/crm/purchase-orders", "/crm/sales-orders", "/produksi"];
     return SEARCHABLE_MENUS.filter((menu) => allowedHrefs.includes(menu.href));
   }, [isFullScope, isCustomerScope]);
 
@@ -665,13 +665,15 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                   >
                     Antrean Produksi &rarr;
                   </Link>
-                  <Link
-                    href="/crm/follow-up"
-                    onClick={() => setShowNotifications(false)}
-                    className="font-semibold text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    Follow-up CRM &rarr;
-                  </Link>
+                  {!isProductionScope ? (
+                    <Link
+                      href="/crm/follow-up"
+                      onClick={() => setShowNotifications(false)}
+                      className="font-semibold text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      Follow-up CRM &rarr;
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             )}
