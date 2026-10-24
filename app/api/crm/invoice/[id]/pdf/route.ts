@@ -74,6 +74,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         },
         orderBy: { position: "asc" },
       },
+      addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } },
       salesOrder: { select: { payment: { select: { transactions: { select: { amount: true, status: true } } } } } },
     },
   }), prisma.businessProfile.findUnique({ where: { id: "default" } }), prisma.paymentMethod.findMany({ where: { isActive: true }, orderBy: { position: "asc" }, select: { name: true, description: true } }),

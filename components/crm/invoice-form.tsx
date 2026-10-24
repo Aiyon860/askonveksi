@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useState, Fragment } from "react";
+import { useActionState, useState, type KeyboardEvent } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 
 import { createInvoiceDraftAction, createInvoiceRevisionAction } from "@/app/actions/crm";
 import { MoneyInput } from "@/components/money-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { initialFormActionState } from "@/lib/actions/form-state";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
@@ -16,9 +17,10 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/crm/format";
+import { groupPurchaseOrderInvoiceItems } from "@/lib/crm/invoice-grouping";
 import { cn } from "@/lib/utils";
 
-const MAX_ADDONS_PER_ROW = 5;
+const MAX_ADDONS = 20;
 type DiscountMode = "NOMINAL" | "PERCENTAGE";
 
 type PurchaseOrder = {
@@ -37,14 +39,13 @@ type DraftAddon = { label?: string; description?: string; amount?: string; qty?:
 type DraftItem = {
   productName?: string;
   description?: string;
-  size: string;
-  sleeveLength: "PENDEK" | "PANJANG" | null;
-  quantity: number;
+  size?: string;
+  sleeveLength?: "PENDEK" | "PANJANG" | null;
+  quantity?: number;
   unitPrice: string;
   discountType?: "NONE" | "NOMINAL" | "PERCENTAGE";
   discountPercent?: string;
   discountNominal?: string;
-  addons?: DraftAddon[];
 };
 
 type DraftScheduleTerm = { value: string; dueAt: string };
@@ -66,20 +67,31 @@ type InvoiceFormValues = {
   discountPercent: string;
   discountNominal?: string;
   taxPercent?: string;
+  /** Add On invoice (baru) hasil migrasi dari Add On per baris draft lama. */
+  addons?: DraftAddon[];
   items: DraftItem[];
 };
 
 type AddonDraft = { key: string; label: string; description: string; amount: string; qty: string };
-type RowPricing = { unitPrice: string; discountType: DiscountMode; discountPercent: string; discountNominal: string; addons: AddonDraft[]; addonsOpen: boolean };
+type RowPricing = { unitPrice: string; discountType: DiscountMode; discountPercent: string; discountNominal: string };
 
 function toMode(value: string | undefined): DiscountMode {
   return value === "NOMINAL" ? "NOMINAL" : "PERCENTAGE";
 }
 
 function rowGross(row: RowPricing, quantity: number) {
-  const base = (Number(row.unitPrice) || 0) * quantity;
-  const addonTotal = row.addons.reduce((sum, addon) => sum + (Number(addon.amount) || 0) * (Number(addon.qty) || 1), 0);
-  return base + addonTotal;
+  return (Number(row.unitPrice) || 0) * quantity;
+}
+
+function addonGross(addons: AddonDraft[]) {
+  return addons.reduce((sum, addon) => sum + (Number(addon.amount) || 0) * (Number(addon.qty) || 1), 0);
+}
+
+/** Qty hanya menerima ketikan angka; panah naik/turun tidak lagi mengubah nilai. */
+function preventNonIntegerQtyKeys(event: KeyboardEvent<HTMLInputElement>) {
+  if (["e", "E", "+", "-", ".", ",", "ArrowUp", "ArrowDown"].includes(event.key)) {
+    event.preventDefault();
+  }
 }
 
 /** Kosongkan angka 0 agar kolom diskon/pajak mulai dari placeholder, bukan "0" yang harus dihapus dulu. */
@@ -109,7 +121,7 @@ function round2(value: number) {
 
 type TermDraft = { key: string; value: string; dueAt: string };
 
-/** Pratinjau turunan: nominal ⇄ persen, dihitung dari nilai dasar baris (harga × qty + add on). */
+/** Pratinjau turunan: nominal ⇄ persen, dihitung dari produk setelah diskon baris + Add On. */
 function derivedDiscount(gross: number, type: DiscountMode, percent: string, nominal: string) {
   const pct = Number(percent) || 0;
   const nom = Number(nominal) || 0;
@@ -159,30 +171,53 @@ export function InvoiceForm({
   const [formState, formAction] = useActionState(serverAction, initialFormActionState);
   const values = initialValues;
   const fieldKey = sourceInvoiceId ?? "new";
-  const itemNameById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.name]));
-  const itemGarmentById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.garmentType ?? purchaseOrder.garmentType]));
-  const rowProductName = (poItem: { itemId?: string }) => (poItem.itemId && itemNameById.get(poItem.itemId)) || purchaseOrder.productName;
-  const rowIsAccessory = (poItem: { itemId?: string }) => (poItem.itemId ? (itemGarmentById.get(poItem.itemId) ?? purchaseOrder.garmentType) : purchaseOrder.garmentType) === "AKSESORI";
-  const byKey = new Map(values?.items.map((item) => [`${item.sleeveLength ?? "PANJANG"}:${item.size.toLocaleLowerCase("id-ID")}`, item]));
+  const groups = groupPurchaseOrderInvoiceItems(purchaseOrder);
+  const normalizeName = (value: string | undefined) => (value ?? "").trim().toLocaleLowerCase("id-ID");
+  const savedByProduct = new Map<string, DraftItem[]>();
+  for (const item of values?.items ?? []) {
+    const key = normalizeName(item.productName);
+    savedByProduct.set(key, [...(savedByProduct.get(key) ?? []), item]);
+  }
+
+  /**
+   * Draft baru selalu satu baris per produk. Untuk revisi draft lama yang masih
+   * punya baris per ukuran, harga awal memakai rata-rata tertimbang qty agar
+   * total lama tidak melompat sebelum admin menyesuaikan.
+   */
+  function initialPricingFor(group: { productName: string }): RowPricing {
+    const saved = savedByProduct.get(normalizeName(group.productName)) ?? [];
+    if (!saved.length) return { unitPrice: "", discountType: "PERCENTAGE", discountPercent: "", discountNominal: "" };
+    const first = saved[0];
+    const savedQuantity = saved.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
+    const savedBase = saved.reduce((sum, item) => sum + (Number(item.unitPrice) || 0) * (item.quantity ?? 0), 0);
+    const unitPrice = saved.length === 1
+      ? first.unitPrice
+      : savedQuantity > 0
+        ? String(round2(savedBase / savedQuantity))
+        : first.unitPrice;
+    const allNominal = saved.every((item) => item.discountType === "NOMINAL");
+    const nominalTotal = saved.reduce((sum, item) => sum + (Number(item.discountNominal) || 0), 0);
+    return {
+      unitPrice,
+      discountType: toMode(first.discountType),
+      discountPercent: first.discountType === "NOMINAL" ? "" : initNumber(first.discountPercent),
+      discountNominal: allNominal ? initNumber(String(round2(nominalTotal))) : first.discountType === "NOMINAL" ? initNumber(first.discountNominal) : "",
+    };
+  }
 
   const [orderDiscountType, setOrderDiscountType] = useState<DiscountMode>(() => toMode(values?.discountType));
   const [orderDiscountPercent, setOrderDiscountPercent] = useState(() => values?.discountType === "NOMINAL" ? "" : initNumber(values?.discountPercent));
   const [orderDiscountNominal, setOrderDiscountNominal] = useState(() => values?.discountType === "NOMINAL" ? initNumber(values?.discountNominal) : "");
   const [taxPercent, setTaxPercent] = useState(() => initNumber(values?.taxPercent));
 
-  const [rows, setRows] = useState<RowPricing[]>(() => purchaseOrder.sizes.map((poItem) => {
-    const key = `${poItem.sleeveLength}:${poItem.size.toLocaleLowerCase("id-ID")}`;
-    const item = byKey.get(key);
-    const savedAddons = item?.addons ?? [];
-    return {
-      unitPrice: item?.unitPrice ?? "",
-      discountType: toMode(item?.discountType),
-      discountPercent: item?.discountType === "NOMINAL" ? "" : initNumber(item?.discountPercent),
-      discountNominal: item?.discountType === "NOMINAL" ? initNumber(item?.discountNominal) : "",
-      addons: savedAddons.slice(0, MAX_ADDONS_PER_ROW).map((addon, index) => ({ key: `saved-${index}`, label: addon.label ?? "", description: addon.description ?? "", amount: addon.amount ?? "", qty: String(addon.qty ?? 1) })),
-      addonsOpen: savedAddons.length > 0,
-    };
-  }));
+  const [rows, setRows] = useState<RowPricing[]>(() => groups.map(initialPricingFor));
+  const [addons, setAddons] = useState<AddonDraft[]>(() => (values?.addons ?? []).slice(0, MAX_ADDONS).map((addon, index) => ({
+    key: `saved-addon-${index}`,
+    label: addon.label ?? "",
+    description: addon.description ?? "",
+    amount: addon.amount ?? "",
+    qty: String(addon.qty ?? 1),
+  })));
 
   const prefillSchedule = values?.schedule;
   const [dueAt, setDueAt] = useState(() => values?.dueAt ?? "");
@@ -198,26 +233,25 @@ export function InvoiceForm({
       : [{ key: "term-0", value: "", dueAt: "" }];
   });
 
-  const totalGross = purchaseOrder.sizes.reduce((sum, poItem, index) => sum + rowGross(rows[index], poItem.quantity), 0);
-  const orderDerived = derivedDiscount(totalGross, orderDiscountType, orderDiscountPercent, orderDiscountNominal);
+  // Dasar diskon total = produk setelah diskon per baris + seluruh Add On.
+  const productNet = groups.reduce((sum, group, index) => {
+    const row = rows[index];
+    const gross = round2((Number(row.unitPrice) || 0) * group.quantity);
+    const pct = Math.min(100, Math.max(0, Number(row.discountPercent) || 0));
+    const nom = Math.max(0, Number(row.discountNominal) || 0);
+    const discount = row.discountType === "NOMINAL" ? Math.min(nom, gross) : round2(gross * pct / 100);
+    return sum + gross - discount;
+  }, 0);
+  const orderDiscountBase = round2(productNet + addonGross(addons));
+  const orderDerived = derivedDiscount(orderDiscountBase, orderDiscountType, orderDiscountPercent, orderDiscountNominal);
 
   const depositAmountNumber = Number(purchaseOrder.depositAmount ?? 0) || 0;
-  // Pratinjau total klien: mirror calculateInvoiceLines — diskon per baris → diskon total → pajak → bulat Rp500.
+  // Pratinjau total klien: mirror calculateInvoiceLines — produk + Add On, diskon per baris → diskon total → pajak → bulat Rp500.
   const previewTotal = (() => {
-    let linesTotal = 0;
-    purchaseOrder.sizes.forEach((poItem, index) => {
-      const row = rows[index];
-      const addonTotal = row.addons.reduce((sum, addon) => sum + round2((Number(addon.amount) || 0) * (Number(addon.qty) || 1)), 0);
-      const gross = round2((Number(row.unitPrice) || 0) * poItem.quantity + addonTotal);
-      const pct = Math.min(100, Math.max(0, Number(row.discountPercent) || 0));
-      const nom = Math.max(0, Number(row.discountNominal) || 0);
-      const discount = row.discountType === "NOMINAL" ? Math.min(nom, gross) : round2(gross * pct / 100);
-      linesTotal += gross - discount;
-    });
     const orderPct = Math.min(100, Math.max(0, Number(orderDiscountPercent) || 0));
     const orderNom = Math.max(0, Number(orderDiscountNominal) || 0);
-    const orderDiscount = orderDiscountType === "NOMINAL" ? Math.min(orderNom, Math.max(0, linesTotal)) : round2(linesTotal * orderPct / 100);
-    const afterDiscount = Math.max(0, linesTotal - orderDiscount);
+    const orderDiscount = orderDiscountType === "NOMINAL" ? Math.min(orderNom, Math.max(0, orderDiscountBase)) : round2(orderDiscountBase * orderPct / 100);
+    const afterDiscount = Math.max(0, orderDiscountBase - orderDiscount);
     const taxAmount = round2(afterDiscount * (Number(taxPercent) || 0) / 100);
     return roundPaymentAmount(afterDiscount + taxAmount);
   })();
@@ -261,21 +295,16 @@ export function InvoiceForm({
   function updateRow(index: number, patch: Partial<RowPricing>) {
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
-  function updateAddon(rowIndex: number, addonKey: string, patch: Partial<AddonDraft>) {
-    setRows((current) => current.map((row, i) => (i === rowIndex ? { ...row, addons: row.addons.map((addon) => (addon.key === addonKey ? { ...addon, ...patch } : addon)) } : row)));
+  function updateAddon(addonKey: string, patch: Partial<AddonDraft>) {
+    setAddons((current) => current.map((addon) => (addon.key === addonKey ? { ...addon, ...patch } : addon)));
   }
-  function addAddon(rowIndex: number) {
-    setRows((current) => current.map((row, i) => (i === rowIndex ? { ...row, addons: [...row.addons, { key: `new-${Date.now()}-${row.addons.length}`, label: "", description: "", amount: "", qty: "1" }], addonsOpen: true } : row)));
+  function addAddon() {
+    setAddons((current) => current.length >= MAX_ADDONS
+      ? current
+      : [...current, { key: `new-addon-${Date.now()}-${current.length}`, label: "", description: "", amount: "", qty: "1" }]);
   }
-  function removeAddon(rowIndex: number, addonKey: string) {
-    setRows((current) => current.map((row, i) => {
-      if (i !== rowIndex) return row;
-      const next = row.addons.filter((addon) => addon.key !== addonKey);
-      return { ...row, addons: next, addonsOpen: next.length > 0 };
-    }));
-  }
-  function openAddons(rowIndex: number) {
-    setRows((current) => current.map((row, i) => (i === rowIndex ? { ...row, addons: [{ key: `new-${Date.now()}`, label: "", description: "", amount: "", qty: "1" }], addonsOpen: true } : row)));
+  function removeAddon(addonKey: string) {
+    setAddons((current) => current.filter((addon) => addon.key !== addonKey));
   }
 
   return (
@@ -285,134 +314,131 @@ export function InvoiceForm({
       {sourceInvoiceId ? <input type="hidden" name="sourceInvoiceId" value={sourceInvoiceId} /> : null}
       <FieldGroup>
         <Table containerClassName="rounded-lg border">
-          <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="w-16 text-right">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead><TableHead className="min-w-40">Diskon</TableHead></TableRow></TableHeader>
-          <TableBody>{purchaseOrder.sizes.map((poItem, rowIndex) => {
-            const key = `${poItem.sleeveLength}:${poItem.size.toLocaleLowerCase("id-ID")}`;
-            const item = byKey.get(key);
-            const rowName = rowProductName(poItem);
-            const accessory = rowIsAccessory(poItem);
-            const sizeCaption = `${poItem.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"} · ${poItem.size}`;
-            const defaultDescription = accessory ? rowName : `${rowName} ${poItem.sleeveLength === "PENDEK" ? "lengan pendek" : "lengan panjang"} ukuran ${poItem.size}`;
-            const row = rows[rowIndex];
-            const gross = rowGross(row, poItem.quantity);
-            const derived = derivedDiscount(gross, row.discountType, row.discountPercent, row.discountNominal);
-            return <Fragment key={poItem.id}>
-              <TableRow>
-                <TableCell className="min-w-40 align-top">
-                  <Input name="itemProductName" required minLength={2} maxLength={120} defaultValue={item?.productName ?? rowName} aria-label={`Produk ${defaultDescription}`} />
-                  {!accessory ? <p className="mt-1 text-xs text-muted-foreground">{sizeCaption}</p> : null}
-                  <input type="hidden" name="itemPurchaseOrderSizeId" value={poItem.id} /><input type="hidden" name="itemSleeveLength" value={poItem.sleeveLength} /><input type="hidden" name="itemSize" value={poItem.size} />
-                </TableCell>
-                <TableCell className="min-w-56 align-top"><Textarea name="itemDescription" maxLength={240} rows={1} defaultValue={item?.description ?? ""} placeholder="Deskripsi opsional..." aria-label={`Deskripsi ${defaultDescription}`} className="min-h-9 resize-y" /></TableCell>
-                <TableCell className="w-16 text-right font-mono tabular-nums align-top">{poItem.quantity}<input type="hidden" name="itemQuantity" value={poItem.quantity} /></TableCell>
-                <TableCell className="align-top"><MoneyInput name="itemUnitPrice" required min={0} step="0.01" value={row.unitPrice} onChange={(event) => updateRow(rowIndex, { unitPrice: event.target.value })} aria-label={`Harga ${defaultDescription}`} /></TableCell>
-                <TableCell className="min-w-44 align-top">
-                  <div className="flex flex-col gap-1">
-                    <InputGroup>
+          <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="w-16 text-center">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead><TableHead className="min-w-40">Diskon</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {groups.map((group, rowIndex) => {
+              const saved = savedByProduct.get(normalizeName(group.productName))?.[0];
+              const rowName = saved?.productName?.trim() || group.productName;
+              const row = rows[rowIndex];
+              const gross = rowGross(row, group.quantity);
+              const derived = derivedDiscount(gross, row.discountType, row.discountPercent, row.discountNominal);
+              return (
+                <TableRow key={group.key}>
+                  <TableCell className="min-w-40 align-top">
+                    <Input name="itemProductName" required minLength={2} maxLength={120} defaultValue={rowName} aria-label={`Produk ${rowName}`} />
+                    <input type="hidden" name="itemPurchaseOrderItemId" value={group.purchaseOrderItemId} />
+                  </TableCell>
+                  <TableCell className="min-w-56 align-top"><Textarea name="itemDescription" maxLength={240} rows={1} defaultValue={saved?.description ?? ""} placeholder="Deskripsi opsional..." aria-label={`Deskripsi ${rowName}`} className="min-h-9 resize-y" /></TableCell>
+                  <TableCell className="w-16 align-top"><div className="flex h-9 items-center justify-center font-mono tabular-nums">{group.quantity}</div></TableCell>
+                  <TableCell className="align-top"><MoneyInput name="itemUnitPrice" required min={0} step="0.01" value={row.unitPrice} onChange={(event) => updateRow(rowIndex, { unitPrice: event.target.value })} aria-label={`Harga ${rowName}`} /></TableCell>
+                  <TableCell className="min-w-44 align-top">
+                    <div className="flex flex-col gap-1">
                       {row.discountType === "NOMINAL" ? (
-                        <InputGroupInput type="number" min={0} step="0.01" inputMode="decimal" placeholder="0" value={row.discountNominal} onChange={(event) => updateRow(rowIndex, { discountNominal: event.target.value })} aria-label={`Diskon ${defaultDescription}`} />
-                      ) : (
-                        <InputGroupInput type="number" min={0} max={100} step="0.0001" inputMode="decimal" placeholder="0" value={row.discountPercent} onChange={(event) => updateRow(rowIndex, { discountPercent: event.target.value })} aria-label={`Diskon ${defaultDescription}`} />
-                      )}
-                      <DiscountToggle type={row.discountType} onChange={(mode) => updateRow(rowIndex, { discountType: mode })} label={`Diskon ${defaultDescription}`} />
-                    </InputGroup>
-                    <input type="hidden" name="itemDiscountType" value={row.discountType} />
-                    <input type="hidden" name="itemDiscountPercent" value={row.discountType === "PERCENTAGE" ? row.discountPercent : "0"} />
-                    <input type="hidden" name="itemDiscountNominal" value={row.discountType === "NOMINAL" ? row.discountNominal : "0"} />
-                    {derived ? <p className="text-xs text-muted-foreground">{derived}</p> : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-              {row.addons.length > 0 ? (
-                <>
-                  <TableRow>
-                    <TableCell colSpan={5} className="border-t-0 bg-muted/40 pb-1 pt-3">
-                      <p className="text-xs font-medium text-muted-foreground">Add On · {rowName}{accessory ? "" : ` ${sizeCaption}`} <span className="font-normal">(qty bebas, default 1)</span></p>
-                    </TableCell>
-                  </TableRow>
-                  {row.addons.map((addon, addonIndex) => (
-                    <TableRow key={addon.key}>
-                      <TableCell className="border-t-0 bg-muted/40 pt-1">
-                        <Input
-                          name={`item-${rowIndex}-addon-label`}
-                          required
-                          minLength={2}
-                          maxLength={120}
-                          value={addon.label}
-                          onChange={(event) => updateAddon(rowIndex, addon.key, { label: event.target.value })}
-                          placeholder="Keterangan add on, mis. Kerah"
-                          aria-label={`Keterangan add on ${addonIndex + 1} untuk ${rowName}`}
-                        />
-                      </TableCell>
-                      <TableCell className="border-t-0 bg-muted/40 pt-1">
-                        <Input
-                          name={`item-${rowIndex}-addon-description`}
-                          maxLength={240}
-                          value={addon.description}
-                          onChange={(event) => updateAddon(rowIndex, addon.key, { description: event.target.value })}
-                          placeholder="Deskripsi add on (opsional)..."
-                          aria-label={`Deskripsi add on ${addonIndex + 1} untuk ${rowName}`}
-                        />
-                      </TableCell>
-                      <TableCell className="w-16 border-t-0 bg-muted/40 pt-1">
-                        <Input
-                          name={`item-${rowIndex}-addon-qty`}
-                          type="number"
-                          min={1}
-                          step="1"
-                          value={addon.qty}
-                          onChange={(event) => updateAddon(rowIndex, addon.key, { qty: event.target.value })}
-                          className="text-right"
-                          aria-label={`Qty add on ${addonIndex + 1} untuk ${rowName}`}
-                        />
-                      </TableCell>
-                      <TableCell className="border-t-0 bg-muted/40 pt-1">
                         <MoneyInput
-                          name={`item-${rowIndex}-addon-amount`}
-                          required
                           min={0}
-                          step="0.01"
-                          value={addon.amount}
-                          onChange={(event) => updateAddon(rowIndex, addon.key, { amount: event.target.value })}
-                          aria-label={`Harga add on ${addonIndex + 1} untuk ${rowName}`}
+                          placeholder="0"
+                          value={row.discountNominal}
+                          onChange={(event) => updateRow(rowIndex, { discountNominal: event.target.value })}
+                          aria-label={`Diskon ${rowName}`}
+                          endAddon={<DiscountToggle type={row.discountType} onChange={(mode) => updateRow(rowIndex, { discountType: mode })} label={`Diskon ${rowName}`} />}
                         />
-                      </TableCell>
-                      <TableCell className="border-t-0 bg-muted/40 pt-1">
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="icon-sm"
-                          onClick={() => removeAddon(rowIndex, addon.key)}
-                          aria-label={`Hapus add on ${addonIndex + 1} untuk ${rowName}`}
-                        >
-                          <X aria-hidden="true" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {row.addons.length < MAX_ADDONS_PER_ROW ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="border-t-0 bg-muted/40 pb-3 pt-1">
-                        <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => addAddon(rowIndex)} aria-label={`Tambah add on lagi untuk ${rowName}`}>
-                          <Plus data-icon="inline-start" aria-hidden="true" />
-                          Add On
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </>
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="border-t-0 pt-0">
-                    <Button type="button" variant="outline" size="sm" onClick={() => openAddons(rowIndex)} aria-label={`Tambah add on untuk ${rowName}${accessory ? "" : ` ${sizeCaption}`}`}>
+                      ) : (
+                        <InputGroup>
+                          <InputGroupInput type="number" min={0} max={100} step="0.0001" inputMode="decimal" placeholder="0" value={row.discountPercent} onChange={(event) => updateRow(rowIndex, { discountPercent: event.target.value })} aria-label={`Diskon ${rowName}`} />
+                          <DiscountToggle type={row.discountType} onChange={(mode) => updateRow(rowIndex, { discountType: mode })} label={`Diskon ${rowName}`} />
+                        </InputGroup>
+                      )}
+                      <input type="hidden" name="itemDiscountType" value={row.discountType} />
+                      <input type="hidden" name="itemDiscountPercent" value={row.discountType === "PERCENTAGE" ? row.discountPercent : "0"} />
+                      <input type="hidden" name="itemDiscountNominal" value={row.discountType === "NOMINAL" ? row.discountNominal : "0"} />
+                      {derived ? <p className="text-xs text-muted-foreground">{derived}</p> : null}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            <TableRow className="hover:bg-info-surface">
+              <TableCell colSpan={5} className="border-t-2 border-info/20 bg-info-surface px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">Add On</p>
+                      <Badge variant="info">Opsional</Badge>
+                    </div>
+                    <p className="text-xs text-info-surface-foreground">Berdiri sendiri di bawah seluruh produk; qty bebas, default 1.</p>
+                  </div>
+                  {addons.length < MAX_ADDONS ? (
+                    <Button type="button" variant="outline" size="sm" onClick={addAddon} aria-label="Tambah add on invoice">
                       <Plus data-icon="inline-start" aria-hidden="true" />
                       Add On
                     </Button>
-                  </TableCell>
-                </TableRow>
-              )}
-            </Fragment>;
-          })}</TableBody>
+                  ) : null}
+                </div>
+              </TableCell>
+            </TableRow>
+            {addons.map((addon, addonIndex) => (
+              <TableRow key={addon.key} className="bg-info-surface/40 hover:bg-info-surface/60">
+                <TableCell>
+                  <Input
+                    name="addonLabel"
+                    required
+                    minLength={2}
+                    maxLength={120}
+                    value={addon.label}
+                    onChange={(event) => updateAddon(addon.key, { label: event.target.value })}
+                    placeholder="Keterangan add on, mis. Kerah"
+                    aria-label={`Keterangan add on ${addonIndex + 1}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    name="addonDescription"
+                    maxLength={240}
+                    value={addon.description}
+                    onChange={(event) => updateAddon(addon.key, { description: event.target.value })}
+                    placeholder="Deskripsi add on (opsional)..."
+                    aria-label={`Deskripsi add on ${addonIndex + 1}`}
+                  />
+                </TableCell>
+                <TableCell className="w-16">
+                  <Input
+                    name="addonQty"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    step="1"
+                    value={addon.qty}
+                    onChange={(event) => updateAddon(addon.key, { qty: event.target.value })}
+                    onKeyDown={preventNonIntegerQtyKeys}
+                    className="text-center font-mono tabular-nums [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    aria-label={`Qty add on ${addonIndex + 1}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <MoneyInput
+                    name="addonAmount"
+                    required
+                    min={0}
+                    step="0.01"
+                    value={addon.amount}
+                    onChange={(event) => updateAddon(addon.key, { amount: event.target.value })}
+                    aria-label={`Harga add on ${addonIndex + 1}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon-sm"
+                    onClick={() => removeAddon(addon.key)}
+                    aria-label={`Hapus add on ${addonIndex + 1}`}
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
         </Table>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Field>
@@ -423,14 +449,22 @@ export function InvoiceForm({
           <Field>
             <FieldLabel htmlFor={`invoice-discount-${fieldKey}`}>Diskon total</FieldLabel>
             <div className="flex flex-col gap-1">
-              <InputGroup>
-                {orderDiscountType === "NOMINAL" ? (
-                  <InputGroupInput id={`invoice-discount-${fieldKey}`} type="number" min={0} step="0.01" inputMode="decimal" placeholder="0" value={orderDiscountNominal} onChange={(event) => setOrderDiscountNominal(event.target.value)} aria-label="Diskon total invoice" />
-                ) : (
+              {orderDiscountType === "NOMINAL" ? (
+                <MoneyInput
+                  id={`invoice-discount-${fieldKey}`}
+                  min={0}
+                  placeholder="0"
+                  value={orderDiscountNominal}
+                  onChange={(event) => setOrderDiscountNominal(event.target.value)}
+                  aria-label="Diskon total invoice"
+                  endAddon={<DiscountToggle type={orderDiscountType} onChange={setOrderDiscountType} label="Diskon total" />}
+                />
+              ) : (
+                <InputGroup>
                   <InputGroupInput id={`invoice-discount-${fieldKey}`} type="number" min={0} max={100} step="0.0001" inputMode="decimal" placeholder="0" value={orderDiscountPercent} onChange={(event) => setOrderDiscountPercent(event.target.value)} aria-label="Diskon total invoice" />
-                )}
-                <DiscountToggle type={orderDiscountType} onChange={setOrderDiscountType} label="Diskon total" />
-              </InputGroup>
+                  <DiscountToggle type={orderDiscountType} onChange={setOrderDiscountType} label="Diskon total" />
+                </InputGroup>
+              )}
               <input type="hidden" name="discountType" value={orderDiscountType} />
               <input type="hidden" name="discountPercent" value={orderDiscountType === "PERCENTAGE" ? orderDiscountPercent : "0"} />
               <input type="hidden" name="discountNominal" value={orderDiscountType === "NOMINAL" ? orderDiscountNominal : "0"} />
@@ -441,7 +475,7 @@ export function InvoiceForm({
           <Field><FieldLabel htmlFor={`invoice-tax-${fieldKey}`}>Pajak % (opsional)</FieldLabel><Input id={`invoice-tax-${fieldKey}`} name="taxPercent" type="number" min={0} max={100} step="0.0001" placeholder="0" value={taxPercent} onChange={(event) => setTaxPercent(event.target.value)} aria-label="Pajak invoice" /></Field>
           <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
         </div>
-        <FieldDescription>Harga akhir = harga satuan × qty ditambah add on (per qty add on), dikurangi diskon per baris dan diskon total, ditambah pajak, lalu dibulatkan ke kelipatan Rp500 terdekat.</FieldDescription>
+        <FieldDescription>Harga akhir = total produk setelah diskon per baris, ditambah seluruh Add On (qty bebas), dikurangi diskon total, ditambah pajak, lalu dibulatkan ke kelipatan Rp500 terdekat.</FieldDescription>
         <section className="flex flex-col gap-4 rounded-lg border bg-muted/40 p-4" aria-label="Jadwal pembayaran">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">

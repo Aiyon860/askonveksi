@@ -12,7 +12,8 @@ import { OPEN_STAGES, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/c
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
 import { designImageContentType, designImageExtensionFor, designImageRejection, type DesignImageMime } from "@/lib/design/image";
-import { calculateInvoiceLines, roundInvoiceTotal, type InvoiceDiscountType, type InvoiceOrderDiscountInput, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
+import { calculateInvoiceLines, roundInvoiceTotal, type InvoiceAddonInput, type InvoiceDiscountType, type InvoiceOrderDiscountInput, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
+import { groupPurchaseOrderInvoiceItems } from "@/lib/crm/invoice-grouping";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
 import {
@@ -220,43 +221,36 @@ function uniqueNameMap<T extends { name: string }>(items: T[], label: string) {
 }
 
 function invoiceInput(formData: FormData) {
-  const purchaseOrderSizeIds = formData.getAll("itemPurchaseOrderSizeId");
+  const purchaseOrderItemIds = formData.getAll("itemPurchaseOrderItemId");
   const productNames = formData.getAll("itemProductName");
-  const sizes = formData.getAll("itemSize");
-  const sleeveLengths = formData.getAll("itemSleeveLength");
   const descriptions = formData.getAll("itemDescription");
-  const quantities = formData.getAll("itemQuantity");
   const unitPrices = formData.getAll("itemUnitPrice");
   const itemDiscounts = formData.getAll("itemDiscountPercent");
   const itemDiscountTypes = formData.getAll("itemDiscountType");
   const itemDiscountNominals = formData.getAll("itemDiscountNominal");
-  const length = Math.max(purchaseOrderSizeIds.length, sizes.length, unitPrices.length);
+  const length = Math.max(purchaseOrderItemIds.length, productNames.length, unitPrices.length);
   const fallbackDiscount = formValue(formData, "discountPercent") || "0";
-  const items = Array.from({ length }, (_, index) => {
-    const addonLabels = formData.getAll(`item-${index}-addon-label`);
-    const addonDescriptions = formData.getAll(`item-${index}-addon-description`);
-    const addonAmounts = formData.getAll(`item-${index}-addon-amount`);
-    const addonQtys = formData.getAll(`item-${index}-addon-qty`);
-    const addons = Array.from({ length: Math.max(addonLabels.length, addonAmounts.length) }, (_, addonIndex) => ({
-      label: addonLabels[addonIndex],
-      description: addonDescriptions[addonIndex] || undefined,
-      unitAmount: addonAmounts[addonIndex],
-      qty: addonQtys[addonIndex] || "1",
-    }));
-    return {
-      purchaseOrderSizeId: purchaseOrderSizeIds[index],
-      productName: productNames[index],
-      size: sizes[index],
-      sleeveLength: sleeveLengths[index],
-      description: descriptions[index],
-      quantity: quantities[index],
-      unitPrice: unitPrices[index],
-      discountType: (itemDiscountTypes[index] || "PERCENTAGE") as InvoiceDiscountType,
-      discountPercent: itemDiscounts[index] || "0",
-      discountNominal: itemDiscountNominals[index] || "0",
-      addons,
-    };
-  });
+  const items = Array.from({ length }, (_, index) => ({
+    purchaseOrderItemId: String(purchaseOrderItemIds[index] ?? ""),
+    productName: productNames[index],
+    description: descriptions[index],
+    unitPrice: unitPrices[index],
+    discountType: (itemDiscountTypes[index] || "PERCENTAGE") as InvoiceDiscountType,
+    discountPercent: itemDiscounts[index] || "0",
+    discountNominal: itemDiscountNominals[index] || "0",
+  }));
+
+  // Add On level invoice: satu daftar di bawah seluruh produk.
+  const addonLabels = formData.getAll("addonLabel");
+  const addonDescriptions = formData.getAll("addonDescription");
+  const addonAmounts = formData.getAll("addonAmount");
+  const addonQtys = formData.getAll("addonQty");
+  const addons = Array.from({ length: Math.max(addonLabels.length, addonAmounts.length) }, (_, index) => ({
+    label: addonLabels[index],
+    description: addonDescriptions[index] || undefined,
+    unitAmount: addonAmounts[index],
+    qty: addonQtys[index] || "1",
+  }));
 
   const termValueTypes = formData.getAll("termValueType");
   const termValues = formData.getAll("termValue");
@@ -290,6 +284,7 @@ function invoiceInput(formData: FormData) {
     notes: formValue(formData, "notes"),
     schedule,
     items,
+    addons,
   };
 }
 
@@ -520,48 +515,64 @@ function calculateInvoiceForPurchaseOrder(
     items?: Array<{ id: string; name: string; garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null }>;
     sizes: Array<{ id: string; itemId: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
-  submittedItems: InvoicePricingInput[],
+  submittedItems: Array<Omit<InvoicePricingInput, "quantity">>,
   orderDiscount: InvoiceOrderDiscountInput,
   taxPercent = "0",
+  submittedAddons: InvoiceAddonInput[] = [],
 ) {
-  const submittedById = new Map(submittedItems.map((item) => [String(item.purchaseOrderSizeId), item]));
-  if (submittedById.size !== purchaseOrder.sizes.length || submittedItems.length !== purchaseOrder.sizes.length) {
-    throw new UserFacingError("Item invoice harus sama dengan seluruh baris matriks PO.");
+  const groups = groupPurchaseOrderInvoiceItems(purchaseOrder);
+  if (!groups.length) throw new UserFacingError("PO belum memiliki baris ukuran yang dapat ditagihkan.");
+  const submittedById = new Map(submittedItems.map((item) => [item.purchaseOrderItemId || "__legacy__", item]));
+  if (submittedById.size !== groups.length || submittedItems.length !== groups.length) {
+    throw new UserFacingError("Item invoice harus sama dengan seluruh produk pada PO.");
   }
-  const itemNameById = new Map((purchaseOrder.items ?? []).map((item) => [item.id, item.name]));
-  const calculated = calculateInvoiceLines(purchaseOrder.sizes.map((poRow) => {
-    const submitted = submittedById.get(poRow.id);
-    if (!submitted) throw new UserFacingError("Salah satu baris PO tidak tersedia pada invoice.");
-    const rowDefault = itemNameById.get(poRow.itemId) ?? purchaseOrder.productName;
-    const productName = String(submitted.productName || rowDefault).trim() || rowDefault;
+  const calculated = calculateInvoiceLines(groups.map((group) => {
+    const submitted = submittedById.get(group.key);
+    if (!submitted) throw new UserFacingError("Salah satu produk PO tidak tersedia pada invoice.");
+    const productName = String(submitted.productName || group.productName).trim() || group.productName;
     // Deskripsi opsional: bila tidak diisi, simpan kosong (ditampilkan "-" di Detail & PDF).
     const description = String(submitted.description || "").trim();
     return {
-      purchaseOrderSizeId: poRow.id,
+      purchaseOrderItemId: group.purchaseOrderItemId,
       productName,
-      size: poRow.size,
-      sleeveLength: poRow.sleeveLength,
+      // Satu baris produk menampung semua ukuran/lengan, jadi identitas varian tidak disimpan.
+      size: "",
+      sleeveLength: null,
       description,
-      quantity: poRow.quantity,
+      quantity: group.quantity,
       unitPrice: String(submitted.unitPrice),
       discountType: submitted.discountType,
       discountPercent: String(submitted.discountPercent ?? "0"),
       discountNominal: String(submitted.discountNominal ?? "0"),
-      addons: ((submitted as { addons?: Array<{ label: unknown; description?: unknown; unitAmount: unknown; qty?: unknown }> }).addons ?? []).map((addon) => ({
-        label: String(addon.label ?? ""),
-        description: String(addon.description ?? "").trim() || undefined,
-        unitAmount: String(addon.unitAmount ?? ""),
-        qty: Number(addon.qty ?? 1),
-      })),
     };
-  }), orderDiscount, taxPercent);
+  }), orderDiscount, taxPercent, submittedAddons);
   return {
     ...calculated,
-    // addonGross bukan kolom Prisma (hanya turunan kalkulasi untuk tampilan).
-    items: calculated.items.map(({ purchaseOrderSizeId, addons, addonGross, ...item }) => ({
-      ...item,
-      sizeId: purchaseOrder.sizes.find((row) => row.id === purchaseOrderSizeId)?.sizeId ?? null,
-      addons: { create: addons.map((addon) => ({ position: addon.position, label: addon.label, description: addon.description, unitAmount: addon.unitAmount, qty: addon.qty })) },
+    // Hanya kirim kolom InvoiceItem; purchaseOrderItemId adalah kunci form, bukan kolom DB.
+    items: calculated.items.map((item) => ({
+      position: item.position,
+      productName: item.productName,
+      size: item.size,
+      sleeveLength: item.sleeveLength,
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      grossAmount: item.grossAmount,
+      discountType: item.discountType,
+      discountPercent: item.discountPercent,
+      discountCapAmount: item.discountCapAmount,
+      discountAmount: item.discountAmount,
+      total: item.total,
+      subtotal: item.subtotal,
+      sizeId: null,
+    })),
+    // total bukan kolom Prisma (hanya turunan kalkulasi untuk tampilan).
+    addons: calculated.addons.map((addon) => ({
+      position: addon.position,
+      label: addon.label,
+      description: addon.description,
+      unitAmount: addon.unitAmount,
+      qty: addon.qty,
     })),
   };
 }
@@ -2166,7 +2177,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
           },
         });
         if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent);
+        const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent, parsed.data.addons);
         const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
 
         const aggregate = await tx.invoice.aggregate({ where: { opportunityId: opportunity.id }, _max: { revision: true } });
@@ -2202,6 +2213,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
             notes: parsed.data.notes ?? business?.invoiceNotes,
             createdById: actor.id,
             items: { create: calculated.items },
+            ...(calculated.addons.length ? { addons: { create: calculated.addons } } : {}),
           },
           select: { id: true },
         });
@@ -2251,7 +2263,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
       },
     });
     if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
-    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent);
+    const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent, parsed.data.addons);
     timer.mark("calculate");
 
     await prisma.$transaction(
@@ -2275,17 +2287,13 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
         });
         if (updated.count !== 1) throw new UserFacingError("Draft sudah berubah atau tidak lagi dapat diedit.");
         await tx.invoiceItem.deleteMany({ where: { invoiceId } });
-        const createdItems = await tx.invoiceItem.createManyAndReturn({
-          data: calculated.items.map(({ addons: _addons, ...item }) => ({ ...item, invoiceId })),
-          select: { id: true, position: true },
+        await tx.invoiceAddon.deleteMany({ where: { invoiceId } });
+        await tx.invoiceItem.createMany({
+          data: calculated.items.map((item) => ({ ...item, invoiceId })),
         });
-        const itemIdByPosition = new Map(createdItems.map((item) => [item.position, item.id]));
-        const addonRows = calculated.items.flatMap((item) => {
-          const invoiceItemId = itemIdByPosition.get(item.position);
-          if (!invoiceItemId) throw new UserFacingError("Item invoice gagal disimpan. Muat ulang halaman.");
-          return item.addons.create.map((addon) => ({ ...addon, invoiceItemId }));
-        });
-        if (addonRows.length) await tx.invoiceItemAddon.createMany({ data: addonRows });
+        if (calculated.addons.length) {
+          await tx.invoiceAddon.createMany({ data: calculated.addons.map((addon) => ({ ...addon, invoiceId })) });
+        }
         await audit(tx, actor, "Invoice", invoiceId, "INVOICE_DRAFT_UPDATED", [
           "purchaseOrderId", "items", "addons", "discountType", "discountValue", "subtotal", "totalDiscount", "taxPercent", "taxAmount", "total", "dueAt", "notes",
         ]);
@@ -2317,6 +2325,7 @@ export async function issueInvoiceAction(formData: FormData) {
           revision: true,
           status: true,
           dueAt: true,
+          purchaseOrderId: true,
           pendingPayment: { select: { kind: true, initialAmount: true } },
           purchaseOrder: { select: { status: true } },
           items: { select: { id: true }, take: 1 },
@@ -2325,7 +2334,10 @@ export async function issueInvoiceAction(formData: FormData) {
               stage: true,
               customerId: true,
               customer: { select: { name: true, companyName: true, whatsapp: true, email: true, instagram: true, address: true } },
-              invoices: { where: { status: "ISSUED", id: { not: parsed.data.invoiceId } }, select: { id: true }, take: 1 },
+              invoices: {
+                where: { status: { in: ["DRAFT", "ISSUED"] }, id: { not: parsed.data.invoiceId } },
+                select: { id: true, status: true, revision: true, purchaseOrderId: true },
+              },
             },
           },
         },
@@ -2333,7 +2345,14 @@ export async function issueInvoiceAction(formData: FormData) {
       if (!invoice || invoice.status !== "DRAFT") throw new UserFacingError("Invoice draft tidak ditemukan.");
       if (invoice.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Invoice hanya dapat diterbitkan saat Negosiasi.");
       if (invoice.purchaseOrder.status !== "AGREED") throw new UserFacingError("PO terkait tidak lagi berstatus Disepakati.");
-      if (invoice.opportunity.invoices.length) throw new UserFacingError("Invoice sudah diterbitkan dan bersifat final.");
+      if (invoice.opportunity.invoices.some((item) => item.status === "DRAFT")) {
+        throw new UserFacingError("Selesaikan invoice draft lain sebelum menerbitkan invoice ini.");
+      }
+      // Revisi invoice terbit tetap menyimpan dokumen lama sebagai ISSUED sampai revisi
+      // benar-benar diterbitkan. Saat itu dokumen sebelumnya baru digantikan.
+      const previousIssued = invoice.opportunity.invoices.filter((item) => item.status === "ISSUED" && item.purchaseOrderId === invoice.purchaseOrderId && item.revision < invoice.revision);
+      const conflictingIssued = invoice.opportunity.invoices.filter((item) => item.status === "ISSUED" && !(item.purchaseOrderId === invoice.purchaseOrderId && item.revision < invoice.revision));
+      if (conflictingIssued.length) throw new UserFacingError("Invoice lain masih terbit. Selesaikan atau batalkan invoice tersebut terlebih dahulu.");
       if (!invoice.items.length) throw new UserFacingError("Invoice belum memiliki item.");
       // Jatuh tempo & jadwal diisi manual bersama draft; keduanya wajib sebelum invoice dikunci.
       if (!invoice.dueAt) throw new UserFacingError("Tgl. jatuh tempo wajib diisi sebelum invoice diterbitkan.");
@@ -2364,6 +2383,12 @@ export async function issueInvoiceAction(formData: FormData) {
         },
       });
       if (updated.count !== 1) throw new UserFacingError("Invoice sudah berubah. Muat ulang halaman.");
+      if (previousIssued.length) {
+        await tx.invoice.updateMany({
+          where: { id: { in: previousIssued.map((item) => item.id) }, status: "ISSUED" },
+          data: { status: "SUPERSEDED", version: { increment: 1 } },
+        });
+      }
       const auditEvent = await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_ISSUED", ["status", "issuedAt", "snapshot"]);
       await addSystemActivity(tx, actor, {
         customerId: invoice.opportunity.customerId,
@@ -2437,11 +2462,15 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             total: true,
             dueAt: true,
             notes: true,
+            salesOrder: { select: { id: true } },
             opportunity: {
               select: {
                 stage: true,
                 purchaseOrders: { where: { status: "DRAFT" }, select: { id: true }, take: 1 },
-                invoices: { where: { status: "ISSUED" }, select: { id: true }, take: 1 },
+                invoices: {
+                  where: { status: { in: ["DRAFT", "ISSUED"] }, id: { not: sourceInvoiceId.data } },
+                  select: { id: true, status: true, revision: true, purchaseOrderId: true },
+                },
               },
             },
             purchaseOrder: {
@@ -2456,34 +2485,50 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             },
           },
         });
-        if (!source || source.status !== "DRAFT") {
-          throw new UserFacingError("Revisi hanya dapat dibuat dari draft invoice aktif.");
+        if (!source || (source.status !== "DRAFT" && source.status !== "ISSUED")) {
+          throw new UserFacingError("Revisi hanya dapat dibuat dari draft atau invoice terbit.");
         }
-        if (source.revision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi invoice sudah tercapai.");
         if (source.opportunityId !== parsed.data.opportunityId || source.purchaseOrderId !== parsed.data.purchaseOrderId) {
           throw new UserFacingError("Invoice sumber tidak sesuai dengan peluang atau PO aktif.");
         }
-        if (source.opportunity.invoices.length) throw new UserFacingError("Invoice sudah diterbitkan dan bersifat final.");
+        if (source.status === "ISSUED" && source.salesOrder) {
+          throw new UserFacingError("Invoice terbit yang sudah memiliki Sales Order tidak dapat direvisi. Batalkan Sales Order terlebih dahulu.");
+        }
+        if (source.opportunity.invoices.some((item) => item.status === "DRAFT")) {
+          throw new UserFacingError("Selesaikan invoice draft lain sebelum membuat revisi.");
+        }
+        // Invoice terbit lama boleh tetap aktif selama revisi masih draft. Yang tidak boleh
+        // adalah invoice lain pada PO berbeda atau revisi yang lebih baru sudah terbit.
+        const conflictingIssued = source.opportunity.invoices.some((item) => item.status === "ISSUED" && (item.purchaseOrderId !== source.purchaseOrderId || item.revision >= source.revision));
+        if (conflictingIssued) throw new UserFacingError("Invoice lain masih terbit. Selesaikan invoice tersebut terlebih dahulu.");
         if (source.opportunity.stage !== "NEGOSIASI" || source.purchaseOrder.status !== "AGREED") {
           throw new UserFacingError("Revisi invoice hanya dapat dibuat dari PO aktif saat Negosiasi.");
         }
         if (source.opportunity.purchaseOrders.length) throw new UserFacingError("Sepakati atau selesaikan draft PO sebelum merevisi invoice.");
-        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent);
-        const locked = await tx.invoice.updateMany({
-          where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
-          data: { status: "SUPERSEDED", version: { increment: 1 } },
-        });
-        if (locked.count !== 1) throw new UserFacingError("Draft invoice sudah berubah. Muat ulang halaman.");
-        // Jadwal pembayaran melekat pada baris draft: baris SUPERSEDED dilepas dari jadwalnya
-        // dan jadwal baru (bila diisi) menempel pada baris revisi.
-        await tx.pendingPaymentTerm.deleteMany({ where: { pendingPayment: { invoiceId: source.id } } });
-        await tx.pendingDealPayment.deleteMany({ where: { invoiceId: source.id } });
+        if (source.status === "ISSUED" && !parsed.data.schedule) {
+          throw new UserFacingError("Jadwal pembayaran invoice terbit wajib diisi pada revisi.");
+        }
+        const aggregate = await tx.invoice.aggregate({ where: { opportunityId: source.opportunityId }, _max: { revision: true } });
+        const latestRevision = aggregate._max.revision ?? source.revision;
+        if (latestRevision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi invoice sudah tercapai.");
+        const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent, parsed.data.addons);
+        if (source.status === "DRAFT") {
+          const locked = await tx.invoice.updateMany({
+            where: { id: source.id, status: "DRAFT", revision: source.revision, version: source.version },
+            data: { status: "SUPERSEDED", version: { increment: 1 } },
+          });
+          if (locked.count !== 1) throw new UserFacingError("Draft invoice sudah berubah. Muat ulang halaman.");
+          // Jadwal pembayaran melekat pada baris draft: baris SUPERSEDED dilepas dari jadwalnya
+          // dan jadwal baru menempel pada baris revisi.
+          await tx.pendingPaymentTerm.deleteMany({ where: { pendingPayment: { invoiceId: source.id } } });
+          await tx.pendingDealPayment.deleteMany({ where: { invoiceId: source.id } });
+        }
         const created = await tx.invoice.create({
           data: {
             invoiceNo: await nextInvoiceNo(tx),
             opportunityId: source.opportunityId,
             purchaseOrderId: source.purchaseOrderId,
-            revision: source.revision + 1,
+            revision: latestRevision + 1,
             snapshotCustomerName: source.snapshotCustomerName,
             snapshotCompanyName: source.snapshotCompanyName,
             snapshotWhatsapp: source.snapshotWhatsapp,
@@ -2507,6 +2552,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             notes: parsed.data.notes,
             createdById: actor.id,
             items: { create: calculated.items },
+            ...(calculated.addons.length ? { addons: { create: calculated.addons } } : {}),
           },
           select: { id: true },
         });

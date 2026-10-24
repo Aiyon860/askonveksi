@@ -783,6 +783,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
             },
             orderBy: { position: "asc" },
           },
+          addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } },
           salesOrder: { select: { id: true, salesOrderNo: true, status: true, payment: { select: { kind: true, transactions: { where: { status: "ACTIVE", paymentTermId: null, isDeposit: false }, select: { id: true, amount: true } }, terms: { orderBy: { position: "asc" }, select: { position: true, transactions: { where: { status: "ACTIVE" }, orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }], select: { id: true } } } } } } } },
           // Prefill jadwal pembayaran pada form invoice (draft & revisi).
           pendingPayment: {
@@ -1911,6 +1912,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       purchaseOrder: { select: { purchaseOrderNo: true, deadline: true, deposit: { select: { amount: true, paidAt: true, reference: true, note: true, proofFileName: true, proofMimeType: true, paymentMethod: { select: { name: true } } } } } },
       pendingPayment: { select: { kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true }, orderBy: { position: "asc" } } } },
       items: { select: { id: true, productName: true, size: true, description: true, quantity: true, unitPrice: true, discountType: true, discountPercent: true, discountAmount: true, subtotal: true, total: true, addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } },
+      addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } },
       salesOrder: {
         select: {
           id: true,
@@ -1975,6 +1977,7 @@ export async function getInvoiceDetail(invoiceId: string) {
       } : null,
     },
     items: invoice.items.map((item) => ({ ...item, unitPrice: item.unitPrice.toString(), discountPercent: item.discountPercent.toString(), discountAmount: item.discountAmount.toString(), total: item.total.toString(), subtotal: item.subtotal.toString(), addons: item.addons.map((addon) => ({ ...addon, unitAmount: addon.unitAmount.toString() })) })),
+    addons: invoice.addons.map((addon) => ({ ...addon, unitAmount: addon.unitAmount.toString() })),
     canRecordPayment: hasRole(actor.role, DEAL_ROLES),
     paymentMethods,
     salesOrder: invoice.salesOrder?.payment ? {

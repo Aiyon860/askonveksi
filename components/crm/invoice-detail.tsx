@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useActionState, useCallback, useEffect, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
 
 import { editInvoicePaymentTransactionAction, payInvoicePaymentTermAction, payPendingInitialPaymentAction, updateInvoicePaymentDeadlinesAction, voidInvoicePaymentTransactionAction } from "@/app/actions/crm";
 import { invoiceDetailAction } from "@/app/actions/crm-details";
@@ -65,6 +65,8 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
         ...detail.salesOrder.terms.flatMap((term) => (term.transaction ? [{ id: term.transaction.id, label: `Lihat Kwitansi Termin ${term.position + 1}` }] : [])),
       ]
     : [];
+  // Add On baru berada di level invoice; dokumen lama masih menyimpannya per baris.
+  const addons = detail ? [...detail.addons, ...detail.items.flatMap((item) => item.addons)] : [];
 
   return <>
     <DocumentDetailTrigger className={triggerClassName} onActivate={showDetail} variant={triggerVariant}>{children}</DocumentDetailTrigger>
@@ -84,7 +86,34 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
               return <Info label={`Deadline ${detail.pendingPayment?.kind ?? detail.salesOrder?.kind}`} value={deadlineText} />;
             })() : null}
           </dl>
-          <Table><TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Subtotal</TableHead></TableRow></TableHeader><TableBody>{detail.items.map((item) => <Fragment key={item.id}><TableRow><TableCell className="font-medium">{item.productName ?? "-"}</TableCell><TableCell>{item.description || "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(item.unitPrice)}</TableCell><TableCell className="text-right tabular-nums">{discountCellText(item)}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(item.subtotal)}</TableCell></TableRow>{item.addons.map((addon) => <TableRow key={`${item.id}-${addon.label}`}><TableCell className="pl-6 text-muted-foreground">+ {addon.label}</TableCell><TableCell className="text-muted-foreground">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono tabular-nums text-muted-foreground">{addon.qty}</TableCell><TableCell className="text-right tabular-nums text-muted-foreground">{formatInvoiceCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right tabular-nums text-muted-foreground">-</TableCell><TableCell className="text-right tabular-nums text-muted-foreground">{formatInvoiceCurrency(Number(addon.unitAmount) * addon.qty)}</TableCell></TableRow>)}</Fragment>)}</TableBody></Table>
+          <Table className="min-w-[42rem] table-fixed">
+            <colgroup>
+              <col className="w-[24%]" />
+              <col className="w-[30%]" />
+              <col className="w-[10%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+            </colgroup>
+            <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Subtotal</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {detail.items.map((item) => {
+                const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount) * addon.qty, 0);
+                return <TableRow key={item.id}><TableCell className="whitespace-normal font-medium">{item.productName ?? "-"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(item.unitPrice)}</TableCell><TableCell className="text-right tabular-nums">{discountCellText(item)}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(Number(item.subtotal) - legacyAddonTotal)}</TableCell></TableRow>;
+              })}
+              {addons.length ? <>
+                <TableRow className="bg-info-surface hover:bg-info-surface">
+                  <TableCell colSpan={6} className="border-t-2 border-info/20 px-2 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="info">Add On</Badge>
+                      <span className="text-xs text-info-surface-foreground">Item tambahan di luar produk</span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+                {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal font-medium">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{addon.qty}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right tabular-nums">-</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(Number(addon.unitAmount) * addon.qty)}</TableCell></TableRow>)}
+              </> : null}
+            </TableBody>
+          </Table>
           <dl className="ml-auto grid w-full gap-2 sm:max-w-xs"><Total label="Subtotal" value={formatInvoiceCurrency(detail.subtotal)} /><Total label="Diskon" value={formatInvoiceCurrency(detail.totalDiscount ?? "0")} />{Number(detail.taxPercent) ? <Total label={`Pajak (${Number(detail.taxPercent)}%)`} value={formatInvoiceCurrency(detail.taxAmount ?? "0")} /> : null}<Total label="Deposit" value={formatInvoiceCurrency(detail.purchaseOrder.depositAmount ?? "0")} /><Total label="Total" value={formatInvoiceCurrency(detail.total)} strong /></dl>
           {detail.salesOrder ? <PaymentSummary payment={detail.salesOrder} deposit={detail.purchaseOrder.deposit} invoiceId={detail.id} purchaseOrderId={detail.purchaseOrderId} initialDueAt={detail.salesOrder.initialDueAt} methods={detail.paymentMethods} canRecord={detail.canRecordPayment} onRecorded={reloadAfterMutation} /> : null}
           {!detail.salesOrder && detail.pendingPayment ? <PendingPaymentSummary invoiceId={detail.id} payment={detail.pendingPayment} methods={detail.paymentMethods} canRecord={detail.canRecordPayment && detail.status === "ISSUED"} issued={detail.status === "ISSUED"} productionDeadline={detail.purchaseOrder.deadline} onRecorded={reloadAfterMutation} /> : null}

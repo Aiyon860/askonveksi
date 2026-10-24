@@ -8,22 +8,22 @@ export type InvoiceAddonInput = {
   label: string;
   description?: string;
   unitAmount: string;
-  /** Jumlah pcs yang kena add on ini (default 1). Bisa lebih kecil dari qty baris. */
+  /** Jumlah pcs yang kena add on ini (default 1). */
   qty?: string | number;
 };
 
 export type InvoicePricingInput = {
-  purchaseOrderSizeId: string;
+  /** Produk PO pemilik baris invoice; data lama bisa kosong. */
+  purchaseOrderItemId?: string;
   productName: string;
-  size: string;
-  sleeveLength: "PENDEK" | "PANJANG";
+  size?: string;
+  sleeveLength?: "PENDEK" | "PANJANG" | null;
   description: string;
   quantity: number;
   unitPrice: string;
   discountType?: InvoiceDiscountType;
   discountPercent?: string;
   discountNominal?: string;
-  addons?: InvoiceAddonInput[];
 };
 
 export type InvoiceOrderDiscountInput = {
@@ -78,31 +78,33 @@ export function calculateInvoiceLines(
   items: InvoicePricingInput[],
   orderDiscount: InvoiceOrderDiscountInput | string = { type: "NONE", percent: "0" },
   taxPercent = "0",
+  addonInputs: InvoiceAddonInput[] = [],
 ) {
   const order = normalizeOrderDiscount(orderDiscount);
   const orderTaxPercent = new Prisma.Decimal(taxPercent || "0");
   if (orderTaxPercent.gt(100)) throw new UserFacingError("Pajak maksimal 100%.");
 
+  // Add On berada di level invoice: tidak ikut diskon per baris produk, tetapi
+  // tetap masuk dasar diskon total, pajak, pembulatan, dan subtotal invoice.
+  const addons = addonInputs.map((addon, position) => {
+    const unitAmount = new Prisma.Decimal(addon.unitAmount);
+    if (unitAmount.isNegative()) throw new UserFacingError("Harga add on tidak boleh negatif.");
+    const qty = Number(addon.qty ?? 1);
+    if (!Number.isInteger(qty) || qty < 1) throw new UserFacingError("Qty add on minimal 1.");
+    return {
+      position,
+      label: addon.label.trim(),
+      description: addon.description?.trim() || null,
+      unitAmount,
+      qty,
+      total: unitAmount.mul(qty).toDecimalPlaces(2),
+    };
+  });
+  const addonGross = addons.reduce((sum, addon) => sum.add(addon.total), new Prisma.Decimal(0));
+
   const calculatedItems = items.map((item, position) => {
     const unitPrice = new Prisma.Decimal(item.unitPrice);
-    const addons = (item.addons ?? []).map((addon, addonPosition) => {
-      const addonUnit = new Prisma.Decimal(addon.unitAmount);
-      if (addonUnit.isNegative()) throw new UserFacingError("Harga add on tidak boleh negatif.");
-      const addonQty = Number(addon.qty ?? 1);
-      if (!Number.isInteger(addonQty) || addonQty < 1) throw new UserFacingError("Qty add on minimal 1.");
-      return {
-        position: addonPosition,
-        label: addon.label.trim(),
-        description: addon.description?.trim() || null,
-        unitAmount: addonUnit,
-        qty: addonQty,
-        total: addonUnit.mul(addonQty).toDecimalPlaces(2),
-      };
-    });
-
-    const baseGross = unitPrice.mul(item.quantity).toDecimalPlaces(2);
-    const addonGross = addons.reduce((sum, addon) => sum.add(addon.total), new Prisma.Decimal(0));
-    const grossAmount = baseGross.add(addonGross).toDecimalPlaces(2);
+    const grossAmount = unitPrice.mul(item.quantity).toDecimalPlaces(2);
     const discount = resolveDiscount(
       grossAmount,
       { type: item.discountType, percent: item.discountPercent, nominal: item.discountNominal },
@@ -112,14 +114,13 @@ export function calculateInvoiceLines(
 
     return {
       position,
+      purchaseOrderItemId: item.purchaseOrderItemId ?? "",
       productName: item.productName,
-      size: item.size,
-      sleeveLength: item.sleeveLength,
+      size: item.size ?? "",
+      sleeveLength: item.sleeveLength ?? null,
       description: item.description,
       quantity: item.quantity,
       unitPrice,
-      addons,
-      addonGross,
       grossAmount,
       discountType: discount.type,
       discountPercent: discount.percent,
@@ -127,26 +128,28 @@ export function calculateInvoiceLines(
       discountAmount: discount.amount,
       total,
       subtotal: total,
-      purchaseOrderSizeId: item.purchaseOrderSizeId,
     };
   });
 
   const summary = calculatedItems.reduce(
     (acc, item) => ({
-      subtotal: acc.subtotal.add(item.grossAmount),
+      productSubtotal: acc.productSubtotal.add(item.grossAmount),
       itemDiscount: acc.itemDiscount.add(item.discountAmount),
-      total: acc.total.add(item.total),
+      productTotal: acc.productTotal.add(item.total),
     }),
     {
-      subtotal: new Prisma.Decimal(0),
+      productSubtotal: new Prisma.Decimal(0),
       itemDiscount: new Prisma.Decimal(0),
-      total: new Prisma.Decimal(0),
+      productTotal: new Prisma.Decimal(0),
     },
   );
 
-  // Diskon total invoice adalah potongan terpisah di atas total baris (setelah diskon per item).
-  const orderDiscountResolved = resolveDiscount(summary.total, order, "Diskon total");
-  const afterDiscount = summary.total.sub(orderDiscountResolved.amount);
+  const subtotal = summary.productSubtotal.add(addonGross);
+  const discountBase = summary.productTotal.add(addonGross);
+  // Diskon total invoice adalah potongan terpisah di atas total produk setelah
+  // diskon per item, ditambah seluruh Add On.
+  const orderDiscountResolved = resolveDiscount(discountBase, order, "Diskon total");
+  const afterDiscount = discountBase.sub(orderDiscountResolved.amount);
   const taxAmount = afterDiscount.mul(orderTaxPercent).div(100).toDecimalPlaces(2);
   const totalBeforeRounding = afterDiscount.add(taxAmount);
   const total = roundInvoiceTotal(totalBeforeRounding);
@@ -154,7 +157,9 @@ export function calculateInvoiceLines(
   const totalDiscount = summary.itemDiscount.add(orderDiscountResolved.amount);
   return {
     items: calculatedItems,
-    subtotal: summary.subtotal,
+    addons,
+    addonGross,
+    subtotal,
     totalDiscount: roundingAdjustment.isNegative() ? totalDiscount.add(roundingAdjustment.abs()) : totalDiscount,
     discountType: orderDiscountResolved.type,
     discountPercent: orderDiscountResolved.percent,

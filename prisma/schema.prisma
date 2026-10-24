@@ -882,6 +882,7 @@ model Invoice {
   purchaseOrder             PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   createdBy                 AppUser                 @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   items                     InvoiceItem[]
+  addons                    InvoiceAddon[]
   salesOrder                SalesOrder?
   pendingPayment            PendingDealPayment?
   whatsappJobs              WhatsAppAutomationJob[]
@@ -937,6 +938,23 @@ model InvoiceItemAddon {
 
   @@unique([invoiceItemId, position])
   @@index([invoiceItemId])
+}
+
+/// Add On level invoice: berdiri sendiri di bawah seluruh produk, tidak terikat baris produk.
+/// InvoiceItemAddon lama tetap dipertahankan untuk dokumen yang sudah terbit sebelum perubahan ini.
+model InvoiceAddon {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  position    Int
+  label       String   @db.VarChar(120)
+  description String?  @db.VarChar(240)
+  unitAmount  Decimal  @db.Decimal(18, 2)
+  qty         Int      @default(1)
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([invoiceId, position])
+  @@index([invoiceId])
 }
 
 model SalesOrder {

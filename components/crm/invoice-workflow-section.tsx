@@ -36,17 +36,17 @@ type InvoiceDraftValues = {
   discountPercent: string;
   discountNominal?: string;
   taxPercent?: string;
+  addons?: Array<{ label?: string; description?: string; amount?: string; qty?: number }>;
   items: Array<{
     productName?: string;
     description?: string;
-    size: string;
-    sleeveLength: "PENDEK" | "PANJANG" | null;
-    quantity: number;
+    size?: string;
+    sleeveLength?: "PENDEK" | "PANJANG" | null;
+    quantity?: number;
     unitPrice: string;
     discountType?: "NONE" | "NOMINAL" | "PERCENTAGE";
     discountPercent?: string;
     discountNominal?: string;
-    addons?: Array<{ label?: string; description?: string; amount?: string; qty?: number }>;
   }>;
 };
 
@@ -54,7 +54,6 @@ type InvoiceWorkflowSectionProps = {
   opportunityId: string;
   invoiceId: string;
   invoiceVersion: number;
-  invoiceRevision: number;
   invoiceStatus: "DRAFT" | "ISSUED" | "SUPERSEDED" | "CANCELLED";
   title: string;
   description: string;
@@ -62,6 +61,11 @@ type InvoiceWorkflowSectionProps = {
   canCancel: boolean;
   inNegotiation: boolean;
   purchaseOrder: PurchaseOrder | null;
+  /** Sales Order aktif menutup revisi invoice karena pembayaran/produksi sudah berjalan. */
+  hasSalesOrder: boolean;
+  /** Revisi yang lebih baru sudah ada; invoice lama tidak boleh bercabang. */
+  hasNewerActiveRevision: boolean;
+  revisionLimitReached: boolean;
   draftValues: InvoiceDraftValues;
   salesOrderHref?: string;
   salesOrderLabel?: string;
@@ -74,7 +78,6 @@ export function InvoiceWorkflowSection({
   opportunityId,
   invoiceId,
   invoiceVersion,
-  invoiceRevision,
   invoiceStatus,
   title,
   description,
@@ -82,6 +85,9 @@ export function InvoiceWorkflowSection({
   canCancel,
   inNegotiation,
   purchaseOrder,
+  hasSalesOrder,
+  hasNewerActiveRevision,
+  revisionLimitReached,
   draftValues,
   salesOrderHref,
   salesOrderLabel,
@@ -89,8 +95,12 @@ export function InvoiceWorkflowSection({
   children,
 }: InvoiceWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
-  // Invoice draft yang sudah tersimpan bersifat readonly; perubahan hanya lewat "Buat versi revisi".
-  const showCreateRevision = invoiceStatus === "DRAFT" && invoiceRevision < 4 && canOperate && inNegotiation && !isCreatingRevision && Boolean(purchaseOrder);
+  // Draft dan invoice terbit tanpa Sales Order dapat direvisi. Invoice terbit lama tetap
+  // aktif sampai revisinya diterbitkan, sehingga revisi baru tidak bercabang.
+  const canReviseStatus = invoiceStatus === "DRAFT" || (invoiceStatus === "ISSUED" && !hasSalesOrder);
+  const showCreateRevision = canReviseStatus && !hasNewerActiveRevision && !revisionLimitReached && canOperate && inNegotiation && !isCreatingRevision && Boolean(purchaseOrder);
+  // Saat revisi masih draft, invoice terbit lama hanya boleh dilihat PDF-nya, bukan dikirim ulang.
+  const showDeliveryActions = invoiceStatus === "ISSUED" && !hasNewerActiveRevision;
 
   return (
     <>
@@ -100,8 +110,8 @@ export function InvoiceWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isCreatingRevision && invoiceStatus === "ISSUED" ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
-          {!isCreatingRevision && invoiceStatus !== "ISSUED" ? (
+          {!isCreatingRevision && showDeliveryActions ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
+          {!isCreatingRevision && !showDeliveryActions ? (
             <Button
               type="button"
               className="w-full sm:w-auto"

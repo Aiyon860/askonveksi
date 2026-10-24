@@ -233,12 +233,13 @@ export const invoiceAddonSchema = z.object({
 });
 
 export const invoiceItemSchema = z.object({
-  purchaseOrderSizeId: entityIdSchema,
+  /** Produk PO sumber baris; kosong untuk data lama yang belum punya itemId. */
+  purchaseOrderItemId: z.string().trim().max(64).default(""),
   productName: z.string().trim().min(2, "Produk minimal 2 karakter.").max(120),
-  size: z.string().trim().min(1).max(40),
-  sleeveLength: z.enum(["PENDEK", "PANJANG"]),
+  // Invoice tidak lagi membawa ukuran/lengan: satu baris = seluruh qty produk PO.
+  size: z.string().trim().max(40).default(""),
+  sleeveLength: z.enum(["PENDEK", "PANJANG"]).nullable().default(null),
   description: z.string().trim().max(240),
-  quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
   discountType: invoiceDiscountTypeSchema.default("PERCENTAGE"),
   discountPercent: z.preprocess(
@@ -249,7 +250,6 @@ export const invoiceItemSchema = z.object({
     (v) => (v === undefined || v === null || v === "" ? "0" : v),
     z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Diskon nominal per item tidak valid."),
   ),
-  addons: z.array(invoiceAddonSchema).max(5, "Maksimal 5 add on per baris.").default([]),
 });
 
 export const invoiceScheduleTermSchema = z.object({
@@ -300,6 +300,7 @@ export const invoiceDraftSchema = z.object({
   notes: optionalText(2000),
   schedule: invoiceScheduleSchema.optional(),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
+  addons: z.array(invoiceAddonSchema).max(20, "Maksimal 20 add on per invoice.").default([]),
 });
 
 export const invoiceIdSchema = z.object({

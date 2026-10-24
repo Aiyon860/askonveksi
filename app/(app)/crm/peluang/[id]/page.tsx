@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Fragment, Suspense } from "react";
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CheckCircle2, FileDown, FileText, Paperclip } from "lucide-react";
 
@@ -17,6 +17,7 @@ import { PageMessage } from "@/components/page-message";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -128,7 +129,8 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const invoiceDraft = opportunity.invoices.find((item) => item.status === "DRAFT");
   const cancelledInvoice = opportunity.invoices.find((item) => item.status === "CANCELLED");
   const issuedInvoice = opportunity.invoices.find((item) => item.status === "ISSUED" && item.purchaseOrderId === agreedPo?.id);
-  const scheduledPayment = issuedInvoice?.pendingPayment;
+  const latestInvoiceRevision = opportunity.invoices.reduce((latest, invoice) => Math.max(latest, invoice.revision), 0);
+  const scheduledPayment = invoiceDraft ? undefined : issuedInvoice?.pendingPayment;
   const readyForDeal = Boolean(agreedPo && issuedInvoice && !poDraft && !invoiceDraft);
   const poRevisionCount = Math.max(0, opportunity.purchaseOrders.length - 1);
   const poTabStatus = poDraft ? "Draft" : agreedPo ? "Disepakati" : cancelledPo ? "Dibatalkan" : poRevisionCount ? `${poRevisionCount} revisi` : opportunity.purchaseOrders.length ? "Dokumen awal" : "Belum ada";
@@ -355,6 +357,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       ...invoice.salesOrder.payment.terms.flatMap((term) => (term.transactions[0] ? [{ id: term.transactions[0].id, label: `Lihat Kwitansi Termin ${term.position + 1}` }] : [])),
                     ]
                   : [];
+                const hasNewerActiveRevision = opportunity.invoices.some((other) => other.id !== invoice.id && (other.status === "DRAFT" || other.status === "ISSUED") && other.revision > invoice.revision);
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
                   dueAt: invoice.dueAt?.toISOString().slice(0, 10) ?? "",
@@ -371,6 +374,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   discountPercent: invoice.discountValue.toString(),
                   discountNominal: invoice.discountNominal.toString(),
                   taxPercent: invoice.taxPercent?.toString() ?? "0",
+                  // Invoice baru memakai Add On global; draft lama masih menyimpan Add On
+                  // per baris, jadi keduanya diratakan ke section Add On saat revisi.
+                  addons: [
+                    ...invoice.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty })),
+                    ...invoice.items.flatMap((item) => item.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty }))),
+                  ],
                   items: invoice.items.map((item) => ({
                     productName: item.productName ?? "",
                     description: item.description,
@@ -381,7 +390,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     discountType: item.discountType,
                     discountPercent: item.discountPercent?.toString() ?? "0",
                     discountNominal: item.discountAmount?.toString() ?? "0",
-                    addons: item.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty })),
                   })),
                 };
                 return (
@@ -390,7 +398,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       opportunityId={opportunity.id}
                       invoiceId={invoice.id}
                       invoiceVersion={invoice.version}
-                      invoiceRevision={invoice.revision}
                       invoiceStatus={invoice.status}
                       title={`${invoice.invoiceNo} · ${documentRevisionLabel(invoice.revision)}`}
                       description={`Berdasarkan ${invoiceSourcePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
@@ -398,6 +405,9 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       canCancel={canCancelDocuments}
                       inNegotiation={inNegotiation}
                       purchaseOrder={editableInvoicePo}
+                      hasSalesOrder={Boolean(invoice.salesOrder)}
+                      hasNewerActiveRevision={hasNewerActiveRevision}
+                      revisionLimitReached={latestInvoiceRevision >= 4}
                       draftValues={invoiceDraftValues}
                       salesOrderHref={invoice.salesOrder ? `/sales-orders/${invoice.salesOrder.id}` : undefined}
                       salesOrderLabel={invoice.salesOrder ? `Lihat ${invoice.salesOrder.salesOrderNo}` : undefined}
@@ -570,14 +580,38 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
 }
 
 function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][number] }) {
+  // Dokumen lama menyimpan Add On di baris; invoice baru di level invoice.
+  // Keduanya ditampilkan sebagai satu section Add On SETELAH semua produk.
+  const addons = [...invoice.addons, ...invoice.items.flatMap((item) => item.addons)];
   return (
     <div className="flex flex-col gap-4">
-      <Table>
+      <Table className="min-w-[42rem] table-fixed">
+        <colgroup>
+          <col className="w-[24%]" />
+          <col className="w-[30%]" />
+          <col className="w-[10%]" />
+          <col className="w-[12%]" />
+          <col className="w-[12%]" />
+          <col className="w-[12%]" />
+        </colgroup>
         <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
-        <TableBody>{invoice.items.map((item) => <Fragment key={item.id}>
-          <TableRow><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description || "-"}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>
-          {item.addons.map((addon) => <TableRow key={`${item.id}-${addon.label}`}><TableCell className="pl-6 text-muted-foreground">+ {addon.label}</TableCell><TableCell className="text-muted-foreground">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{addon.qty}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono text-muted-foreground">-</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
-        </Fragment>)}</TableBody>
+        <TableBody>
+          {invoice.items.map((item) => {
+            const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount.toString()) * addon.qty, 0);
+            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
+          })}
+          {addons.length ? <>
+            <TableRow className="bg-info-surface hover:bg-info-surface">
+              <TableCell colSpan={6} className="border-t-2 border-info/20 px-2 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="info">Add On</Badge>
+                  <span className="text-xs text-info-surface-foreground">Item tambahan di luar produk</span>
+                </div>
+              </TableCell>
+            </TableRow>
+            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono">{addon.qty}</TableCell><TableCell className="text-right font-mono">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono">-</TableCell><TableCell className="text-right font-mono">{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
+          </> : null}
+        </TableBody>
       </Table>
       <dl className="ml-auto grid w-full max-w-xs gap-2 text-sm">
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-mono">{formatCurrency(invoice.subtotal)}</dd></div>
