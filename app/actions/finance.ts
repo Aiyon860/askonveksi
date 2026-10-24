@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { FINANCE_ROLES } from "@/lib/auth/permissions";
+import { FINANCE_ROLES, hasRole, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { EXPENSE_CATEGORIES } from "@/lib/finance/expense-categories";
 import { getPrismaClient } from "@/lib/prisma";
@@ -91,7 +91,7 @@ export async function deleteExpenseAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError("Pengeluaran tidak valid.");
     const current = await getPrismaClient().expense.findUnique({ where: { id: parsed.data.id }, select: { createdById: true, reimbursedAt: true, deletedAt: true } });
     if (!current || current.deletedAt) throw new UserFacingError("Pengeluaran tidak ditemukan.");
-    if (current.createdById !== actor.id && actor.role !== "OWNER" && actor.role !== "DEVELOPER") throw new UserFacingError("Anda hanya dapat menghapus pengeluaran sendiri.");
+    if (current.createdById !== actor.id && !hasRole(actor.role, OWNER_ACTION_ROLES)) throw new UserFacingError("Anda hanya dapat menghapus pengeluaran sendiri.");
     if (current.reimbursedAt) throw new UserFacingError("Pengeluaran yang sudah diganti tidak dapat dihapus.");
     const reason = (parsed.data.reason ?? "").trim().slice(0, 500) || null;
     await getPrismaClient().$transaction(async (tx) => {

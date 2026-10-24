@@ -11,7 +11,7 @@ import { requireActor, requireDeveloperActor } from "@/lib/auth/session";
 import { firstValidationMessage } from "@/lib/crm/validation";
 import { designImageContentType, designImageExtensionFor, designImageRejection, sniffImageContentType } from "@/lib/design/image";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
 import {
   addProductionNoteSchema,
   assignProductionStepSchema,
@@ -39,7 +39,7 @@ function revalidateProductionBoard() {
   revalidateTag("production-board", { expire: 0 });
 }
 
-const DESIGN_BUCKET = "crm-po-designs";
+const DESIGN_BUCKET = PO_DESIGNS_BUCKET;
 const MAX_DESIGN_BYTES = 5 * 1024 * 1024;
 
 const designVersionSchema = z.object({ workOrderId: z.string().trim().min(10).max(40), attachmentId: z.string().trim().min(10).max(40) });
@@ -85,7 +85,7 @@ export async function saveProductionDesignAction(formData: FormData) {
     const attachment = target?.salesOrder.purchaseOrder.designTask?.revisions.flatMap((revision) => revision.attachments)[0];
     if (!target || !attachment) throw new UserFacingError("File desain tidak ditemukan.");
     if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diubah.");
-    const storage = createAdminClient().storage.from(DESIGN_BUCKET);
+    const storage = erpStorage(DESIGN_BUCKET);
     const originalPath = attachment.originalPath ?? `production-design-original/${attachment.id}.png`;
     if (!attachment.originalPath) {
       const snapshot = await storage.exists(originalPath);
@@ -157,7 +157,7 @@ export async function overwriteProductionDesignAction(formData: FormData) {
     if (!target || !attachment) throw new UserFacingError("File desain tidak ditemukan.");
     if (target.designCompletedAt) throw new UserFacingError("Desain sudah masuk Produksi dan tidak dapat diganti.");
 
-    const storage = createAdminClient().storage.from(DESIGN_BUCKET);
+    const storage = erpStorage(DESIGN_BUCKET);
     const folder = attachment.path.includes("/") ? attachment.path.slice(0, attachment.path.lastIndexOf("/")) : "design";
     const nextPath = `${folder}/${randomUUID()}.${designImageExtensionFor(contentType)}`;
     const { error: uploadError } = await storage.upload(nextPath, bytes, { contentType, upsert: false });
@@ -241,7 +241,7 @@ export async function resetProductionDesignAction(formData: FormData) {
     let originalSize: number | undefined;
     let restoredContentType: "image/png" | "image/jpeg" | undefined;
     if (attachment.originalPath) {
-      const storage = createAdminClient().storage.from(DESIGN_BUCKET);
+      const storage = erpStorage(DESIGN_BUCKET);
       const { data: original, error: downloadError } = await storage.download(attachment.originalPath);
       if (downloadError || !original) throw new UserFacingError("Desain awal tidak dapat dibuka.");
       const originalBytes = new Uint8Array(await original.arrayBuffer());
@@ -293,7 +293,7 @@ export async function sendProductionDesignAction(formData: FormData) {
     }, PRODUCTION_WRITE_TRANSACTION_OPTIONS);
     if (attachment.originalPath) {
       try {
-        const { error } = await createAdminClient().storage.from(DESIGN_BUCKET).remove([attachment.originalPath]);
+        const { error } = await erpStorage(DESIGN_BUCKET).remove([attachment.originalPath]);
         if (error) console.error("Gagal menghapus gambar asli desain setelah masuk Produksi.");
         else {
           try { await getPrismaClient().designAttachment.update({ where: { id: attachment.id }, data: { originalPath: null } }); }

@@ -210,7 +210,9 @@ test("halaman /log-aktivitas menampilkan daftar, filter, dan detail", async () =
 
 test("menu sidebar menampilkan Log aktivitas hanya untuk role yang berhak", async () => {
   const nav = await readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8");
-  assert.match(nav, /const canViewAudit = isDeveloper \|\| role === "OWNER" \|\| role === "KEUANGAN";/);
+  // Owner, Developer, dan Keuangan lolos lewat hasRole (Keuangan setara Owner).
+  assert.match(nav, /const isOwnerEquivalent = hasRole\(role, OWNER_ACTION_ROLES\);/);
+  assert.match(nav, /const canViewAudit = isOwnerEquivalent;/);
   assert.match(nav, /canViewAudit \? <NavLink[^>]*href: "\/log-aktivitas", label: "Log aktivitas"/);
 });
 

@@ -2,11 +2,13 @@ import { bulkUpdateLeadSourcesAction, createLeadSourceAction, deleteLeadSourceAc
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
 import { getLeadSources } from "@/lib/master-data";
 
 export const revalidate = 60;
 
 export default async function LeadSourcesPage() {
+  await requireOwnerAreaPage();
   const items = await getLeadSources();
   return (
     <>

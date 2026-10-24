@@ -8,9 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
 import { getBusinessProfile } from "@/lib/master-data";
 
 export default async function BusinessProfilePage() {
+  await requireOwnerAreaPage();
   const profile = await getBusinessProfile();
   if (!profile) return <p>Profil perusahaan belum tersedia. Jalankan migrasi database terbaru.</p>;
   return (

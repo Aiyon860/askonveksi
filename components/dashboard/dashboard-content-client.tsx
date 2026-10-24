@@ -33,7 +33,6 @@ import {
   Clock,
   Coins,
   Compass,
-  Download,
   Factory,
   Filter,
   Footprints,
@@ -70,6 +69,7 @@ import {
 import { fetcher } from "@/lib/fetcher";
 import { formatCurrency } from "@/lib/crm/format";
 import type { FullDashboardData } from "@/lib/crm/dashboard-data";
+import { ExportButton } from "@/components/export/export-button";
 import { cn } from "@/lib/utils";
 
 function InstagramIcon({ className }: { className?: string }) {
@@ -190,10 +190,23 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
   // Data finansial hanya dikirim server untuk role Keuangan (Owner/Developer ikut lolos hasRole).
   const canViewFinancialData = data.canViewFinancialData;
 
+  // Cakupan data per peran. Tampilan/tipografi tidak berubah; hanya data yang
+  // disajikan yang disesuaikan: Admin Customer fokus pelanggan & CRM, Admin PO
+  // fokus order, produk, dan produksi. Owner/Developer/Keuangan tetap penuh.
+  const scope = data.dashboardScope ?? "FULL";
+  const isFullScope = scope === "FULL";
+  const isCustomerScope = scope === "CUSTOMER";
+  const isProductionScope = scope === "PRODUCTION";
+  const initialTrendMetric: "omzet" | "order" | "lead" | "pcs" = canViewFinancialData
+    ? "omzet"
+    : isProductionScope
+      ? "pcs"
+      : isCustomerScope
+        ? "lead"
+        : "order";
+
   // UI States
-  const [trendMetric, setTrendMetric] = useState<"omzet" | "order" | "lead" | "pcs">(
-    data.canViewFinancialData ? "omzet" : "order",
-  );
+  const [trendMetric, setTrendMetric] = useState<"omzet" | "order" | "lead" | "pcs">(initialTrendMetric);
   const [categoryMetric, setCategoryMetric] = useState<"revenue" | "pcs">(
     data.canViewFinancialData ? "revenue" : "pcs",
   );
@@ -229,14 +242,24 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Menu pada kolom pencarian mengikuti hak akses peran; menu yang tidak boleh
+  // diakses (Keuangan, Data Master, Pengaturan) tidak ditampilkan ke admin.
+  const scopedMenus = useMemo(() => {
+    if (isFullScope) return SEARCHABLE_MENUS;
+    const allowedHrefs = isCustomerScope
+      ? ["/dashboard", "/crm", "/customers", "/crm/purchase-orders", "/crm/sales-orders", "/crm/follow-up", "/whatsapp", "/campaigns", "/produksi", "/detail-desain"]
+      : ["/dashboard", "/crm/purchase-orders", "/crm/sales-orders", "/produksi", "/detail-desain"];
+    return SEARCHABLE_MENUS.filter((menu) => allowedHrefs.includes(menu.href));
+  }, [isFullScope, isCustomerScope]);
+
   // Filtered menus for search
   const filteredMenus = useMemo(() => {
-    if (!searchKeyword.trim()) return SEARCHABLE_MENUS.slice(0, 8);
+    if (!searchKeyword.trim()) return scopedMenus.slice(0, 8);
     const q = searchKeyword.toLowerCase();
-    return SEARCHABLE_MENUS.filter(
+    return scopedMenus.filter(
       (m) => m.title.toLowerCase().includes(q) || m.category.toLowerCase().includes(q)
     );
-  }, [searchKeyword]);
+  }, [scopedMenus, searchKeyword]);
 
   // Filtered categories for search
   const filteredCategories = useMemo(() => {
@@ -268,7 +291,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
       type: "warning" | "danger" | "info";
     }> = [];
 
-    if (data.operational.overdueCount > 0) {
+    if (!isCustomerScope && data.operational.overdueCount > 0) {
       list.push({
         id: "notif-overdue",
         title: "Pesanan Terlambat (Overdue)",
@@ -279,7 +302,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
       });
     }
 
-    if (data.operational.approachingDeadlineCount > 0) {
+    if (!isCustomerScope && data.operational.approachingDeadlineCount > 0) {
       list.push({
         id: "notif-deadline",
         title: "Mendekati Deadline (< 3 Hari)",
@@ -290,18 +313,20 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
       });
     }
 
-    data.urgentActions.forEach((act) => {
-      list.push({
-        id: `urgent-${act.id}`,
-        title: `Follow-up: ${act.customerName}`,
-        description: `${act.nextAction} · ${act.title}`,
-        time: act.nextActionAt,
-        href: "/crm/follow-up",
-        type: act.isOverdue ? "danger" : "info",
+    if (!isProductionScope) {
+      data.urgentActions.forEach((act) => {
+        list.push({
+          id: `urgent-${act.id}`,
+          title: `Follow-up: ${act.customerName}`,
+          description: `${act.nextAction} · ${act.title}`,
+          time: act.nextActionAt,
+          href: "/crm/follow-up",
+          type: act.isOverdue ? "danger" : "info",
+        });
       });
-    });
+    }
 
-    if (data.cashflow.outstandingOrderCount > 0) {
+    if (canViewFinancialData && data.cashflow.outstandingOrderCount > 0) {
       list.push({
         id: "notif-cashflow",
         title: "Sisa Piutang Customer Aktif",
@@ -313,9 +338,9 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
     }
 
     return list;
-  }, [data.operational, data.urgentActions, data.cashflow]);
+  }, [canViewFinancialData, isCustomerScope, isProductionScope, data.operational, data.urgentActions, data.cashflow]);
 
-  // Merged categories list (ranking active categories by revenue and activity)
+  // Merged categories list (ranking by omzet untuk Keuangan, volume untuk admin)
   const categoryMergedList = useMemo(() => {
     return data.categoryRevenueDonut
       .map((cat) => {
@@ -330,8 +355,11 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           pcs: prog?.pcs ?? 0,
         };
       })
-      .sort((a, b) => b.revenueNum - a.revenueNum || b.orderCount - a.orderCount || b.pcs - a.pcs);
-  }, [data.categoryRevenueDonut, data.categoryProgress]);
+      .sort((a, b) => {
+        if (canViewFinancialData) return b.revenueNum - a.revenueNum || b.orderCount - a.orderCount || b.pcs - a.pcs;
+        return b.pcs - a.pcs || b.orderCount - a.orderCount;
+      });
+  }, [canViewFinancialData, data.categoryRevenueDonut, data.categoryProgress]);
 
   // Merged lead sources list (ranking channels by lead and deal volume)
   const leadSourcesMerged = useMemo(() => {
@@ -413,64 +441,6 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
   const toggleDarkMode = () => {
     const isDark = document.documentElement.classList.toggle("dark");
     setIsDarkMode(isDark);
-  };
-
-  // Export report as CSV
-  const handleExportCSV = () => {
-    const rows = [
-      ["LAPORAN DASHBOARD PENJUALAN & MARKETING AS KONVEKSI"],
-      ["Periode", data.period.label],
-      ["Tanggal Ekspor", new Date().toLocaleString("id-ID")],
-      [],
-      ["RINGKASAN UTAMA (KPI)"],
-      ["Total Lead", data.summary.totalLead.toString()],
-      ["Total Deal", data.summary.totalDeal.toString()],
-      ["Total Order", data.summary.totalOrder.toString()],
-      ["Total Omzet", data.summary.totalOmzet],
-      ["Total Volume (Pcs)", data.summary.totalVolumePcs.toString()],
-      ["Win Rate Closing", `${data.summary.winRate}%`],
-      [],
-      ["DETAIL SUMBER LEAD"],
-      ["No", "Sumber Lead", "Jumlah Lead", "Deal", "Order", "Omzet", "Konversi (%)"],
-      ...data.leadSourceTable.map((r) => [
-        r.no.toString(),
-        r.name,
-        r.leadCount.toString(),
-        r.dealCount.toString(),
-        r.orderCount.toString(),
-        r.revenue,
-        `${r.conversionRate}%`,
-      ]),
-      [],
-      ["PERFORMA KATEGORI PRODUK"],
-      ["Kategori", "Jumlah Order", "Total Pcs", "Omzet", "Pangsa Pasar (%)"],
-      ...data.categoryRevenueDonut.map((r, i) => [
-        r.name,
-        (data.categoryProgress[i]?.count ?? 0).toString(),
-        (data.categoryProgress[i]?.pcs ?? 0).toString(),
-        r.revenue,
-        `${r.percentage}%`,
-      ]),
-      [],
-      ["TOP 5 PELANGGAN LOYAL"],
-      ["Nama Pelanggan", "Instansi / Perusahaan", "Tipe", "Total Order", "Total Belanja"],
-      ...data.topCustomers.map((c) => [
-        c.name,
-        c.companyName || "-",
-        c.customerType,
-        c.orderCount.toString(),
-        c.revenue,
-      ]),
-    ];
-
-    const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.map((cell) => `"${cell}"`).join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Laporan_Dashboard_ASKonveksi_${data.period.preset}_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // Helper for trend chart formatting
@@ -569,7 +539,9 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                           <p className="font-mono font-bold text-slate-900 dark:text-slate-100">{ord.orderNo}</p>
                           <p className="text-base text-slate-500">{ord.customerName} · {ord.productName}</p>
                         </div>
-                        <span className="font-bold text-blue-600 dark:text-blue-400">{ord.total}</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">
+                          {canViewFinancialData ? ord.total : `${ord.totalQty} pcs`}
+                        </span>
                       </Link>
                     ))}
                   </div>
@@ -728,10 +700,14 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-              Dashboard
+              {isCustomerScope ? "Dashboard Customer" : isProductionScope ? "Dashboard Produksi" : "Dashboard"}
             </h1>
             <p className="mt-0.5 text-base text-slate-500 dark:text-slate-400 sm:text-base">
-              Ringkasan metrik eksekutif, pipeline penjualan, dan performa operasional bisnis
+              {isCustomerScope
+                ? "Ringkasan pelanggan, prospek, dan aktivitas CRM"
+                : isProductionScope
+                  ? "Ringkasan order, volume produk, dan beban kerja produksi"
+                  : "Ringkasan metrik eksekutif, pipeline penjualan, dan performa operasional bisnis"}
             </p>
           </div>
         </div>
@@ -807,16 +783,21 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             )}
           </div>
 
-          {/* Export Laporan Button (memuat omzet — khusus Keuangan) */}
+          {/* Export laporan multi-sheet (memuat omzet — khusus Keuangan) */}
           {canViewFinancialData && (
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              className="flex h-11 items-center gap-2.5 rounded-xl neu-button-primary px-4.5 text-base font-semibold text-white"
-            >
-              <Download className="size-4.5" />
-              <span>Export Laporan</span>
-            </button>
+            <ExportButton
+              analysisScope="dashboard"
+              params={{
+                range: activeRange,
+                from: activeFrom || undefined,
+                to: activeTo || undefined,
+                sourceId: activeSourceId || undefined,
+                categoryId: activeCategoryId || undefined,
+              }}
+              label="Export Excel"
+              variant="default"
+              className="h-11 rounded-xl px-4.5 text-base font-semibold"
+            />
           )}
         </div>
       </div>
@@ -831,6 +812,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
         </span>
 
         {/* Lead Source Filter Dropdown */}
+        {!isProductionScope && (
         <select
           value={activeSourceId}
           onChange={(e) => updateFilters({ sourceId: e.target.value })}
@@ -841,6 +823,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
+        )}
 
         {/* Product Category Filter Dropdown */}
         <select
@@ -871,6 +854,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           ========================================================================= */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {/* Card 1: Total Lead (Blue Tint) */}
+        {!isProductionScope && (
         <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-blue p-6">
           <div className="flex items-center justify-between">
             <div className="flex size-14 items-center justify-center rounded-2xl neu-icon-blue text-white">
@@ -899,8 +883,10 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             <p className="text-base text-slate-500 dark:text-slate-400">Jumlah calon pelanggan yang masuk</p>
           </div>
         </div>
+        )}
 
         {/* Card 2: Total Deal (Emerald Tint) */}
+        {!isProductionScope && (
         <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-emerald p-6">
           <div className="flex items-center justify-between">
             <div className="flex size-14 items-center justify-center rounded-2xl neu-icon-emerald text-white">
@@ -929,6 +915,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             <p className="text-base text-slate-500 dark:text-slate-400">Jumlah deal yang berhasil</p>
           </div>
         </div>
+        )}
 
         {/* Card 3: Total Order (Purple Tint) */}
         <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-purple p-6">
@@ -993,6 +980,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
         )}
 
         {/* Card 5: Total Volume Pcs Pakaian (Cyan Tint) */}
+        {!isCustomerScope && (
         <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-cyan p-6">
           <div className="flex items-center justify-between">
             <div className="flex size-14 items-center justify-center rounded-2xl neu-icon-cyan text-white">
@@ -1022,8 +1010,10 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             <p className="text-base text-slate-500 dark:text-slate-400">Total potong pakaian dipesan</p>
           </div>
         </div>
+        )}
 
         {/* Card 6: Win Rate Closing (Amber Tint) */}
+        {!isProductionScope && (
         <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-amber p-6">
           <div className="flex items-center justify-between">
             <div className="flex size-14 items-center justify-center rounded-2xl neu-icon-amber text-white">
@@ -1052,6 +1042,61 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             <p className="text-base text-slate-500 dark:text-slate-400">Rasio lead menjadi deal</p>
           </div>
         </div>
+        )}
+
+        {/* Card 7: SPK Aktif (Orange Tint) — khusus dashboard produksi */}
+        {isProductionScope && (
+        <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-orange p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex size-14 items-center justify-center rounded-2xl neu-icon-orange text-white">
+              <Factory className="size-7" />
+            </div>
+            <div className="flex items-center gap-1.5 text-right">
+              <span className="text-base font-medium text-slate-400">antrean aktif</span>
+            </div>
+          </div>
+          <div className="mt-5">
+            <p className="flex h-5 items-center text-base font-semibold text-slate-600 dark:text-slate-300">SPK Aktif</p>
+            <div className="mt-1 flex h-11 items-baseline gap-1.5">
+              <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                {data.operational.activeWorkOrders}
+              </span>
+              <span className="text-base font-semibold text-slate-400">SPK</span>
+            </div>
+          </div>
+          <div className="mt-4 border-t border-orange-200/60 pt-3 dark:border-orange-900/30">
+            <p className="text-base text-slate-500 dark:text-slate-400">Total work order berjalan di semua divisi</p>
+          </div>
+        </div>
+        )}
+
+        {/* Card 8: Pesanan Terlambat (Amber Tint) — khusus dashboard produksi */}
+        {isProductionScope && (
+        <div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-amber p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex size-14 items-center justify-center rounded-2xl neu-icon-amber text-white">
+              <AlertTriangle className="size-7" />
+            </div>
+            <div className="flex items-center gap-1.5 text-right">
+              <span className="text-base font-medium text-slate-400">perlu tindakan</span>
+            </div>
+          </div>
+          <div className="mt-5">
+            <p className="flex h-5 items-center text-base font-semibold text-slate-600 dark:text-slate-300">Pesanan Terlambat</p>
+            <div className="mt-1 flex h-11 items-baseline gap-1.5">
+              <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+                {data.operational.overdueCount}
+              </span>
+              <span className="text-base font-semibold text-slate-400">SPK</span>
+            </div>
+          </div>
+          <div className="mt-4 border-t border-amber-200/60 pt-3 dark:border-amber-900/30">
+            <p className="text-base text-slate-500 dark:text-slate-400">
+              {data.operational.approachingDeadlineCount} SPK lagi mendekati deadline
+            </p>
+          </div>
+        </div>
+        )}
       </div>
 
       {/* =========================================================================
@@ -1102,6 +1147,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                 >
                   Order
                 </button>
+                {!isProductionScope && (
                 <button
                   type="button"
                   onClick={() => setTrendMetric("lead")}
@@ -1114,6 +1160,8 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                 >
                   Lead
                 </button>
+                )}
+                {!isCustomerScope && (
                 <button
                   type="button"
                   onClick={() => setTrendMetric("pcs")}
@@ -1126,6 +1174,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                 >
                   Pcs
                 </button>
+                )}
               </div>
             </div>
           </div>
@@ -1224,7 +1273,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                 <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pl-13 sm:pl-0">
                   <div className="text-left sm:text-right">
                     <p className="text-base sm:text-lg font-mono font-bold text-slate-900 dark:text-slate-100">
-                      {order.total}
+                      {canViewFinancialData ? order.total : `${order.totalQty} pcs`}
                     </p>
                     <p className="text-base text-slate-400">
                       {order.formattedDate}
@@ -1248,7 +1297,8 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           ========================================================================= */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Card 1: Grafik Komparasi Kinerja Tim Sales (PIC) - 6 Cols */}
-        <div className="flex flex-col justify-start rounded-2xl neu-card p-6 lg:col-span-6">
+        {!isProductionScope && (
+        <div className={cn("flex flex-col justify-start rounded-2xl neu-card p-6", isCustomerScope ? "lg:col-span-12" : "lg:col-span-6")}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3.5">
               <div className="flex size-12 items-center justify-center rounded-xl neu-icon-blue text-white shrink-0">
@@ -1259,7 +1309,9 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                   Komparasi Kinerja Tim Sales (PIC)
                 </h3>
                 <p className="text-base text-slate-500 dark:text-slate-400">
-                  Peringkat dan selisih pencapaian omzet serta closing deal staf sales
+                  {canViewFinancialData
+                    ? "Peringkat dan selisih pencapaian omzet serta closing deal staf sales"
+                    : "Peringkat pencapaian closing deal staf sales"}
                 </p>
               </div>
             </div>
@@ -1388,9 +1440,11 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             )}
           </div>
         </div>
+        )}
 
         {/* Card 2: Omzet & Performa Kategori Produk (Grafik Batang Komparatif) - 6 Cols */}
-        <div className="flex flex-col justify-start rounded-2xl neu-card p-6 lg:col-span-6">
+        {!isCustomerScope && (
+        <div className={cn("flex flex-col justify-start rounded-2xl neu-card p-6", isProductionScope ? "lg:col-span-12" : "lg:col-span-6")}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3.5">
               <div className="flex size-12 items-center justify-center rounded-xl neu-icon-purple text-white shrink-0">
@@ -1401,7 +1455,9 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                   {canViewFinancialData ? "Komparasi Omzet Kategori Produk" : "Komparasi Kategori Produk"}
                 </h3>
                 <p className="text-base text-slate-500 dark:text-slate-400">
-                  Perbandingan visual kontribusi produk terlaris berdasarkan omzet dan kuantitas
+                  {canViewFinancialData
+                    ? "Perbandingan visual kontribusi produk terlaris berdasarkan omzet dan kuantitas"
+                    : "Perbandingan visual volume produksi tiap kategori produk"}
                 </p>
               </div>
             </div>
@@ -1533,9 +1589,11 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {canViewFinancialData && (
                   <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
                     {cat.revenue}
                   </span>
+                  )}
                   <span className="rounded-md px-1.5 py-0.5 text-xs font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400">
                     {cat.percentage}%
                   </span>
@@ -1544,11 +1602,13 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             ))}
           </div>
         </div>
+        )}
       </div>
 
       {/* =========================================================================
           ROW 4: ANALISA & INSIGHTS (1:1 Reference Match)
           ========================================================================= */}
+      {!isProductionScope && (
       <div className="flex flex-col rounded-2xl neu-card p-6">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-xl neu-icon-soft text-blue-600 dark:text-blue-400">
@@ -1559,6 +1619,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
 
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {/* Insight 1: Omzet */}
+          {canViewFinancialData && (
           <div className="flex items-start gap-3.5 rounded-2xl neu-inset p-4.5">
             <div className="flex size-11 shrink-0 items-center justify-center rounded-xl neu-icon-emerald text-white">
               <TrendingUp className="size-5" />
@@ -1570,6 +1631,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
               </p>
             </div>
           </div>
+          )}
 
           {/* Insight 2: Sumber Lead */}
           <div className="flex items-start gap-3.5 rounded-2xl neu-inset p-4.5">
@@ -1584,7 +1646,8 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             </div>
           </div>
 
-          {/* Insight 3: Kategori Terlaris */}
+          {/* Insight 3: Kategori Terlaris (berbasis omzet — khusus Keuangan) */}
+          {canViewFinancialData && (
           <div className="flex items-start gap-3.5 rounded-2xl neu-inset p-4.5">
             <div className="flex size-11 shrink-0 items-center justify-center rounded-xl neu-icon-purple text-white">
               <Award className="size-5" />
@@ -1596,6 +1659,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
               </p>
             </div>
           </div>
+          )}
 
           {/* Insight 4: Rekomendasi */}
           <div className="flex items-start gap-3.5 rounded-2xl neu-inset p-4.5">
@@ -1611,10 +1675,12 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
         </div>
       </div>
+      )}
 
       {/* =========================================================================
           EXTENDED SECTION 5: SALES & MARKETING CONVERSION FUNNEL
           ========================================================================= */}
+      {!isProductionScope && (
       <div className="flex flex-col rounded-2xl neu-card p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3.5">
@@ -1663,10 +1729,12 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           ))}
         </div>
       </div>
+      )}
 
       {/* =========================================================================
           EXTENDED SECTION 6: SEGMENTASI PELANGGAN & MATRIKS RETENSI (NO AOV)
           ========================================================================= */}
+      {!isProductionScope && (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Customer Segmentation by Type - 5 Cols */}
         <div className="flex flex-col justify-start rounded-2xl neu-card p-6 lg:col-span-5">
@@ -1692,7 +1760,8 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                     {seg.type}
                   </span>
                   <span className="text-slate-900 font-mono text-base dark:text-slate-100">
-                    <span className="font-bold">{seg.revenue}</span> <span className="text-base text-slate-400 font-normal">({seg.orderCount} order)</span>
+                    {canViewFinancialData && <span className="font-bold">{seg.revenue}</span>}{" "}
+                    <span className="text-base text-slate-400 font-normal">({seg.orderCount} order)</span>
                   </span>
                 </div>
                 <div className="h-2.5 w-full overflow-hidden rounded-full neu-inset">
@@ -1736,7 +1805,11 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                 <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
                   Top 5 Pelanggan Paling Berharga
                 </h3>
-                <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400">Customer dengan kontribusi omzet dan frekuensi repeat order tertinggi</p>
+                <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400">
+                  {canViewFinancialData
+                    ? "Customer dengan kontribusi omzet dan frekuensi repeat order tertinggi"
+                    : "Customer dengan frekuensi order dan repeat order tertinggi"}
+                </p>
               </div>
             </div>
             <Link href="/customers" className="shrink-0 whitespace-nowrap text-base font-semibold text-blue-600 hover:underline dark:text-blue-400">
@@ -1751,7 +1824,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                   <th className="py-3.5 pr-4 pl-1">Customer</th>
                   <th className="py-3.5 px-4">Tipe</th>
                   <th className="py-3.5 px-4 text-center">Order</th>
-                  <th className="py-3.5 px-4 text-right">Total Belanja</th>
+                  {canViewFinancialData && <th className="py-3.5 px-4 text-right">Total Belanja</th>}
                   <th className="py-3.5 pl-4 pr-1 text-center">Hubungi</th>
                 </tr>
               </thead>
@@ -1766,9 +1839,11 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                     </td>
                     <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">{cust.customerType}</td>
                     <td className="py-3.5 px-4 text-center font-mono font-bold text-blue-600 dark:text-blue-400">{cust.orderCount}x</td>
+                    {canViewFinancialData && (
                     <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                       {cust.revenue}
                     </td>
+                    )}
                     <td className="py-3.5 pl-4 pr-1 text-center">
                       {cust.whatsapp ? (
                         <a
@@ -1791,10 +1866,12 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
         </div>
       </div>
+      )}
 
       {/* =========================================================================
           EXTENDED SECTION 7: EFEKTIVITAS KANAL MARKETING & KINERJA TIM PIC
           ========================================================================= */}
+      {!isProductionScope && (
       <div className={cn("grid grid-cols-1 gap-6", canViewFinancialData && "lg:grid-cols-2")}>
         {/* Grafik Komparasi Likuiditas Kas vs Sisa Piutang (khusus Keuangan) */}
         {canViewFinancialData && (
@@ -1894,7 +1971,9 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             </div>
             <div>
               <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">Kinerja Tim Sales / PIC</h3>
-              <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400">Kontribusi closing dan pendapatan per staf sales</p>
+              <p className="text-base sm:text-lg text-slate-500 dark:text-slate-400">
+                {canViewFinancialData ? "Kontribusi closing dan pendapatan per staf sales" : "Kontribusi closing dan konversi per staf sales"}
+              </p>
             </div>
           </div>
 
@@ -1906,7 +1985,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                   <th className="py-3.5 px-4 text-center">Lead Ditangani</th>
                   <th className="py-3.5 px-4 text-center">Deal Closed</th>
                   <th className="py-3.5 px-4 text-center">Closing Rate</th>
-                  <th className="py-3.5 pl-4 pr-1 text-right">Total Omzet</th>
+                  {canViewFinancialData && <th className="py-3.5 pl-4 pr-1 text-right">Total Omzet</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200/50 dark:divide-white/5">
@@ -1917,12 +1996,14 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                       <td className="py-3.5 px-4 text-center font-mono font-semibold text-slate-700 dark:text-slate-300">{p.leadCount}</td>
                       <td className="py-3.5 px-4 text-center font-mono font-bold text-emerald-600 dark:text-emerald-400">{p.dealCount}</td>
                       <td className="py-3.5 px-4 text-center font-mono font-bold text-blue-600 dark:text-blue-400">{p.winRate}%</td>
+                      {canViewFinancialData && (
                       <td className="py-3.5 pl-4 pr-1 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{p.revenue}</td>
+                      )}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-base text-slate-400">
+                    <td colSpan={canViewFinancialData ? 5 : 4} className="py-6 text-center text-base text-slate-400">
                       Belum ada penugasan PIC pada periode ini.
                     </td>
                   </tr>
@@ -1932,10 +2013,12 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
         </div>
       </div>
+      )}
 
       {/* =========================================================================
           EXTENDED SECTION 8: MENARA KONTROL OPERASIONAL PRODUKSI KONVEKSI
           ========================================================================= */}
+      {!isCustomerScope && (
       <div className="flex flex-col rounded-2xl neu-card p-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0 flex-1">
@@ -2045,10 +2128,12 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
         </div>
       </div>
+      )}
 
       {/* =========================================================================
           EXTENDED SECTION 9: ARUS KAS & TINDAK LANJUT CRM HARI INI
           ========================================================================= */}
+      {!isProductionScope && (
       <div className={cn("grid grid-cols-1 gap-6", canViewFinancialData && "lg:grid-cols-2")}>
         {/* Cashflow Summary (khusus Keuangan) */}
         {canViewFinancialData && (
@@ -2137,6 +2222,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

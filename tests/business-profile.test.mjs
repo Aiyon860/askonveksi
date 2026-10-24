@@ -64,7 +64,7 @@ test("unggah gambar tanda tangan divalidasi dan disimpan ke bucket privat", () =
   assert.match(helper, /0x89, 0x50, 0x4e, 0x47/, "magic bytes PNG diperiksa");
   assert.match(pageSource, /name="signature" type="file"/);
   assert.match(pageSource, /api\/master-data\/business-profile\/signature/);
-  assert.match(signatureRouteSource, /business-assets/);
+  assert.match(signatureRouteSource, /BUSINESS_ASSETS_BUCKET/);
 });
 
 test("snapshot invoice menyimpan gambar tanda tangan dan tidak lagi menulis rekening", () => {

@@ -56,7 +56,9 @@ test("query dashboard tetap memeriksa aktor sebelum membaca data", () => {
 test("Keuangan dapat membuka Dashboard tanpa membuka CRM", () => {
   // D1: dashboard ikut CRM_VIEW_ROLES sehingga Admin PO (read-only) juga bisa membuka.
   assert.match(permissionsSource, /DASHBOARD_ROLES = \[\.\.\.CRM_VIEW_ROLES, "KEUANGAN"\]/);
-  assert.match(navSource, /const canViewDashboard = canViewCrm \|\| role === "KEUANGAN"/);
+  // Keuangan ikut isOwnerEquivalent, sehingga tetap melihat Dashboard tanpa CRM.
+  assert.match(navSource, /const canViewCrm = isOwnerEquivalent \|\| role === "ADMIN_CUSTOMER" \|\| role === "ADMIN_PO";/);
+  assert.match(navSource, /const canViewDashboard = canViewCrm;/);
   assert.match(navSource, /\{canViewDashboard \? mainItems\.map/);
   assert.doesNotMatch(loginSource, /role === "KEUANGAN" \? "\/keuangan"/);
   assert.doesNotMatch(authActionsSource, /role === "KEUANGAN" \? "\/keuangan"/);
@@ -88,4 +90,19 @@ test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
   assert.match(dashboardSource, /Kesehatan Arus Kas & Piutang/);
   // Owner & Developer selalu lolos lewat hasRole.
   assert.match(permissionsSource, /role === "DEVELOPER" \|\| role === "OWNER"/);
+});
+
+test("dashboard per peran: Admin Customer fokus customer, Admin PO fokus produksi", () => {
+  // Cakupan ditentukan server agar konten dashboard tidak bisa ditebak client.
+  assert.match(dashboardDataSource, /export function resolveDashboardScope\(role: string\): DashboardScope/);
+  assert.match(dashboardDataSource, /if \(role === "ADMIN_CUSTOMER"\) return "CUSTOMER";/);
+  assert.match(dashboardDataSource, /if \(role === "ADMIN_PO"\) return "PRODUCTION";/);
+  assert.match(dashboardDataSource, /dashboardScope,\n    canViewFinancialData,/);
+  assert.match(dashboardSource, /const scope = data\.dashboardScope \?\? "FULL";/);
+  // Admin PO tidak menerima kartu customer/CRM; Admin Customer tidak menerima kartu produk.
+  assert.match(dashboardSource, /\{!isProductionScope && \(\n\s+<div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-blue/);
+  assert.match(dashboardSource, /\{!isCustomerScope && \(\n\s+<div className="relative flex flex-col justify-between rounded-2xl neu-card neu-card-cyan/);
+  // Menu pencarian dashboard tidak membocorkan menu terlarang ke admin.
+  assert.match(dashboardSource, /const scopedMenus = useMemo/);
+  assert.match(dashboardSource, /SEARCHABLE_MENUS\.filter\(\(menu\) => allowedHrefs\.includes\(menu\.href\)\)/);
 });

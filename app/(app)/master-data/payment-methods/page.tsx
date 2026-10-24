@@ -2,9 +2,11 @@ import { bulkUpdatePaymentMethodsAction, createPaymentMethodAction, deletePaymen
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
 import { getPaymentMethods } from "@/lib/master-data";
 
 export default async function PaymentMethodsPage() {
+  await requireOwnerAreaPage();
   const items = await getPaymentMethods();
   return (
     <>

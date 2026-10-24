@@ -96,6 +96,10 @@ function CampaignFilterSheet({ state, activeFilterCount }: { state: CampaignTabl
   </Sheet>;
 }
 
+function CampaignEditLockedCard({ campaign, closeHref }: { campaign: { name: string; status: WhatsAppCampaignStatus }; closeHref: string }) {
+  return <Card className="self-start xl:sticky xl:top-6"><CardHeader><CardTitle>Campaign tidak bisa diedit</CardTitle></CardHeader><CardContent className="flex flex-col gap-3"><p className="text-sm text-muted-foreground">Campaign <strong className="font-medium text-foreground">{campaign.name}</strong> sudah berstatus <strong className="font-medium text-foreground">{campaignStatuses[campaign.status].label}</strong>. Isi dan jadwal campaign dikunci setelah pengiriman dimulai, jadi formulir edit tidak ditampilkan agar tidak membuat campaign baru tanpa sengaja.</p><div className="flex justify-end"><Button variant="outline" render={<Link href={closeHref} />} nativeButton={false}>Tutup</Button></div></CardContent></Card>;
+}
+
 function CampaignForm({ canSendTest, edit, cancelHref }: { canSendTest: boolean; edit: { id: string; name: string; body: string; scheduledAt: Date; version: number } | undefined; cancelHref: string }) {
   return <Card className="self-start xl:sticky xl:top-6"><CardHeader><CardTitle>{edit ? "Edit campaign" : "Campaign baru"}</CardTitle></CardHeader><CardContent><form action={edit ? updateCampaignAction : createCampaignAction}>
     {edit ? <><input type="hidden" name="campaignId" value={edit.id} /><input type="hidden" name="version" value={edit.version} /></> : null}
@@ -127,9 +131,15 @@ async function CampaignsContent({ searchParams }: { searchParams: CampaignSearch
   if (active === "inactive") filters.push({ status: { notIn: ACTIVE_STATUSES } });
   if (range.start || range.end) filters.push({ scheduledAt: { ...(range.start ? { gte: range.start } : {}), ...(range.end ? { lt: range.end } : {}) } });
   const where = { AND: filters } satisfies Prisma.WhatsAppCampaignWhereInput;
-  const [campaigns, total] = await Promise.all([
+  const editId = firstParam(params.edit);
+  const [campaigns, total, editTarget] = await Promise.all([
     prisma.whatsAppCampaign.findMany({ where, select: { id: true, name: true, body: true, scheduledAt: true, status: true, version: true, startedAt: true, _count: { select: { recipients: true } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (state.page - 1) * state.pageSize, take: state.pageSize }),
     prisma.whatsAppCampaign.count({ where }),
+    // Target edit dicari langsung per id, bukan dari baris tabel yang sedang tampil: campaign bisa
+    // sudah berpindah halaman/filter atau berubah status sejak halaman dirender.
+    editId
+      ? prisma.whatsAppCampaign.findUnique({ where: { id: editId }, select: { id: true, name: true, body: true, scheduledAt: true, status: true, version: true } })
+      : null,
   ]);
   const pageCount = Math.max(1, Math.ceil(total / state.pageSize));
   if (state.page > pageCount) redirect(campaignHref({ ...state, page: pageCount }));
@@ -141,7 +151,10 @@ async function CampaignsContent({ searchParams }: { searchParams: CampaignSearch
     current[item.status] = item._count._all;
     countByCampaign.set(item.campaignId, current);
   }
-  const edit = campaigns.find((campaign) => campaign.id === firstParam(params.edit) && (campaign.status === "SCHEDULED" || campaign.status === "PAUSED"));
+  // Hanya campaign yang belum mulai dikirim yang boleh diedit.
+  const edit = editTarget && (editTarget.status === "SCHEDULED" || editTarget.status === "PAUSED") ? editTarget : undefined;
+  // Ada permintaan edit tetapi campaign sudah terkunci: jangan tampilkan formulir "Campaign baru".
+  const editLocked = edit ? undefined : editTarget;
   const persistentParams = { q: query || undefined, status: status === "all" ? undefined : status, active: active === "all" ? undefined : active, from: range.from || undefined, to: range.to || undefined, pageSize: state.pageSize !== DATA_PAGE_SIZE ? String(state.pageSize) : undefined };
   const activeFilterCount = Number(status !== "all") + Number(active !== "all") + Number(Boolean(range.start || range.end));
 
@@ -161,7 +174,9 @@ async function CampaignsContent({ searchParams }: { searchParams: CampaignSearch
       </TableBody></Table></div> : <Empty className="min-h-112 border-0"><EmptyHeader><EmptyMedia variant="icon"><Search aria-hidden="true" /></EmptyMedia><EmptyTitle>{query ? "Campaign tidak ditemukan" : "Belum ada campaign"}</EmptyTitle><EmptyDescription>{query ? "Coba kata kunci lain atau hapus pencarian." : "Tambahkan campaign pertama melalui formulir di samping."}</EmptyDescription></EmptyHeader></Empty>}
       <DataPagination pathname="/campaigns" page={state.page} pageCount={pageCount} total={total} pageSize={state.pageSize} params={persistentParams} pageSizeOptions={DATA_PAGE_SIZES} className="border-t px-4 py-3" />
     </section>
-    <CampaignForm canSendTest={actor.role === "DEVELOPER"} edit={edit} cancelHref={campaignHref(state)} />
+    {editLocked
+      ? <CampaignEditLockedCard campaign={editLocked} closeHref={campaignHref(state)} />
+      : <CampaignForm key={edit?.id ?? "new"} canSendTest={actor.role === "DEVELOPER"} edit={edit} cancelHref={campaignHref(state)} />}
   </div>;
 }
 

@@ -52,7 +52,7 @@ import {
 } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { proofRequired, uploadPaymentProof, type PaymentProof } from "@/lib/payment-proof";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
 import { ensureProductionWorkOrder } from "@/lib/production/service";
 import { enqueueIssuedInvoiceWhatsAppJob, enqueueManualWhatsAppMessage } from "@/lib/whatsapp/jobs";
 import { DEFAULT_ORDER_REMINDER_TEMPLATE, renderWhatsAppTemplate } from "@/lib/whatsapp/core";
@@ -1848,7 +1848,7 @@ export async function savePenjahitPlanAction(_prevState: CrmActionState, formDat
     }
     if (!deadlines.size && !uploads.length && !removals.length) throw new UserFacingError("Tidak ada perubahan untuk disimpan.");
 
-    const storage = createAdminClient().storage.from("crm-po-designs");
+    const storage = erpStorage(PO_DESIGNS_BUCKET);
     try {
       for (const upload of uploads) {
         const { error } = await storage.upload(upload.path, upload.bytes, { contentType: upload.contentType, upsert: false });

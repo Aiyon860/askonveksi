@@ -5,7 +5,7 @@ import { normalizePdfImage } from "@/lib/crm/pdf-image";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { downloadFilename } from "@/lib/download-filename";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
 
 export const runtime = "nodejs";
 
@@ -39,7 +39,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   ]);
   if (!tx || tx.status !== "ACTIVE") return new Response("Kwitansi tidak ditemukan.", { status: 404 });
   const order = tx.payment.salesOrder;
-  const bucket = createAdminClient().storage.from("business-assets");
+  const bucket = erpStorage(BUSINESS_ASSETS_BUCKET);
   const readImage = async (path: string | null) => {
     if (!path) return undefined;
     const { data: file } = await bucket.download(path);

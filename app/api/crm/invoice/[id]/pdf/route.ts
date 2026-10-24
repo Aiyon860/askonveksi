@@ -4,7 +4,7 @@ import { normalizePdfImage } from "@/lib/crm/pdf-image";
 import { requireActor } from "@/lib/auth/session";
 import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
 import { downloadFilename } from "@/lib/download-filename";
 import { timingSafeEqual } from "node:crypto";
 
@@ -78,7 +78,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     },
   }), prisma.businessProfile.findUnique({ where: { id: "default" } }), prisma.paymentMethod.findMany({ where: { isActive: true }, orderBy: { position: "asc" }, select: { name: true, description: true } }),
     // Poin master "Pengaturan invoice" dibaca langsung (live), sama seperti daftar metode pembayaran.
-    prisma.invoiceSettingPoint.findMany({ orderBy: [{ section: "asc" }, { position: "asc" }], select: { section: true, text: true, isBold: true } })]);
+    prisma.invoiceSettingPoint.findMany({ orderBy: [{ section: "asc" }, { position: "asc" }], select: { section: true, text: true } })]);
   if (!invoice) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
   // Kop identitas memakai snapshot lebih dulu; kolom snapshot yang masih kosong (invoice lama,
@@ -86,7 +86,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const logoPath = invoice.status === "DRAFT" ? currentBusiness?.logoPath : invoice.snapshotBusinessLogoPath ?? currentBusiness?.logoPath;
   let logoBytes: Uint8Array | undefined;
   if (logoPath) {
-    const { data } = await createAdminClient().storage.from("business-assets").download(logoPath);
+    const { data } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(logoPath);
     if (data) {
       try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { logoBytes = undefined; }
     }
@@ -94,7 +94,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const signaturePath = invoice.snapshotSignaturePath ?? currentBusiness?.signaturePath ?? null;
   let signatureBytes: Uint8Array | undefined;
   if (signaturePath) {
-    const { data } = await createAdminClient().storage.from("business-assets").download(signaturePath);
+    const { data } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(signaturePath);
     if (data) {
       try { signatureBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { signatureBytes = undefined; }
     }

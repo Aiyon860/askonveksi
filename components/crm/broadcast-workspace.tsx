@@ -27,6 +27,9 @@ type RecipientFilters = {
 
 const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "", productCategoryId: "" };
 
+// Formulir server action di-reset React setelah dikirim; simpan draf agar template terakhir tidak hilang.
+const MESSAGE_DRAFT_KEY = "askonveksi:follow-up-broadcast-message";
+
 type RecipientResult = {
   items: CampaignRecipientOption[];
   total: number;
@@ -50,6 +53,7 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [message, setMessage] = useState(defaultMessage);
   const filtersRef = useRef<RecipientFilters>(EMPTY_FILTERS);
   const initialRef = useRef(initial);
   const searchTimer = useRef<number | null>(null);
@@ -71,6 +75,29 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
   useEffect(() => () => {
     if (searchTimer.current) window.clearTimeout(searchTimer.current);
   }, []);
+
+  useEffect(() => {
+    // Dibaca setelah paint agar hasil render server (template bawaan) dan klien tidak bentrok.
+    const timer = window.setTimeout(() => {
+      try {
+        const draft = window.localStorage.getItem(MESSAGE_DRAFT_KEY);
+        if (draft) setMessage(draft);
+      } catch {
+        // localStorage tidak tersedia (mode privat): tetap pakai template bawaan.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  function updateMessage(next: string) {
+    setMessage(next);
+    try {
+      if (next.trim()) window.localStorage.setItem(MESSAGE_DRAFT_KEY, next);
+      else window.localStorage.removeItem(MESSAGE_DRAFT_KEY);
+    } catch {
+      // Abaikan kegagalan penyimpanan draf.
+    }
+  }
 
   async function load(next: RecipientFilters) {
     const id = ++requestId.current;
@@ -309,14 +336,15 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
                 <Textarea
                   id="broadcast-message"
                   name="message"
-                  defaultValue={defaultMessage}
+                  value={message}
+                  onChange={(event) => updateMessage(event.target.value)}
                   rows={8}
                   maxLength={4000}
                   placeholder="Kosongkan untuk memakai template Follow Up bawaan."
                 />
                 <FieldDescription>
                   Variabel yang tersedia: {"{{customer_name}}"}, {"{{company_name}}"}, {"{{business_name}}"}, dan{" "}
-                  {"{{sales_pic_name}}"}.
+                  {"{{sales_pic_name}}"}. Template terakhir yang Anda tulis disimpan di perangkat ini.
                 </FieldDescription>
               </Field>
 

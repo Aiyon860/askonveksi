@@ -2,9 +2,9 @@ import { requireActor } from "@/lib/auth/session";
 import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
 
-const BUCKET = "crm-po-designs";
+const BUCKET = PO_DESIGNS_BUCKET;
 
 export async function GET(
   _request: Request,
@@ -27,7 +27,7 @@ export async function GET(
   });
   if (!attachment) return new Response("Lampiran tidak ditemukan.", { status: 404 });
 
-  const { data, error } = await createAdminClient().storage.from(BUCKET).download(attachment.path);
+  const { data, error } = await erpStorage(BUCKET).download(attachment.path);
   if (error) return new Response("Lampiran tidak dapat dibuka.", { status: 404 });
 
   return new Response(await data.arrayBuffer(), {

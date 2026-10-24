@@ -6,7 +6,7 @@ import { normalizePdfImage } from "@/lib/crm/pdf-image";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { downloadFilename } from "@/lib/download-filename";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { BUSINESS_ASSETS_BUCKET, erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
 
 export const runtime = "nodejs";
 
@@ -44,13 +44,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     prisma.businessProfile.findUnique({ where: { id: "default" } }),
   ]);
   if (!purchaseOrder) return new Response("PO tidak ditemukan.", { status: 404 });
-  const storage = createAdminClient().storage;
   // Snapshot lebih dulu; PO lama yang snapshot logonya kosong jatuh ke logo profil terkini,
   // lalu ke logo brand terbaru supaya kop PO tidak pernah memakai ikon lama.
   const logoPath = purchaseOrder.snapshotBusinessLogoPath ?? currentBusiness?.logoPath ?? null;
   let logoBytes = await readDefaultBrandLogoPng();
   if (logoPath) {
-    const { data } = await storage.from("business-assets").download(logoPath);
+    const { data } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(logoPath);
     if (data) {
       try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { /* Gunakan logo bawaan. */ }
     }
@@ -75,7 +74,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             if (!path) return null;
             const label = `Desain penjahit ${item.name}`;
             const originalName = item.penjahitDesignName ?? label;
-            const { data } = await storage.from("crm-po-designs").download(path);
+            const { data } = await erpStorage(PO_DESIGNS_BUCKET).download(path);
             if (!data) return null;
             try {
               return { kind: "PENJAHIT_DESIGN", label, originalName, contentType: "image/png", bytes: await normalizePdfImage(new Uint8Array(await data.arrayBuffer())), itemId: item.id as string | null };
@@ -91,7 +90,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // bukan jatuh ke lembar penutup di akhir dokumen.
     const itemId = ("itemId" in item && typeof item.itemId === "string" ? item.itemId : null) || null;
     if (item.contentType === "application/pdf") return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array(), itemId };
-    const { data } = await storage.from("crm-po-designs").download(item.path);
+    const { data } = await erpStorage(PO_DESIGNS_BUCKET).download(item.path);
     if (!data) return null;
     try {
       return { kind: item.kind, label, originalName: item.originalName, contentType: "image/png", bytes: await normalizePdfImage(new Uint8Array(await data.arrayBuffer())), itemId };

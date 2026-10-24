@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { Client } from "pg";
 import { createClient } from "@supabase/supabase-js";
+import { getFile, putFile, removeFiles, resolveSafe, storageDriver } from "../lib/storage/local-store.mjs";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL belum dikonfigurasi.");
@@ -22,6 +23,61 @@ const lockClient = new Client({ connectionString: lockConnectionString });
 const authRoot = path.resolve(process.env.WHATSAPP_AUTH_PATH || ".data/baileys-auth");
 const workerId = process.env.WHATSAPP_WORKER_ID || `worker-${process.pid}`;
 const mediaBucket = process.env.WHATSAPP_MEDIA_BUCKET || "whatsapp-media";
+
+const supabaseConfigured = () => Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
+const mediaStorageReady = () => storageDriver() === "local" || supabaseConfigured();
+
+function supabaseMedia() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key) throw new Error("Konfigurasi Supabase Storage worker belum tersedia.");
+  return createClient(url, key, { auth: { persistSession: false } }).storage.from(mediaBucket);
+}
+
+/** Tulis media ke driver aktif. Hybrid wajib sukses di VPS dan Supabase. */
+async function storeWorkerMedia(mediaPath, buffer, contentType) {
+  const driver = storageDriver();
+  if (driver !== "supabase") await putFile(mediaBucket, mediaPath, buffer, { upsert: false });
+  if (driver === "local") return;
+
+  const uploaded = await supabaseMedia().upload(mediaPath, buffer, { contentType, upsert: false });
+  if (!uploaded.error) return;
+  if (driver === "hybrid") await removeFiles(mediaBucket, [mediaPath]);
+  throw uploaded.error;
+}
+
+/** Baca media dari VPS lebih dulu; hybrid jatuh ke Supabase untuk file lama. */
+async function readWorkerMedia(mediaPath) {
+  const driver = storageDriver();
+  if (driver !== "supabase") {
+    if (!resolveSafe(mediaBucket, mediaPath)) throw new Error("Path media tidak valid.");
+    const buffer = await getFile(mediaBucket, mediaPath);
+    if (buffer) return buffer;
+    if (driver === "local") throw new Error("Lampiran tidak ditemukan.");
+  }
+  const downloaded = await supabaseMedia().download(mediaPath);
+  if (downloaded.error || !downloaded.data) throw downloaded.error || new Error("Lampiran tidak ditemukan.");
+  return Buffer.from(await downloaded.data.arrayBuffer());
+}
+
+async function deleteWorkerMedia(paths) {
+  if (!paths.length) return;
+  const driver = storageDriver();
+  if (driver !== "supabase") {
+    const { failed } = await removeFiles(mediaBucket, paths);
+    for (const item of failed) console.error(`[whatsapp-worker] delete media lokal ${item.path}: ${item.message}`);
+  }
+  if (driver === "local") return;
+  if (!supabaseConfigured()) {
+    console.error("[whatsapp-worker] Supabase Storage belum dikonfigurasi; media Supabase tidak dihapus.");
+    return;
+  }
+  const storage = supabaseMedia();
+  for (let index = 0; index < paths.length; index += 100) {
+    const { error } = await storage.remove(paths.slice(index, index + 100));
+    if (error) console.error(`[whatsapp-worker] delete media: ${cleanError(error)}`);
+  }
+}
 const campaignRecipientAllowlist = process.env.BROADCAST_TEST_RECIPIENTS
   ? new Set(process.env.BROADCAST_TEST_RECIPIENTS.split(",").map(normalizeNumber).filter(Boolean))
   : null;
@@ -202,7 +258,7 @@ async function storeInbound(accountId, message, remoteJid) {
   let mediaMimeType = null;
   let mediaFileName = null;
   let mediaSizeBytes = null;
-  if (kind !== "TEXT" && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
+  if (kind !== "TEXT" && mediaStorageReady()) {
     const buffer = await downloadMediaMessage(message, "buffer", {}, { logger: silentLogger, reuploadRequest: sessions.get(accountId)?.updateMediaMessage });
     // Cap 5MB agar muat di worker 200M (sebelumnya 10MB).
     if (buffer.length <= 5 * 1024 * 1024) {
@@ -210,9 +266,7 @@ async function storeInbound(accountId, message, remoteJid) {
       mediaMimeType = media?.mimetype || "application/octet-stream";
       mediaFileName = media?.fileName || `${message.key.id}.${kind === "IMAGE" ? "jpg" : "bin"}`;
       mediaPath = `${accountId}/${new Date().toISOString().slice(0, 10)}/${message.key.id}`;
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
-      const uploaded = await supabase.storage.from(mediaBucket).upload(mediaPath, buffer, { contentType: mediaMimeType, upsert: false });
-      if (uploaded.error) throw uploaded.error;
+      await storeWorkerMedia(mediaPath, buffer, mediaMimeType);
       mediaSizeBytes = buffer.length;
     }
   }
@@ -255,13 +309,7 @@ async function processAccountDeletion(account) {
   });
   if (messages.length) {
     const paths = [...new Set(messages.map((message) => message.mediaPath).filter(Boolean))];
-    if (paths.length && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
-      for (let index = 0; index < paths.length; index += 100) {
-        const { error } = await supabase.storage.from(mediaBucket).remove(paths.slice(index, index + 100));
-        if (error) console.error(`[whatsapp-worker] delete media ${account.id}: ${cleanError(error)}`);
-      }
-    }
+    if (paths.length) await deleteWorkerMedia(paths);
     await prisma.whatsAppMessage.deleteMany({ where: { id: { in: messages.map((message) => message.id) } } });
     return;
   }
@@ -605,11 +653,7 @@ async function processOneJob() {
       if (!response.ok) throw new Error("PDF invoice gagal diambil.");
       content = { document: Buffer.from(await response.arrayBuffer()), mimetype: "application/pdf", fileName: `invoice-${job.invoiceId}.pdf`, caption: text };
     } else if (payload.attachment?.path) {
-      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) throw new Error("Konfigurasi Storage worker belum tersedia.");
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
-      const downloaded = await supabase.storage.from(mediaBucket).download(payload.attachment.path);
-      if (downloaded.error) throw downloaded.error;
-      const buffer = Buffer.from(await downloaded.data.arrayBuffer());
+      const buffer = await readWorkerMedia(payload.attachment.path);
       content = payload.attachment.kind === "IMAGE"
         ? { image: buffer, mimetype: payload.attachment.mimeType, caption: text }
         : { document: buffer, mimetype: payload.attachment.mimeType, fileName: payload.attachment.fileName, caption: text };

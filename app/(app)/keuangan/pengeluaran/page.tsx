@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { Check, ReceiptText, Trash2 } from "lucide-react";
 
 import { deleteExpenseAction, reimburseExpenseAction } from "@/app/actions/finance";
-import { AutoRefresh } from "@/components/auto-refresh";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DataPagination } from "@/components/data-pagination";
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
@@ -24,6 +23,7 @@ import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, EXPENSE_TYPE_LABEL, type Ex
 import { getExpenses } from "@/lib/finance/expense";
 import { getActivePaymentMethods } from "@/lib/master-data";
 import { parseFinanceDateRange } from "@/lib/finance/date-range";
+import { hasRole, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
@@ -61,7 +61,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
   const exportParams = { ...persistent, pageSize: undefined, order: order === "desc" ? undefined : order };
 
   return <>
-    <AutoRefresh />
+    
     <PageHeader title="Pengeluaran" description="Catat dan lacak biaya operasional dan project yang digunakan." action={<div className="flex items-center gap-2"><Button variant="outline" render={<Link href="/keuangan/pengeluaran/riwayat" />} nativeButton={false}>Riwayat Hapus</Button><ExportButton workbookScope="pengeluaran" params={exportParams} /><ExpenseForm methods={methods} /></div>} />
     <PageMessage />
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
@@ -92,7 +92,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
             const renderItem = (item: (typeof group.operasional)[number]) => {
               const own = item.createdById === actor?.id;
               const canManage = ["DEVELOPER", "OWNER", "KEUANGAN"].includes(actor?.role ?? "");
-              const canDelete = own || ["DEVELOPER", "OWNER"].includes(actor?.role ?? "");
+              const canDelete = own || Boolean(actor && hasRole(actor.role, OWNER_ACTION_ROLES));
               const reimbursable = item.isReimbursable;
               const showDate = rowIndex === 0;
               rowIndex += 1;

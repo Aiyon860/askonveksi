@@ -10,9 +10,9 @@ import { DESIGN_REVISION_LIMIT } from "@/lib/crm/constants";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { designImageContentType, designImageExtensionFor, designImageRejection } from "@/lib/design/image";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
 
-const BUCKET = "crm-po-designs";
+const BUCKET = PO_DESIGNS_BUCKET;
 const MAX_FILES = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_REVISIONS = DESIGN_REVISION_LIMIT;
@@ -118,7 +118,7 @@ export async function uploadDesignRevisionAction(formData: FormData) {
     }
     if (!uploads.length) throw new UserFacingError("Pilih minimal satu file desain.");
 
-    const storage = createAdminClient().storage.from(BUCKET);
+    const storage = erpStorage(BUCKET);
     const uploaded: string[] = [];
     let opportunityId: string;
     try {

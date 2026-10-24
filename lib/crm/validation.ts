@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { DECORATION_METHODS } from "./constants.ts";
+import { invoicePointPlainText } from "./invoice-setting-html.ts";
+import { sanitizeInvoicePointHtml } from "./invoice-setting-sanitize.ts";
 
 const optionalText = (max: number) =>
   z.preprocess(
@@ -84,11 +86,18 @@ export const bulkUpdateMasterDataSchema = z
 
 export const INVOICE_SETTING_POINTS_MAX = 20;
 export const INVOICE_SETTING_POINT_TEXT_MAX = 1000;
+export const INVOICE_SETTING_POINT_HTML_MAX = 20_000;
 
 const invoiceSettingPointSchema = z.object({
   id: optionalEntityId,
-  text: z.string().trim().min(2, "Poin minimal 2 karakter.").max(INVOICE_SETTING_POINT_TEXT_MAX, `Poin maksimal ${INVOICE_SETTING_POINT_TEXT_MAX} karakter.`),
-  bold: z.boolean(),
+  text: z
+    .string()
+    .max(INVOICE_SETTING_POINT_HTML_MAX, `Poin maksimal ${INVOICE_SETTING_POINT_TEXT_MAX} karakter.`)
+    .transform((value) => sanitizeInvoicePointHtml(value))
+    .refine((value) => {
+      const length = invoicePointPlainText(value).length;
+      return length >= 2 && length <= INVOICE_SETTING_POINT_TEXT_MAX;
+    }, { message: `Poin minimal 2 dan maksimal ${INVOICE_SETTING_POINT_TEXT_MAX} karakter.` }),
 });
 
 /** Payload satu form berisi dua kolom master: keterangan dan syarat & ketentuan. */

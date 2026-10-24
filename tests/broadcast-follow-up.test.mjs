@@ -53,6 +53,19 @@ test("kartu Follow Up Hari Ini memuat filter ala dialog Pilih Customer dan pesan
   assert.doesNotMatch(table, /name="customerIds"/);
 });
 
+test("textarea broadcast mempertahankan template terakhir setelah pesan dikirim", async () => {
+  const workspace = await read("components/crm/broadcast-workspace.tsx");
+
+  // React me-reset field tak terkontrol setelah server action selesai, jadi isi pesan harus
+  // dikendalikan state sekaligus disimpan sebagai draf agar tidak kembali ke template bawaan.
+  assert.match(workspace, /const MESSAGE_DRAFT_KEY = "askonveksi:follow-up-broadcast-message"/);
+  assert.match(workspace, /window\.localStorage\.setItem\(MESSAGE_DRAFT_KEY, next\)/);
+  assert.match(workspace, /window\.localStorage\.getItem\(MESSAGE_DRAFT_KEY\)/);
+  assert.match(workspace, /value=\{message\}/);
+  assert.match(workspace, /onChange=\{\(event\) => updateMessage\(event\.target\.value\)\}/);
+  assert.doesNotMatch(workspace, /defaultValue=\{defaultMessage\}/);
+});
+
 test("komponen follow-up lama sudah tidak ada lagi", async () => {
   await assert.rejects(read("components/crm/follow-up-content.tsx"));
   await assert.rejects(read("components/crm/follow-up-result-form.tsx"));

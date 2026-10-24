@@ -84,6 +84,15 @@ test("campaign hanya dikendalikan oleh switch, tanpa pembatalan permanen", () =>
   assert.doesNotMatch(campaignPageSource, /Batalkan|cancelCampaignAction/);
 });
 
+test("edit campaign diambil per id agar tidak jatuh ke formulir campaign baru", () => {
+  // Target edit tidak boleh dicari dari baris tabel yang sedang tampil: campaign bisa berubah
+  // status/halaman sejak halaman dirender sehingga dulu formulir "Campaign baru" yang muncul.
+  assert.match(campaignPageSource, /whatsAppCampaign\.findUnique\(\{ where: \{ id: editId \}/);
+  assert.doesNotMatch(campaignPageSource, /campaigns\.find\(/);
+  assert.match(campaignPageSource, /Campaign tidak bisa diedit/);
+  assert.match(campaignPageSource, /key=\{edit\?\.id \?\? "new"\}/);
+});
+
 test("penghapusan campaign memerlukan versi valid dan menjaga riwayat job", () => {
   assert.equal(deleteCampaignSchema.safeParse({ campaignId: "cmu0wrmdz0002ulij36mpwbb3", version: 1 }).success, true);
   assert.equal(deleteCampaignSchema.safeParse({ campaignId: "cmu0wrmdz0002ulij36mpwbb3", version: 0 }).success, false);
