@@ -15,6 +15,18 @@ export type DashboardQueryParams = {
   categoryId?: string | string[];
 };
 
+// Cakupan data dashboard per peran. FULL = Owner/Developer/Keuangan,
+// CUSTOMER = Admin Customer (data pelanggan & CRM), PRODUCTION = Admin PO
+// (data order, produk, dan produksi). Nilai uang tetap disamarkan lewat
+// maskFinancialData untuk semua role non-Keuangan.
+export type DashboardScope = "FULL" | "CUSTOMER" | "PRODUCTION";
+
+export function resolveDashboardScope(role: string): DashboardScope {
+  if (role === "ADMIN_CUSTOMER") return "CUSTOMER";
+  if (role === "ADMIN_PO") return "PRODUCTION";
+  return "FULL";
+}
+
 export type FullDashboardData = {
   actor: {
     id: string;
@@ -22,6 +34,7 @@ export type FullDashboardData = {
     role: string;
     email: string;
   };
+  dashboardScope: DashboardScope;
   canViewFinancialData: boolean;
   period: {
     from: string;
@@ -308,6 +321,12 @@ function calcGrowth(curr: number, prev: number): number {
 const MASKED_MONEY = "—";
 
 function maskFinancialData(data: FullDashboardData): FullDashboardData {
+  // Segmentasi tetap bisa dibandingkan tanpa nominal: pakai porsi jumlah order.
+  const totalSegmentOrders = data.customerSegmentation.reduce((acc, segment) => acc + segment.orderCount, 0);
+  // Insight kategori dihitung dari volume (pcs), bukan omzet.
+  const topCategoryByVolume = [...data.categoryProgress].sort((a, b) => b.pcs - a.pcs)[0];
+  // Sumber lead teratas dihitung dari jumlah lead, bukan kontribusi omzet.
+  const topLeadSourceByLeads = [...data.leadSourcesDonut].sort((a, b) => b.count - a.count)[0];
   return {
     ...data,
     summary: {
@@ -319,9 +338,18 @@ function maskFinancialData(data: FullDashboardData): FullDashboardData {
     },
     trendData: data.trendData.map((point) => ({ ...point, omzet: 0 })),
     leadSourceTable: data.leadSourceTable.map((row) => ({ ...row, revenue: MASKED_MONEY, revenueNum: 0 })),
-    categoryRevenueDonut: data.categoryRevenueDonut.map((row) => ({ ...row, revenue: MASKED_MONEY, revenueNum: 0 })),
+    categoryRevenueDonut: data.categoryRevenueDonut.map((row) => {
+      // Porsi kategori memakai jumlah order agar tetap bermakna tanpa nominal.
+      const progress = data.categoryProgress.find((item) => item.name === row.name);
+      return { ...row, revenue: MASKED_MONEY, revenueNum: 0, percentage: progress?.percentage ?? 0 };
+    }),
     recentOrders: data.recentOrders.map((order) => ({ ...order, total: MASKED_MONEY, totalNum: 0 })),
-    customerSegmentation: data.customerSegmentation.map((segment) => ({ ...segment, revenue: MASKED_MONEY, revenueNum: 0 })),
+    customerSegmentation: data.customerSegmentation.map((segment) => ({
+      ...segment,
+      revenue: MASKED_MONEY,
+      revenueNum: 0,
+      percentage: totalSegmentOrders > 0 ? Math.round((segment.orderCount / totalSegmentOrders) * 100) : 0,
+    })),
     topCustomers: data.topCustomers.map((customer) => ({ ...customer, revenue: MASKED_MONEY, revenueNum: 0 })),
     channelEfficiency: data.channelEfficiency.map((channel) => ({ ...channel, revenue: MASKED_MONEY })),
     picPerformance: data.picPerformance.map((pic) => ({ ...pic, revenue: MASKED_MONEY, revenueNum: 0 })),
@@ -339,9 +367,18 @@ function maskFinancialData(data: FullDashboardData): FullDashboardData {
         title: "Performa Omzet",
         description: "Data omzet hanya tersedia untuk role Keuangan.",
       },
+      topLeadSource: {
+        ...data.insights.topLeadSource,
+        description: topLeadSourceByLeads && topLeadSourceByLeads.count > 0
+          ? `${topLeadSourceByLeads.name} memberikan kontribusi ${topLeadSourceByLeads.percentage}% dari total lead yang masuk.`
+          : "Belum ada lead yang masuk pada periode ini.",
+      },
       bestSellingCategory: {
         ...data.insights.bestSellingCategory,
-        description: "Data kontribusi omzet kategori hanya tersedia untuk role Keuangan.",
+        title: "Kategori Produk Teratas",
+        description: topCategoryByVolume && topCategoryByVolume.pcs > 0
+          ? `${topCategoryByVolume.name} menjadi kategori dengan volume produksi terbanyak (${topCategoryByVolume.pcs} pcs).`
+          : "Belum ada volume produksi pada periode ini.",
       },
     },
   };
@@ -350,6 +387,7 @@ function maskFinancialData(data: FullDashboardData): FullDashboardData {
 export async function getDashboardFullAnalyticsData(params: DashboardQueryParams = {}): Promise<FullDashboardData> {
   const actor = await requireActor(DASHBOARD_ROLES);
   const canViewFinancialData = hasRole(actor.role, FINANCE_ROLES);
+  const dashboardScope = resolveDashboardScope(actor.role);
   const prisma = getPrismaClient();
 
   const period = parsePeriodBounds(params);
@@ -1053,6 +1091,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
       role: actor.role,
       email: actor.email,
     },
+    dashboardScope,
     canViewFinancialData,
     period,
     filters: {

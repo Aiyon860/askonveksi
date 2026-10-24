@@ -23,6 +23,7 @@ import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, EXPENSE_TYPE_LABEL, type Ex
 import { getExpenses } from "@/lib/finance/expense";
 import { getActivePaymentMethods } from "@/lib/master-data";
 import { parseFinanceDateRange } from "@/lib/finance/date-range";
+import { hasRole, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
@@ -91,7 +92,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
             const renderItem = (item: (typeof group.operasional)[number]) => {
               const own = item.createdById === actor?.id;
               const canManage = ["DEVELOPER", "OWNER", "KEUANGAN"].includes(actor?.role ?? "");
-              const canDelete = own || ["DEVELOPER", "OWNER"].includes(actor?.role ?? "");
+              const canDelete = own || Boolean(actor && hasRole(actor.role, OWNER_ACTION_ROLES));
               const reimbursable = item.isReimbursable;
               const showDate = rowIndex === 0;
               rowIndex += 1;

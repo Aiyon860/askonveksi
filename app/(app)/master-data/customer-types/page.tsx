@@ -2,11 +2,13 @@ import { bulkUpdateCustomerTypesAction, createCustomerTypeAction, deleteCustomer
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
 import { getCustomerTypes } from "@/lib/master-data";
 
 export const revalidate = 60;
 
 export default async function CustomerTypesPage() {
+  await requireOwnerAreaPage();
   const items = await getCustomerTypes();
   return (
     <>

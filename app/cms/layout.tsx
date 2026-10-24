@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { CmsStudioNav } from "@/components/cms/cms-studio-nav";
 import { CmsStudioHeader } from "@/components/cms/cms-studio-header";
+import { CMS_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
 export default async function CmsLayout({ children }: { children: ReactNode }) {
   const actor = await getCurrentActor();
   if (!actor) redirect("/login");
-  if (actor.role !== "OWNER" && actor.role !== "DEVELOPER") notFound();
+  if (!hasRole(actor.role, CMS_ROLES)) notFound();
 
   return (
     <div className="min-h-svh w-full max-w-full overflow-x-clip bg-app-canvas lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">

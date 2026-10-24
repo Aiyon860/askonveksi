@@ -1,6 +1,6 @@
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
 
 export const runtime = "nodejs";
 
@@ -12,7 +12,7 @@ export async function GET() {
   }
   const profile = await getPrismaClient().businessProfile.findUnique({ where: { id: "default" }, select: { logoPath: true } });
   if (!profile?.logoPath) return new Response("Logo tidak ditemukan.", { status: 404 });
-  const { data, error } = await createAdminClient().storage.from("business-assets").download(profile.logoPath);
+  const { data, error } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(profile.logoPath);
   if (error || !data) return new Response("Logo tidak ditemukan.", { status: 404 });
   return new Response(await data.arrayBuffer(), {
     headers: {

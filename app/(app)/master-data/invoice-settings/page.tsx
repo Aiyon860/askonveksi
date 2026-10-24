@@ -2,9 +2,11 @@ import { saveInvoiceSettingsAction } from "@/app/actions/master-data";
 import { InvoiceSettingsEditor } from "@/components/invoice-settings-editor";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
 import { getInvoiceSettingPoints } from "@/lib/master-data";
 
 export default async function InvoiceSettingsPage() {
+  await requireOwnerAreaPage();
   const points = await getInvoiceSettingPoints();
   return (
     <>

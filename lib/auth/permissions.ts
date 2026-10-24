@@ -22,6 +22,10 @@ export function isAttendanceEmployee(role: AppRole) {
 }
 // Konten website dikelola Owner; Developer selalu lolos lewat hasRole.
 export const CMS_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
+// Akses menu Data Master dan seluruh aksi tulisnya: Owner, Developer, dan Keuangan.
+// MASTER_DATA_ROLES tetap dipakai untuk kebutuhan CRM (mis. form/import customer)
+// agar Admin Customer tidak kehilangan alur kerjanya.
+export const MASTER_DATA_ADMIN_ROLES = OWNER_ACTION_ROLES;
 export const MASTER_DATA_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const WHATSAPP_ACCOUNT_MANAGER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const ANALYTICS_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
@@ -41,6 +45,9 @@ export const DESIGN_APPROVER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies reado
 // Peran yang selalu boleh melewati gate alur kerja (mis. gate deposit desain).
 export const GATE_OVERRIDE_ROLES = ["DEVELOPER", "OWNER"] as const satisfies readonly AppRole[];
 
+// Owner dan Developer selalu lolos. KEUANGAN diperlakukan setara Owner untuk
+// seluruh gate akses, tanpa mengubah data role-nya (dashboard tetap mengenali
+// role KEUANGAN sebagai dashboard penuh).
 export function hasRole(role: AppRole, allowedRoles: readonly AppRole[]) {
-  return role === "DEVELOPER" || role === "OWNER" || allowedRoles.includes(role);
+  return role === "DEVELOPER" || role === "OWNER" || role === "KEUANGAN" || allowedRoles.includes(role);
 }

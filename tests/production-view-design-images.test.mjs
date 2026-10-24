@@ -124,5 +124,6 @@ test("G2: detail Work Order hanya lihat; Detail Desain dikunci DEVELOPER", () =>
   assert.match(designDetail, /return workOrder \? \{ workOrder: withOwnProductDesign\(workOrder\), canManage: isStageRole\(actor\.role\) \} : null/);
   assert.match(designEditorPage, /readOnly=\{!canManage \|\| Boolean\(workOrder\.designCompletedAt\)\}/);
   assert.match(designEditorPage, /Mode lihat saja/);
-  assert.match(nav, /canViewProduction = isDeveloper \|\| role === "OWNER" \|\| role === "ADMIN_PO" \|\| role === "ADMIN_CUSTOMER"/);
+  // Owner/Developer/Keuangan lewat isOwnerEquivalent; Produksi juga dibuka untuk Admin PO & Admin Customer.
+  assert.match(nav, /canViewProduction = isOwnerEquivalent \|\| role === "ADMIN_PO" \|\| role === "ADMIN_CUSTOMER"/);
 });

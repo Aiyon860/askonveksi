@@ -1,5 +1,5 @@
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
 
 export const runtime = "nodejs";
 /** Jangan di-prerender saat build; logo harus selalu mengikuti profil terbaru. */
@@ -31,7 +31,7 @@ export async function GET() {
     if (!logoPath || !contentType || !LOGO_PATH_PATTERN.test(logoPath)) {
       return new Response("Logo tidak ditemukan.", { status: 404 });
     }
-    const { data, error } = await createAdminClient().storage.from("business-assets").download(logoPath);
+    const { data, error } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(logoPath);
     if (error || !data) return new Response("Logo tidak ditemukan.", { status: 404 });
     // URL memuat `?v=` versi profil, jadi cache immutable aman: ganti logo = URL baru.
     return new Response(await data.arrayBuffer(), {

@@ -7,10 +7,12 @@ import {
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
+import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
 import { GARMENT_TYPE_OPTIONS } from "@/lib/crm/constants";
 import { getProductCategories } from "@/lib/master-data";
 
 export default async function ProductCategoriesPage() {
+  await requireOwnerAreaPage();
   const items = await getProductCategories();
   return (
     <>

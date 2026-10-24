@@ -2,9 +2,9 @@ import { requireActor } from "@/lib/auth/session";
 import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
 
-const BUCKET = "crm-po-designs";
+const BUCKET = PO_DESIGNS_BUCKET;
 
 /** Pratinjau desain penjahit per produk (Sprint 11 R3) — dipakai thumbnail dialog & PDF. */
 export async function GET(
@@ -28,7 +28,7 @@ export async function GET(
   });
   if (!item?.penjahitDesignPath) return new Response("Desain penjahit tidak ditemukan.", { status: 404 });
 
-  const { data, error } = await createAdminClient().storage.from(BUCKET).download(item.penjahitDesignPath);
+  const { data, error } = await erpStorage(BUCKET).download(item.penjahitDesignPath);
   if (error) return new Response("Desain penjahit tidak dapat dibuka.", { status: 404 });
 
   return new Response(await data.arrayBuffer(), {

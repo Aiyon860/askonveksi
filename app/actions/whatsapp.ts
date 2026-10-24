@@ -9,7 +9,7 @@ import { requireActor } from "@/lib/auth/session";
 import { nextCustomerNo } from "@/lib/crm/numbers";
 import { createCustomerSchema, entityIdSchema, firstValidationMessage } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, WHATSAPP_MEDIA_BUCKET } from "@/lib/storage/erp-storage";
 import { normalizeWhatsAppNumber, remoteJidForNumber, whatsappAccountSchema, whatsappTemplateSchema } from "@/lib/whatsapp/core";
 import { enqueueInvoiceWhatsAppMessage, enqueueManualWhatsAppMessage, ensureCustomerWhatsAppConversation, getInvoiceWhatsAppMessage } from "@/lib/whatsapp/jobs";
 
@@ -187,7 +187,7 @@ export async function sendWhatsAppMessageAction(formData: FormData) {
       if (!mimeType) throw new UserFacingError("Lampiran harus berupa PDF, JPG, PNG, atau WebP yang valid.");
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-120) || `lampiran-${randomUUID()}`;
       const path = `outbound/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${safeName}`;
-      const result = await createAdminClient().storage.from(process.env.WHATSAPP_MEDIA_BUCKET || "whatsapp-media").upload(path, bytes, { contentType: mimeType, upsert: false });
+      const result = await erpStorage(WHATSAPP_MEDIA_BUCKET).upload(path, bytes, { contentType: mimeType, upsert: false });
       if (result.error) throw new UserFacingError("Lampiran belum dapat disimpan.");
       attachment = { path, mimeType, fileName: safeName, sizeBytes: file.size, kind: mimeType.startsWith("image/") ? "IMAGE" : "DOCUMENT" };
     }
@@ -196,7 +196,7 @@ export async function sendWhatsAppMessageAction(formData: FormData) {
       refreshWhatsApp();
       return flashMessagePath(`/whatsapp?conversation=${resultId}`, "notice", "Pesan dijadwalkan untuk dikirim.");
     } catch (error) {
-      if (attachment) await createAdminClient().storage.from(process.env.WHATSAPP_MEDIA_BUCKET || "whatsapp-media").remove([attachment.path]);
+      if (attachment) await erpStorage(WHATSAPP_MEDIA_BUCKET).remove([attachment.path]);
       throw error;
     }
   });

@@ -3,7 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { UserFacingError } from "@/lib/actions/response";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage } from "@/lib/storage/erp-storage";
 
 export const PAYMENT_PROOF_BUCKET = "payment-proofs";
 export const PAYMENT_PROOF_MAX_BYTES = 5 * 1024 * 1024;
@@ -29,11 +29,11 @@ export async function uploadPaymentProof(value: FormDataEntryValue | null, owner
   if (!mime || !types.has(value.type) || value.type !== mime) throw new UserFacingError("Bukti harus PDF, JPEG, PNG, atau WebP yang valid.");
   const extension = mime === "application/pdf" ? "pdf" : mime.split("/")[1].replace("jpeg", "jpg");
   const proofPath = `${owner}/${randomUUID()}.${extension}`;
-  const { error } = await createAdminClient().storage.from(PAYMENT_PROOF_BUCKET).upload(proofPath, bytes, { contentType: mime, upsert: false });
+  const { error } = await erpStorage(PAYMENT_PROOF_BUCKET).upload(proofPath, bytes, { contentType: mime, upsert: false });
   if (error) throw new UserFacingError("Bukti tidak dapat diunggah.");
   return { proofPath, proofFileName: value.name.replace(/[\\/\r\n]/g, "-").slice(0, 255) || `bukti.${extension}`, proofMimeType: mime, proofSize: value.size };
 }
 
 export async function deletePaymentProof(path: string | null | undefined) {
-  if (path) await createAdminClient().storage.from(PAYMENT_PROOF_BUCKET).remove([path]);
+  if (path) await erpStorage(PAYMENT_PROOF_BUCKET).remove([path]);
 }

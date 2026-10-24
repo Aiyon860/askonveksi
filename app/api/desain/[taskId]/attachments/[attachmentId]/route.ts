@@ -3,7 +3,7 @@ import { requireActor } from "@/lib/auth/session";
 import { entityIdSchema } from "@/lib/crm/validation";
 import { sniffImageContentType } from "@/lib/design/image";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
 
 export async function GET(request: Request, { params }: { params: Promise<{ taskId: string; attachmentId: string }> }) {
   try { await requireActor([...DESIGN_VIEW_ROLES, ...DETAIL_DESIGN_VIEW_ROLES]); } catch { return new Response("Anda tidak berhak membuka file desain.", { status: 403 }); }
@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ task
   const attachment = await getPrismaClient().designAttachment.findFirst({ where: { id: attachmentId.data, designRevision: { designTaskId: taskId.data } }, select: { path: true, originalPath: true, originalName: true, contentType: true } });
   if (!attachment) return new Response("File desain tidak ditemukan.", { status: 404 });
   const original = new URL(request.url).searchParams.has("original");
-  const { data, error } = await createAdminClient().storage.from("crm-po-designs").download(original && attachment.originalPath ? attachment.originalPath : attachment.path);
+  const { data, error } = await erpStorage(PO_DESIGNS_BUCKET).download(original && attachment.originalPath ? attachment.originalPath : attachment.path);
   if (error) return new Response("File desain tidak dapat dibuka.", { status: 404 });
   const disposition = new URL(request.url).searchParams.has("inline") ? "inline" : "attachment";
   // Salinan desain awal dan revisi lama bisa berjenis beda dari kolom contentType,

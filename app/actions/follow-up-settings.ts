@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
+import { OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { firstValidationMessage } from "@/lib/crm/validation";
 import { repeatOrderDueAt } from "@/lib/crm/reminder-types";
@@ -24,7 +24,7 @@ const settingsSchema = z.object({
 
 export async function updateFollowUpSettingsAction(formData: FormData) {
   return runRedirectingAction("/settings", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(OWNER_ACTION_ROLES);
     const parsed = settingsSchema.safeParse({ version: formData.get("version"), offsets: formData.getAll("offset") });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     const offsets = [...parsed.data.offsets].sort((a, b) => a - b);
@@ -61,7 +61,7 @@ const repeatOrderSettingsSchema = z.object({
 
 export async function updateRepeatOrderSettingsAction(formData: FormData) {
   return runRedirectingAction("/settings", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(OWNER_ACTION_ROLES);
     const parsed = repeatOrderSettingsSchema.safeParse({
       version: formData.get("version"),
       intervals: formData.getAll("interval"),

@@ -59,11 +59,14 @@ jobs:
 
       - name: Package release
         run: |
-          mkdir -p deploy_package/.next deploy_package/worker
+          mkdir -p deploy_package/.next deploy_package/worker deploy_package/lib/storage
           cp -r .next/standalone/. deploy_package/
           cp -r .next/static deploy_package/.next/static
           if [ -d public ]; then cp -aT public deploy_package/public; fi
           cp worker/whatsapp.mjs deploy_package/worker/whatsapp.mjs
+          # Worker imports shared storage primitives; the standalone trace does
+          # not include this repo file, so copy it explicitly.
+          cp lib/storage/local-store.mjs deploy_package/lib/storage/local-store.mjs
           # Worker deps missing from the standalone trace (dotenv, baileys,
           # supabase + transitive). Copied from this same npm-ci tree so
           # versions stay identical; skips what standalone already ships.
@@ -71,6 +74,7 @@ jobs:
           tar -czf release.tar.gz -C deploy_package .
           tar -tzf release.tar.gz | grep -qx './server.js'
           tar -tzf release.tar.gz | grep -qx './worker/whatsapp.mjs'
+          tar -tzf release.tar.gz | grep -qx './lib/storage/local-store.mjs'
           # File-level checks: standalone dirs may be pruned, so a present
           # directory proves nothing. Fail the build here, not on the VPS.
           for f in node_modules/dotenv/package.json node_modules/@whiskeysockets/baileys/package.json node_modules/@supabase/supabase-js/package.json node_modules/ws/wrapper.mjs node_modules/pg/esm/index.mjs node_modules/pg-pool/index.js node_modules/postgres-array/index.js node_modules/.prisma/client/default.js node_modules/@prisma/client/default.js; do
@@ -189,6 +193,15 @@ jobs:
           install -d "$DEPLOY_PATH/releases" "$DEPLOY_PATH/shared"
           test -w "$DEPLOY_PATH" || { echo 'DEPLOY_PATH is not writable by the deploy user.'; exit 1; }
           test -f "$DEPLOY_PATH/shared/.env" || { echo 'Shared runtime .env is missing.'; exit 1; }
+          ERP_DRIVER="$(grep -E '^ERP_STORAGE_DRIVER=' "$DEPLOY_PATH/shared/.env" 2>/dev/null | cut -d= -f2 | tr -d ' "' || true)"
+          if [ -n "$ERP_DRIVER" ] && [ "$ERP_DRIVER" != "supabase" ]; then
+            ERP_DIR="$(grep -E '^ERP_STORAGE_DIR=' "$DEPLOY_PATH/shared/.env" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)"
+            [ -n "$ERP_DIR" ] || { echo 'ERP_STORAGE_DIR wajib diisi saat driver bukan supabase.'; exit 1; }
+            case "$ERP_DIR" in /*) ;; *) echo 'ERP_STORAGE_DIR harus path absolut.'; exit 1 ;; esac
+            case "$ERP_DIR" in "$DEPLOY_PATH"/*) echo 'ERP_STORAGE_DIR tidak boleh di dalam DEPLOY_PATH (release akan dipangkas).'; exit 1 ;; esac
+            test -d "$ERP_DIR" || { echo "ERP_STORAGE_DIR tidak ada: $ERP_DIR"; exit 1; }
+            test -w "$ERP_DIR" || { echo "ERP_STORAGE_DIR tidak writable oleh user deploy: $ERP_DIR"; exit 1; }
+          fi
           test -f "$ARCHIVE" || { echo 'Release archive is missing.'; exit 1; }
           test ! -e "$RELEASE_DIR" || { echo 'Release directory already exists.'; exit 1; }
           mkdir "$RELEASE_DIR"

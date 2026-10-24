@@ -9,14 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ATTENDANCE_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
-import { getCurrentActor } from "@/lib/auth/session";
+import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
 import { getAttendanceHolidays, getAttendanceSettings } from "@/lib/attendance/data";
 import { jakartaDateKey } from "@/lib/attendance/time";
 import { getFollowUpSettings } from "@/lib/crm/follow-up-settings";
 
 export default async function SettingsPage() {
-  const [settings, actor] = await Promise.all([getFollowUpSettings(), getCurrentActor()]);
-  const canManageAttendance = Boolean(actor && hasRole(actor.role, ATTENDANCE_ADMIN_ROLES));
+  const actor = await requireOwnerAreaPage();
+  const settings = await getFollowUpSettings();
+  const canManageAttendance = hasRole(actor.role, ATTENDANCE_ADMIN_ROLES);
   const [attendanceSettings, holidays] = canManageAttendance
     ? await Promise.all([getAttendanceSettings(), getAttendanceHolidays()])
     : [null, null];

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { MASTER_DATA_ROLES } from "@/lib/auth/permissions";
+import { MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { groupProductCategories } from "@/lib/crm/constants";
 import {
@@ -24,7 +24,7 @@ import {
 } from "@/lib/master-data-excel";
 import { getPrismaClient } from "@/lib/prisma";
 import { SITE_LOGO_CACHE_TAG } from "@/lib/site-logo";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
 
 // Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
 // (maxWait 2s / timeout 5s) bisa berakhir P2028 "melewati batas waktu",
@@ -192,7 +192,7 @@ async function importGarmentSizeRows(actorId: string, rows: MasterDataExcelRow[]
 
 export async function createCustomerTypeAction(formData: FormData) {
   return runRedirectingAction("/master-data/customer-types", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const parsed = sortableMasterDataFieldsSchema.safeParse(fields(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     await assertUniqueName("customerType", parsed.data.name);
@@ -211,7 +211,7 @@ export async function createCustomerTypeAction(formData: FormData) {
 
 export async function importCustomerTypesAction(formData: FormData) {
   return runRedirectingAction("/master-data/customer-types", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
     await importCustomerTypeRows(actor.id, rows);
     revalidatePath("/master-data/customer-types");
@@ -222,7 +222,7 @@ export async function importCustomerTypesAction(formData: FormData) {
 
 export async function bulkUpdateCustomerTypesAction(formData: FormData) {
   return runRedirectingAction("/master-data/customer-types", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rawItems = formData.get("items");
     if (typeof rawItems !== "string" || rawItems.length > 200_000) {
       throw new UserFacingError("Data jenis customer tidak valid. Muat ulang lalu coba lagi.");
@@ -305,7 +305,7 @@ export async function bulkUpdateCustomerTypesAction(formData: FormData) {
 
 export async function createLeadSourceAction(formData: FormData) {
   return runRedirectingAction("/master-data/lead-sources", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const parsed = sortableMasterDataFieldsSchema.safeParse(fields(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     await assertUniqueName("leadSource", parsed.data.name);
@@ -324,7 +324,7 @@ export async function createLeadSourceAction(formData: FormData) {
 
 export async function importLeadSourcesAction(formData: FormData) {
   return runRedirectingAction("/master-data/lead-sources", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
     await importLeadSourceRows(actor.id, rows);
     revalidatePath("/master-data/lead-sources");
@@ -335,7 +335,7 @@ export async function importLeadSourcesAction(formData: FormData) {
 
 export async function bulkUpdateLeadSourcesAction(formData: FormData) {
   return runRedirectingAction("/master-data/lead-sources", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rawItems = formData.get("items");
     if (typeof rawItems !== "string" || rawItems.length > 200_000) {
       throw new UserFacingError("Data sumber lead tidak valid. Muat ulang lalu coba lagi.");
@@ -450,7 +450,7 @@ async function importPaymentMethodRows(actorId: string, rows: MasterDataExcelRow
 
 export async function createPaymentMethodAction(formData: FormData) {
   return runRedirectingAction("/master-data/payment-methods", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const parsed = sortableMasterDataFieldsSchema.safeParse(fields(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     await assertUniqueName("paymentMethod", parsed.data.name);
@@ -467,7 +467,7 @@ export async function createPaymentMethodAction(formData: FormData) {
 
 export async function importPaymentMethodsAction(formData: FormData) {
   return runRedirectingAction("/master-data/payment-methods", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rows = await parseMasterDataWorkbook(excelFile(formData), 80);
     await importPaymentMethodRows(actor.id, rows);
     revalidatePath("/master-data/payment-methods");
@@ -478,7 +478,7 @@ export async function importPaymentMethodsAction(formData: FormData) {
 
 export async function bulkUpdatePaymentMethodsAction(formData: FormData) {
   return runRedirectingAction("/master-data/payment-methods", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rawItems = formData.get("items");
     if (typeof rawItems !== "string" || rawItems.length > 200_000) throw new UserFacingError("Data metode pembayaran tidak valid. Muat ulang lalu coba lagi.");
     let payload: unknown;
@@ -515,7 +515,7 @@ export async function bulkUpdatePaymentMethodsAction(formData: FormData) {
 
 export async function createGarmentSizeAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const parsed = sortableMasterDataFieldsSchema.safeParse(fields(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     const prisma = getPrismaClient();
@@ -541,7 +541,7 @@ export async function createGarmentSizeAction(formData: FormData) {
 
 export async function importGarmentSizesAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rows = await parseMasterDataWorkbook(excelFile(formData), 40);
     await importGarmentSizeRows(actor.id, rows);
     revalidatePath("/master-data/garment-sizes");
@@ -552,7 +552,7 @@ export async function importGarmentSizesAction(formData: FormData) {
 
 export async function bulkUpdateGarmentSizesAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rawItems = formData.get("items");
     if (typeof rawItems !== "string" || rawItems.length > 200_000) throw new UserFacingError("Data ukuran tidak valid. Muat ulang lalu coba lagi.");
     let payload: unknown;
@@ -634,7 +634,7 @@ async function countUsed(kind: "customerType" | "leadSource" | "garmentSize" | "
 
 export async function deleteCustomerTypeAction(formData: FormData) {
   return runRedirectingAction("/master-data/customer-types", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const id = formData.get("id");
     if (typeof id !== "string" || !id) throw new UserFacingError("Jenis customer tidak ditemukan. Muat ulang halaman.");
     const current = await getPrismaClient().customerType.findUnique({ where: { id }, select: { name: true } });
@@ -653,7 +653,7 @@ export async function deleteCustomerTypeAction(formData: FormData) {
 
 export async function deleteLeadSourceAction(formData: FormData) {
   return runRedirectingAction("/master-data/lead-sources", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const id = formData.get("id");
     if (typeof id !== "string" || !id) throw new UserFacingError("Sumber lead tidak ditemukan. Muat ulang halaman.");
     const current = await getPrismaClient().leadSource.findUnique({ where: { id }, select: { name: true } });
@@ -672,7 +672,7 @@ export async function deleteLeadSourceAction(formData: FormData) {
 
 export async function deleteGarmentSizeAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const id = formData.get("id");
     if (typeof id !== "string" || !id) throw new UserFacingError("Ukuran pakaian tidak ditemukan. Muat ulang halaman.");
     const current = await getPrismaClient().garmentSize.findUnique({ where: { id }, select: { name: true } });
@@ -691,7 +691,7 @@ export async function deleteGarmentSizeAction(formData: FormData) {
 
 export async function deletePaymentMethodAction(formData: FormData) {
   return runRedirectingAction("/master-data/payment-methods", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const id = formData.get("id");
     if (typeof id !== "string" || !id) throw new UserFacingError("Metode pembayaran tidak ditemukan. Muat ulang halaman.");
     const current = await getPrismaClient().paymentMethod.findUnique({ where: { id }, select: { name: true } });
@@ -764,7 +764,7 @@ type InvoiceSettingGroups = Array<{ section: "KETERANGAN" | "SYARAT_KETENTUAN"; 
  */
 export async function saveInvoiceSettingsAction(formData: FormData) {
   return runRedirectingAction("/master-data/invoice-settings", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rawPoints = formData.get("points");
     if (typeof rawPoints !== "string" || rawPoints.length > 60_000) {
       throw new UserFacingError("Data pengaturan invoice tidak valid. Muat ulang lalu coba lagi.");
@@ -845,7 +845,7 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
 
 export async function createProductCategoryAction(formData: FormData) {
   return runRedirectingAction("/master-data/product-categories", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const parsed = productCategoryFieldsSchema.safeParse({ name: formData.get("name"), kind: formData.get("kind") });
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     await assertUniqueName("productCategory", parsed.data.name);
@@ -869,7 +869,7 @@ export async function createProductCategoryAction(formData: FormData) {
 
 export async function importProductCategoriesAction(formData: FormData) {
   return runRedirectingAction("/master-data/product-categories", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rows = await parseMasterDataWorkbook(excelFile(formData), 80, PRODUCT_CATEGORY_EXCEL_KIND);
     await importProductCategoryRows(actor.id, rows);
     revalidatePath("/master-data/product-categories");
@@ -880,7 +880,7 @@ export async function importProductCategoriesAction(formData: FormData) {
 
 export async function bulkUpdateProductCategoriesAction(formData: FormData) {
   return runRedirectingAction("/master-data/product-categories", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const rawItems = formData.get("items");
     if (typeof rawItems !== "string" || rawItems.length > 200_000) throw new UserFacingError("Data kategori produk tidak valid. Muat ulang lalu coba lagi.");
     let payload: unknown;
@@ -933,7 +933,7 @@ export async function bulkUpdateProductCategoriesAction(formData: FormData) {
 
 export async function deleteProductCategoryAction(formData: FormData) {
   return runRedirectingAction("/master-data/product-categories", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const id = formData.get("id");
     if (typeof id !== "string" || !id) throw new UserFacingError("Kategori produk tidak ditemukan. Muat ulang halaman.");
     const current = await getPrismaClient().productCategory.findUnique({ where: { id }, select: { name: true } });
@@ -963,7 +963,7 @@ async function readBusinessImage(file: File, label: string) {
 
 export async function updateBusinessProfileAction(formData: FormData) {
   return runRedirectingAction("/master-data/business-profile", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
     const parsed = businessProfileSchema.safeParse({
       version: formData.get("version"),
       name: formData.get("name"),
@@ -981,7 +981,7 @@ export async function updateBusinessProfileAction(formData: FormData) {
     if (logo instanceof File && logo.size) {
       const image = await readBusinessImage(logo, "Logo");
       uploadedLogoPath = `business/logo-${randomUUID()}.${image.extension}`;
-      const { error } = await createAdminClient().storage.from("business-assets").upload(uploadedLogoPath, image.bytes, { contentType: image.type, upsert: false });
+      const { error } = await erpStorage(BUSINESS_ASSETS_BUCKET).upload(uploadedLogoPath, image.bytes, { contentType: image.type, upsert: false });
       if (error) throw new UserFacingError("Logo belum dapat disimpan. Pastikan bucket business-assets sudah disiapkan.");
     }
 
@@ -992,7 +992,7 @@ export async function updateBusinessProfileAction(formData: FormData) {
     if (signature instanceof File && signature.size) {
       const image = await readBusinessImage(signature, "Gambar tanda tangan");
       uploadedSignaturePath = `business/signature-${randomUUID()}.${image.extension}`;
-      const { error } = await createAdminClient().storage.from("business-assets").upload(uploadedSignaturePath, image.bytes, { contentType: image.type, upsert: false });
+      const { error } = await erpStorage(BUSINESS_ASSETS_BUCKET).upload(uploadedSignaturePath, image.bytes, { contentType: image.type, upsert: false });
       if (error) throw new UserFacingError("Gambar tanda tangan belum dapat disimpan. Pastikan bucket business-assets sudah disiapkan.");
     }
     const removeSignature = formData.get("removeSignature") === "1" && !uploadedSignaturePath;
@@ -1023,8 +1023,8 @@ export async function updateBusinessProfileAction(formData: FormData) {
         });
       }, MASTER_DATA_TRANSACTION_OPTIONS);
     } catch (error) {
-      if (uploadedLogoPath) await createAdminClient().storage.from("business-assets").remove([uploadedLogoPath]);
-      if (uploadedSignaturePath) await createAdminClient().storage.from("business-assets").remove([uploadedSignaturePath]);
+      if (uploadedLogoPath) await erpStorage(BUSINESS_ASSETS_BUCKET).remove([uploadedLogoPath]);
+      if (uploadedSignaturePath) await erpStorage(BUSINESS_ASSETS_BUCKET).remove([uploadedSignaturePath]);
       throw error;
     }
     revalidatePath("/master-data/business-profile");

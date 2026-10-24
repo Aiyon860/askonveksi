@@ -1068,7 +1068,7 @@ test("revisi CRM membuat PO, invoice, pembayaran, dan bucket desain privat", asy
   assert.match(storageScript, /fileSizeLimit: 5 \* 1024 \* 1024/);
   assert.match(sql, /REVOKE ALL ON TABLE "PurchaseOrder"[\s\S]+FROM anon, authenticated/);
   // Halaman persetujuan desain dihapus: unggahan langsung menjadi acuan produksi.
-  assert.match(designActionSource, /storage\.from\(BUCKET\)/);
+  assert.match(designActionSource, /erpStorage\(BUCKET\)/);
   assert.match(designActionSource, /storage\.upload\(attachment\.path/);
   assert.doesNotMatch(designActionSource, /reviewDesignRevisionAction|APPROVED/);
   const productionActionSource = await readFile(new URL("../app/actions/production.ts", import.meta.url), "utf8");

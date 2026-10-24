@@ -1,7 +1,7 @@
 import { CRM_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { erpStorage, WHATSAPP_MEDIA_BUCKET } from "@/lib/storage/erp-storage";
 
 export const runtime = "nodejs";
 
@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     select: { mediaPath: true, mediaMimeType: true, mediaFileName: true },
   });
   if (!message?.mediaPath) return new Response("Lampiran tidak ditemukan.", { status: 404 });
-  const result = await createAdminClient().storage.from(process.env.WHATSAPP_MEDIA_BUCKET || "whatsapp-media").download(message.mediaPath);
+  const result = await erpStorage(WHATSAPP_MEDIA_BUCKET).download(message.mediaPath);
   if (result.error) return new Response("Lampiran tidak ditemukan.", { status: 404 });
   const inlineImage = ["image/jpeg", "image/png", "image/webp"].includes(message.mediaMimeType ?? "");
   return new Response(await result.data.arrayBuffer(), {

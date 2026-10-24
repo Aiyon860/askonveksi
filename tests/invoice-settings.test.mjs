@@ -91,7 +91,7 @@ test("halaman pengaturan invoice memakai editor WYSIWYG dengan tepat tiga tombol
 
 test("action menyimpan dua kolom sekaligus dan menghapus poin yang dibuang user", () => {
   const action = actionSource.slice(actionSource.indexOf("export async function saveInvoiceSettingsAction"));
-  assert.match(action, /requireActor\(MASTER_DATA_ROLES\)/);
+  assert.match(action, /requireActor\(MASTER_DATA_ADMIN_ROLES\)/);
   assert.match(action, /invoiceSettingsSchema\.safeParse/);
   assert.match(action, /TransactionIsolationLevel\.Serializable/);
   assert.match(action, /section: "KETERANGAN"/);

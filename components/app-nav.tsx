@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { hasRole, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 
 const mainItems = [
@@ -148,20 +149,21 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   }, []);
 
   const isDeveloper = role === "DEVELOPER";
-  const canManageMasterData = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER";
-  // Pengguna (manajemen akun) tetap Owner/Developer saja; Admin Customer hanya Data Master.
-  const canManageUsers = isDeveloper || role === "OWNER";
-  const canViewAnalytics = isDeveloper || role === "OWNER" || role === "KEUANGAN";
-  // Log aktivitas: Owner, Keuangan, dan Developer.
-  const canViewAudit = isDeveloper || role === "OWNER" || role === "KEUANGAN";
-  const canViewCrm = isDeveloper || role === "OWNER" || role === "ADMIN_CUSTOMER" || role === "ADMIN_PO";
-  const canViewDashboard = canViewCrm || role === "KEUANGAN";
+  // Owner, Developer, dan Keuangan memiliki akses area administratif yang sama.
+  const isOwnerEquivalent = hasRole(role, OWNER_ACTION_ROLES);
+  const canManageMasterData = isOwnerEquivalent;
+  const canManageUsers = isOwnerEquivalent;
+  const canViewAnalytics = isOwnerEquivalent;
+  const canViewAudit = isOwnerEquivalent;
+  const canViewCrm = isOwnerEquivalent || role === "ADMIN_CUSTOMER" || role === "ADMIN_PO";
+  const canViewDashboard = canViewCrm;
   // Admin Customer hanya melihat modul Produksi (mode lihat saja); aksi tetap terbatas tim Produksi.
-  const canViewProduction = isDeveloper || role === "OWNER" || role === "ADMIN_PO" || role === "ADMIN_CUSTOMER";
-  const canViewFinance = isDeveloper || role === "OWNER" || role === "KEUANGAN";
+  const canViewProduction = isOwnerEquivalent || role === "ADMIN_PO" || role === "ADMIN_CUSTOMER";
+  const canViewFinance = isOwnerEquivalent;
   const canClockIn = role !== "OWNER" && role !== "DEVELOPER";
-  const canViewAttendanceReport = isDeveloper || role === "OWNER";
-  const canManageWebsite = isDeveloper || role === "OWNER";
+  const canViewAttendanceReport = isOwnerEquivalent;
+  const canManageWebsite = isOwnerEquivalent;
+  const canViewSettings = isOwnerEquivalent;
   return (
     <nav aria-label="Navigasi utama" className="flex min-w-0 flex-col gap-1">
       {canViewDashboard ? mainItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} onNavigate={onNavigate} />) : null}
@@ -206,7 +208,7 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
         </NavGroup>
       ) : null}
       {canViewAudit ? <NavLink pathname={pathname} item={{ href: "/log-aktivitas", label: "Log aktivitas", icon: History }} onNavigate={onNavigate} /> : null}
-      {canViewCrm ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: SlidersHorizontal }} onNavigate={onNavigate} /> : null}
+      {canViewSettings ? <NavLink pathname={pathname} item={{ href: "/settings", label: "Pengaturan", icon: SlidersHorizontal }} onNavigate={onNavigate} /> : null}
     </nav>
   );
 });

@@ -46,6 +46,7 @@ Script aman dijalankan ulang, menolak berjalan saat `NODE_ENV=production`, dan m
 - Tabel aplikasi mengaktifkan RLS serta mencabut akses langsung role `anon`/`authenticated`.
 - PO Disepakati, invoice Terbit, dan Sales Order disimpan sebagai dokumen historis yang tidak diedit langsung.
 - Lampiran desain PO berada di bucket privat dan hanya diunduh melalui route yang terautentikasi.
+- Biner ERP (gambar desain, bukti pembayaran, logo/tanda tangan, media WhatsApp) disimpan di disk VPS melalui `ERP_STORAGE_DIR`; database Supabase hanya menyimpan teks, metadata, dan path relatif. Panduan operasional, migrasi, dan backup ada di [docs/PANDUAN_STORAGE_ERP.md](docs/PANDUAN_STORAGE_ERP.md).
 - Foto absensi disimpan di filesystem VPS (`ATTENDANCE_UPLOAD_DIR`); database hanya menyimpan path relatif. Foto diambil langsung dari kamera (tanpa unggah galeri), di-reencode ke WebP, dan disajikan lewat route terautentikasi.
 - Absensi memakai jam WIB, toleransi keterlambatan, hari kerja, dan kalender hari libur. Owner/Developer mengelola laporan, koreksi, catatan manual, dan pengaturan; Developer tetap memiliki akses penuh ke fitur baru.
 
