@@ -56,8 +56,8 @@ test("query dashboard tetap memeriksa aktor sebelum membaca data", () => {
 test("Keuangan dapat membuka Dashboard tanpa membuka CRM", () => {
   // D1: dashboard ikut CRM_VIEW_ROLES sehingga Admin PO (read-only) juga bisa membuka.
   assert.match(permissionsSource, /DASHBOARD_ROLES = \[\.\.\.CRM_VIEW_ROLES, "KEUANGAN"\]/);
-  // Keuangan ikut isOwnerEquivalent, sehingga tetap melihat Dashboard tanpa CRM.
-  assert.match(navSource, /const canViewCrm = isOwnerEquivalent \|\| role === "ADMIN_CUSTOMER" \|\| role === "ADMIN_PO";/);
+  // Keuangan lolos hasRole, sehingga tetap melihat Dashboard tanpa CRM.
+  assert.match(navSource, /const canViewCrm = hasRole\(role, CRM_VIEW_ROLES\);/);
   assert.match(navSource, /const canViewDashboard = canViewCrm;/);
   assert.match(navSource, /\{canViewDashboard \? mainItems\.map/);
   assert.doesNotMatch(loginSource, /role === "KEUANGAN" \? "\/keuangan"/);
@@ -90,6 +90,18 @@ test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
   assert.match(dashboardSource, /Kesehatan Arus Kas & Piutang/);
   // Owner & Developer selalu lolos lewat hasRole.
   assert.match(permissionsSource, /role === "DEVELOPER" \|\| role === "OWNER"/);
+});
+
+test("menu Broadcast dan WhatsApp hanya tampil untuk peran yang lolos gerbang server", () => {
+  // Admin PO hanya membaca CRM/Produksi: broadcast & WhatsApp membuka
+  // requireActor(CRM_OPERATOR_ROLES/WHATSAPP_INBOX_ROLES) lalu error bila diklik.
+  assert.match(navSource, /const canOperateCrm = hasRole\(role, CRM_OPERATOR_ROLES\);/);
+  assert.match(navSource, /const canViewWhatsAppInbox = hasRole\(role, WHATSAPP_INBOX_ROLES\);/);
+  assert.match(navSource, /crmItems\.filter\(\(item\) => item\.href !== "\/crm\/follow-up" \|\| canOperateCrm\)/);
+  assert.match(navSource, /whatsAppVisibleItems\.length \?/);
+  // Detail Desain memakai requireDeveloperActor, jadi tidak boleh ditawarkan
+  // lewat pencarian dashboard untuk Admin Customer/Admin PO.
+  assert.doesNotMatch(dashboardSource, /"\/detail-desain"\]/);
 });
 
 test("dashboard per peran: Admin Customer fokus customer, Admin PO fokus produksi", () => {

@@ -8,8 +8,9 @@ import { usePathname } from "next/navigation";
 import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { hasRole, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
+import { hasRole, CRM_OPERATOR_ROLES, CRM_VIEW_ROLES, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
+import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
 
 const mainItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -139,23 +140,33 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   const pathname = usePathname();
   const [whatsAppCount, setWhatsAppCount] = useState(0);
 
+  // Owner, Developer, dan Keuangan memiliki akses area administratif yang sama.
+  const isOwnerEquivalent = hasRole(role, OWNER_ACTION_ROLES);
+  const canViewCrm = hasRole(role, CRM_VIEW_ROLES);
+  // Broadcast & WhatsApp butuh operator CRM (Admin Customer); Admin PO hanya
+  // membaca CRM/Produksi sehingga menu-menu ini tidak boleh tampil untuknya.
+  const canOperateCrm = hasRole(role, CRM_OPERATOR_ROLES);
+  const canViewWhatsAppInbox = hasRole(role, WHATSAPP_INBOX_ROLES);
+  const crmVisibleItems = crmItems.filter((item) => item.href !== "/crm/follow-up" || canOperateCrm);
+  const whatsAppVisibleItems = whatsAppItems.filter((item) =>
+    item.href === "/whatsapp" ? canViewWhatsAppInbox : canOperateCrm,
+  );
+
   useEffect(() => {
+    if (!canViewWhatsAppInbox) return;
     fetch("/api/crm/badge-counts", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         setWhatsAppCount(data.whatsAppCount ?? 0);
       })
       .catch(() => {});
-  }, []);
+  }, [canViewWhatsAppInbox]);
 
   const isDeveloper = role === "DEVELOPER";
-  // Owner, Developer, dan Keuangan memiliki akses area administratif yang sama.
-  const isOwnerEquivalent = hasRole(role, OWNER_ACTION_ROLES);
   const canManageMasterData = isOwnerEquivalent;
   const canManageUsers = isOwnerEquivalent;
   const canViewAnalytics = isOwnerEquivalent;
   const canViewAudit = isOwnerEquivalent;
-  const canViewCrm = isOwnerEquivalent || role === "ADMIN_CUSTOMER" || role === "ADMIN_PO";
   const canViewDashboard = canViewCrm;
   // Admin Customer hanya melihat modul Produksi (mode lihat saja); aksi tetap terbatas tim Produksi.
   const canViewProduction = isOwnerEquivalent || role === "ADMIN_PO" || role === "ADMIN_CUSTOMER";
@@ -178,12 +189,12 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
       ) : null}
       {canViewCrm ? (
         <NavGroup label={<span>CRM</span>} icon={KanbanSquare} tone="text-nav-tone-crm">
-          {crmItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-crm" onNavigate={onNavigate} />)}
+          {crmVisibleItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-crm" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
-      {canViewCrm ? (
+      {whatsAppVisibleItems.length ? (
         <NavGroup label={<span>WhatsApp</span>} icon={MessageCircle} tone="text-nav-tone-whatsapp">
-          {whatsAppItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested tone="text-nav-tone-whatsapp" onNavigate={onNavigate} />)}
+          {whatsAppVisibleItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested tone="text-nav-tone-whatsapp" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
       {canViewProduction ? (
