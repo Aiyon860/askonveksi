@@ -45,5 +45,14 @@ export async function getFinanceReport(state: FinanceReportState) {
   expenses.forEach((item) => groupFor(item.spentAt.toISOString().slice(0, 10)).expenses.push({ id: item.id, label: item.purpose, amount: item.amount.toString() }));
   const totalIncome = payments.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
   const totalExpense = expenses.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-  return { groups: [...groups.values()].sort((a, b) => b.date.localeCompare(a.date)), allIncome: (allPaymentTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), allExpense: (allExpenseTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), totalIncome: totalIncome.toString(), totalExpense: totalExpense.toString() };
+  // Pengeluaran dicetak sebagai satu baris per tanggal di halaman laporan, jadi tiap grup
+  // membawa total hariannya sendiri. Dijumlah dengan Decimal agar tidak ada pembulatan float
+  // dan nilainya persis sama dengan total pengeluaran periode.
+  const dailyGroups = [...groups.values()]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((group) => ({
+      ...group,
+      expenseTotal: group.expenses.reduce((sum, item) => sum.add(new Prisma.Decimal(item.amount)), new Prisma.Decimal(0)).toString(),
+    }));
+  return { groups: dailyGroups, allIncome: (allPaymentTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), allExpense: (allExpenseTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), totalIncome: totalIncome.toString(), totalExpense: totalExpense.toString() };
 }

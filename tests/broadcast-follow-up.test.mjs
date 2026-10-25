@@ -97,7 +97,7 @@ test("pesan broadcast memakai isi form, fallback ke template bawaan bila kosong"
   assert.match(action, /getFollowUpTemplateBody/);
   assert.match(action, /recipientFilterSchema\.safeParse/);
   assert.match(action, /getBroadcastRecipientOptions\(parsed\.data\)/);
-  assert.match(action, /changedFields: \["customerIds", "message"\]/);
+  assert.match(action, /changedFields: attachment \? \["customerIds", "message", "image"\] : \["customerIds", "message"\]/);
 });
 
 test("default Repeat Order customer baru Off dan migrasi mematikan customer lama", async () => {

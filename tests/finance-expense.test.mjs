@@ -249,7 +249,9 @@ test("export Laporan memuat 4 ringkasan total dengan format rupiah", async () =>
   assert.match(source, /Total Pengeluaran \$\{periodLabel\}/);
   // Nilai memakai format rupiah (Rp 150.000), bukan "Rp 150000" mentah.
   assert.match(source, /formatCurrency\(group\.income\[index\]\.amount\)/);
-  assert.match(source, /formatCurrency\(group\.expenses\[index\]\.amount\)/);
+  // Pengeluaran dicetak satu baris per tanggal memakai total hariannya.
+  assert.match(source, /expenseGroupLabel\(group\.date\)/);
+  assert.match(source, /formatCurrency\(group\.expenseTotal\)/);
   assert.match(source, /formatCurrency\(report\.allIncome\)/);
   assert.match(source, /formatCurrency\(report\.totalExpense\)/);
   assert.doesNotMatch(source, /— Rp \$\{/);

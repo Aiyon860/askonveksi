@@ -12,6 +12,7 @@ import {
 import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
 import { ANALYTICS_ROLES, CRM_VIEW_ROLES, DASHBOARD_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { readAuditDiff, type AuditDiffEntry } from "@/lib/audit/labels";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
 import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "@/lib/crm/numbers";
@@ -742,7 +743,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           version: true,
           createdAt: true,
           createdBy: { select: { name: true } },
-          items: { select: { id: true, position: true, name: true, pola: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true }, orderBy: { position: "asc" } },
+          items: { select: { id: true, position: true, name: true, pola: true, baseColor: true, variationColor: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, designs: { select: { id: true, originalName: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } },
           sizes: { select: { id: true, position: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
           rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
@@ -880,6 +881,131 @@ export async function getCommunicationTimeline({
     total,
     page: safePage,
     pageCount: Math.max(1, Math.ceil(total / COMMUNICATION_PAGE_SIZE)),
+  };
+}
+
+export const DOCUMENT_HISTORY_PAGE_SIZE = 20;
+
+export type DocumentHistoryKind = "PO" | "INVOICE";
+
+export type OpportunityDocumentOption = {
+  id: string;
+  kind: DocumentHistoryKind;
+  label: string;
+};
+
+export type OpportunityDocumentHistoryItem = {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  changedFields: string[];
+  diff: AuditDiffEntry[];
+  occurredAt: Date;
+  actor: { name: string; role: AppRole };
+  documentLabel: string;
+  documentKind: DocumentHistoryKind;
+};
+
+function documentRevisionText(revision: number) {
+  return revision <= 1 ? "Dokumen awal" : `Revisi ${revision - 1}`;
+}
+
+/**
+ * Riwayat revisi dokumen (PO & Invoice) milik satu peluang, dibaca dari
+ * AuditEvent. Diff sebelum→sesudah hanya tersedia untuk entri baru; entri lama
+ * tetap tampil lewat daftar `changedFields`.
+ */
+export async function getOpportunityDocumentHistory({
+  opportunityId,
+  page,
+  documentId,
+}: {
+  opportunityId: string;
+  page: number;
+  documentId?: string | null;
+}) {
+  await requireActor(CRM_VIEW_ROLES);
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
+  const prisma = getPrismaClient();
+  const [purchaseOrders, invoices] = await Promise.all([
+    prisma.purchaseOrder.findMany({
+      where: { opportunityId },
+      select: { id: true, purchaseOrderNo: true, revision: true },
+      orderBy: [{ revision: "desc" }],
+    }),
+    prisma.invoice.findMany({
+      where: { opportunityId },
+      select: { id: true, invoiceNo: true, revision: true },
+      orderBy: [{ revision: "desc" }],
+    }),
+  ]);
+
+  const documents: OpportunityDocumentOption[] = [
+    ...purchaseOrders.map((item) => ({
+      id: item.id,
+      kind: "PO" as const,
+      label: `PO ${item.purchaseOrderNo} · ${documentRevisionText(item.revision)}`,
+    })),
+    ...invoices.map((item) => ({
+      id: item.id,
+      kind: "INVOICE" as const,
+      label: `Invoice ${item.invoiceNo} · ${documentRevisionText(item.revision)}`,
+    })),
+  ];
+  const documentById = new Map(documents.map((item) => [item.id, item]));
+  const selected = documentId ? documentById.get(documentId) ?? null : null;
+
+  if (!documents.length) {
+    return { items: [] as OpportunityDocumentHistoryItem[], total: 0, page: 1, pageCount: 1, documents, documentId: null };
+  }
+
+  const where = {
+    entityType: { in: ["PurchaseOrder", "Invoice"] },
+    entityId: { in: selected ? [selected.id] : documents.map((item) => item.id) },
+  } satisfies Prisma.AuditEventWhereInput;
+
+  const [rows, total] = await Promise.all([
+    prisma.auditEvent.findMany({
+      where,
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        changedFields: true,
+        metadata: true,
+        createdAt: true,
+        actor: { select: { name: true, role: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (safePage - 1) * DOCUMENT_HISTORY_PAGE_SIZE,
+      take: DOCUMENT_HISTORY_PAGE_SIZE,
+    }),
+    prisma.auditEvent.count({ where }),
+  ]);
+
+  return {
+    items: rows.map((row) => {
+      const document = documentById.get(row.entityId);
+      return {
+        id: row.id,
+        action: row.action,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        changedFields: row.changedFields,
+        diff: readAuditDiff(row.metadata),
+        occurredAt: row.createdAt,
+        actor: row.actor,
+        documentLabel: document?.label ?? "Dokumen",
+        documentKind: document?.kind ?? (row.entityType === "Invoice" ? "INVOICE" : "PO"),
+      };
+    }),
+    total,
+    page: safePage,
+    pageCount: Math.max(1, Math.ceil(total / DOCUMENT_HISTORY_PAGE_SIZE)),
+    documents,
+    documentId: selected?.id ?? null,
   };
 }
 
@@ -1872,7 +1998,7 @@ export async function getPurchaseOrderDetail(purchaseOrderId: string) {
       designNotes: true,
       notes: true,
       createdAt: true,
-      items: { select: { id: true, position: true, name: true, pola: true, garmentType: true, decorationMethods: true }, orderBy: { position: "asc" } },
+      items: { select: { id: true, position: true, name: true, pola: true, baseColor: true, variationColor: true, garmentType: true, decorationMethods: true }, orderBy: { position: "asc" } },
       sizes: { select: { id: true, itemId: true, size: true, quantity: true }, orderBy: { position: "asc" } },
       attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
       deposit: { select: { amount: true, paidAt: true, reference: true, note: true, proofFileName: true, proofMimeType: true, paymentMethod: { select: { name: true } }, createdBy: { select: { name: true } } } },

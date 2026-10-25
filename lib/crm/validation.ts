@@ -336,6 +336,10 @@ const purchaseOrderItemSchema = z.object({
   name: z.string().trim().min(2, "Nama produk wajib diisi.").max(120),
   // Revisi: Pola per produk (sebelumnya global di header PO).
   pola: z.string().trim().min(2, "Pola wajib diisi.").max(120),
+  // Revisi: warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
+  // Warna dasar wajib per produk; warna variasi (list) tetap opsional.
+  baseColor: z.string().trim().min(1, "Warna dasar wajib diisi.").max(120),
+  variationColor: optionalText(240),
   productCategoryId: optionalEntityId,
   decorationMethods: z.array(z.enum(DECORATION_METHODS)).min(1, "Pilih minimal satu metode dekorasi.").max(7),
   designNotes: optionalText(4000),
@@ -528,7 +532,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER", "ADMIN_SAGA"]),
   password: strongPasswordSchema,
 });
 
@@ -537,7 +541,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER", "ADMIN_SAGA"]),
   password: z.preprocess(
     (value) => (typeof value === "string" && value === "" ? undefined : value),
     strongPasswordSchema.optional(),

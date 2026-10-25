@@ -107,7 +107,7 @@ export async function loadPurchaseOrder({ searchParams, page }: LoadInput): Prom
         notes: true,
         opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
         productCategory: { select: { name: true } },
-        items: { select: { name: true, pola: true } },
+        items: { select: { name: true, pola: true, baseColor: true, variationColor: true } },
         sizes: { select: { quantity: true } },
         _count: { select: { rosterEntries: true } },
         deposit: { select: { amount: true, paidAt: true } },
@@ -129,6 +129,18 @@ export async function loadPurchaseOrder({ searchParams, page }: LoadInput): Prom
       const customer = item.opportunity.customer;
       const quantity = item.sizes.reduce((sum, size) => sum + size.quantity, 0);
       const pola = [...new Set(item.items.map((line) => line.pola).filter(Boolean))].join(", ");
+      // Warna mengikuti produk: gabungkan warna tiap produk, fallback ke kolom header PO lama.
+      const color = (() => {
+        const perItem = item.items
+          .map((line) => {
+            if (!line.baseColor && !line.variationColor) return null;
+            const value = line.variationColor ? `${line.baseColor ?? ""} / ${line.variationColor}` : line.baseColor;
+            return item.items.length > 1 ? `${line.name}: ${value}` : value;
+          })
+          .filter(Boolean);
+        if (perItem.length) return perItem.join(", ");
+        return item.variationColor ? `${item.baseColor ?? item.color ?? ""} / ${item.variationColor}` : item.color ?? "";
+      })();
       const latestRevision = item.designTask?.revisions[0];
       return row([
         item.purchaseOrderNo,
@@ -144,7 +156,7 @@ export async function loadPurchaseOrder({ searchParams, page }: LoadInput): Prom
         PURCHASE_ORDER_STATUS_LABEL[item.status],
         exportDateKey(item.deadline),
         item.material,
-        item.variationColor ? `${item.baseColor ?? item.color ?? ""} / ${item.variationColor}` : item.color ?? "",
+        color,
         pola,
         decorationMethodsLabel(item.decorationMethods),
         item.deposit ? Number(item.deposit.amount) : null,

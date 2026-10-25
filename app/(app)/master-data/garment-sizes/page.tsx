@@ -2,11 +2,13 @@ import { bulkUpdateGarmentSizesAction, createGarmentSizeAction, deleteGarmentSiz
 import { MasterDataPage } from "@/components/master-data-page";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
-import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
+import { GARMENT_SIZE_ROLES } from "@/lib/auth/permissions";
+import { requirePageActor } from "@/lib/auth/session";
 import { getGarmentSizes } from "@/lib/master-data";
 
 export default async function GarmentSizesPage() {
-  await requireOwnerAreaPage();
+  // Admin PO ikut mengelola ukuran pakaian (CRUD penuh), master data lain tetap Owner.
+  await requirePageActor(GARMENT_SIZE_ROLES);
   const items = await getGarmentSizes();
   return (
     <>

@@ -398,6 +398,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     key: "item-1",
     name: "Jersey home",
     pola: "Jersey home",
+    baseColor: "Navy",
     decorationMethods: ["NONE"],
     sizes: [
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
@@ -509,6 +510,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     key: "item-1",
     name: "Kaos home",
     pola: "Kaos komunitas",
+    baseColor: "Hitam",
     decorationMethods: ["SABLON_PLASTISOL"],
     rosterMode: "none",
     roster: [],
@@ -542,6 +544,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     key: "item-1",
     name: "Jersey tim",
     pola: "Jersey tim",
+    baseColor: "Merah",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
     roster: [],
@@ -1311,7 +1314,11 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   assert.match(shell, /<AutoRefresh \/>/);
   assert.doesNotMatch(page, /<AutoRefresh \/>/, "halaman tidak memasang auto refresh ganda");
   assert.match(autoRefresh, /router\.refresh\(\)/);
-  assert.match(autoRefresh, /document\.visibilityState === "visible"/);
+  // Refresh global hanya untuk halaman monitoring; halaman berisi form/checkbox
+  // tidak boleh ikut, karena refresh menghapus isian yang sedang dikerjakan.
+  assert.match(autoRefresh, /isAutoRefreshRoute\(pathname\)/);
+  assert.match(autoRefresh, /document\.visibilityState !== "visible"/);
+  assert.match(autoRefresh, /isUserBusy\(\)/);
   assert.match(autoRefresh, /document\.addEventListener\("visibilitychange", refresh\)/);
 
   // Catat pembayaran mengubah kolom status di tabel, bukan hanya isi dialog.
@@ -1365,14 +1372,20 @@ test("PO multi-produk: instansi, pola per produk, dekorasi multi, dan item", () 
     key: "item-1",
     name: "Jersey home",
     pola: "Jersey home",
+    baseColor: "Navy",
     decorationMethods: ["SABLON_DTF"],
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
     roster: [],
     ...overrides,
   });
-  // Dua produk satu warna dalam satu PO lolos; beda warna tetap beda PO (satu warna per form).
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "Jersey away" }) }] }).success, true);
+  // Revisi: warna mengikuti produk — dua produk beda warna dalam satu PO tetap lolos.
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "Jersey away", baseColor: "Putih", variationColor: "Merah di list" }) }] }).success, true);
+  // Warna dasar wajib per produk (input warna global di header sudah dihapus).
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), baseColor: "" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "Jersey away", baseColor: "   " }) }] }).success, false);
+  // Warna variasi opsional.
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), variationColor: "" }] }).success, true);
   // Tiap produk boleh beda kategori (2 jenis produk berbeda dalam 1 PO).
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Kemeja", pola: "Kemeja formal", productCategoryId: "cm123456789012" }) }] }).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), productCategoryId: "x" }] }).success, false);
@@ -1480,6 +1493,88 @@ test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desai
   // Rute preview desain penjahit per item (hanya pemilik PO yang boleh).
   assert.match(serveSource, /penjahitDesignPath/);
   assert.match(serveSource, /CRM_VIEW_ROLES/);
+});
+
+test("Revisi PO: warna per produk, kategori Lainnya, multi desain penjahit, PDF tanpa revisi", async () => {
+  const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+  const colorMigration = await readFile(new URL("../prisma/migrations/20261025010000_purchase_order_item_color/migration.sql", import.meta.url), "utf8");
+  const lainnyaMigration = await readFile(new URL("../prisma/migrations/20261025020000_product_category_lainnya/migration.sql", import.meta.url), "utf8");
+  const designsMigration = await readFile(new URL("../prisma/migrations/20261025030000_purchase_order_item_designs/migration.sql", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const validationSource = await readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8");
+  const pdfSource = await readFile(new URL("../lib/crm/purchase-order-pdf.ts", import.meta.url), "utf8");
+  const pdfRouteSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/pdf/route.ts", import.meta.url), "utf8");
+  const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
+  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8");
+  const serveDesignSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/items/[itemId]/penjahit-designs/[designId]/route.ts", import.meta.url), "utf8");
+
+  // 1) Warna mengikuti produk: kolom per item + validasi wajib warna dasar.
+  assert.match(schema, /model PurchaseOrderItem \{[\s\S]*?baseColor\s+String\?\s+@db\.VarChar\(120\)[\s\S]*?variationColor\s+String\?\s+@db\.VarChar\(240\)/);
+  assert.match(colorMigration, /ADD COLUMN IF NOT EXISTS "baseColor" VARCHAR\(120\)/);
+  assert.match(colorMigration, /ADD COLUMN IF NOT EXISTS "variationColor" VARCHAR\(240\)/);
+  assert.match(validationSource, /baseColor: z\.string\(\)\.trim\(\)\.min\(1, "Warna dasar wajib diisi\."\)/);
+  assert.match(validationSource, /variationColor: optionalText\(240\)/);
+  assert.match(actionSource, /baseColor: formValue\(formData, `\$\{prefix\}baseColor`\)/);
+  assert.match(actionSource, /variationColor: formValue\(formData, `\$\{prefix\}variationColor`\)/);
+  // Kolom header PO diisi dari produk pertama (kompatibilitas dokumen lama).
+  assert.match(actionSource, /color: parsed\.data\.items\[0\]\?\.baseColor \?\? null/);
+  // Riwayat revisi mencatat perubahan warna per produk.
+  assert.match(actionSource, /const color = item\.variationColor \? `\$\{item\.baseColor \?\? "-"\} \/ \$\{item\.variationColor\}` : item\.baseColor;/);
+
+  // 2) Kategori "Lainnya" memakai alur Non-Jersey (route WO = NON_JERSEY).
+  assert.match(lainnyaMigration, /'Lainnya'/);
+  assert.match(lainnyaMigration, /'NON_JERSEY'::"GarmentType"/);
+  assert.match(lainnyaMigration, /WHERE NOT EXISTS \(SELECT 1 FROM "ProductCategory" WHERE "name" = 'Lainnya'\)/);
+
+  // 3) Multi gambar desain penjahit: tabel baru + backfill kolom tunggal lama.
+  assert.match(schema, /model PurchaseOrderItemDesign \{/);
+  assert.match(schema, /@@unique\(\[itemId, position\]\)/);
+  assert.match(schema, /item\s+PurchaseOrderItem @relation\(fields: \[itemId\], references: \[id\], onDelete: Cascade\)/);
+  assert.match(designsMigration, /CREATE TABLE IF NOT EXISTS "PurchaseOrderItemDesign"/);
+  assert.match(designsMigration, /FROM "PurchaseOrderItem" item[\s\S]*?WHERE item\."penjahitDesignPath" IS NOT NULL/);
+  assert.match(actionSource, /const PENJAHIT_DESIGN_MAX_PER_ITEM = 10;/);
+  assert.match(actionSource, /formData\.getAll\(`designs-\$\{item\.id\}`\)/);
+  assert.match(actionSource, /removeDesign-\$\{design\.id\}/);
+  assert.match(actionSource, /tx\.purchaseOrderItemDesign\.create\(/);
+  // File storage hanya dihapus bila tidak lagi dirujuk baris lain (revisi berbagi path).
+  assert.match(actionSource, /purchaseOrderItemDesign\.findMany\(\{ where: \{ path: \{ in: candidates \} \}/);
+  // Data penjahit dipertahankan saat draft diedit & saat revisi dibuat.
+  assert.match(actionSource, /const previousItems = await tx\.purchaseOrderItem\.findMany\(/);
+  assert.match(actionSource, /carriedDesigns/);
+  assert.match(dialogSource, /multiple/);
+  assert.match(dialogSource, /name=\{`designs-\$\{item\.id\}`\}/);
+  assert.match(dialogSource, /MAX_DESIGNS_PER_ITEM = 10/);
+  assert.match(dialogSource, /penjahit-designs\/\$\{design\.id\}/);
+  assert.match(dialogSource, /removeDesign-\$\{design\.id\}/);
+  assert.match(serveDesignSource, /purchaseOrderItemDesign\.findFirst/);
+  assert.match(serveDesignSource, /CRM_VIEW_ROLES/);
+  // PDF: satu asset PENJAHIT_DESIGN per gambar → satu halaman penuh per gambar.
+  assert.match(pdfRouteSource, /designs: \{ select: \{ path: true, originalName: true, contentType: true \}, orderBy: \{ position: "asc" \} \}/);
+  assert.match(pdfRouteSource, /const designs = item\.designs\.length/);
+  assert.match(pdfSource, /asset\.kind !== "PENJAHIT_DESIGN" \|\| asset\.itemId !== item\.id/);
+
+  // 4) PDF customer & penjahit tidak mencetak "Revisi" dan tanpa akhiran -R.
+  assert.match(pdfSource, /const documentNo = data\.purchaseOrderNo\.replace\(\/-R\\d\+\$\/i, ""\)/);
+  assert.match(pdfSource, /const meta = safe\(documentNo\);/);
+  assert.match(pdfSource, /const footer = `\$\{safe\(documentNo\)\} \| Halaman \$\{pageNumber\}`/);
+  assert.doesNotMatch(pdfSource, /· Revisi \$\{/);
+  assert.doesNotMatch(pdfSource, /data\.revision/);
+  // Nama file unduhan juga memakai nomor PO dasar (tanpa -R2/-R3).
+  assert.match(pdfRouteSource, /const documentNo = purchaseOrder\.purchaseOrderNo\.replace\(\/-R\\d\+\$\/i, ""\)/);
+  assert.match(pdfRouteSource, /purchase-order-\$\{documentNo\}/);
+
+  // 5) Form: warna pindah ke kartu produk, tanpa input warna global, autosave versi baru.
+  assert.match(formSource, /name=\{`\$\{prefix\}baseColor`\}/);
+  assert.match(formSource, /name=\{`\$\{prefix\}variationColor`\}/);
+  assert.doesNotMatch(formSource, /name="baseColor"/);
+  assert.doesNotMatch(formSource, /name="variationColor"/);
+  assert.match(formSource, /const AUTOSAVE_VERSION = 6;/);
+  assert.match(formSource, /Tambah produk\s*</);
+  assert.doesNotMatch(formSource, /Tambah produk \(warna sama\)/);
+  assert.match(formSource, /Setiap produk punya warna sendiri/);
+  // PDF mencetak warna produk masing-masing, fallback kolom header untuk PO lama.
+  assert.match(pdfSource, /const colorItem = item \?\? \(data\.items\.length === 1 \? data\.items\[0\] : null\);/);
+  assert.match(pdfSource, /const baseColor = colorItem\?\.baseColor \?\? data\.baseColor \?\? data\.color;/);
 });
 
 test("pratinjau roster mengisi matriks otomatis", async () => {
@@ -2003,7 +2098,7 @@ test("Draft & revisi invoice menyimpan jadwal bersama transaksi dan diaudit PAYM
   assert.match(actionSource, /await tx\.pendingDealPayment\.create\(\{ data: \{ invoiceId: created\.id, createdById: actor\.id, \.\.\.scheduleData, terms: \{ create: scheduleTerms \} \} \}\);/);
   const audits = actionSource.match(/"PAYMENT_SCHEDULED"/g) || [];
   assert.equal(audits.length, 2, "audit PAYMENT_SCHEDULED ada di simpan draft dan buat revisi");
-  assert.match(actionSource, /await audit\(tx, actor, "Invoice", created\.id, "PAYMENT_SCHEDULED", \["paymentSchedule"\], \{ kind: scheduleData\.kind, initialDueAt: scheduleData\.initialDueAt, terms: scheduleTerms\.length \}\);/);
+  assert.match(actionSource, /await audit\(tx, actor, "Invoice", created\.id, "PAYMENT_SCHEDULED", \["paymentSchedule"\], \{ kind: scheduleData\.kind, initialDueAt: scheduleData\.initialDueAt, terms: scheduleTerms\.length \}, \[/);
   // Baseline urutan termin butuh tanggal sumber yang jelas: dueAt wajib saat jadwal disusun.
   assert.equal((actionSource.match(/if \(!dueAtDate\) throw new UserFacingError\("Tgl\. jatuh tempo wajib diisi\."\);/g) || []).length, 2);
 });
@@ -2086,4 +2181,40 @@ test("LUNAS memakai total tagihan (collectible) sebagai pembayaran awal", async 
   assert.match(actionSource, /const outstandingAmount = collectibleTotal\.sub\(initialAmount\);/);
   assert.match(actionSource, /if \(initialAmount\.lt\(0\) \|\| initialAmount\.gt\(collectibleTotal\)\) throw new UserFacingError\("Nilai pembayaran awal tidak valid\."\)/);
   assert.match(actionSource, /DP nominal yang menutup sisa tagihan \(setelah deposit\) dihitung Lunas/);
+});
+
+test("Riwayat revisi PO & Invoice menyimpan nilai sebelum→sesudah dari audit", async () => {
+  const [crm, data, page, tabs, component, labels] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/opportunity-process-tabs.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/document-revision-history.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/audit/labels.ts", import.meta.url), "utf8"),
+  ]);
+
+  // Diff digabung ke metadata audit, bukan mengganti metadata yang sudah ada.
+  assert.match(crm, /function withAuditDiff/);
+  assert.match(crm, /metadata: withAuditDiff\(metadata, diff\)/);
+  assert.match(crm, /function diffSnapshots/);
+  assert.match(crm, /const beforeSnapshot = await purchaseOrderSnapshot\(tx, purchaseOrderId\)/);
+  assert.match(crm, /const sourceSnapshot = await purchaseOrderSnapshot\(tx, source\.id\)/);
+  assert.match(crm, /diffSnapshots\(beforeSnapshot, afterSnapshot\)/);
+  assert.match(crm, /const sourceSnapshot = await invoiceSnapshot\(tx, source\.id\)/);
+  assert.match(crm, /diffSnapshots\(sourceSnapshot, snapshot\)/);
+
+  // Loader hanya membaca entitas dokumen dan mengurai diff dengan aman.
+  assert.match(data, /entityType: \{ in: \["PurchaseOrder", "Invoice"\] \}/);
+  assert.match(data, /readAuditDiff\(row\.metadata\)/);
+  assert.match(labels, /export function auditFieldLabel/);
+  assert.match(labels, /export function readAuditDiff/);
+
+  // Tab "aktivitas" tetap URL lama, tetapi isinya riwayat dokumen.
+  assert.match(page, /<DocumentRevisionHistory/);
+  assert.doesNotMatch(page, /<CommunicationHistory/);
+  assert.match(page, /getOpportunityDocumentHistory/);
+  assert.match(tabs, /\["aktivitas", "Riwayat PO & Invoice"\]/);
+  assert.match(component, /Riwayat PO &amp; Invoice/);
+  assert.match(component, /change\.from \?\? "—"/);
+  assert.match(component, /item\.changedFields\.map\(auditFieldLabel\)/);
 });

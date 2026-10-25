@@ -9,11 +9,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { getCurrentActor } from "@/lib/auth/session";
+import { landingPathForRole } from "@/lib/auth/landing-path";
 import { getSiteLogo } from "@/lib/site-logo";
 
 export default async function LoginPage() {
   const actor = await getCurrentActor();
-  if (actor) redirect(actor.role === "ADMIN_PO" ? "/produksi" : "/dashboard");
+  if (actor) redirect(landingPathForRole(actor.role));
   const logo = await getSiteLogo();
 
   return (

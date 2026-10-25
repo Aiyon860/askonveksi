@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { redirect, forbidden } from "next/navigation";
 import { CalendarX2, CheckCircle2, Clock3, Gauge, ShieldCheck, UserRoundCheck, UserRoundX, type LucideIcon } from "lucide-react";
 
 import { AttendanceLocationDialog, AttendancePhotoDialog } from "@/components/attendance/attendance-detail-dialogs";
@@ -115,7 +115,7 @@ function SummaryMetric({
 export default async function AttendanceReportPage({ searchParams }: { searchParams: SearchParams }) {
   const [params, actor] = await Promise.all([searchParams, getCurrentActor()]);
   if (!actor) redirect("/login");
-  if (!hasRole(actor.role, ATTENDANCE_ADMIN_ROLES)) redirect("/absensi");
+  if (!hasRole(actor.role, ATTENDANCE_ADMIN_ROLES)) forbidden();
 
   const pageSize = parsePageSizeParam(params.pageSize);
   const report = await getAttendanceReport(params as AttendanceReportFilters);

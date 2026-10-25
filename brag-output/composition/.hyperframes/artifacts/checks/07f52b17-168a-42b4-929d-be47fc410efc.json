@@ -1,0 +1,219 @@
+{
+  "ok": false,
+  "strict": false,
+  "browserSkipped": true,
+  "lint": {
+    "ok": false,
+    "errorCount": 1,
+    "warningCount": 8,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "gsap_non_transform_motion",
+        "severity": "error",
+        "message": "GSAP tween on \"#s1-kicker\" uses motion that snaps to integer device pixels: letterSpacing. Layout and text-reflow properties snap during browser layout; roundProps rounds the tween value. Slow motion or an ease-out tail then stutters under the seek-by-frame capture engine. Animate transforms (x/y/scale/opacity) instead.",
+        "selector": "#s1-kicker",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "do not animate letterSpacing (they reflow text and snap glyph positions): for letterSpacing, split the text into per-character elements and animate each glyph's x (the spread), since uniform scale is NOT equivalent, or hold the final value statically. Transforms interpolate sub-pixel and stay smooth at any speed."
+      },
+      {
+        "code": "timed_element_missing_clip_class",
+        "severity": "warning",
+        "message": "<section id=\"s1\"> has timing attributes but no class=\"clip\". The runtime still hides it outside its time range, but Studio and the GSAP clip-ownership rules use .clip to recognise a clip, so leaving it off makes the element harder to edit and to lint.",
+        "selector": "#s1",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Add class=\"clip\" to the element so Studio and the linter can recognise it as a clip."
+      },
+      {
+        "code": "timed_element_missing_clip_class",
+        "severity": "warning",
+        "message": "<section id=\"s2\"> has timing attributes but no class=\"clip\". The runtime still hides it outside its time range, but Studio and the GSAP clip-ownership rules use .clip to recognise a clip, so leaving it off makes the element harder to edit and to lint.",
+        "selector": "#s2",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Add class=\"clip\" to the element so Studio and the linter can recognise it as a clip."
+      },
+      {
+        "code": "timed_element_missing_clip_class",
+        "severity": "warning",
+        "message": "<section id=\"s3\"> has timing attributes but no class=\"clip\". The runtime still hides it outside its time range, but Studio and the GSAP clip-ownership rules use .clip to recognise a clip, so leaving it off makes the element harder to edit and to lint.",
+        "selector": "#s3",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Add class=\"clip\" to the element so Studio and the linter can recognise it as a clip."
+      },
+      {
+        "code": "timed_element_missing_clip_class",
+        "severity": "warning",
+        "message": "<section id=\"s4\"> has timing attributes but no class=\"clip\". The runtime still hides it outside its time range, but Studio and the GSAP clip-ownership rules use .clip to recognise a clip, so leaving it off makes the element harder to edit and to lint.",
+        "selector": "#s4",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Add class=\"clip\" to the element so Studio and the linter can recognise it as a clip."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"s1\"> is a timeline element that contains nested <p id=\"s1-kicker\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#s1",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"s1\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"s2\"> is a timeline element that contains nested <p id=\"s2-kicker\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#s2",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"s2\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"s3\"> is a timeline element that contains nested <p id=\"s3-kicker\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#s3",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"s3\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<section id=\"s4\"> is a timeline element that contains nested <p id=\"s4-eye\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#s4",
+        "dataAttributes": {},
+        "sourceFile": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <section id=\"s4\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      }
+    ],
+    "filesScanned": 1
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "duration": 0,
+    "samples": [],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 0,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "samples": 0
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "samples": [],
+    "checked": 0,
+    "passed": 0
+  },
+  "craft": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "step": 0,
+    "samples": 0
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": false,
+    "files": [],
+    "times": [],
+    "findingFiles": []
+  }
+}

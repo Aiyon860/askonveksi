@@ -1,6 +1,6 @@
 import type { AppRole } from "@prisma/client";
 
-export const APP_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER"] as const satisfies readonly AppRole[];
+export const APP_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER", "ADMIN_SAGA"] as const satisfies readonly AppRole[];
 export const CRM_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 // ADMIN_PO (peran tunggal untuk melihat sisi CRM) hanya membaca dan mengunduh PDF — tanpa aksi tulis.
 export const CRM_VIEW_ROLES = [...CRM_ROLES, "ADMIN_PO"] as const satisfies readonly AppRole[];
@@ -17,6 +17,12 @@ export const OWNER_ACTION_ROLES = ["OWNER"] as const satisfies readonly AppRole[
 // Absensi: Owner mengelola pengaturan, laporan, koreksi, dan hari libur.
 // Developer selalu lolos lewat hasRole. Pegawai = semua role selain Owner/Developer.
 export const ATTENDANCE_ADMIN_ROLES = OWNER_ACTION_ROLES;
+// Role yang hanya boleh membuka halaman Absen. Desainer dan Admin Saga bekerja
+// lapangan: kehadiran saja, tanpa dashboard/CRM/produksi. Developer tetap lolos.
+export const ATTENDANCE_ONLY_ROLES = ["DESIGNER", "ADMIN_SAGA"] as const satisfies readonly AppRole[];
+export function isAttendanceOnly(role: AppRole) {
+  return role !== "DEVELOPER" && (ATTENDANCE_ONLY_ROLES as readonly AppRole[]).includes(role);
+}
 export function isAttendanceEmployee(role: AppRole) {
   return role !== "OWNER" && role !== "DEVELOPER";
 }
@@ -27,6 +33,10 @@ export const CMS_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
 // agar Admin Customer tidak kehilangan alur kerjanya.
 export const MASTER_DATA_ADMIN_ROLES = OWNER_ACTION_ROLES;
 export const MASTER_DATA_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
+// Data Master "Ukuran pakaian" dibuka juga untuk Admin PO (tambah, ubah, impor,
+// hapus) karena tim produksi yang paling tahu daftar ukuran yang dipakai.
+// Master data lain tetap memakai MASTER_DATA_ADMIN_ROLES (Owner/Developer/Keuangan).
+export const GARMENT_SIZE_ROLES = [...OWNER_ACTION_ROLES, "ADMIN_PO"] as const satisfies readonly AppRole[];
 export const WHATSAPP_ACCOUNT_MANAGER_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 export const ANALYTICS_ROLES = ["KEUANGAN"] as const satisfies readonly AppRole[];
 // Log aktivitas (audit trail): Owner & Developer lolos otomatis lewat hasRole.

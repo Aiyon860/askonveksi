@@ -127,6 +127,58 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   TESTING_DATA_RESET: "Reset data testing",
 };
 
+/**
+ * Label field dokumen untuk riwayat revisi PO & Invoice. Metadata audit aksi
+ * dokumen menyimpan `diff` dengan kunci field di bawah ini, sehingga UI tidak
+ * pernah menampilkan nama kolom database.
+ */
+export const AUDIT_FIELD_LABEL: Record<string, string> = {
+  status: "Status",
+  revision: "Revisi",
+  purchaseOrderNo: "Nomor PO",
+  invoiceNo: "Nomor invoice",
+  garmentType: "Jenis pakaian",
+  productCategoryId: "Kategori produk",
+  productName: "Produk",
+  instansi: "Instansi",
+  material: "Bahan",
+  baseColor: "Warna dasar",
+  color: "Warna",
+  variationColor: "Warna variasi",
+  decorationMethods: "Teknik dekorasi",
+  orderDate: "Tanggal order",
+  sampleSize: "Ukuran sampel",
+  designNotes: "Catatan desain",
+  notes: "Catatan",
+  deadline: "Deadline produksi",
+  designDeadline: "Deadline desain",
+  depositRequired: "Deposit wajib",
+  items: "Item produk",
+  sizes: "Ukuran & jumlah",
+  roster: "Roster",
+  agreedAt: "Tanggal disepakati",
+  designSentAt: "Tanggal PDF dikirim",
+  designSentById: "Pengirim PDF",
+  customerConfirmedAt: "Konfirmasi customer",
+  customerConfirmedById: "Dikonfirmasi oleh",
+  cancelReason: "Alasan pembatalan",
+  issuedAt: "Tanggal terbit",
+  snapshot: "Snapshot dokumen",
+  purchaseOrder: "PO",
+  purchaseOrderId: "PO",
+  addons: "Add-on",
+  discount: "Diskon",
+  discountType: "Jenis diskon",
+  discountValue: "Nilai diskon",
+  subtotal: "Subtotal",
+  totalDiscount: "Total diskon",
+  taxPercent: "Pajak",
+  taxAmount: "Nominal pajak",
+  total: "Total",
+  dueAt: "Jatuh tempo",
+  paymentSchedule: "Jadwal pembayaran",
+};
+
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {
   AppUser: "Pengguna",
   Attendance: "Absensi",
@@ -171,4 +223,38 @@ export function auditActionLabel(action: string) {
 
 export function auditEntityLabel(entityType: string) {
   return AUDIT_ENTITY_LABEL[entityType] ?? prettifyCode(entityType);
+}
+
+export function auditFieldLabel(field: string) {
+  return AUDIT_FIELD_LABEL[field] ?? prettifyCode(field);
+}
+
+/** Satu perubahan nilai pada riwayat revisi dokumen. `null` = belum ada nilai. */
+export type AuditDiffEntry = {
+  field: string;
+  label: string;
+  from: string | null;
+  to: string | null;
+};
+
+/**
+ * Baca `metadata.diff` dengan aman. Metadata lama (sebelum fitur ini) tidak
+ * punya diff, jadi hasilnya array kosong dan UI hanya menampilkan nama field.
+ */
+export function readAuditDiff(metadata: unknown): AuditDiffEntry[] {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
+  const diff = (metadata as { diff?: unknown }).diff;
+  if (!Array.isArray(diff)) return [];
+
+  return diff.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const { field, label, from, to } = entry as Record<string, unknown>;
+    if (typeof field !== "string" || !field) return [];
+    return [{
+      field,
+      label: typeof label === "string" && label ? label : auditFieldLabel(field),
+      from: typeof from === "string" ? from : null,
+      to: typeof to === "string" ? to : null,
+    }];
+  });
 }

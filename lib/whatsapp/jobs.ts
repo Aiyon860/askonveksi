@@ -112,7 +112,12 @@ export async function enqueueInvoiceWhatsAppMessage(actor: Actor, invoiceId: str
   }, WHATSAPP_TRANSACTION_OPTIONS);
 }
 
-export async function enqueueCampaignTestWhatsAppMessage(actor: Actor, phoneNumber: string, text: string) {
+export async function enqueueCampaignTestWhatsAppMessage(
+  actor: Actor,
+  phoneNumber: string,
+  text: string,
+  attachment?: { path: string; mimeType: string; fileName: string; sizeBytes: number; kind: "IMAGE" | "DOCUMENT"; tempMediaId?: string },
+) {
   const remoteJid = remoteJidForNumber(phoneNumber);
   if (!remoteJid) throw new UserFacingError("Nomor WhatsApp tujuan test tidak valid.");
 
@@ -134,7 +139,7 @@ export async function enqueueCampaignTestWhatsAppMessage(actor: Actor, phoneNumb
         idempotencyKey: `campaign-test:${crypto.randomUUID()}`,
         type: "CAMPAIGN_TEST",
         accountId: account.id,
-        payload: { text, remoteJid, sentById: actor.id },
+        payload: { text, remoteJid, sentById: actor.id, attachment: attachment ?? null },
         scheduledAt: new Date(),
       },
       select: { id: true },
@@ -145,7 +150,7 @@ export async function enqueueCampaignTestWhatsAppMessage(actor: Actor, phoneNumb
         entityType: "WhatsAppCampaignTest",
         entityId: job.id,
         action: "CAMPAIGN_TEST_QUEUED",
-        changedFields: ["text"],
+        changedFields: attachment ? ["text", "image"] : ["text"],
         metadata: { phoneSuffix: remoteJid.split("@")[0].slice(-4) },
       },
     });
@@ -160,13 +165,17 @@ export async function enqueueManualWhatsAppMessage({
   text,
   templateId,
   attachment,
+  persistMedia = true,
 }: {
   actor: Actor;
   customerId?: string;
   conversationId?: string;
   text: string;
   templateId?: string;
-  attachment?: { path: string; mimeType: string; fileName: string; sizeBytes: number; kind: "IMAGE" | "DOCUMENT" };
+  /** `tempMediaId` menandai file sementara yang dihapus worker setelah semua job selesai. */
+  attachment?: { path: string; mimeType: string; fileName: string; sizeBytes: number; kind: "IMAGE" | "DOCUMENT"; tempMediaId?: string };
+  /** false = jangan simpan path media di riwayat pesan (broadcast: gambar tidak disimpan). */
+  persistMedia?: boolean;
 }) {
   const prisma = getPrismaClient();
   return prisma.$transaction(async (tx) => {
@@ -244,7 +253,7 @@ export async function enqueueManualWhatsAppMessage({
         status: "QUEUED",
         text: renderedText || null,
         kind: attachment?.kind ?? "TEXT",
-        mediaPath: attachment?.path,
+        mediaPath: persistMedia ? attachment?.path : null,
         mediaMimeType: attachment?.mimeType,
         mediaFileName: attachment?.fileName,
         mediaSizeBytes: attachment?.sizeBytes,

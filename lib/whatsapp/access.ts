@@ -1,6 +1,6 @@
 import type { AppRole } from "@prisma/client";
 
-import { CRM_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_ROLES, hasRole } from "../auth/permissions.ts";
 
 export const WHATSAPP_INBOX_ROLES = [...CRM_ROLES, "SALES"] as const satisfies readonly AppRole[];
 

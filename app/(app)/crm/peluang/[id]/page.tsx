@@ -3,8 +3,7 @@ import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CheckCircle2, FileDown, FileText, Paperclip } from "lucide-react";
 
-import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
-import { CommunicationHistory } from "@/components/crm/communication-history";
+import { DocumentRevisionHistory } from "@/components/crm/document-revision-history";
 import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceWorkflowSection } from "@/components/crm/invoice-workflow-section";
 import { OpportunityProcessPanel, OpportunityProcessTabs } from "@/components/crm/opportunity-process-tabs";
@@ -24,9 +23,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
-import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
+import { getOpportunityDetail, getOpportunityDocumentHistory, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
-import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
@@ -42,11 +41,12 @@ function documentRevisionLabel(revision: number) {
 
 export default async function OpportunityDetailPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ historyPage?: string | string[]; tab?: string | string[] }>;
+  searchParams: Promise<{ document?: string | string[]; historyPage?: string | string[]; tab?: string | string[] }>;
 }) {
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
   const historyPage = parsePageParam(resolvedSearchParams.historyPage);
+  const documentId = typeof resolvedSearchParams.document === "string" ? resolvedSearchParams.document : undefined;
   const initialTab = parseOpportunityDetailTab(resolvedSearchParams.tab);
 
   return (
@@ -64,7 +64,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
 
       <div className="flex min-w-0 max-w-full flex-col">
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-          <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} />
+          <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} documentId={documentId} />
         </Suspense>
       </div>
     </div>
@@ -92,18 +92,22 @@ async function OpportunityHeader({ id }: { id: string }) {
   );
 }
 
-async function OpportunityContent({ id, initialTab, historyPage }: { id: string; initialTab: OpportunityDetailTab; historyPage: number }) {
-  const [opportunity, actor, communicationHistory, sizeOptions, categoryOptions, paymentMethods] = await Promise.all([
+async function OpportunityContent({ id, initialTab, historyPage, documentId }: { id: string; initialTab: OpportunityDetailTab; historyPage: number; documentId?: string }) {
+  const [opportunity, actor, documentHistory, sizeOptions, categoryOptions, paymentMethods] = await Promise.all([
     getOpportunityDetail(id),
     getCurrentActor(),
-    getCommunicationTimeline({ opportunityId: id, page: historyPage }),
+    getOpportunityDocumentHistory({ opportunityId: id, page: historyPage, documentId }),
     getActiveGarmentSizes(),
     getActiveProductCategories(),
     getActivePaymentMethods(),
   ]);
   if (!opportunity || !actor) notFound();
   const purchaseOrderNoPreview = await getPurchaseOrderNoPreview(opportunity.customer);
-  if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?tab=aktivitas&historyPage=${communicationHistory.pageCount}#communication-history`);
+  if (historyPage > documentHistory.pageCount) {
+    const params = new URLSearchParams({ tab: "aktivitas", historyPage: String(documentHistory.pageCount) });
+    if (documentHistory.documentId) params.set("document", documentHistory.documentId);
+    redirect(`/crm/peluang/${id}?${params.toString()}#document-history`);
+  }
 
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
   // D1: Admin PO boleh mengunggah desain langsung (read-only CRM lainnya tetap).
@@ -174,7 +178,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
       status={{
         po: poTabStatus,
         invoice: invoiceTabStatus,
-        aktivitas: `${communicationHistory.total} entri`,
+        aktivitas: `${documentHistory.total} perubahan`,
       }}
     >
       <OpportunityProcessPanel value="po">
@@ -243,9 +247,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                         position: 0,
                         name: purchaseOrder.productName,
                         pola: purchaseOrder.pola ?? "",
+                        baseColor: purchaseOrder.baseColor ?? purchaseOrder.color,
+                        variationColor: purchaseOrder.variationColor,
                         productCategoryId: purchaseOrder.productCategoryId,
                         decorationMethods: purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []),
                         designNotes: purchaseOrder.designNotes ?? "",
+                        designs: [],
                       }];
                       return {
                         purchaseOrderNo: purchaseOrder.purchaseOrderNo,
@@ -277,6 +284,8 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                             key: poItem.id || `saved-${itemIndex}`,
                             name: poItem.name,
                             pola: poItem.pola ?? purchaseOrder.pola ?? "",
+                            baseColor: poItem.baseColor ?? "",
+                            variationColor: poItem.variationColor ?? "",
                             productCategoryId: poItem.productCategoryId ?? "",
                             decorationMethods: poItem.decorationMethods,
                             designNotes: poItem.designNotes ?? "",
@@ -300,8 +309,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       id: item.id,
                       name: item.name,
                       deadline: dateInputValue(item.penjahitDeadline) || null,
-                      hasDesign: Boolean(item.penjahitDesignPath),
-                      designName: item.penjahitDesignName,
+                      // Revisi: beberapa gambar per produk; fallback ke kolom tunggal lama.
+                      designs: item.designs.length
+                        ? item.designs.map((design) => ({ id: design.id, name: design.originalName }))
+                        : item.penjahitDesignPath
+                          ? [{ id: `legacy-${item.id}`, name: item.penjahitDesignName ?? "Desain penjahit" }]
+                          : [],
                     }))}
                   >
                     <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
@@ -486,15 +499,15 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
       </OpportunityProcessPanel>
 
       <OpportunityProcessPanel value="aktivitas">
-      <CommunicationHistory
-        items={communicationHistory.items}
-        total={communicationHistory.total}
-        page={communicationHistory.page}
-        pageCount={communicationHistory.pageCount}
-        pathname={`/crm/peluang/${opportunity.id}`}
-        paginationParams={{ tab: "aktivitas" }}
-        form={canOperate && !opportunity.customer.archivedAt ? <CommunicationEntryForm context="opportunity" customerId={opportunity.customer.id} opportunityId={opportunity.id} initialOccurredAt={toDateTimeLocalValue(new Date())} /> : undefined}
-      />
+        <DocumentRevisionHistory
+          items={documentHistory.items}
+          total={documentHistory.total}
+          page={documentHistory.page}
+          pageCount={documentHistory.pageCount}
+          documents={documentHistory.documents}
+          documentId={documentHistory.documentId}
+          pathname={`/crm/peluang/${opportunity.id}`}
+        />
       </OpportunityProcessPanel>
     </OpportunityProcessTabs>
   );
@@ -513,8 +526,8 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <div><dt className="text-xs text-muted-foreground">Instansi</dt><dd className="mt-1">{purchaseOrder.instansi ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Pola</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${poItem.pola ?? purchaseOrder.pola ?? "-"}`).join(" · ") : purchaseOrder.pola ?? purchaseOrder.productName ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Bahan</dt><dd className="mt-1">{purchaseOrder.material}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Warna variasi</dt><dd className="mt-1">{purchaseOrder.variationColor ?? "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${poItem.baseColor ?? purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}`).join(" · ") : purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Warna variasi</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${poItem.variationColor ?? "-"}`).join(" · ") : purchaseOrder.variationColor ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Deposit</dt><dd className="mt-1">{purchaseOrder.depositRequired ? "Perlu deposit" : "Tanpa deposit"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Metode dekorasi</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${decorationMethodsLabel(poItem.decorationMethods)}`).join(" · ") : decorationMethodsLabel(purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []))}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1">{formatDate(purchaseOrder.deadline)}</dd></div>
@@ -533,7 +546,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
               <div key={poItem.id} className="rounded-lg border-2 border-primary/25 bg-primary/[0.04] p-3">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">{poItem.name}</span>
-                  <span className="text-xs text-muted-foreground">{decorationMethodsLabel(poItem.decorationMethods)} · Total {itemTotal.toLocaleString("id-ID")}</span>
+                  <span className="text-xs text-muted-foreground">{decorationMethodsLabel(poItem.decorationMethods)} · Warna {poItem.baseColor ?? purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}{poItem.variationColor ? ` / ${poItem.variationColor}` : ""} · Total {itemTotal.toLocaleString("id-ID")}</span>
                 </div>
                 {itemIsAccessory ? (
                   <p className="text-sm">Jumlah produk: <span className="font-mono">{itemTotal.toLocaleString("id-ID")}</span></p>

@@ -70,7 +70,10 @@ export function PurchaseOrderDetail({
                 <Info label="Instansi" value={detail.instansi ?? "-"} />
                 {detail.items.length ? <Info label="Produk" value={detail.items.map((poItem) => `${poItem.name} — pola ${poItem.pola ?? detail.pola ?? detail.productName ?? "-"} (${decorationMethodsLabel(poItem.decorationMethods)})`).join(" · ")} /> : <Info label="Pola" value={detail.pola ?? detail.productName} />}
                 <Info label="Material" value={detail.material} />
-                <Info label="Warna" value={detail.color ?? "-"} />
+                {/* Warna mengikuti produk; PO lama (tanpa warna item) tetap tampil dari kolom header. */}
+                {detail.items.length
+                  ? <Info label="Warna" value={detail.items.map((poItem) => `${poItem.name}: ${poItem.baseColor ?? detail.color ?? "-"}${poItem.variationColor ? ` / ${poItem.variationColor}` : ""}`).join(" · ")} />
+                  : <Info label="Warna" value={detail.color ?? "-"} />}
                 <Info label="Deadline produksi" value={formatDate(detail.deadline)} />
                 <Info label="Tanggal dibuat" value={formatDate(detail.createdAt)} />
                 <div><dt className="text-xs text-muted-foreground">Deposit</dt><dd className="mt-1"><DepositStatus paid={detail.deposit !== null} amount={detail.deposit?.amount ?? null} /></dd></div>

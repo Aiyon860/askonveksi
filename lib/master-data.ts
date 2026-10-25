@@ -2,7 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
-import { CRM_VIEW_ROLES, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
+import { CRM_VIEW_ROLES, GARMENT_SIZE_ROLES, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { sortProductCategoryRows } from "@/lib/crm/constants";
 import { getPrismaClient } from "@/lib/prisma";
@@ -53,7 +53,8 @@ export async function getLeadSources() {
 }
 
 export async function getGarmentSizes() {
-  await requireActor(MASTER_DATA_ROLES);
+  // Admin PO ikut mengelola ukuran pakaian, jadi gate-nya bukan MASTER_DATA_ROLES.
+  await requireActor(GARMENT_SIZE_ROLES);
   const items = await getPrismaClient().garmentSize.findMany({
     select: {
       id: true,

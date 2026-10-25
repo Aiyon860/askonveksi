@@ -7,6 +7,7 @@ import { CRM_VIEW_ROLES, FINANCE_ROLES } from "@/lib/auth/permissions";
 import { INVOICE_STATUS_LABEL, PAYMENT_KIND_LABEL } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { EXPENSE_CATEGORY_LABEL } from "@/lib/finance/expense-categories";
+import { expenseGroupLabel } from "@/lib/finance/expense-group-label";
 import {
   getDeletedExpensesForExport,
   getExpensesForExport,
@@ -183,12 +184,13 @@ export async function loadLaporan({ searchParams }: LoadInput): Promise<ExportDa
   const report = await getFinanceReport({ from, to });
   const rows: ExportRow[] = [];
   for (const group of report.groups) {
-    const count = Math.max(group.income.length, group.expenses.length);
+    // Pengeluaran satu baris per tanggal (mengikuti halaman laporan); pemasukan tetap per transaksi.
+    const count = Math.max(group.income.length, 1);
     for (let index = 0; index < count; index += 1) {
       rows.push(row([
         index === 0 ? group.date : "",
         group.income[index] ? `${group.income[index].label} — ${formatCurrency(group.income[index].amount)}` : "",
-        group.expenses[index] ? `${group.expenses[index].label} — ${formatCurrency(group.expenses[index].amount)}` : "",
+        index === 0 && group.expenses.length ? `${expenseGroupLabel(group.date)} — ${formatCurrency(group.expenseTotal)}` : "",
       ]));
     }
   }

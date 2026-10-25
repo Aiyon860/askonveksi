@@ -10,6 +10,7 @@ import { parseBroadcastDatesWorkbook } from "@/lib/crm/broadcast-date-excel";
 import { nextCustomerNo, nextInvoiceNo, nextOpportunityNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { getPrismaClient } from "@/lib/prisma";
 import { recipientFilterSchema } from "@/lib/whatsapp/campaigns";
+import { removeWhatsAppMedia, uploadWhatsAppImage } from "@/lib/whatsapp/attachment";
 import { normalizeWhatsAppNumber, renderWhatsAppTemplate, unknownTemplateVariables } from "@/lib/whatsapp/core";
 import { getBroadcastRecipientOptions, getFollowUpTemplateBody } from "@/lib/whatsapp/data";
 import { enqueueManualWhatsAppMessage } from "@/lib/whatsapp/jobs";
@@ -99,7 +100,9 @@ export async function sendTodayFollowUpBroadcastAction(formData: FormData) {
     ]);
 
     const templateBody = message || followUpTemplateBody;
-    const sentIds: string[] = [];
+    // Susun penerima dulu supaya jumlah job (dan sisa pemakaian gambar
+    // sementara) sudah pasti sebelum worker mulai bekerja.
+    const recipients: Array<{ id: string; text: string }> = [];
     for (const customer of customers) {
       if (!normalizeWhatsAppNumber(customer.whatsapp)) continue;
       let text: string;
@@ -113,8 +116,51 @@ export async function sendTodayFollowUpBroadcastAction(formData: FormData) {
       } catch {
         continue;
       }
-      await enqueueManualWhatsAppMessage({ actor, customerId: customer.id, text });
-      sentIds.push(customer.id);
+      recipients.push({ id: customer.id, text });
+    }
+
+    const imageInput = formData.get("image");
+    const imageFile = imageInput instanceof File && imageInput.size ? imageInput : null;
+    let uploadedImage: Awaited<ReturnType<typeof uploadWhatsAppImage>> | null = null;
+    let tempMediaId: string | null = null;
+    if (imageFile && recipients.length) {
+      uploadedImage = await uploadWhatsAppImage(imageFile, "broadcast-temp");
+      const media = await prisma.whatsAppTempMedia.create({
+        data: {
+          path: uploadedImage.path,
+          mimeType: uploadedImage.mimeType,
+          fileName: uploadedImage.fileName,
+          sizeBytes: uploadedImage.sizeBytes,
+          remaining: recipients.length,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+        select: { id: true },
+      });
+      tempMediaId = media.id;
+    }
+
+    const attachment = uploadedImage && tempMediaId ? { ...uploadedImage, tempMediaId } : undefined;
+    const sentIds: string[] = [];
+    for (const recipient of recipients) {
+      try {
+        await enqueueManualWhatsAppMessage({
+          actor,
+          customerId: recipient.id,
+          text: recipient.text,
+          attachment,
+          // Gambar broadcast tidak disimpan: riwayat hanya caption + nama file.
+          persistMedia: !attachment,
+        });
+        sentIds.push(recipient.id);
+      } catch (error) {
+        if (attachment && tempMediaId) await releaseTempMediaSlot(prisma, tempMediaId, attachment.path);
+        console.error("[broadcast] gagal menjadwalkan penerima", recipient.id, error);
+      }
+    }
+
+    if (attachment && !sentIds.length) {
+      await prisma.whatsAppTempMedia.deleteMany({ where: { id: tempMediaId! } });
+      await removeWhatsAppMedia([attachment.path]);
     }
 
     const skipped = requestedIds.length - sentIds.length;
@@ -125,8 +171,8 @@ export async function sendTodayFollowUpBroadcastAction(formData: FormData) {
           entityType: "WhatsAppBroadcast",
           entityId: `follow-up-${new Date().toISOString()}`,
           action: "FOLLOW_UP_BROADCAST_QUEUED",
-          changedFields: ["customerIds", "message"],
-          metadata: { customerIds: sentIds, skipped, requested: requestedIds.length },
+          changedFields: attachment ? ["customerIds", "message", "image"] : ["customerIds", "message"],
+          metadata: { customerIds: sentIds, skipped, requested: requestedIds.length, image: attachment ? { fileName: attachment.fileName, mimeType: attachment.mimeType, temporary: true } : null },
         },
       });
       refreshBroadcast();
@@ -146,6 +192,25 @@ export async function sendTodayFollowUpBroadcastAction(formData: FormData) {
       "Tidak ada pesan yang dikirim. Customer terpilih hanya berisi data arsip, tanpa nomor WhatsApp valid, atau menolak pesan.",
     );
   });
+}
+
+/**
+ * Turunkan sisa pemakaian gambar sementara. Dipakai hanya saat job gagal
+ * dibuat; sisa normal diturunkan worker setelah job selesai.
+ */
+async function releaseTempMediaSlot(prisma: ReturnType<typeof getPrismaClient>, id: string, path: string) {
+  const row = await prisma.whatsAppTempMedia.update({
+    where: { id },
+    data: { remaining: { decrement: 1 } },
+    select: { id: true, remaining: true },
+  }).catch(() => null);
+  if (!row) {
+    await removeWhatsAppMedia([path]);
+    return;
+  }
+  if (row.remaining > 0) return;
+  await prisma.whatsAppTempMedia.deleteMany({ where: { id: row.id } });
+  await removeWhatsAppMedia([path]);
 }
 
 /**

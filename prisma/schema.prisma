@@ -18,6 +18,7 @@ enum AppRole {
   DESIGNER
   PRODUCTION
   QC
+  ADMIN_SAGA
 }
 
 enum AttendanceStatus {
@@ -769,23 +770,48 @@ model PurchaseOrderItem {
   name               String                @db.VarChar(120)
   // Revisi: Pola pindah dari header PO ke tiap produk (wajib di form; kolom global PO.legacy tetap untuk data lama).
   pola               String?               @db.VarChar(120)
+  // Revisi: Warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
+  // Kolom warna di header PO tetap ada sebagai data lama/fallback dokumen lama.
+  baseColor          String?               @db.VarChar(120)
+  variationColor     String?               @db.VarChar(240)
   productCategoryId  String?
   garmentType        GarmentType?
   decorationMethods  String[]              @default([])
   designNotes        String?               @db.Text
-  // Sprint 11 (R3): deadline penjahit per produk + desain khusus penjahit (maks 1 gambar, timpa = ganti).
+  // Sprint 11 (R3): deadline penjahit per produk.
   penjahitDeadline   DateTime?             @db.Date
+  // Legacy: desain penjahit tunggal (maks 1 gambar). Data baru disimpan di PurchaseOrderItemDesign.
   penjahitDesignPath String?               @db.VarChar(500)
   penjahitDesignName String?               @db.VarChar(255)
   penjahitDesignType String?               @db.VarChar(64)
   purchaseOrder      PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   productCategory    ProductCategory?      @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
+  designs            PurchaseOrderItemDesign[]
   workOrders         ProductionWorkOrder[]
   createdAt          DateTime              @default(now()) @db.Timestamptz(3)
 
   @@unique([purchaseOrderId, position])
   @@index([purchaseOrderId])
   @@index([productCategoryId])
+}
+
+/**
+ * Gambar desain penjahit per produk — boleh lebih dari satu.
+ * Satu gambar dicetak sebagai satu halaman penuh pada PDF varian penjahit.
+ */
+model PurchaseOrderItemDesign {
+  id           String            @id @default(cuid())
+  itemId       String
+  position     Int
+  path         String            @db.VarChar(500)
+  originalName String            @db.VarChar(255)
+  contentType  String            @db.VarChar(64)
+  sizeBytes    Int?
+  item         PurchaseOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@unique([itemId, position])
+  @@index([itemId, position])
 }
 
 model PurchaseOrderSize {
@@ -1391,6 +1417,12 @@ model WhatsAppCampaign {
   snapshotCompletedAt DateTime?                   @db.Timestamptz(3)
   completedAt         DateTime?                   @db.Timestamptz(3)
   cancelledAt         DateTime?                   @db.Timestamptz(3)
+  // Gambar campaign (pamflet/poster) bersifat permanen selama campaign ada.
+  // Diganti = file lama dihapus; campaign dihapus = file ikut dihapus.
+  imagePath           String?                     @db.VarChar(300)
+  imageMimeType       String?                     @db.VarChar(80)
+  imageFileName       String?                     @db.VarChar(160)
+  imageSizeBytes      Int?
   createdById         String
   updatedById         String
   createdBy           AppUser                     @relation("WhatsAppCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -1403,6 +1435,23 @@ model WhatsAppCampaign {
   @@index([status, scheduledAt])
   @@index([createdById, createdAt])
   @@index([updatedById, updatedAt])
+}
+
+// Media sementara pengiriman broadcast. Gambar tidak disimpan di sistem:
+// setelah semua job penerima selesai (remaining = 0) worker menghapus file,
+// dan sweeper membersihkan sisa file bila worker sempat mati.
+model WhatsAppTempMedia {
+  id        String   @id @default(cuid())
+  path      String   @unique @db.VarChar(300)
+  mimeType  String   @db.VarChar(80)
+  fileName  String   @db.VarChar(160)
+  sizeBytes Int
+  remaining Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@index([remaining])
 }
 
 model WhatsAppAutomationJob {

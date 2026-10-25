@@ -5,10 +5,10 @@ import type { LucideIcon } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, ShieldCheck, Shirt, SlidersHorizontal, Tags, UserPlus, UsersRound, Wallet, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, Shirt, SlidersHorizontal, Tags, UserPlus, Users, UsersRound, Wallet, Waypoints } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { hasRole, CRM_OPERATOR_ROLES, CRM_VIEW_ROLES, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
+import { hasRole, CRM_OPERATOR_ROLES, CRM_VIEW_ROLES, GARMENT_SIZE_ROLES, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
 
@@ -58,7 +58,7 @@ const masterItems = [
 ] as const;
 
 const ownerMasterItems = [
-  { href: "/admin/users", label: "Pengguna", icon: ShieldCheck },
+  { href: "/admin/users", label: "Pengguna", icon: Users },
 ] as const;
 
 const websiteItems = [
@@ -164,6 +164,13 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
 
   const isDeveloper = role === "DEVELOPER";
   const canManageMasterData = isOwnerEquivalent;
+  // Admin PO hanya mengelola satu data master: Ukuran pakaian.
+  const canManageGarmentSizes = hasRole(role, GARMENT_SIZE_ROLES);
+  const masterVisibleItems = canManageMasterData
+    ? masterItems
+    : canManageGarmentSizes
+      ? masterItems.filter((item) => item.href === "/master-data/garment-sizes")
+      : [];
   const canManageUsers = isOwnerEquivalent;
   const canViewAnalytics = isOwnerEquivalent;
   const canViewAudit = isOwnerEquivalent;
@@ -212,9 +219,9 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
           {analyticsItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-analytics" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}
-      {canManageMasterData ? (
+      {masterVisibleItems.length ? (
         <NavGroup label={<span>Data Master</span>} icon={Database} tone="text-nav-tone-master">
-          {masterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
+          {masterVisibleItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />)}
           {canManageUsers ? ownerMasterItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item} nested tone="text-nav-tone-master" onNavigate={onNavigate} />) : null}
         </NavGroup>
       ) : null}

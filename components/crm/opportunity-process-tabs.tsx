@@ -8,7 +8,7 @@ import type { OpportunityDetailTab } from "@/lib/crm/constants";
 const TAB_LABELS: Array<[OpportunityDetailTab, string]> = [
   ["po", "PO"],
   ["invoice", "Invoice & Deal"],
-  ["aktivitas", "Aktivitas"],
+  ["aktivitas", "Riwayat PO & Invoice"],
 ];
 
 export function OpportunityProcessTabs({
@@ -29,7 +29,10 @@ export function OpportunityProcessTabs({
 
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
-    if (tab !== "aktivitas") url.searchParams.delete("historyPage");
+    if (tab !== "aktivitas") {
+      url.searchParams.delete("historyPage");
+      url.searchParams.delete("document");
+    }
     url.hash = "";
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }
