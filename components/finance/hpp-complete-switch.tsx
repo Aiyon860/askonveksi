@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 export function HppCompleteSwitch({ salesOrderId, version, checked, disabled = false }: { salesOrderId: string; version: number; checked: boolean; disabled?: boolean }) {
   const [pending, startTransition] = useTransition();
   const next = !checked;
-  return <span className="inline-flex items-center gap-2">
+  return <span className="inline-flex flex-col items-start gap-1">
     <Switch
       checked={checked}
       disabled={disabled || pending}
@@ -26,6 +26,6 @@ export function HppCompleteSwitch({ salesOrderId, version, checked, disabled = f
         });
       }}
     />
-    <span className={`text-xs font-medium ${checked ? "text-emerald-600" : "text-muted-foreground"}`}>{checked ? "Lengkap" : "Belum Lengkap"}</span>
+    <span className={`whitespace-normal text-xs font-medium leading-tight ${checked ? "text-emerald-600" : "text-muted-foreground"}`}>{checked ? "Lengkap" : "Belum Lengkap"}</span>
   </span>;
 }

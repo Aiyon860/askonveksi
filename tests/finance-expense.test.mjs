@@ -172,6 +172,8 @@ test("R15-R17: Edit HPP multi-baris, in-place reconcile, kolom Deskripsi", async
   assert.match(actions, /toggleHppCompleteAction/);
   assert.match(actions, /action: "HPP_COMPLETE_TOGGLED"/);
   assert.match(switchSource, /toggleHppCompleteAction/);
+  assert.match(switchSource, /inline-flex flex-col items-start gap-1/);
+  assert.match(switchSource, /whitespace-normal text-xs font-medium leading-tight/);
   assert.match(expenseData, /Boolean\(costs\?\.hppComplete\)/);
   assert.match(expenseData, /hppComplete: costs\?\.hppComplete \?\? false/);
   assert.match(expenseData, /hppComplete: true/);
@@ -327,6 +329,11 @@ test("Project memecah baris per produk dan HPP tersimpan per produk", async () =
   // Tabel: tanggal/customer/order rowSpan, produk per baris, Diskon tetap satu sel order.
   assert.match(page, /groupProjectRows\(data\.items\)/);
   assert.match(page, /rowSpan=\{orderGroup\.rowCount\}/);
+  assert.match(page, /<colgroup>/);
+  assert.match(page, /table-fixed/);
+  assert.match(page, /const showDate = customerIndex === 0 && orderIndex === 0 && productIndex === 0/);
+  assert.match(page, /const showCustomer = orderIndex === 0 && productIndex === 0/);
+  assert.doesNotMatch(page, /align-top/);
   assert.match(page, /product\.costId && product\.costVersion !== null/);
   assert.match(page, /productDescription\.get\(product\.costId\)/);
   assert.match(page, /Produk \{formatCurrency\(item\.itemDiscount\)\}/);

@@ -30,6 +30,37 @@ function sumMoney(values: Array<string | null | undefined>) {
 
 const HPP_KEY_BY_LABEL: Record<string, string> = { Kain: "kain", Zipper: "zipper", Jahit: "jahit", Pres: "pres", "DTF/Plastisol": "dtfPlastisol", Bordir: "bordir", "Lain-lain": "lainnya" };
 
+// Lebar kolom eksplisit supaya header dan isi selalu sejajar. Total = 196.5rem;
+// tabel memakai layout fixed dan scroll horizontal di container.
+const PROJECT_COLUMN_WIDTHS = [
+  "7rem",   // Tanggal
+  "8rem",   // Customer
+  "10rem",  // Nama order
+  "8.5rem", // Jenis busana
+  "3.5rem", // Qty
+  "7rem",   // Kain
+  "7rem",   // Zipper
+  "7rem",   // Jahit
+  "7rem",   // Pres
+  "8.5rem", // DTF/Plastisol
+  "7rem",   // Bordir
+  "7rem",   // Lain-lain
+  "11rem",  // Deskripsi
+  "7.5rem", // Total HPP
+  "8rem",   // Harga Asli
+  "11rem",  // Diskon
+  "6.5rem", // Pajak
+  "8rem",   // Total Invoice
+  "8rem",   // Laba Bersih
+  "5.5rem", // Margin %
+  "7rem",   // Deposit
+  "7rem",   // DP
+  "7rem",   // Lunas
+  "8rem",   // Keterangan
+  "7rem",   // Status
+  "7.5rem", // Aksi
+] as const;
+
 function projectPrefillKey(row: { hppKey: string | null; purpose: string }) {
   if (row.hppKey) return row.hppKey;
   const match = row.purpose.match(/^HPP (.+?) ·/);
@@ -123,7 +154,10 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
         </form>
       </div>
       {data.items.length ? <div className="flex min-h-112 flex-1 flex-col">
-        <Table className="min-w-[180rem]" containerClassName="min-h-0 flex-1 overflow-auto">
+        <Table className="min-w-[197rem] table-fixed" containerClassName="min-h-0 flex-1 overflow-auto">
+          <colgroup>
+            {PROJECT_COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
+          </colgroup>
           <TableHeader className="sticky top-0 bg-muted">
             <TableRow className="hover:bg-muted">
               <TableHead>Tanggal</TableHead>
@@ -140,7 +174,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
             </TableRow>
           </TableHeader>
           <TableBody>
-            {projectGroups.map((dateGroup, dateIndex) => dateGroup.customers.map((customerGroup, customerIndex) => customerGroup.orders.map((orderGroup, orderIndex) => {
+            {projectGroups.map((dateGroup) => dateGroup.customers.map((customerGroup, customerIndex) => customerGroup.orders.map((orderGroup, orderIndex) => {
               const item = orderGroup.item;
               const itemDiscountValue = Number(item.itemDiscount);
               const orderDiscountValue = Number(item.orderDiscount);
@@ -148,42 +182,42 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
               const roundingDiscount = Number(item.discount) - itemDiscountValue - orderDiscountValue;
               const hasRoundingDiscount = Math.abs(roundingDiscount) >= 1;
               return item.products.map((product, productIndex) => {
-                const showDate = dateIndex === 0 && customerIndex === 0 && orderIndex === 0 && productIndex === 0;
-                const showCustomer = customerIndex === 0 && orderIndex === 0 && productIndex === 0;
+                // Tanggal hanya di baris pertama date group; customer di baris
+                // pertama setiap customer group (bukan hanya customer pertama).
+                const showDate = customerIndex === 0 && orderIndex === 0 && productIndex === 0;
+                const showCustomer = orderIndex === 0 && productIndex === 0;
                 const showOrder = productIndex === 0;
                 return <TableRow key={`${item.id}:${product.key}:${productIndex}`}>
                   {showDate ? <TableCell rowSpan={dateGroup.rowCount} className="align-middle whitespace-nowrap">{dateGroup.paidAt ? formatDate(dateGroup.paidAt) : "-"}</TableCell> : null}
-                  {showCustomer ? <TableCell rowSpan={customerGroup.rowCount} className="align-middle">{customerGroup.customer}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top">{item.orderName}</TableCell> : null}
-                  <TableCell className="align-top">
+                  {showCustomer ? <TableCell rowSpan={customerGroup.rowCount} className="align-middle whitespace-normal break-words">{customerGroup.customer}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle whitespace-normal break-words">{item.orderName}</TableCell> : null}
+                  <TableCell className="align-middle whitespace-normal break-words">
                     <div className="font-medium">{product.label}</div>
                     {product.label !== product.productName ? <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{product.productName}</div> : null}
                   </TableCell>
-                  <TableCell className="align-top text-right font-mono tabular-nums">{product.quantity}</TableCell>
-                  {[product.kain, product.zipper, product.jahit, product.pres, product.dtfPlastisol, product.bordir, product.lainnya].map((value, index) => <TableCell key={index} className="align-top text-right font-mono tabular-nums">{value === null ? "-" : formatCurrency(value)}</TableCell>)}
-                  <TableCell className="max-w-80 whitespace-pre-line break-words text-xs leading-relaxed align-top">{product.costId ? productDescription.get(product.costId) || "-" : "-"}</TableCell>
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{item.hpp === null ? "-" : formatCurrency(item.hpp)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{formatCurrency(item.originalPrice)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums" title="Diskon total (termasuk pembulatan) = diskon produk + diskon order">
+                  <TableCell className="align-middle text-right font-mono tabular-nums">{product.quantity}</TableCell>
+                  {[product.kain, product.zipper, product.jahit, product.pres, product.dtfPlastisol, product.bordir, product.lainnya].map((value, index) => <TableCell key={index} className="align-middle text-right font-mono tabular-nums">{value === null || Number(value) === 0 ? "-" : formatCurrency(value)}</TableCell>)}
+                  <TableCell className="align-middle whitespace-pre-line break-words text-xs leading-relaxed">{product.costId ? productDescription.get(product.costId) || "-" : "-"}</TableCell>
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.hpp === null || Number(item.hpp) === 0 ? "-" : formatCurrency(item.hpp)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.originalPrice)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums" title="Diskon total (termasuk pembulatan) = diskon produk + diskon order">
                     <div>{formatCurrency(item.discount)}</div>
-                    {itemDiscountValue > 0 || orderDiscountValue > 0 ? <div className="mt-1 font-sans text-[11px] leading-tight text-muted-foreground">
-                      {itemDiscountValue > 0 ? <>Produk {formatCurrency(item.itemDiscount)}</> : null}
-                      {itemDiscountValue > 0 && (orderDiscountValue > 0 || hasRoundingDiscount) ? <span aria-hidden="true"> · </span> : null}
-                      {orderDiscountValue > 0 ? <>Total {formatCurrency(item.orderDiscount)}</> : null}
-                      {orderDiscountValue > 0 && hasRoundingDiscount ? <span aria-hidden="true"> · </span> : null}
-                      {hasRoundingDiscount ? <>Pembulatan {formatCurrency(roundingDiscount)}</> : null}
+                    {itemDiscountValue > 0 || orderDiscountValue > 0 ? <div className="mt-1 whitespace-normal font-sans text-[11px] leading-tight text-muted-foreground">
+                      {itemDiscountValue > 0 ? <div>Produk {formatCurrency(item.itemDiscount)}</div> : null}
+                      {orderDiscountValue > 0 ? <div>Total {formatCurrency(item.orderDiscount)}</div> : null}
+                      {hasRoundingDiscount ? <div>Pembulatan {formatCurrency(roundingDiscount)}</div> : null}
                     </div> : null}
                   </TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{formatCurrency(item.tax)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{formatCurrency(item.totalInvoice)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{item.netProfit === null ? "-" : formatCurrency(item.netProfit)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{item.deposit ? formatCurrency(item.deposit) : "-"}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top">{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-top">{item.costVersion !== null ? <HppCompleteSwitch salesOrderId={item.id} version={item.costVersion} checked={item.hppComplete} /> : <span className="text-muted-foreground">-</span>}</TableCell> : null}
-                  <TableCell className="align-top text-right">
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.tax)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.totalInvoice)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.netProfit === null ? "-" : formatCurrency(item.netProfit)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.deposit ? formatCurrency(item.deposit) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.costVersion !== null ? <HppCompleteSwitch salesOrderId={item.id} version={item.costVersion} checked={item.hppComplete} /> : <span className="text-muted-foreground">-</span>}</TableCell> : null}
+                  <TableCell className="align-middle text-right">
                     {product.costId && product.costVersion !== null ? <SalesOrderCostForm item={{ id: item.id, productCostId: product.costId, productName: product.productName, costVersion: product.costVersion, kain: product.kain, zipper: product.zipper, jahit: product.jahit, pres: product.pres, dtfPlastisol: product.dtfPlastisol, bordir: product.bordir, lainnya: product.lainnya }} methods={methods} projectExpenses={productPrefill.get(product.costId)} /> : <span className="text-muted-foreground">-</span>}
                   </TableCell>
                 </TableRow>;
@@ -194,13 +228,13 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
             <TableRow className="border-t bg-muted hover:bg-muted">
               <TableCell colSpan={4} className="font-medium">Total</TableCell>
               <TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>
-              {numericTotals.slice(0, 7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}
+              {numericTotals.slice(0, 7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
               <TableCell />
-              {numericTotals.slice(7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}
+              {numericTotals.slice(7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
               <TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell>
-              <TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDeposit)}</TableCell>
-              <TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDp)}</TableCell>
-              <TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalSettled)}</TableCell>
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalDeposit === 0 ? "-" : formatCurrency(totalDeposit)}</TableCell>
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalDp === 0 ? "-" : formatCurrency(totalDp)}</TableCell>
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalSettled === 0 ? "-" : formatCurrency(totalSettled)}</TableCell>
               <TableCell />
               <TableCell />
               <TableCell />
