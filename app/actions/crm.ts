@@ -17,6 +17,7 @@ import { designImageContentType, designImageExtensionFor, designImageRejection, 
 import { calculateInvoiceLines, roundInvoiceTotal, type InvoiceAddonInput, type InvoiceDiscountType, type InvoiceOrderDiscountInput, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
 import { groupPurchaseOrderInvoiceItems } from "@/lib/crm/invoice-grouping";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
+import { productCostSeeds } from "@/lib/finance/project-products";
 import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
 import {
   rearmCustomerRemindersAfterLost,
@@ -3215,6 +3216,7 @@ async function finalizeDeal(tx: Tx, actor: Actor, invoiceId: string, initialPaym
       createdById: actor.id,
       items: { create: invoice.items },
       cost: { create: {} },
+      productCosts: { create: productCostSeeds(invoice.items) },
       payment: {
         create: {
           kind: invoice.pendingPayment.kind,

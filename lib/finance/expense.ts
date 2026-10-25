@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/crm/format";
 import { getPrismaClient } from "@/lib/prisma";
 import { jakartaDateKey } from "@/lib/finance/date-range";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory, type ExpenseTypeFilter } from "@/lib/finance/expense-categories";
+import { buildProjectProducts } from "@/lib/finance/project-products";
 
 export { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory, type ExpenseTypeFilter };
 
@@ -156,6 +157,8 @@ function incomeWhere(state: Omit<IncomeListState, "page" | "pageSize">) {
       { snapshotCustomerName: { contains: query, mode: "insensitive" as const } },
       { snapshotCompanyName: { contains: query, mode: "insensitive" as const } },
       { purchaseOrder: { productName: { contains: query, mode: "insensitive" as const } } },
+      { purchaseOrder: { items: { some: { name: { contains: query, mode: "insensitive" as const } } } } },
+      { invoice: { items: { some: { productName: { contains: query, mode: "insensitive" as const } } } } },
     ] } : {}),
   } satisfies Prisma.SalesOrderWhereInput;
 }
@@ -178,7 +181,17 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   const netProfit = hpp ? order.invoice.total.sub(hpp) : null;
   const margin = netProfit && !order.invoice.total.isZero() ? netProfit.div(order.invoice.total).toNumber() : null;
   const latest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt > date ? item.paidAt : date, null);
-  return { id: order.id, invoiceNo: order.invoiceNo, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hppComplete: costs?.hppComplete ?? false, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), discount: order.invoice.totalDiscount.toString(), tax: order.invoice.taxAmount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, deposit: depositAmount.isZero() ? null : depositAmount.toString(), settled: settled.isZero() ? null : settled.toString(), paid: paid.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, acceptedAt: order.acceptedAt.toISOString(), paymentKind: payment?.kind ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
+  // Diskon tetap satu angka per order agar tidak dijumlahkan dua kali. Rincian
+  // produk vs order hanya untuk subteks di sel Diskon.
+  const itemDiscount = order.invoice.items.reduce((sum, item) => sum.add(item.discountAmount), new Prisma.Decimal(0));
+  const products = buildProjectProducts({
+    invoiceItems: order.invoice.items,
+    purchaseOrderItems: order.purchaseOrder.items,
+    productCosts: order.productCosts,
+    fallbackProductName: order.purchaseOrder.productName,
+    fallbackGarmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-",
+  });
+  return { id: order.id, invoiceNo: order.invoiceNo, customerId: order.opportunity.customerId, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), products, kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hppComplete: costs?.hppComplete ?? false, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), itemDiscount: itemDiscount.toString(), orderDiscount: order.invoice.discountNominal.toString(), discount: order.invoice.totalDiscount.toString(), tax: order.invoice.taxAmount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, deposit: depositAmount.isZero() ? null : depositAmount.toString(), settled: settled.isZero() ? null : settled.toString(), paid: paid.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, acceptedAt: order.acceptedAt.toISOString(), paymentKind: payment?.kind ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
 }
 
 async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number, take?: number) {
@@ -186,8 +199,31 @@ async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number
     where,
     select: {
       id: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, acceptedAt: true,
-      purchaseOrder: { select: { productName: true, garmentType: true, productCategory: { select: { name: true } } } },
-      invoice: { select: { subtotal: true, total: true, totalDiscount: true, taxAmount: true, items: { select: { quantity: true } } } },
+      opportunity: { select: { customerId: true } },
+      purchaseOrder: {
+        select: {
+          productName: true,
+          garmentType: true,
+          productCategory: { select: { name: true } },
+          items: {
+            select: { name: true, position: true, garmentType: true, productCategory: { select: { name: true } } },
+            orderBy: { position: "asc" },
+          },
+        },
+      },
+      invoice: {
+        select: {
+          subtotal: true, total: true, totalDiscount: true, discountNominal: true, taxAmount: true,
+          items: {
+            select: { productName: true, quantity: true, position: true, discountAmount: true },
+            orderBy: { position: "asc" },
+          },
+        },
+      },
+      productCosts: {
+        select: { id: true, productName: true, position: true, version: true, kain: true, zipper: true, jahit: true, pres: true, dtfPlastisol: true, bordir: true, lainnya: true },
+        orderBy: { position: "asc" },
+      },
       cost: { select: { kain: true, zipper: true, jahit: true, pres: true, dtfPlastisol: true, bordir: true, lainnya: true, hppComplete: true, version: true } },
       payment: { select: { kind: true, transactions: { where: { status: "ACTIVE" }, select: { amount: true, paidAt: true, paymentTermId: true, isDeposit: true } } } },
     },
@@ -321,20 +357,20 @@ export async function getProjectsForWorkbook(start: Date, end: Date): Promise<Wo
   });
 }
 
-export type ProjectExpensePrefill = { id: string; hppKey: string | null; purpose: string; description: string | null; amount: string; spentAt: string; paymentMethodId: string; proofPath: string | null; proofFileName: string | null; proofMimeType: string | null };
+export type ProjectExpensePrefill = { id: string; salesOrderId: string | null; salesOrderProductCostId: string | null; hppKey: string | null; purpose: string; description: string | null; amount: string; spentAt: string; paymentMethodId: string; proofPath: string | null; proofFileName: string | null; proofMimeType: string | null };
 
 export async function getProjectExpensesBySalesOrders(salesOrderIds: string[]) {
   await requireActor(FINANCE_ROLES);
   if (!salesOrderIds.length) return new Map<string, ProjectExpensePrefill[]>();
   const rows = await getPrismaClient().expense.findMany({
     where: { salesOrderId: { in: salesOrderIds }, category: "PROJECT", deletedAt: null },
-    select: { id: true, salesOrderId: true, hppKey: true, purpose: true, description: true, amount: true, spentAt: true, paymentMethodId: true, proofPath: true, proofFileName: true, proofMimeType: true },
+    select: { id: true, salesOrderId: true, salesOrderProductCostId: true, hppKey: true, purpose: true, description: true, amount: true, spentAt: true, paymentMethodId: true, proofPath: true, proofFileName: true, proofMimeType: true },
     orderBy: { createdAt: "asc" },
   });
   const grouped = new Map<string, ProjectExpensePrefill[]>();
   for (const row of rows) {
     const list = grouped.get(row.salesOrderId ?? "") ?? [];
-    list.push({ id: row.id, hppKey: row.hppKey, purpose: row.purpose, description: row.description, amount: row.amount.toString(), spentAt: row.spentAt.toISOString().slice(0, 10), paymentMethodId: row.paymentMethodId, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType });
+    list.push({ id: row.id, salesOrderId: row.salesOrderId, salesOrderProductCostId: row.salesOrderProductCostId, hppKey: row.hppKey, purpose: row.purpose, description: row.description, amount: row.amount.toString(), spentAt: row.spentAt.toISOString().slice(0, 10), paymentMethodId: row.paymentMethodId, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType });
     grouped.set(row.salesOrderId ?? "", list);
   }
   return grouped;

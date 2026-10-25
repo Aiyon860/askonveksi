@@ -352,6 +352,9 @@ export async function importBroadcastDatesAction(formData: FormData) {
                   createdById: salesPicId || actor.id,
                 },
               },
+              // Order historis tidak punya InvoiceItem; tetap beri satu baris HPP
+              // agar tabel Project tidak kehilangan sel HPP per produk.
+              productCosts: { create: [{ productName: "Order Historis", position: 0 }] },
             },
           });
 

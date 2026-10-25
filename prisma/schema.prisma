@@ -337,38 +337,41 @@ model AppUser {
 }
 
 model Expense {
-  id              String          @id @default(cuid())
-  purpose         String          @db.VarChar(500)
-  description     String?         @db.VarChar(240)
-  spentAt         DateTime        @db.Date
-  amount          Decimal         @db.Decimal(18, 2)
-  category        ExpenseCategory
-  paymentMethodId String
-  isReimbursable  Boolean         @default(false)
-  proofPath       String?         @db.VarChar(500)
-  proofFileName   String?         @db.VarChar(255)
-  proofMimeType   String?         @db.VarChar(100)
-  proofSize       Int?
-  createdById     String
-  reimbursedAt    DateTime?       @db.Timestamptz(3)
-  salesOrderId    String?
-  customerName    String?         @db.VarChar(160)
-  hppKey          String?         @db.VarChar(32)
-  deletedAt       DateTime?       @db.Timestamptz(3)
-  deletedById     String?
-  deleteReason    String?         @db.Text
-  paymentMethod   PaymentMethod   @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
-  createdBy       AppUser         @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  deletedBy       AppUser?        @relation("ExpenseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
-  salesOrder      SalesOrder?     @relation("ExpenseSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
-  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+  id                      String                 @id @default(cuid())
+  purpose                 String                 @db.VarChar(500)
+  description             String?                @db.VarChar(240)
+  spentAt                 DateTime               @db.Date
+  amount                  Decimal                @db.Decimal(18, 2)
+  category                ExpenseCategory
+  paymentMethodId         String
+  isReimbursable          Boolean                @default(false)
+  proofPath               String?                @db.VarChar(500)
+  proofFileName           String?                @db.VarChar(255)
+  proofMimeType           String?                @db.VarChar(100)
+  proofSize               Int?
+  createdById             String
+  reimbursedAt            DateTime?              @db.Timestamptz(3)
+  salesOrderId            String?
+  salesOrderProductCostId String?
+  customerName            String?                @db.VarChar(160)
+  hppKey                  String?                @db.VarChar(32)
+  deletedAt               DateTime?              @db.Timestamptz(3)
+  deletedById             String?
+  deleteReason            String?                @db.Text
+  paymentMethod           PaymentMethod          @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  createdBy               AppUser                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  deletedBy               AppUser?               @relation("ExpenseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  salesOrder              SalesOrder?            @relation("ExpenseSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
+  salesOrderProductCost   SalesOrderProductCost? @relation(fields: [salesOrderProductCostId], references: [id], onDelete: SetNull)
+  createdAt               DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime               @updatedAt @db.Timestamptz(3)
 
   @@index([createdById, spentAt])
   @@index([paymentMethodId, spentAt])
   @@index([category, spentAt])
   @@index([deletedAt, spentAt])
   @@index([salesOrderId])
+  @@index([salesOrderProductCostId, hppKey])
   @@index([customerName])
   @@index([salesOrderId, hppKey])
 }
@@ -764,31 +767,31 @@ model DesignAttachment {
 }
 
 model PurchaseOrderItem {
-  id                 String                @id @default(cuid())
+  id                 String                    @id @default(cuid())
   purchaseOrderId    String
   position           Int
-  name               String                @db.VarChar(120)
+  name               String                    @db.VarChar(120)
   // Revisi: Pola pindah dari header PO ke tiap produk (wajib di form; kolom global PO.legacy tetap untuk data lama).
-  pola               String?               @db.VarChar(120)
+  pola               String?                   @db.VarChar(120)
   // Revisi: Warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
   // Kolom warna di header PO tetap ada sebagai data lama/fallback dokumen lama.
-  baseColor          String?               @db.VarChar(120)
-  variationColor     String?               @db.VarChar(240)
+  baseColor          String?                   @db.VarChar(120)
+  variationColor     String?                   @db.VarChar(240)
   productCategoryId  String?
   garmentType        GarmentType?
-  decorationMethods  String[]              @default([])
-  designNotes        String?               @db.Text
+  decorationMethods  String[]                  @default([])
+  designNotes        String?                   @db.Text
   // Sprint 11 (R3): deadline penjahit per produk.
-  penjahitDeadline   DateTime?             @db.Date
+  penjahitDeadline   DateTime?                 @db.Date
   // Legacy: desain penjahit tunggal (maks 1 gambar). Data baru disimpan di PurchaseOrderItemDesign.
-  penjahitDesignPath String?               @db.VarChar(500)
-  penjahitDesignName String?               @db.VarChar(255)
-  penjahitDesignType String?               @db.VarChar(64)
-  purchaseOrder      PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  productCategory    ProductCategory?      @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
+  penjahitDesignPath String?                   @db.VarChar(500)
+  penjahitDesignName String?                   @db.VarChar(255)
+  penjahitDesignType String?                   @db.VarChar(64)
+  purchaseOrder      PurchaseOrder             @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  productCategory    ProductCategory?          @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
   designs            PurchaseOrderItemDesign[]
   workOrders         ProductionWorkOrder[]
-  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  createdAt          DateTime                  @default(now()) @db.Timestamptz(3)
 
   @@unique([purchaseOrderId, position])
   @@index([purchaseOrderId])
@@ -984,45 +987,46 @@ model InvoiceAddon {
 }
 
 model SalesOrder {
-  id                   String                @id @default(cuid())
-  salesOrderNo         String                @unique @db.VarChar(28)
+  id                   String                  @id @default(cuid())
+  salesOrderNo         String                  @unique @db.VarChar(28)
   opportunityId        String
-  purchaseOrderId      String                @unique
-  invoiceId            String                @unique
-  purchaseOrderNo      String                @db.VarChar(28)
-  invoiceNo            String                @db.VarChar(28)
-  status               SalesOrderStatus      @default(ACTIVE)
-  snapshotCustomerName String                @db.VarChar(160)
-  snapshotCompanyName  String?               @db.VarChar(160)
-  snapshotWhatsapp     String?               @db.VarChar(32)
-  snapshotEmail        String?               @db.VarChar(320)
-  snapshotInstagram    String?               @db.VarChar(80)
-  snapshotAddress      String?               @db.Text
+  purchaseOrderId      String                  @unique
+  invoiceId            String                  @unique
+  purchaseOrderNo      String                  @db.VarChar(28)
+  invoiceNo            String                  @db.VarChar(28)
+  status               SalesOrderStatus        @default(ACTIVE)
+  snapshotCustomerName String                  @db.VarChar(160)
+  snapshotCompanyName  String?                 @db.VarChar(160)
+  snapshotWhatsapp     String?                 @db.VarChar(32)
+  snapshotEmail        String?                 @db.VarChar(320)
+  snapshotInstagram    String?                 @db.VarChar(80)
+  snapshotAddress      String?                 @db.Text
   discountType         DiscountType
-  discountValue        Decimal               @db.Decimal(7, 4)
-  discountNominal      Decimal               @default(0) @db.Decimal(18, 2)
-  subtotal             Decimal               @db.Decimal(18, 2)
-  totalDiscount        Decimal               @default(0) @db.Decimal(18, 2)
-  taxPercent           Decimal               @default(0) @db.Decimal(7, 4)
-  taxAmount            Decimal               @default(0) @db.Decimal(18, 2)
-  total                Decimal               @db.Decimal(18, 2)
-  acceptedAt           DateTime              @db.Timestamptz(3)
+  discountValue        Decimal                 @db.Decimal(7, 4)
+  discountNominal      Decimal                 @default(0) @db.Decimal(18, 2)
+  subtotal             Decimal                 @db.Decimal(18, 2)
+  totalDiscount        Decimal                 @default(0) @db.Decimal(18, 2)
+  taxPercent           Decimal                 @default(0) @db.Decimal(7, 4)
+  taxAmount            Decimal                 @default(0) @db.Decimal(18, 2)
+  total                Decimal                 @db.Decimal(18, 2)
+  acceptedAt           DateTime                @db.Timestamptz(3)
   createdById          String
-  cancelledAt          DateTime?             @db.Timestamptz(3)
-  cancelReason         String?               @db.Text
+  cancelledAt          DateTime?               @db.Timestamptz(3)
+  cancelReason         String?                 @db.Text
   cancelledById        String?
-  opportunity          Opportunity           @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  purchaseOrder        PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  invoice              Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  createdBy            AppUser               @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  cancelledBy          AppUser?              @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  opportunity          Opportunity             @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  purchaseOrder        PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  invoice              Invoice                 @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  createdBy            AppUser                 @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy          AppUser?                @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
   items                SalesOrderItem[]
   payment              DealPayment?
-  customerReminders    CustomerReminder[]    @relation("CustomerReminderSourceOrder")
+  customerReminders    CustomerReminder[]      @relation("CustomerReminderSourceOrder")
   productionWorkOrders ProductionWorkOrder[]
   cost                 SalesOrderCost?
-  expenses             Expense[]             @relation("ExpenseSalesOrder")
-  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  productCosts         SalesOrderProductCost[]
+  expenses             Expense[]               @relation("ExpenseSalesOrder")
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
 
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
@@ -1046,6 +1050,31 @@ model SalesOrderCost {
   createdAt    DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
 
+  @@index([updatedAt])
+}
+
+/// HPP per produk dalam satu Sales Order. `SalesOrderCost` tetap menjadi agregat
+/// order + status `hppComplete` agar dashboard dan export tidak berubah.
+model SalesOrderProductCost {
+  id           String     @id @default(cuid())
+  salesOrderId String
+  productName  String     @db.VarChar(120)
+  position     Int        @default(0)
+  kain         Decimal?   @db.Decimal(18, 2)
+  zipper       Decimal?   @db.Decimal(18, 2)
+  jahit        Decimal?   @db.Decimal(18, 2)
+  pres         Decimal?   @db.Decimal(18, 2)
+  dtfPlastisol Decimal?   @db.Decimal(18, 2)
+  bordir       Decimal?   @db.Decimal(18, 2)
+  lainnya      Decimal?   @db.Decimal(18, 2)
+  version      Int        @default(1)
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  expenses     Expense[]
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@unique([salesOrderId, productName])
+  @@index([salesOrderId, position])
   @@index([updatedAt])
 }
 

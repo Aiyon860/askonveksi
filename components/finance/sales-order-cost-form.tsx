@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
-import { updateSalesOrderCostAction } from "@/app/actions/finance";
+import { updateSalesOrderProductCostAction } from "@/app/actions/finance";
 import { MoneyInput } from "@/components/money-input";
 import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { SubmitButton } from "@/components/submit-button";
@@ -34,18 +34,21 @@ function blankRow(localId: number, today: string): RowState {
   return { localId, amount: "", description: "", spentAt: today, method: "", proofPath: null, proofFileName: null, proofMimeType: null };
 }
 
-function initialRows(projectExpenses: Partial<Record<HppKey, HppProjectPrefill[]>>, today: string) {
+function initialRows(projectExpenses: Partial<Record<HppKey, HppProjectPrefill[]>>, today: string, fallback: Partial<Record<HppKey, string | null>>) {
   let localId = 0;
   return Object.fromEntries(fields.map(([name]) => {
     const prefill = projectExpenses[name];
     const rows: RowState[] = (prefill ?? []).map((row) => ({ localId: localId++, id: row.id, amount: row.amount, description: row.description ?? "", spentAt: row.spentAt, method: row.paymentMethodId, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType }));
+    // Data lama bisa punya nilai agregat tanpa baris Expense. Tampilkan sebagai
+    // baris baru agar menyimpan HPP tidak menghapus nilai tersebut diam-diam.
+    if (!rows.length && fallback[name] && Number(fallback[name]) > 0) rows.push({ ...blankRow(localId++, today), amount: fallback[name] as string });
     if (!rows.length) rows.push(blankRow(localId++, today));
     return [name, rows] as const;
   })) as Record<HppKey, RowState[]>;
 }
 
-export function SalesOrderCostForm({ item, methods = [], projectExpenses = {} }: { item: { id: string; costVersion: number; kain: string | null; zipper: string | null; jahit: string | null; pres: string | null; dtfPlastisol: string | null; bordir: string | null; lainnya: string | null }; methods?: Array<{ id: string; name: string }>; projectExpenses?: Partial<Record<HppKey, HppProjectPrefill[]>> }) {
-  const [rowsByKey, setRowsByKey] = useState(() => initialRows(projectExpenses, jakartaToday()));
+export function SalesOrderCostForm({ item, methods = [], projectExpenses = {} }: { item: { id: string; productCostId: string; productName: string; costVersion: number; kain: string | null; zipper: string | null; jahit: string | null; pres: string | null; dtfPlastisol: string | null; bordir: string | null; lainnya: string | null }; methods?: Array<{ id: string; name: string }>; projectExpenses?: Partial<Record<HppKey, HppProjectPrefill[]>> }) {
+  const [rowsByKey, setRowsByKey] = useState(() => initialRows(projectExpenses, jakartaToday(), item));
   const [removedIds, setRemovedIds] = useState<string[]>([]);
   const [nextLocal, setNextLocal] = useState(() => fields.reduce((sum, [name]) => sum + (projectExpenses[name]?.length ?? 1), 0));
   const patchRow = (key: HppKey, localId: number, patch: Partial<RowState>) => setRowsByKey((current) => ({ ...current, [key]: current[key].map((row) => row.localId === localId ? { ...row, ...patch } : row) }));
@@ -59,7 +62,7 @@ export function SalesOrderCostForm({ item, methods = [], projectExpenses = {} }:
       return { ...current, [key]: next };
     });
   };
-  return <Dialog><DialogTrigger render={<Button size="sm" variant="outline" />}><Pencil data-icon="inline-start" aria-hidden="true" />Edit HPP</DialogTrigger><DialogContent className="max-h-[92svh] overflow-y-auto overflow-x-hidden sm:max-w-5xl"><DialogHeader><DialogTitle>Edit biaya HPP</DialogTitle><DialogDescription>Isi HPP multi-baris: satu jenis boleh punya banyak baris. Nominal kosong diabaikan. Tanggal dan metode wajib untuk baris ber-nominal; bukti TF opsional. Baris yang dikosongkan atau dihapus masuk Riwayat Hapus; baris yang diubah ditimpa di tempat. Otomatis masuk ke Pengeluaran kategori Project.</DialogDescription></DialogHeader><form action={updateSalesOrderCostAction}><input type="hidden" name="salesOrderId" value={item.id} /><input type="hidden" name="version" value={item.costVersion} />{removedIds.map((id) => <input key={id} type="hidden" name="removedId" value={id} />)}<FieldGroup>{fields.map(([name, label]) => {
+  return <Dialog><DialogTrigger render={<Button size="sm" variant="outline" />}><Pencil data-icon="inline-start" aria-hidden="true" />Edit HPP</DialogTrigger><DialogContent className="max-h-[92svh] overflow-y-auto overflow-x-hidden sm:max-w-5xl"><DialogHeader><DialogTitle>Edit HPP · {item.productName}</DialogTitle><DialogDescription>HPP ini hanya untuk produk <span className="font-medium text-foreground">{item.productName}</span>. Isi HPP multi-baris: satu jenis boleh punya banyak baris. Nominal kosong diabaikan. Tanggal dan metode wajib untuk baris ber-nominal; bukti TF opsional. Baris yang dikosongkan atau dihapus masuk Riwayat Hapus; baris yang diubah ditimpa di tempat. Otomatis masuk ke Pengeluaran kategori Project.</DialogDescription></DialogHeader><form action={updateSalesOrderProductCostAction}><input type="hidden" name="productCostId" value={item.productCostId} /><input type="hidden" name="version" value={item.costVersion} />{removedIds.map((id) => <input key={id} type="hidden" name="removedId" value={id} />)}<FieldGroup>{fields.map(([name, label]) => {
     const key = name as HppKey;
     const list = rowsByKey[key];
     return <div key={name} className="flex flex-col gap-3 rounded-lg border p-3">
