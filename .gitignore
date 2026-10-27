@@ -61,3 +61,12 @@ next-env.d.ts
 
 # Aset vendor yang dihasilkan scripts/sync-export-vendor.mjs (Web Worker export)
 public/vendor/exceljs.min.js
+
+# Data bisnis: spreadsheet/ekspor laporan tidak boleh masuk repo
+/data-keuangan/
+*.xlsx
+*.xls
+*.csv
+*.tsv
+# Laporan internal berisi angka & nama customer
+/laporan-pengecekan-data-keuangan-dan-crm.md
