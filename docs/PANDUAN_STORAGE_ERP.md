@@ -6,15 +6,17 @@ Dokumen ini menjelaskan cara kerja penyimpanan biner ERP: **gambar dan PDF di di
 
 | Aspek | Kondisi saat ini |
 |---|---|
-| Driver produksi | `hybrid` — baca dari VPS (fallback Supabase bila belum ada), tulis ke **VPS + Supabase** (fail-hard) |
+| Driver produksi | **`local`** (sejak 2026-10-27 22:34 WIB) — baca & tulis **hanya** ke disk VPS, tanpa fallback Supabase |
 | `ERP_STORAGE_DIR` | `/var/lib/askonveksi/storage` (di luar release, owner `askonveksipedurungan`, dir `0750`, file `0640`) |
 | Backfill | **Selesai**: 118 objek / 36 MB dari 4 bucket; `--verify` bersih (missing=0, mismatched=0, extra=0); checksum SHA-256 sampel 19/19 cocok |
 | Audit database | **74/74 path unik** yang dirujuk database ada di disk VPS |
 | Backup | Cron harian 02:15 WIB + monitor disk mingguan; arsip `0600`, rotasi 14 file; uji restore non-destruktif lulus |
 | Offsite | **Belum aktif** (ditunda) — arsip backup masih di disk yang sama dengan data |
-| Baca file lama | Sejak backfill, permintaan file lama **tidak lagi** memicu `[erp-storage] fallback-supabase` |
-| Supabase Storage | **Masih menyimpan salinan** semua objek (konsekuensi `hybrid`), baru dikosongkan pada Fase 6 |
-| Sisa | UAT fitur penuh oleh OWNER/DEVELOPER dan cutover `local` setelah grace period ≥14 hari |
+| Baca file lama | Tidak lagi memicu `[erp-storage] fallback-supabase` sejak backfill |
+| Supabase Storage | **Masih menyimpan salinan** 118 objek sebagai cold copy, tetapi **tidak lagi ditulis**. Jangan dihapus sampai sistem stabil ±1 bulan |
+| Sisa | UAT fungsional penuh oleh OWNER/DEVELOPER, pengosongan bucket Supabase (T6.3), dan offsite backup |
+
+**Rollback ke `hybrid`:** ubah `ERP_STORAGE_DRIVER=hybrid` di `shared/.env`, restart PM2. File yang lahir selama mode `local` hanya ada di VPS — jangan rollback ke `supabase` murni.
 
 ## 1. Prinsip
 
@@ -46,14 +48,14 @@ Dokumen ini menjelaskan cara kerja penyimpanan biner ERP: **gambar dan PDF di di
 Contoh `.env` lokal untuk presentasi (path absolut agar tetap aman saat `npm start`):
 
 ```dotenv
-ERP_STORAGE_DRIVER=hybrid
+ERP_STORAGE_DRIVER=local
 ERP_STORAGE_DIR=/home/<user>/askonveksi-storage
 ```
 
-Contoh produksi di `$DEPLOY_PATH/shared/.env`:
+Contoh produksi di `$DEPLOY_PATH/shared/.env` (kondisi saat ini):
 
 ```dotenv
-ERP_STORAGE_DRIVER=hybrid
+ERP_STORAGE_DRIVER=local
 ERP_STORAGE_DIR=/var/lib/askonveksi/storage
 ```
 
@@ -69,7 +71,7 @@ Aturan validasi (`lib/storage/local-store.mjs`):
 |---|---|---|---|
 | `supabase` | Supabase Storage | Supabase Storage | Default; perilaku lama, tanpa perubahan. |
 | `hybrid` | VPS **dan** Supabase (fail-hard) | VPS dulu, fallback Supabase | Masa transisi/backfill. File lama tetap tampil, upload baru masuk VPS. |
-| `local` | VPS saja | VPS saja | Setelah backfill dan grace period. |
+| `local` | VPS saja | VPS saja | Kondisi produksi sejak 2026-10-27. Tidak ada fallback: file yang hilang dari disk = 404. |
 
 ### Hybrid fail-hard
 
@@ -216,6 +218,7 @@ Restore database Supabase dan file VPS harus dari waktu yang berdekatan. Path di
 
 | Kondisi | Tindakan |
 |---|---|
+| Bug saat `local` | Set `ERP_STORAGE_DRIVER=hybrid` (bukan `supabase`), restart app + worker. File yang lahir selama `local` hanya ada di VPS, jadi `hybrid` tetap bisa membacanya. |
 | Bug saat hybrid | Set `ERP_STORAGE_DRIVER=supabase`, restart app + worker. Upload baru kembali ke Supabase; file yang sudah hybrid ada di kedua tempat. |
 | File VPS rusak/hilang | Restore tar terbaru, perbaiki ownership, jalankan `npm run storage:verify`. |
 | Worker `ERR_MODULE_NOT_FOUND` | Pastikan `lib/storage/local-store.mjs` ada di release dan tarball (deploy workflow sudah memverifikasi). |
@@ -228,11 +231,12 @@ Restore database Supabase dan file VPS harus dari waktu yang berdekatan. Path di
 - **`Path penyimpanan tidak valid`** — path dari database mengandung `..`, backslash, NUL, atau segmen tersembunyi. Periksa data, jangan melemahkan validasi.
 - **`File sudah ada`** — upload `upsert: false` ke path yang sudah terisi. Gunakan path unik atau `upsert: true` bila memang menimpa.
 - **`hybrid-put-rollback`** — tulis Supabase gagal; periksa kredensial/bucket. File VPS sudah dibersihkan.
-- **`fallback-supabase` sering muncul** — backfill belum selesai; jalankan `storage:verify` lalu migrasi. Setelah backfill 2026-10-27 baris ini seharusnya tidak muncul lagi untuk file lama; bila muncul untuk file **baru**, berarti tulisan hybrid tidak sampai ke VPS — periksa `ERP_STORAGE_DIR` dan permission.
+- **`fallback-supabase` sering muncul** — hanya relevan pada driver `hybrid`: backfill belum selesai, jalankan `storage:verify` lalu migrasi. Produksi sekarang `local`, jadi baris ini tidak akan muncul; bila muncul, berarti env driver belum ter-restart.
+- **Gambar 404 padahal file ada di Supabase** — produksi `local` tidak membaca Supabase. Jalankan `--verify`/audit DB→disk, atau sementara ubah ke `hybrid` lalu restart.
 
 ## 10. Checklist presentasi lokal
 
-1. Isi `.env`: `ERP_STORAGE_DRIVER=hybrid` dan `ERP_STORAGE_DIR` absolut.
+1. Isi `.env`: `ERP_STORAGE_DRIVER=local` dan `ERP_STORAGE_DIR` absolut (folder lokal, jangan arahkan ke `/var/lib/askonveksi` milik VPS).
 2. Pastikan `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, dan `DATABASE_URL` masih terisi.
 3. Jalankan `npm run dev` (atau `npm run build && npm start`).
 4. Upload desain/logo/bukti bayar, lalu cek file muncul di `$ERP_STORAGE_DIR/<bucket>/...`.

@@ -1,11 +1,11 @@
 # FILE_TO_VPS.md — Rencana Migrasi File ERP dari Supabase Storage ke VPS
 
-> **Status per 2026-10-27: Fase 1–5 SUDAH BERJALAN DI PRODUKSI (driver `hybrid`).**
-> `npm run lint` (0 error), `npx tsc --noEmit`, `npm test` (341 lulus), dan `npm run build` sukses.
+> **Status per 2026-10-27: Fase 1–6 SUDAH BERJALAN DI PRODUKSI (driver `local`).**
+> `npm run lint` (0 error), `npx tsc --noEmit`, `npm test` (371 lulus), `npm run build` sukses, `npm audit` 0 vulnerability.
 > Produksi VPS (`askonveksi-cloud`): kode Fase 1–3 ter-deploy dan sha256 modul storage identik dengan repo.
 > Backfill produksi selesai: **118 objek / 36 MB** dari 4 bucket ada di `/var/lib/askonveksi/storage`, `--verify` bersih (missing=0, mismatched=0, extra=0), checksum SHA-256 sampel 19/19 cocok, dan **seluruh 74 path unik yang dirujuk database ada di VPS**.
 > Backup harian + monitor disk sudah terpasang via cron; uji restore non-destruktif lulus (118/118 file, sha sampel 8/8 cocok).
-> Tersisa: **Fase 6 (cutover `local`) menunggu grace period** dan **offsite backup** (ditunda atas keputusan pemilik).
+> Tersisa: **offsite backup** (ditunda atas keputusan pemilik), **pengosongan bucket Supabase** (T6.3, setelah 1 bulan stabil), dan **UAT fungsional penuh** oleh OWNER/DEVELOPER.
 > Revisi 2 mengadopsi hasil audit kode dan mengganti beberapa keputusan revisi 1 (lihat bagian **0.4**).
 > Prinsip proyek (AGENTS.md): setiap perubahan tidak boleh mengurangi akses role DEVELOPER; semua perubahan wajib lulus `npm run lint && npx tsc --noEmit && npm test && npm run build`.
 
@@ -487,15 +487,17 @@ Per porting: pesan `UserFacingError`, `console.error`, dan header respons harus 
 
 **Gate:** `--verify` bersih ✅, backup & restore teruji ✅, UAT penuh ⏳.
 
-### Fase 6 — Final cutover + pemangkasan (setelah grace period)
+### Fase 6 — Final cutover + pemangkasan
 
-Kriteria masuk: tidak ada `fallback-supabase` selama 14 hari, backup rutin sukses, tidak ada insiden.
+Kriteria masuk: tidak ada `fallback-supabase` selama 14 hari, backup rutin sukses, tidak ada insiden. **Grace period dipersingkat atas keputusan pemilik**: cutover dijalankan 2026-10-27 setelah pre-flight bersih (lihat T6.1).
 
-- [ ] T6.1 `ERP_STORAGE_DRIVER=local`, restart PM2 app + worker.
-- [ ] T6.2 Spot-check bagian 12 dengan `local`.
-- [ ] T6.3 Simpan bucket Supabase **kosong** sebagai cold copy selama 1 bulan pertama `local`; hapus setelah stabil (atau via dashboard).
-- [ ] T6.4 Rapikan `erp-storage.ts` (jalur Supabase boleh dibiarkan sebagai kode mati; hapus hanya bila yakin), perbarui `docs/PANDUAN_STORAGE_ERP.md` + `README.md`.
+- [x] T6.1 `ERP_STORAGE_DRIVER=local`, restart PM2 app + worker — 2026-10-27 22:34 WIB. Pre-flight: backup baru (`erp-storage-20261027-223408.tar.gz`, 34 MB), `--verify` bersih (54/9/55/0), audit DB→disk 74/74, lalu env diubah (backup `shared/.env.bak.pre-local.20261027-223447`) dan PM2 restart.
+- [x] T6.2 Spot-check teknis `local`: landing 200, logo `200 image/webp 87.630 B` (dilayani dari VPS), uji tulis/baca/hapus `local-store.mjs` lulus, worker health `ok`, **jumlah objek Supabase tetap 118** (tidak ada tulisan keluar), nol error storage di log PM2. UAT fungsional penuh oleh pemilik menyusul.
+- [ ] T6.3 Simpan bucket Supabase **kosong** sebagai cold copy selama 1 bulan pertama `local`; hapus setelah stabil (atau via dashboard). Kondisi 2026-10-27: bucket utuh 118 objek + 4 `.emptyFolderPlaceholder`, hanya tidak lagi ditulis.
+- [~] T6.4 `erp-storage.ts` dibiarkan apa adanya (jalur Supabase jadi kode mati yang sengaja dipertahankan untuk rollback); `docs/PANDUAN_STORAGE_ERP.md` sudah diperbarui, `README.md` belum menyebut storage VPS.
 - [ ] T6.5 Catat penghematan & tanggal di `TRACKING_REVISI.md`.
+
+**Rollback:** ubah `ERP_STORAGE_DRIVER=hybrid` (atau `supabase`) di `shared/.env` lalu `pm2 restart askonveksi-web askonveksi-web-wa`. File baru yang lahir selama `local` hanya ada di VPS, jadi rollback ke `supabase` murni akan membuatnya 404 — gunakan `hybrid`.
 
 ---
 
