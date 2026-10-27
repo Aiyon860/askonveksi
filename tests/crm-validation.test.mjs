@@ -260,7 +260,7 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
     opportunityId: "cm123456789012",
     discountType: "PERCENTAGE",
     discountValue: "10",
-    items: [{ description: "Kaos", quantity: 0, unitPrice: "50000" }],
+    items: [{ productName: "", description: "Kaos", unitPrice: "50000" }],
   });
   assert.equal(invalidInvoice.success, false);
 
@@ -276,14 +276,11 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
   assert.match(actionSource, /taxPercent: formValue\(formData, "taxPercent"\)/);
 });
 
-test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", async () => {
+test("Add On invoice berdiri sendiri: parse form, validasi, dan UI global", async () => {
   const itemBase = {
-    purchaseOrderSizeId: "cm123456789012",
+    purchaseOrderItemId: "cm123456789012",
     productName: "Jaket Polirevo",
-    size: "XL",
-    sleeveLength: "PANJANG",
     description: "",
-    quantity: 2,
     unitPrice: "100000",
     discountPercent: "0",
   };
@@ -293,10 +290,13 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
     dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
-    items: [{ ...itemBase, addons: [{ label: "Kerah", unitAmount: "10000" }] }],
+    items: [itemBase],
+    addons: [{ label: "Kerah", unitAmount: "10000" }],
   });
   assert.equal(valid.success, true);
-  assert.equal(valid.data.items[0].addons.length, 1);
+  assert.equal(valid.data.addons.length, 1);
+  assert.equal(valid.data.addons[0].qty, 1);
+  assert.equal("addons" in valid.data.items[0], false);
 
   const withoutAddons = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -304,10 +304,10 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
     dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
-    items: [{ ...itemBase }],
+    items: [itemBase],
   });
   assert.equal(withoutAddons.success, true);
-  assert.deepEqual(withoutAddons.data.items[0].addons, []);
+  assert.deepEqual(withoutAddons.data.addons, []);
 
   const tooMany = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -315,7 +315,8 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
     dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
-    items: [{ ...itemBase, addons: Array.from({ length: 6 }, (_, index) => ({ label: `Add ${index}`, unitAmount: "1000" })) }],
+    items: [itemBase],
+    addons: Array.from({ length: 21 }, (_, index) => ({ label: `Add ${index}`, unitAmount: "1000" })),
   });
   assert.equal(tooMany.success, false);
 
@@ -325,7 +326,8 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
     dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
-    items: [{ ...itemBase, addons: [{ label: "X", unitAmount: "1000" }] }],
+    items: [itemBase],
+    addons: [{ label: "X", unitAmount: "1000" }],
   });
   assert.equal(badLabel.success, false);
 
@@ -335,17 +337,53 @@ test("add on invoice per baris: caption ukuran,parse form, dan batas validasi", 
     dueAt: "2026-11-15",
     discountPercent: "0",
     taxPercent: "0",
-    items: [{ ...itemBase, addons: [{ label: "Kerah", unitAmount: "-5" }] }],
+    items: [itemBase],
+    addons: [{ label: "Kerah", unitAmount: "-5" }],
   });
   assert.equal(badAmount.success, false);
 
-  const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
-  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
-  assert.match(invoiceFormSource, /"Panjang"\} · \$\{poItem\.size\}/);
-  assert.match(invoiceFormSource, /item-\$\{rowIndex\}-addon-label/);
-  assert.match(invoiceFormSource, /item-\$\{rowIndex\}-addon-amount/);
-  assert.match(invoiceFormSource, /MAX_ADDONS_PER_ROW/);
-  assert.match(actionSource, /item-\$\{index\}-addon-label/);
+  const [invoiceFormSource, actionSource, pdfSource, detailSource, pageSource] = await Promise.all([
+    readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-pdf.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(invoiceFormSource, /groupPurchaseOrderInvoiceItems/);
+  assert.match(invoiceFormSource, /name="itemPurchaseOrderItemId"/);
+  assert.match(invoiceFormSource, /name="addonLabel"/);
+  assert.match(invoiceFormSource, /name="addonAmount"/);
+  assert.match(invoiceFormSource, /MAX_ADDONS/);
+  assert.doesNotMatch(invoiceFormSource, /name="itemQuantity"/);
+  assert.doesNotMatch(invoiceFormSource, /name="itemSleeveLength"/);
+  assert.doesNotMatch(invoiceFormSource, /item-\$\{rowIndex\}-addon/);
+  assert.match(actionSource, /formData\.getAll\("addonLabel"\)/);
+  assert.match(actionSource, /parsed\.data\.addons/);
+  assert.match(actionSource, /tx\.invoiceAddon\.deleteMany/);
+  assert.doesNotMatch(pdfSource, /section: "Add On"/, "PDF tidak memakai pembatas teks Add On");
+  assert.match(pdfSource, /for \(const addon of addonRows\)/);
+  assert.ok(pdfSource.indexOf("for (const item of invoice.items)") < pdfSource.indexOf("for (const addon of addonRows)"), "baris produk harus dicetak sebelum baris Add On");
+  assert.match(detailSource, /detail\.addons/);
+  // Detail invoice memakai satu tabel dengan lebar kolom tetap agar Add On sejajar produk.
+  assert.match(detailSource, /className="min-w-\[42rem\] table-fixed"/);
+  assert.match(detailSource, /<colgroup>/);
+  // Add On diberi penanda visual yang konsisten dengan form.
+  assert.match(detailSource, /<Badge variant="info">Add On<\/Badge>/);
+  assert.match(detailSource, /className="bg-info-surface\/40 hover:bg-info-surface\/60"/);
+  assert.match(pageSource, /invoice\.addons/);
+  // Snapshot invoice di halaman peluang juga memakai satu tabel berlebar tetap.
+  assert.match(pageSource, /className="min-w-\[42rem\] table-fixed"/);
+  assert.match(pageSource, /<colgroup>/);
+  assert.match(pageSource, /<Badge variant="info">Add On<\/Badge>/);
+  assert.match(pageSource, /className="bg-info-surface\/40 hover:bg-info-surface\/60"/);
+});
+
+test("migrasi Add On global tidak menghapus Add On invoice lama", async () => {
+  const sql = await readFile(new URL("../prisma/migrations/20261024010000_invoice_global_addon/migration.sql", import.meta.url), "utf8");
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS "InvoiceAddon"/);
+  assert.match(sql, /InvoiceAddon_invoiceId_position_key/);
+  assert.match(sql, /ON DELETE CASCADE/);
+  assert.doesNotMatch(sql, /DROP TABLE "InvoiceItemAddon"/);
 });
 
 test("constraint gross invoice mengizinkan add on sebagai batas bawah", async () => {
@@ -360,6 +398,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     key: "item-1",
     name: "Jersey home",
     pola: "Jersey home",
+    baseColor: "Navy",
     decorationMethods: ["NONE"],
     sizes: [
       { sizeId: "garment-size-m", sleeveLength: "PENDEK", quantity: 0 },
@@ -471,6 +510,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     key: "item-1",
     name: "Kaos home",
     pola: "Kaos komunitas",
+    baseColor: "Hitam",
     decorationMethods: ["SABLON_PLASTISOL"],
     rosterMode: "none",
     roster: [],
@@ -504,6 +544,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     key: "item-1",
     name: "Jersey tim",
     pola: "Jersey tim",
+    baseColor: "Merah",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
     roster: [],
@@ -751,7 +792,7 @@ test("Deal mengganti form dengan notifikasi setelah jadwal pembayaran tersimpan"
   const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
   const pageSource = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
   assert.match(dataSource, /pendingPayment: \{ select: \{ kind: true, initialDueAt: true \} \}/);
-  assert.match(pageSource, /const scheduledPayment = issuedInvoice\?\.pendingPayment/);
+  assert.match(pageSource, /const scheduledPayment = invoiceDraft \? undefined : issuedInvoice\?\.pendingPayment/);
   assert.match(pageSource, /Jadwal pembayaran sudah tersimpan/);
 });
 
@@ -865,12 +906,30 @@ test("status aktivitas berubah pada bulan ke-6 serta ditahan oleh peluang terbuk
   assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z"), true), "AKTIF");
 });
 
-test("revisi dokumen hanya berasal dari draft sampai revisi keempat dan final tidak ditimpa", async () => {
-  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
-  assert.match(actionSource, /source\.status !== "DRAFT"[\s\S]+source\.revision >= 4/);
-  assert.match(actionSource, /revision: \{ lt: 4 \}/);
-  assert.doesNotMatch(actionSource, /where: \{ opportunityId: invoice\.opportunityId, status: "ISSUED"/);
-  assert.doesNotMatch(actionSource, /where: \{ opportunityId: purchaseOrder\.opportunityId, status: "AGREED"/);
+test("revisi invoice dapat dibuat dari draft atau invoice terbit tanpa Sales Order", async () => {
+  const [actionSource, workflowSource, pageSource] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+  ]);
+  // Sumber revisi: draft atau invoice terbit yang belum punya Sales Order.
+  assert.match(actionSource, /source\.status !== "DRAFT" && source\.status !== "ISSUED"/);
+  assert.match(actionSource, /source\.status === "ISSUED" && source\.salesOrder/);
+  assert.match(actionSource, /Invoice terbit yang sudah memiliki Sales Order tidak dapat direvisi/);
+  assert.match(actionSource, /source\.status === "ISSUED" && !parsed\.data\.schedule/);
+  // Nomor revisi diambil dari revisi terbesar agar celah dokumen batal tidak bentrok.
+  assert.match(actionSource, /const latestRevision = aggregate\._max\.revision \?\? source\.revision/);
+  assert.match(actionSource, /if \(latestRevision >= 4\)/);
+  // Invoice terbit lama tetap ISSUED sampai revisi baru diterbitkan, lalu digantikan.
+  assert.match(actionSource, /const previousIssued = invoice\.opportunity\.invoices\.filter/);
+  assert.match(actionSource, /data: \{ status: "SUPERSEDED", version: \{ increment: 1 \} \}/);
+  // UI menampilkan revisi pada invoice terbit tanpa SO, tetapi tidak pada dokumen lama
+  // yang sudah punya revisi lebih baru atau saat batas revisi tercapai.
+  assert.match(workflowSource, /invoiceStatus === "DRAFT" \|\| \(invoiceStatus === "ISSUED" && !hasSalesOrder\)/);
+  assert.match(workflowSource, /!hasNewerActiveRevision && !revisionLimitReached/);
+  assert.match(pageSource, /hasSalesOrder=\{Boolean\(invoice\.salesOrder\)\}/);
+  assert.match(pageSource, /hasNewerActiveRevision=\{hasNewerActiveRevision\}/);
+  assert.match(pageSource, /revisionLimitReached=\{latestInvoiceRevision >= 4\}/);
 });
 
 test("migration follow up menyimpan tiga offset, switch customer, template bawaan, dan menutup job lama", async () => {
@@ -1255,7 +1314,11 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   assert.match(shell, /<AutoRefresh \/>/);
   assert.doesNotMatch(page, /<AutoRefresh \/>/, "halaman tidak memasang auto refresh ganda");
   assert.match(autoRefresh, /router\.refresh\(\)/);
-  assert.match(autoRefresh, /document\.visibilityState === "visible"/);
+  // Refresh global hanya untuk halaman monitoring; halaman berisi form/checkbox
+  // tidak boleh ikut, karena refresh menghapus isian yang sedang dikerjakan.
+  assert.match(autoRefresh, /isAutoRefreshRoute\(pathname\)/);
+  assert.match(autoRefresh, /document\.visibilityState !== "visible"/);
+  assert.match(autoRefresh, /isUserBusy\(\)/);
   assert.match(autoRefresh, /document\.addEventListener\("visibilitychange", refresh\)/);
 
   // Catat pembayaran mengubah kolom status di tabel, bukan hanya isi dialog.
@@ -1309,14 +1372,20 @@ test("PO multi-produk: instansi, pola per produk, dekorasi multi, dan item", () 
     key: "item-1",
     name: "Jersey home",
     pola: "Jersey home",
+    baseColor: "Navy",
     decorationMethods: ["SABLON_DTF"],
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
     roster: [],
     ...overrides,
   });
-  // Dua produk satu warna dalam satu PO lolos; beda warna tetap beda PO (satu warna per form).
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "Jersey away" }) }] }).success, true);
+  // Revisi: warna mengikuti produk — dua produk beda warna dalam satu PO tetap lolos.
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "Jersey away", baseColor: "Putih", variationColor: "Merah di list" }) }] }).success, true);
+  // Warna dasar wajib per produk (input warna global di header sudah dihapus).
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), baseColor: "" }] }).success, false);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Jersey away", pola: "Jersey away", baseColor: "   " }) }] }).success, false);
+  // Warna variasi opsional.
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), variationColor: "" }] }).success, true);
   // Tiap produk boleh beda kategori (2 jenis produk berbeda dalam 1 PO).
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [item(), { ...item({ key: "item-2", name: "Kemeja", pola: "Kemeja formal", productCategoryId: "cm123456789012" }) }] }).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...base, items: [{ ...item(), productCategoryId: "x" }] }).success, false);
@@ -1424,6 +1493,88 @@ test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desai
   // Rute preview desain penjahit per item (hanya pemilik PO yang boleh).
   assert.match(serveSource, /penjahitDesignPath/);
   assert.match(serveSource, /CRM_VIEW_ROLES/);
+});
+
+test("Revisi PO: warna per produk, kategori Lainnya, multi desain penjahit, PDF tanpa revisi", async () => {
+  const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+  const colorMigration = await readFile(new URL("../prisma/migrations/20261025010000_purchase_order_item_color/migration.sql", import.meta.url), "utf8");
+  const lainnyaMigration = await readFile(new URL("../prisma/migrations/20261025020000_product_category_lainnya/migration.sql", import.meta.url), "utf8");
+  const designsMigration = await readFile(new URL("../prisma/migrations/20261025030000_purchase_order_item_designs/migration.sql", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const validationSource = await readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8");
+  const pdfSource = await readFile(new URL("../lib/crm/purchase-order-pdf.ts", import.meta.url), "utf8");
+  const pdfRouteSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/pdf/route.ts", import.meta.url), "utf8");
+  const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
+  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8");
+  const serveDesignSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/items/[itemId]/penjahit-designs/[designId]/route.ts", import.meta.url), "utf8");
+
+  // 1) Warna mengikuti produk: kolom per item + validasi wajib warna dasar.
+  assert.match(schema, /model PurchaseOrderItem \{[\s\S]*?baseColor\s+String\?\s+@db\.VarChar\(120\)[\s\S]*?variationColor\s+String\?\s+@db\.VarChar\(240\)/);
+  assert.match(colorMigration, /ADD COLUMN IF NOT EXISTS "baseColor" VARCHAR\(120\)/);
+  assert.match(colorMigration, /ADD COLUMN IF NOT EXISTS "variationColor" VARCHAR\(240\)/);
+  assert.match(validationSource, /baseColor: z\.string\(\)\.trim\(\)\.min\(1, "Warna dasar wajib diisi\."\)/);
+  assert.match(validationSource, /variationColor: optionalText\(240\)/);
+  assert.match(actionSource, /baseColor: formValue\(formData, `\$\{prefix\}baseColor`\)/);
+  assert.match(actionSource, /variationColor: formValue\(formData, `\$\{prefix\}variationColor`\)/);
+  // Kolom header PO diisi dari produk pertama (kompatibilitas dokumen lama).
+  assert.match(actionSource, /color: parsed\.data\.items\[0\]\?\.baseColor \?\? null/);
+  // Riwayat revisi mencatat perubahan warna per produk.
+  assert.match(actionSource, /const color = item\.variationColor \? `\$\{item\.baseColor \?\? "-"\} \/ \$\{item\.variationColor\}` : item\.baseColor;/);
+
+  // 2) Kategori "Lainnya" memakai alur Non-Jersey (route WO = NON_JERSEY).
+  assert.match(lainnyaMigration, /'Lainnya'/);
+  assert.match(lainnyaMigration, /'NON_JERSEY'::"GarmentType"/);
+  assert.match(lainnyaMigration, /WHERE NOT EXISTS \(SELECT 1 FROM "ProductCategory" WHERE "name" = 'Lainnya'\)/);
+
+  // 3) Multi gambar desain penjahit: tabel baru + backfill kolom tunggal lama.
+  assert.match(schema, /model PurchaseOrderItemDesign \{/);
+  assert.match(schema, /@@unique\(\[itemId, position\]\)/);
+  assert.match(schema, /item\s+PurchaseOrderItem @relation\(fields: \[itemId\], references: \[id\], onDelete: Cascade\)/);
+  assert.match(designsMigration, /CREATE TABLE IF NOT EXISTS "PurchaseOrderItemDesign"/);
+  assert.match(designsMigration, /FROM "PurchaseOrderItem" item[\s\S]*?WHERE item\."penjahitDesignPath" IS NOT NULL/);
+  assert.match(actionSource, /const PENJAHIT_DESIGN_MAX_PER_ITEM = 10;/);
+  assert.match(actionSource, /formData\.getAll\(`designs-\$\{item\.id\}`\)/);
+  assert.match(actionSource, /removeDesign-\$\{design\.id\}/);
+  assert.match(actionSource, /tx\.purchaseOrderItemDesign\.create\(/);
+  // File storage hanya dihapus bila tidak lagi dirujuk baris lain (revisi berbagi path).
+  assert.match(actionSource, /purchaseOrderItemDesign\.findMany\(\{ where: \{ path: \{ in: candidates \} \}/);
+  // Data penjahit dipertahankan saat draft diedit & saat revisi dibuat.
+  assert.match(actionSource, /const previousItems = await tx\.purchaseOrderItem\.findMany\(/);
+  assert.match(actionSource, /carriedDesigns/);
+  assert.match(dialogSource, /multiple/);
+  assert.match(dialogSource, /name=\{`designs-\$\{item\.id\}`\}/);
+  assert.match(dialogSource, /MAX_DESIGNS_PER_ITEM = 10/);
+  assert.match(dialogSource, /penjahit-designs\/\$\{design\.id\}/);
+  assert.match(dialogSource, /removeDesign-\$\{design\.id\}/);
+  assert.match(serveDesignSource, /purchaseOrderItemDesign\.findFirst/);
+  assert.match(serveDesignSource, /CRM_VIEW_ROLES/);
+  // PDF: satu asset PENJAHIT_DESIGN per gambar → satu halaman penuh per gambar.
+  assert.match(pdfRouteSource, /designs: \{ select: \{ path: true, originalName: true, contentType: true \}, orderBy: \{ position: "asc" \} \}/);
+  assert.match(pdfRouteSource, /const designs = item\.designs\.length/);
+  assert.match(pdfSource, /asset\.kind !== "PENJAHIT_DESIGN" \|\| asset\.itemId !== item\.id/);
+
+  // 4) PDF customer & penjahit tidak mencetak "Revisi" dan tanpa akhiran -R.
+  assert.match(pdfSource, /const documentNo = data\.purchaseOrderNo\.replace\(\/-R\\d\+\$\/i, ""\)/);
+  assert.match(pdfSource, /const meta = safe\(documentNo\);/);
+  assert.match(pdfSource, /const footer = `\$\{safe\(documentNo\)\} \| Halaman \$\{pageNumber\}`/);
+  assert.doesNotMatch(pdfSource, /· Revisi \$\{/);
+  assert.doesNotMatch(pdfSource, /data\.revision/);
+  // Nama file unduhan juga memakai nomor PO dasar (tanpa -R2/-R3).
+  assert.match(pdfRouteSource, /const documentNo = purchaseOrder\.purchaseOrderNo\.replace\(\/-R\\d\+\$\/i, ""\)/);
+  assert.match(pdfRouteSource, /purchase-order-\$\{documentNo\}/);
+
+  // 5) Form: warna pindah ke kartu produk, tanpa input warna global, autosave versi baru.
+  assert.match(formSource, /name=\{`\$\{prefix\}baseColor`\}/);
+  assert.match(formSource, /name=\{`\$\{prefix\}variationColor`\}/);
+  assert.doesNotMatch(formSource, /name="baseColor"/);
+  assert.doesNotMatch(formSource, /name="variationColor"/);
+  assert.match(formSource, /const AUTOSAVE_VERSION = 6;/);
+  assert.match(formSource, /Tambah produk\s*</);
+  assert.doesNotMatch(formSource, /Tambah produk \(warna sama\)/);
+  assert.match(formSource, /Setiap produk punya warna sendiri/);
+  // PDF mencetak warna produk masing-masing, fallback kolom header untuk PO lama.
+  assert.match(pdfSource, /const colorItem = item \?\? \(data\.items\.length === 1 \? data\.items\[0\] : null\);/);
+  assert.match(pdfSource, /const baseColor = colorItem\?\.baseColor \?\? data\.baseColor \?\? data\.color;/);
 });
 
 test("pratinjau roster mengisi matriks otomatis", async () => {
@@ -1696,16 +1847,17 @@ test("R4: add on invoice punya qty sendiri (bisa kurang dari qty baris)", async 
     readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
   ]);
 
-  // Kolom qty pada InvoiceItemAddon.
-  assert.match(schema, /qty\s+Int\s+@default\(1\)/);
+  // Kolom qty pada InvoiceAddon global (InvoiceItemAddon lama tetap ada).
+  assert.match(schema, /model InvoiceAddon[\s\S]+?qty\s+Int\s+@default\(1\)/);
   // Validasi: minimal 1, default 1 supaya data lama (tanpa qty) tetap valid.
   assert.match(validation, /qty: z\.coerce\.number\(\)\.int\(\)\.min\(1, "Qty add on minimal 1\."\)\.default\(1\)/);
-  // Form: input qty per baris add on.
-  assert.match(form, /item-\$\{rowIndex\}-addon-qty/);
+  // Form: input qty Add On global.
+  assert.match(form, /name="addonQty"/);
+  assert.doesNotMatch(form, /item-\$\{rowIndex\}-addon-qty/);
   // PDF & detail mencetak qty add on, bukan qty baris.
-  assert.match(pdf, /const addonQty = addon\.qty \?\? item\.quantity/);
+  assert.match(pdf, /const addonQty = addon\.qty \?\? 1/);
   assert.match(detail, /addon\.qty/);
-  // Select Prisma menyertakan qty add on (form & detail).
+  // Select Prisma menyertakan qty Add On global (form & detail).
   assert.match(data, /qty: true/);
   assert.match(page, /qty: addon\.qty/);
 });
@@ -1756,6 +1908,22 @@ test("R6: diskon dua level (per baris & total) bisa nominal atau persen, tersimp
   assert.match(workflow, /discountNominal\?: string/);
   // Detail menampilkan nominal & persen otomatis.
   assert.match(detail, /function discountCellText/);
+});
+
+test("diskon nominal per baris dan total memakai input Rupiah berformat", async () => {
+  const [form, money] = await Promise.all([
+    readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/money-input.tsx", import.meta.url), "utf8"),
+  ]);
+
+  // Mode Rp memakai MoneyInput: prefiks Rp + ribuan "10.000", dengan toggle di ujung kanan.
+  assert.match(money, /endAddon\?: ReactNode/);
+  assert.match(money, /\{endAddon\}/);
+  assert.match(form, /<MoneyInput[\s\S]{0,260}value=\{row\.discountNominal\}[\s\S]{0,260}endAddon=\{<DiscountToggle/);
+  assert.match(form, /<MoneyInput[\s\S]{0,260}value=\{orderDiscountNominal\}[\s\S]{0,260}endAddon=\{<DiscountToggle/);
+  // Nilai mentah tetap dikirim lewat field tersembunyi, bukan teks berformat.
+  assert.match(form, /name="itemDiscountNominal" value=\{row\.discountType === "NOMINAL" \? row\.discountNominal : "0"\}/);
+  assert.match(form, /name="discountNominal" value=\{orderDiscountType === "NOMINAL" \? orderDiscountNominal : "0"\}/);
 });
 
 test("R8: nominal rupiah invoice memakai format id-ID dua desimal (Rp 4.330.000,00)", async () => {
@@ -1837,12 +2005,27 @@ test("R4/R6: form invoice pakai toggle Rp/%, default 0 lewat placeholder, add on
   assert.match(form, /name="discountPercent"/);
   assert.match(form, /name="discountNominal"/);
 
-  // Add on sejajar kolom atas: keterangan (Produk), deskripsi (Deskripsi), qty, harga; tanpa diskon.
-  assert.match(form, /item-\$\{rowIndex\}-addon-label/);
-  assert.match(form, /item-\$\{rowIndex\}-addon-description/);
-  assert.match(form, /item-\$\{rowIndex\}-addon-qty/);
+  // Add On global sejajar kolom atas dan berada setelah seluruh produk: keterangan
+  // (Produk), deskripsi (Deskripsi), qty, harga; tanpa diskon.
+  assert.match(form, /name="addonLabel"/);
+  assert.match(form, /name="addonDescription"/);
+  assert.match(form, /name="addonQty"/);
   assert.match(form, /variant="destructive"[\s\S]{0,160}Hapus add on/);
-  assert.match(form, /className="w-16 text-right"/);
+  assert.match(form, /className="w-16 text-center">Qty<\/TableHead>/);
+  assert.ok(form.indexOf("<p className=\"text-sm font-medium\">Add On</p>") < form.indexOf('name="addonLabel"'));
+  // Blok Add On dibedakan dari produk: tint info, badge Opsional, dan baris berwarna.
+  assert.match(form, /<Badge variant="info">Opsional<\/Badge>/);
+  assert.match(form, /bg-info-surface\/40 hover:bg-info-surface\/60/);
+  assert.match(form, /text-info-surface-foreground/);
+  // Qty produk dan Add On memakai garis kanan yang sama; spinner bawaan browser dihilangkan.
+  assert.match(form, /<div className="flex h-9 items-center justify-center font-mono tabular-nums">\{group\.quantity\}<\/div>/);
+  assert.match(form, /name="addonQty"[\s\S]{0,100}type="number"/);
+  assert.match(form, /inputMode="numeric"/);
+  assert.match(form, /function preventNonIntegerQtyKeys/);
+  assert.match(form, /onKeyDown=\{preventNonIntegerQtyKeys\}/);
+  assert.match(form, /className="text-center font-mono tabular-nums \[appearance:textfield\]/);
+  assert.match(form, /\[&::-webkit-inner-spin-button\]:appearance-none/);
+  assert.match(form, /\[&::-webkit-outer-spin-button\]:appearance-none/);
 });
 
 test("R4 lanjutan: add on punya deskripsi opsional, tersimpan & tampil", async () => {
@@ -1862,13 +2045,13 @@ test("R4 lanjutan: add on punya deskripsi opsional, tersimpan & tampil", async (
   assert.match(schema, /description\s+String\?\s+@db\.VarChar\(240\)/);
   assert.match(validation, /description: optionalText\(240\)/);
   assert.match(calc, /description: addon\.description\?\.trim\(\) \|\| null/);
-  assert.match(crm, /formData\.getAll\(`item-\$\{index\}-addon-description`\)/);
-  // Akar bug (regresi): deskripsi add on sempat dibuang saat memetakan input → objek create Prisma.
-  assert.match(crm, /description: String\(addon\.description \?\? ""\)\.trim\(\) \|\| undefined/);
-  assert.match(crm, /description: addon\.description, unitAmount: addon\.unitAmount, qty: addon\.qty/);
-  assert.match(form, /name=\{`item-\$\{rowIndex\}-addon-description`\}/);
+  assert.match(crm, /formData\.getAll\("addonDescription"\)/);
+  // Deskripsi Add On global dibawa sampai objek create Prisma.
+  assert.match(crm, /description: addonDescriptions\[index\] \|\| undefined/);
+  assert.match(crm, /addons: \{ create: calculated\.addons \}/);
+  assert.match(form, /name="addonDescription"/);
   assert.match(form, /placeholder="Deskripsi add on \(opsional\)\.\.\."/);
-  assert.match(pdf, /const addonDescText = addon\.description\?\.trim\(\) \|\|/);
+  assert.match(pdf, /const addonDescLines = wrapCell\(addon\.description\?\.trim\(\) \|\| "-", 1\)/);
   assert.match(detail, /addon\.description\?\.trim\(\) \|\|/);
   // Snapshot panel invoice: kolom Deskripsi memakai isi form (atau "-"), bukan caption qty × harga.
   assert.match(page, /item\.description \|\| "-"/);
@@ -1895,7 +2078,7 @@ test("R13 revisi: PDF Disc memakai nominal, deskripsi kosong jadi '-'", async ()
   assert.doesNotMatch(pdf, /\[String\(Number\(item\.discountPercent/);
   // Deskripsi kosong produk & add on → "-".
   assert.match(pdf, /wrapCell\(item\.description \|\| "-", 1\)/);
-  assert.match(pdf, /const addonDescText = addon\.description\?\.trim\(\) \|\| "-"/);
+  assert.match(pdf, /const addonDescLines = wrapCell\(addon\.description\?\.trim\(\) \|\| "-", 1\)/);
   assert.match(detail, /item\.description \|\| "-"/);
   assert.match(detail, /addon\.description\?\.trim\(\) \|\| "-"/);
   // Deskripsi produk tidak lagi diisi otomatis oleh server.
@@ -1915,7 +2098,7 @@ test("Draft & revisi invoice menyimpan jadwal bersama transaksi dan diaudit PAYM
   assert.match(actionSource, /await tx\.pendingDealPayment\.create\(\{ data: \{ invoiceId: created\.id, createdById: actor\.id, \.\.\.scheduleData, terms: \{ create: scheduleTerms \} \} \}\);/);
   const audits = actionSource.match(/"PAYMENT_SCHEDULED"/g) || [];
   assert.equal(audits.length, 2, "audit PAYMENT_SCHEDULED ada di simpan draft dan buat revisi");
-  assert.match(actionSource, /await audit\(tx, actor, "Invoice", created\.id, "PAYMENT_SCHEDULED", \["paymentSchedule"\], \{ kind: scheduleData\.kind, initialDueAt: scheduleData\.initialDueAt, terms: scheduleTerms\.length \}\);/);
+  assert.match(actionSource, /await audit\(tx, actor, "Invoice", created\.id, "PAYMENT_SCHEDULED", \["paymentSchedule"\], \{ kind: scheduleData\.kind, initialDueAt: scheduleData\.initialDueAt, terms: scheduleTerms\.length \}, \[/);
   // Baseline urutan termin butuh tanggal sumber yang jelas: dueAt wajib saat jadwal disusun.
   assert.equal((actionSource.match(/if \(!dueAtDate\) throw new UserFacingError\("Tgl\. jatuh tempo wajib diisi\."\);/g) || []).length, 2);
 });
@@ -1998,4 +2181,40 @@ test("LUNAS memakai total tagihan (collectible) sebagai pembayaran awal", async 
   assert.match(actionSource, /const outstandingAmount = collectibleTotal\.sub\(initialAmount\);/);
   assert.match(actionSource, /if \(initialAmount\.lt\(0\) \|\| initialAmount\.gt\(collectibleTotal\)\) throw new UserFacingError\("Nilai pembayaran awal tidak valid\."\)/);
   assert.match(actionSource, /DP nominal yang menutup sisa tagihan \(setelah deposit\) dihitung Lunas/);
+});
+
+test("Riwayat revisi PO & Invoice menyimpan nilai sebelum→sesudah dari audit", async () => {
+  const [crm, data, page, tabs, component, labels] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/opportunity-process-tabs.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/document-revision-history.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/audit/labels.ts", import.meta.url), "utf8"),
+  ]);
+
+  // Diff digabung ke metadata audit, bukan mengganti metadata yang sudah ada.
+  assert.match(crm, /function withAuditDiff/);
+  assert.match(crm, /metadata: withAuditDiff\(metadata, diff\)/);
+  assert.match(crm, /function diffSnapshots/);
+  assert.match(crm, /const beforeSnapshot = await purchaseOrderSnapshot\(tx, purchaseOrderId\)/);
+  assert.match(crm, /const sourceSnapshot = await purchaseOrderSnapshot\(tx, source\.id\)/);
+  assert.match(crm, /diffSnapshots\(beforeSnapshot, afterSnapshot\)/);
+  assert.match(crm, /const sourceSnapshot = await invoiceSnapshot\(tx, source\.id\)/);
+  assert.match(crm, /diffSnapshots\(sourceSnapshot, snapshot\)/);
+
+  // Loader hanya membaca entitas dokumen dan mengurai diff dengan aman.
+  assert.match(data, /entityType: \{ in: \["PurchaseOrder", "Invoice"\] \}/);
+  assert.match(data, /readAuditDiff\(row\.metadata\)/);
+  assert.match(labels, /export function auditFieldLabel/);
+  assert.match(labels, /export function readAuditDiff/);
+
+  // Tab "aktivitas" tetap URL lama, tetapi isinya riwayat dokumen.
+  assert.match(page, /<DocumentRevisionHistory/);
+  assert.doesNotMatch(page, /<CommunicationHistory/);
+  assert.match(page, /getOpportunityDocumentHistory/);
+  assert.match(tabs, /\["aktivitas", "Riwayat PO & Invoice"\]/);
+  assert.match(component, /Riwayat PO &amp; Invoice/);
+  assert.match(component, /change\.from \?\? "—"/);
+  assert.match(component, /item\.changedFields\.map\(auditFieldLabel\)/);
 });

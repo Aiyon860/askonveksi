@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
+import { GARMENT_SIZE_ROLES, MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { groupProductCategories } from "@/lib/crm/constants";
 import {
@@ -515,7 +515,7 @@ export async function bulkUpdatePaymentMethodsAction(formData: FormData) {
 
 export async function createGarmentSizeAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
+    const actor = await requireActor(GARMENT_SIZE_ROLES);
     const parsed = sortableMasterDataFieldsSchema.safeParse(fields(formData));
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
     const prisma = getPrismaClient();
@@ -541,7 +541,7 @@ export async function createGarmentSizeAction(formData: FormData) {
 
 export async function importGarmentSizesAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
+    const actor = await requireActor(GARMENT_SIZE_ROLES);
     const rows = await parseMasterDataWorkbook(excelFile(formData), 40);
     await importGarmentSizeRows(actor.id, rows);
     revalidatePath("/master-data/garment-sizes");
@@ -552,7 +552,7 @@ export async function importGarmentSizesAction(formData: FormData) {
 
 export async function bulkUpdateGarmentSizesAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
+    const actor = await requireActor(GARMENT_SIZE_ROLES);
     const rawItems = formData.get("items");
     if (typeof rawItems !== "string" || rawItems.length > 200_000) throw new UserFacingError("Data ukuran tidak valid. Muat ulang lalu coba lagi.");
     let payload: unknown;
@@ -672,7 +672,7 @@ export async function deleteLeadSourceAction(formData: FormData) {
 
 export async function deleteGarmentSizeAction(formData: FormData) {
   return runRedirectingAction("/master-data/garment-sizes", async () => {
-    const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
+    const actor = await requireActor(GARMENT_SIZE_ROLES);
     const id = formData.get("id");
     if (typeof id !== "string" || !id) throw new UserFacingError("Ukuran pakaian tidak ditemukan. Muat ulang halaman.");
     const current = await getPrismaClient().garmentSize.findUnique({ where: { id }, select: { name: true } });

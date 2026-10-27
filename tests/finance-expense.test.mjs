@@ -71,10 +71,13 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
   assert.equal(expenseData.match(/!state\.from && !state\.to/g)?.length, 2, "getExpenses & getExpensesForExport sama-sama menerapkan jendela default");
   for (const column of ["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain", "Total HPP", "Harga Asli", "Laba Bersih", "Margin", "Diskon", "Total Invoice", "DP", "Lunas", "Status"]) assert.match(income, new RegExp(column));
   // Harga Asli = subtotal invoice (harga sebelum diskon), posisinya di antara Total HPP dan Diskon.
-  assert.match(expenseData, /invoice: \{ select: \{ subtotal: true,/);
+  assert.match(expenseData, /invoice: \{\s*select: \{\s*subtotal: true,/);
   assert.match(expenseData, /originalPrice: order\.invoice\.subtotal\.toString\(\)/);
   assert.ok(income.indexOf("\"Total HPP\", \"Harga Asli\", \"Diskon\"") !== -1, "kolom Harga Asli berada di antara Total HPP dan Diskon");
-  assert.ok(income.indexOf("item.hpp, item.originalPrice, item.discount") !== -1, "sel memakai subtotal invoice sebelum diskon");
+  assert.ok(income.indexOf("formatCurrency(item.originalPrice)") !== -1, "sel Harga Asli memakai subtotal invoice sebelum diskon");
+  assert.match(income, /formatCurrency\(item\.discount\)/);
+  assert.match(income, /Produk \{formatCurrency\(item\.itemDiscount\)\}/);
+  assert.match(income, /Total \{formatCurrency\(item\.orderDiscount\)\}/);
   const projectColumns = financeDatasets.slice(financeDatasets.indexOf("PROJECT_COLUMNS"), financeDatasets.indexOf("export async function loadProject"));
   assert.ok(projectColumns.indexOf('header: "Total HPP"') < projectColumns.indexOf('header: "Harga Asli"') && projectColumns.indexOf('header: "Harga Asli"') < projectColumns.indexOf('header: "Diskon"'), "export memakai urutan kolom yang sama");
   assert.match(financeDatasets, /Number\(item\.originalPrice\)/);
@@ -82,7 +85,7 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
   assert.match(income, /"Margin %"/);
   assert.doesNotMatch(income, /from "lucide-react"[^\n]*Percent/);
   assert.doesNotMatch(income, /<Percent/);
-  assert.match(actions, /updateSalesOrderCostAction/);
+  assert.match(actions, /updateSalesOrderProductCostAction/);
   assert.match(actions, /requireActor\(FINANCE_ROLES\)/);
   assert.match(migration, /DROP CONSTRAINT IF EXISTS "InvoiceItem_charges_valid"/);
   assert.match(migration, /DROP CONSTRAINT IF EXISTS "SalesOrderItem_values_valid"/);
@@ -94,7 +97,7 @@ test("R18: Keperluan pengeluaran HPP tanpa nomor invoice (baru & data lama diber
   const backfill = await readFile(new URL("prisma/migrations/20261017010000_expense_purpose_drop_invoice_no/migration.sql", root), "utf8");
 
   // Alur Edit HPP baru: purpose berhenti di nama produk, tanpa segmen invoice.
-  assert.match(actions, /purpose: `HPP \$\{HPP_LABEL\[plan\.key\] \?\? plan\.key\} · \$\{customerName\} · \$\{order\.purchaseOrder\.productName\}`/);
+  assert.match(actions, /purpose: `HPP \$\{HPP_LABEL\[plan\.key\] \?\? plan\.key\} · \$\{customerName\} · \$\{productCost\.productName\}`/);
   assert.doesNotMatch(actions, /purpose: `HPP [^`]*invoiceNo/);
   // Data lama (termasuk Riwayat Hapus) dibersihkan sekali jalan oleh migrasi backfill.
   assert.match(backfill, /UPDATE "Expense"/);
@@ -169,6 +172,8 @@ test("R15-R17: Edit HPP multi-baris, in-place reconcile, kolom Deskripsi", async
   assert.match(actions, /toggleHppCompleteAction/);
   assert.match(actions, /action: "HPP_COMPLETE_TOGGLED"/);
   assert.match(switchSource, /toggleHppCompleteAction/);
+  assert.match(switchSource, /inline-flex flex-col items-start gap-1/);
+  assert.match(switchSource, /whitespace-normal text-xs font-medium leading-tight/);
   assert.match(expenseData, /Boolean\(costs\?\.hppComplete\)/);
   assert.match(expenseData, /hppComplete: costs\?\.hppComplete \?\? false/);
   assert.match(expenseData, /hppComplete: true/);
@@ -249,7 +254,9 @@ test("export Laporan memuat 4 ringkasan total dengan format rupiah", async () =>
   assert.match(source, /Total Pengeluaran \$\{periodLabel\}/);
   // Nilai memakai format rupiah (Rp 150.000), bukan "Rp 150000" mentah.
   assert.match(source, /formatCurrency\(group\.income\[index\]\.amount\)/);
-  assert.match(source, /formatCurrency\(group\.expenses\[index\]\.amount\)/);
+  // Pengeluaran dicetak satu baris per tanggal memakai total hariannya.
+  assert.match(source, /expenseGroupLabel\(group\.date\)/);
+  assert.match(source, /formatCurrency\(group\.expenseTotal\)/);
   assert.match(source, /formatCurrency\(report\.allIncome\)/);
   assert.match(source, /formatCurrency\(report\.totalExpense\)/);
   assert.doesNotMatch(source, /— Rp \$\{/);
@@ -274,4 +281,69 @@ test("export Excel tidak menyertakan gambar di semua endpoint (R14)", async () =
     const source = await readFile(new URL(file, root), "utf8");
     assert.doesNotMatch(source, /addImage|data:image\/|base64,/, `${file} tidak memuat gambar`);
   }
+});
+
+test("Project memecah baris per produk dan HPP tersimpan per produk", async () => {
+  const [schema, migration, actions, expenseData, page, form, crm, broadcast, groups, products, cleanup] = await Promise.all([
+    readFile(new URL("prisma/schema.prisma", root), "utf8"),
+    readFile(new URL("prisma/migrations/20261025040000_sales_order_product_cost/migration.sql", root), "utf8"),
+    readFile(new URL("app/actions/finance.ts", root), "utf8"),
+    readFile(new URL("lib/finance/expense.ts", root), "utf8"),
+    readFile(new URL("app/(app)/keuangan/pemasukan/page.tsx", root), "utf8"),
+    readFile(new URL("components/finance/sales-order-cost-form.tsx", root), "utf8"),
+    readFile(new URL("app/actions/crm.ts", root), "utf8"),
+    readFile(new URL("app/actions/broadcast.ts", root), "utf8"),
+    readFile(new URL("lib/finance/project-groups.ts", root), "utf8"),
+    readFile(new URL("lib/finance/project-products.ts", root), "utf8"),
+    readFile(new URL("cleaningV2-2026-10-23.sql", root), "utf8"),
+  ]);
+
+  // Satu HPP per produk; SalesOrderCost tetap agregat order + status hppComplete.
+  assert.match(schema, /model SalesOrderProductCost/);
+  assert.match(schema, /@@unique\(\[salesOrderId, productName\]\)/);
+  assert.match(schema, /salesOrderProductCostId\s+String\?/);
+  assert.match(migration, /CREATE TABLE "SalesOrderProductCost"/);
+  assert.match(migration, /UPDATE "Expense" e/);
+  assert.match(migration, /"salesOrderProductCostId" = chosen.id/);
+  assert.match(migration, /LOWER\(BTRIM\(pc\."productName"\)\)/);
+
+  // Simpan HPP hanya menyentuh produk yang dipilih, lalu agregat order dihitung ulang.
+  assert.match(actions, /tx\.salesOrderProductCost\.updateMany/);
+  assert.match(actions, /salesOrderProductCostId: productCostId/);
+  assert.match(actions, /tx\.\$executeRaw/);
+  assert.match(actions, /UPDATE "SalesOrderCost"/);
+  assert.match(crm, /productCosts: \{ create: productCostSeeds\(invoice\.items\) \}/);
+  assert.match(broadcast, /productCosts: \{ create: \[\{ productName: "Order Historis", position: 0 \}\] \}/);
+
+  // Produk digabung per nama (baris ukuran lama) dan diberi label dari item PO.
+  assert.match(groups, /export function groupProjectRows/);
+  assert.match(groups, /rowCount/);
+  assert.match(products, /export function buildProjectProducts/);
+  assert.match(products, /current\.quantity \+= item\.quantity/);
+  assert.match(products, /if \(!rows\.size\) rows\.set\("produk"/);
+  assert.match(products, /poItem\?\.productCategory\?\.name\?\.trim\(\) \|\| poItem\?\.garmentType/);
+  assert.match(expenseData, /buildProjectProducts\(/);
+  assert.match(expenseData, /itemDiscount: itemDiscount\.toString\(\)/);
+  assert.match(expenseData, /orderDiscount: order\.invoice\.discountNominal\.toString\(\)/);
+
+  // Tabel: tanggal/customer/order rowSpan, produk per baris, Diskon tetap satu sel order.
+  assert.match(page, /groupProjectRows\(data\.items\)/);
+  assert.match(page, /rowSpan=\{orderGroup\.rowCount\}/);
+  assert.match(page, /<colgroup>/);
+  assert.match(page, /table-fixed/);
+  assert.match(page, /const showDate = customerIndex === 0 && orderIndex === 0 && productIndex === 0/);
+  assert.match(page, /const showCustomer = orderIndex === 0 && productIndex === 0/);
+  assert.doesNotMatch(page, /align-top/);
+  assert.match(page, /product\.costId && product\.costVersion !== null/);
+  assert.match(page, /productDescription\.get\(product\.costId\)/);
+  assert.match(page, /Produk \{formatCurrency\(item\.itemDiscount\)\}/);
+  assert.match(page, /Total \{formatCurrency\(item\.orderDiscount\)\}/);
+  assert.match(page, /Pembulatan \{formatCurrency\(roundingDiscount\)\}/);
+  assert.match(form, /name="productCostId"/);
+  assert.match(form, /Edit HPP · \{item\.productName\}/);
+  assert.match(form, /fallback\[name\]/);
+
+  const productDelete = cleanup.indexOf('DELETE FROM "SalesOrderProductCost"');
+  const orderCostDelete = cleanup.indexOf('DELETE FROM "SalesOrderCost"');
+  assert.ok(productDelete !== -1 && productDelete < orderCostDelete, "cleanup menghapus HPP produk sebelum SalesOrderCost");
 });

@@ -41,6 +41,18 @@ export function formatDate(value: Date | string | null | undefined, includeTime 
   }).format(new Date(value));
 }
 
+/** Tanggal panjang tanpa jam, mis. "1 Oktober 2026". Dipakai label grup laporan. */
+export function formatDateLong(value: Date | string | null | undefined) {
+  if (!value) return "-";
+
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(value));
+}
+
 export function toDateTimeLocalValue(value: Date | string | null | undefined) {
   if (!value) return "";
   const date = new Date(value);

@@ -27,8 +27,8 @@ const hppRowSchema = z.object({
 });
 // Edit HPP multi-baris (R15): tiap jenis boleh punya banyak baris; nominal kosong/0
 // diabaikan — baris existing yang dikosongkan justru dihapus (soft-delete).
-const salesOrderCostSchema = z.object({
-  salesOrderId: z.string().cuid(),
+const salesOrderProductCostSchema = z.object({
+  productCostId: z.string().trim().min(1).max(64),
   version: z.coerce.number().int().positive(),
   rows: z.object({
     kain: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Kain."),
@@ -152,17 +152,17 @@ function readHppRows(formData: FormData, key: (typeof HPP_KEYS)[number]): HppRow
   return rows;
 }
 
-export async function updateSalesOrderCostAction(formData: FormData) {
+export async function updateSalesOrderProductCostAction(formData: FormData) {
   return runRedirectingAction("/keuangan/pemasukan", async () => {
     const actor = await requireActor(FINANCE_ROLES);
     const raw = Object.fromEntries(HPP_KEYS.map((key) => [key, readHppRows(formData, key)])) as Record<(typeof HPP_KEYS)[number], HppRowForm[]>;
-    const parsed = salesOrderCostSchema.safeParse({
-      salesOrderId: formData.get("salesOrderId"),
+    const parsed = salesOrderProductCostSchema.safeParse({
+      productCostId: formData.get("productCostId"),
       version: formData.get("version"),
       rows: Object.fromEntries(HPP_KEYS.map((key) => [key, raw[key].map((row) => ({ id: row.id, amount: row.amount, description: row.description, spentAt: row.spentAt, method: row.method }))])),
     });
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Biaya HPP tidak valid.");
-    const { salesOrderId, version, rows } = parsed.data;
+    const { productCostId, version, rows } = parsed.data;
     // Nominal kosong/0 = baris diabaikan; id baris existing yang dikosongkan = dihapus user.
     // Pakai baris mentah (raw) agar field File bukti tidak hilang saat zod parse.
     const plans = HPP_KEYS.flatMap((key) => raw[key].map((row) => ({ key, row }))).filter((plan) => plan.row.amount !== "" && Number(plan.row.amount) > 0);
@@ -176,10 +176,10 @@ export async function updateSalesOrderCostAction(formData: FormData) {
     }
     await Promise.all([...new Set(plans.map((plan) => plan.row.method as string))].map((methodId) => assertPaymentMethod(methodId)));
     const prisma = getPrismaClient();
-    const previous = await prisma.expense.findMany({ where: { salesOrderId, category: "PROJECT", deletedAt: null }, select: { id: true, proofPath: true } });
+    // Hanya baris milik produk ini yang boleh diedit/dihapus. Produk lain pada
+    // order yang sama tidak boleh tersentuh dari dialog HPP produk ini.
+    const previous = await prisma.expense.findMany({ where: { salesOrderProductCostId: productCostId, category: "PROJECT", deletedAt: null }, select: { id: true, proofPath: true } });
     const previousById = new Map(previous.map((row) => [row.id, row]));
-    // Id baris harus milik order ini, tidak boleh dobel dipakai dua baris, dan tidak
-    // boleh muncul sekaligus sebagai baris terisi dan baris yang dihapus.
     const usedIds = new Set<string>();
     const claim = (id: string) => {
       if (!previousById.has(id)) throw new UserFacingError("Baris HPP lama tidak ditemukan. Muat ulang halaman.");
@@ -205,20 +205,42 @@ export async function updateSalesOrderCostAction(formData: FormData) {
     const supersededProofPaths: string[] = [];
     try {
       const updated = await prisma.$transaction(async (tx) => {
-        const order = await tx.salesOrder.findUnique({
-          where: { id: salesOrderId },
-          select: { id: true, status: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } },
+        const productCost = await tx.salesOrderProductCost.findUnique({
+          where: { id: productCostId },
+          select: {
+            id: true,
+            salesOrderId: true,
+            productName: true,
+            salesOrder: { select: { id: true, status: true, snapshotCustomerName: true, snapshotCompanyName: true } },
+          },
         });
-        if (!order || order.status !== "ACTIVE") throw new UserFacingError("Order tidak aktif.");
+        if (!productCost || productCost.salesOrder.status !== "ACTIVE") throw new UserFacingError("Order tidak aktif.");
         // Kolom agregat per jenis = jumlah baris terisi; jenis tanpa baris kembali null.
         const totals = Object.fromEntries(HPP_KEYS.map((key) => [key, plans.filter((plan) => plan.key === key).reduce((sum, plan) => sum + Number(plan.row.amount), 0)])) as Record<(typeof HPP_KEYS)[number], number>;
-        const result = await tx.salesOrderCost.updateMany({
-          where: { salesOrderId, version, salesOrder: { status: "ACTIVE" } },
+        const result = await tx.salesOrderProductCost.updateMany({
+          where: { id: productCostId, version, salesOrder: { status: "ACTIVE" } },
           data: { ...Object.fromEntries(HPP_KEYS.map((key) => [key, totals[key] > 0 ? new Prisma.Decimal(totals[key]) : null])), version: { increment: 1 } },
         });
-        if (result.count !== 1) throw new UserFacingError("Data HPP sudah berubah atau order tidak aktif. Muat ulang halaman.");
-        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrder", entityId: salesOrderId, action: "SALES_ORDER_HPP_UPDATED", changedFields: [...HPP_KEYS] } });
-        const customerName = order.snapshotCompanyName ?? order.snapshotCustomerName;
+        if (result.count !== 1) throw new UserFacingError("Data HPP produk sudah berubah atau order tidak aktif. Muat ulang halaman.");
+        // Agregat order dihitung ulang dari seluruh produk agar dashboard/workbook
+        // tetap memakai satu baris per order. Dilakukan di database supaya dua
+        // dialog produk yang tersimpan berdekatan tidak saling menimpa.
+        await tx.salesOrderCost.upsert({ where: { salesOrderId: productCost.salesOrderId }, create: { salesOrderId: productCost.salesOrderId }, update: {} });
+        await tx.$executeRaw`
+          UPDATE "SalesOrderCost"
+          SET
+            "kain" = (SELECT NULLIF(SUM("kain"), 0) FROM "SalesOrderProductCost" WHERE "salesOrderId" = ${productCost.salesOrderId}),
+            "zipper" = (SELECT NULLIF(SUM("zipper"), 0) FROM "SalesOrderProductCost" WHERE "salesOrderId" = ${productCost.salesOrderId}),
+            "jahit" = (SELECT NULLIF(SUM("jahit"), 0) FROM "SalesOrderProductCost" WHERE "salesOrderId" = ${productCost.salesOrderId}),
+            "pres" = (SELECT NULLIF(SUM("pres"), 0) FROM "SalesOrderProductCost" WHERE "salesOrderId" = ${productCost.salesOrderId}),
+            "dtfPlastisol" = (SELECT NULLIF(SUM("dtfPlastisol"), 0) FROM "SalesOrderProductCost" WHERE "salesOrderId" = ${productCost.salesOrderId}),
+            "bordir" = (SELECT NULLIF(SUM("bordir"), 0) FROM "SalesOrderProductCost" WHERE "salesOrderId" = ${productCost.salesOrderId}),
+            "lainnya" = (SELECT NULLIF(SUM("lainnya"), 0) FROM "SalesOrderProductCost" WHERE "salesOrderId" = ${productCost.salesOrderId}),
+            "updatedAt" = now()
+          WHERE "salesOrderId" = ${productCost.salesOrderId}
+        `;
+        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrderProductCost", entityId: productCostId, action: "SALES_ORDER_PRODUCT_HPP_UPDATED", changedFields: [...HPP_KEYS] } });
+        const customerName = productCost.salesOrder.snapshotCompanyName ?? productCost.salesOrder.snapshotCustomerName;
         // (1) Baris existing yang masih terisi: timpa in-place — tidak masuk Riwayat Hapus.
         for (const plan of plans) {
           if (!plan.row.id) continue;
@@ -243,7 +265,7 @@ export async function updateSalesOrderCostAction(formData: FormData) {
           const proofUpload = (plan as { proofUpload?: PaymentProof }).proofUpload;
           const item = await tx.expense.create({
             data: {
-              purpose: `HPP ${HPP_LABEL[plan.key] ?? plan.key} · ${customerName} · ${order.purchaseOrder.productName}`,
+              purpose: `HPP ${HPP_LABEL[plan.key] ?? plan.key} · ${customerName} · ${productCost.productName}`,
               description: plan.row.description ?? null,
               spentAt: date(plan.row.spentAt as string),
               amount: new Prisma.Decimal(plan.row.amount),
@@ -251,13 +273,14 @@ export async function updateSalesOrderCostAction(formData: FormData) {
               paymentMethodId: plan.row.method as string,
               isReimbursable: false,
               customerName,
-              salesOrderId,
+              salesOrderId: productCost.salesOrderId,
+              salesOrderProductCostId: productCostId,
               hppKey: plan.key,
               ...(proofUpload ?? {}),
               createdById: actor.id,
             },
           });
-          await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: item.id, action: "EXPENSE_CREATED", changedFields: ["purpose", "description", "spentAt", "amount", "category", "salesOrderId", "proofPath"] } });
+          await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "Expense", entityId: item.id, action: "EXPENSE_CREATED", changedFields: ["purpose", "description", "spentAt", "amount", "category", "salesOrderId", "salesOrderProductCostId", "proofPath"] } });
         }
         // (3) Baris yang dihapus user (dikosongkan/dihilangkan): soft-delete —
         // satu-satunya jalur yang masuk Riwayat Hapus (R16).
@@ -270,7 +293,7 @@ export async function updateSalesOrderCostAction(formData: FormData) {
       // File bukti lama yang terganti dibersihkan setelah komit (best-effort).
       for (const path of supersededProofPaths) await deletePaymentProof(path).catch(() => undefined);
       if (updated.count) { revalidatePath("/keuangan/pemasukan"); revalidatePath("/keuangan/pengeluaran"); revalidatePath("/keuangan/pengeluaran/riwayat"); }
-      return flashMessagePath("/keuangan/pemasukan", "notice", plans.length ? "Biaya HPP diperbarui dan otomatis masuk ke Pengeluaran kategori Project." : "Biaya HPP berhasil diperbarui.");
+      return flashMessagePath("/keuangan/pemasukan", "notice", plans.length ? "Biaya HPP produk diperbarui dan otomatis masuk ke Pengeluaran kategori Project." : "Biaya HPP produk berhasil diperbarui.");
     } catch (error) {
       for (const path of uploadedPaths) await deletePaymentProof(path);
       throw error;

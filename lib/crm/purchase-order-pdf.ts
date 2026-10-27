@@ -34,7 +34,7 @@ type PurchaseOrderPdfData = {
   snapshotBusinessEmail: string | null;
   snapshotBusinessAddress: string | null;
   opportunity: { customer: { name: string; companyName: string | null } };
-  items: Array<{ id: string; name: string; pola: string | null; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; productCategory: { name: string } | null }>;
+  items: Array<{ id: string; name: string; pola: string | null; baseColor: string | null; variationColor: string | null; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; productCategory: { name: string } | null }>;
   sizes: Array<{ itemId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   rosterEntries: Array<{ itemId: string; memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
@@ -53,6 +53,8 @@ const HEADER_ROW_MIN_HEIGHT = 34;
 const HEADER_LINE_HEIGHT = 15;
 const TABLE_ROW_HEIGHT = 26;
 const HEADING_BAR_HEIGHT = 26;
+/** Baris roster per halaman A4; sisanya lanjut ke halaman berikutnya. */
+const ROSTER_ROWS_PER_PAGE = 25;
 
 /**
  * Daftar ukuran tetap pada size chart (sesuai referensi Owner): semua kolom selalu
@@ -95,12 +97,17 @@ type HeaderCell = {
 type HeaderLine = Array<{ text: string; bold: boolean }>;
 
 export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoBytes: Uint8Array, assets: PdfAsset[], variant: PurchaseOrderPdfVariant = "customer") {
+  /**
+   * Nomor PO yang dicetak: tanpa akhiran revisi (`-R2`, `-R3`, ...). Revisi tetap
+   * tercatat di sistem (riwayat dokumen, audit, judul UI) tetapi tidak dicetak
+   * pada dokumen customer maupun penjahit.
+   */
+  const documentNo = data.purchaseOrderNo.replace(/-R\d+$/i, "");
   const poDecoration = data.decorationMethods.length
     ? data.decorationMethods
     : data.decorationMethod
       ? [data.decorationMethod]
       : [];
-  const itemNameById = new Map(data.items.map((item) => [item.id, item.name]));
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
@@ -116,7 +123,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
   }
 
   function decorate(page: PDFPage, pageNumber: number) {
-    const footer = `${safe(data.purchaseOrderNo)} | Halaman ${pageNumber}`;
+    const footer = `${safe(documentNo)} | Halaman ${pageNumber}`;
     page.drawText(safe(data.snapshotBusinessName ?? "AS Konveksi"), { x: margin, y: 22, size: MIN_FONT_SIZE, font: regular, color: rgb(0.42, 0.42, 0.42) });
     page.drawText(footer, { x: A4.width - margin - regular.widthOfTextAtSize(footer, MIN_FONT_SIZE), y: 22, size: MIN_FONT_SIZE, font: regular, color: rgb(0.42, 0.42, 0.42) });
     if (data.status === "DRAFT") page.drawText("DRAFT", { x: 155, y: 370, size: 82, font: bold, color: rgb(0.9, 0.9, 0.9), rotate: degrees(35), opacity: 0.45 });
@@ -211,7 +218,8 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     markUsed();
     const title = variant === "penjahit" ? "PURCHASE ORDER — PENJAHIT" : "PURCHASE ORDER";
     page.drawText(title, { x: margin, y: y - 12, size: 14, font: bold, color: rgb(0.12, 0.12, 0.12) });
-    const meta = `${safe(data.purchaseOrderNo)} · Revisi ${data.revision}`;
+    // Nomor PO saja — kata "Revisi" sengaja tidak dicetak (keputusan Owner).
+    const meta = safe(documentNo);
     page.drawText(meta, { x: A4.width - margin - regular.widthOfTextAtSize(meta, MIN_FONT_SIZE), y: y - 12, size: MIN_FONT_SIZE, font: regular, color: rgb(0.3, 0.3, 0.3) });
     y -= 26;
     if (item) {
@@ -224,8 +232,11 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     // (pilihan "PDH / PDL" user tersimpan di sana) supaya tidak tercetak "-".
     const category = item?.productCategory?.name ?? data.productCategory ?? "-";
     const decoration = item?.decorationMethods.length ? item.decorationMethods : poDecoration;
-    const baseColor = data.baseColor ?? data.color;
-    const variationColor = data.variationColor;
+    // Warna mengikuti produk: satu PO boleh memuat beberapa warna berbeda.
+    // PO lama (item tanpa warna) jatuh ke kolom warna header supaya PDF lama tidak berubah.
+    const colorItem = item ?? (data.items.length === 1 ? data.items[0] : null);
+    const baseColor = colorItem?.baseColor ?? data.baseColor ?? data.color;
+    const variationColor = colorItem?.variationColor ?? data.variationColor;
 
     // Varian penjahit (Sprint 11 R3): sel Deadline hanya berisi deadline penjahit per item
     // (null tampil "-"); lembar tunggal memakai satu-satunya produk. Varian customer tetap deadline PO.
@@ -509,6 +520,68 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     }
   }
 
+  /**
+   * Roster pemakai dicetak per produk, tepat setelah lembar produknya (dan halaman desain
+   * penjahitnya), supaya nama pemakai jersey tetap di dekat jersey dan tidak menumpuk
+   * bersama produk lain di halaman terakhir. Satu halaman memuat ROSTER_ROWS_PER_PAGE baris;
+   * sisanya lanjut ke halaman berikutnya dengan judul "lanjutan".
+   */
+  function drawRosterPages(entries: PurchaseOrderPdfData["rosterEntries"], productName: string | null) {
+    if (!entries.length) return;
+    // Tanpa kolom "Produk": satu halaman roster hanya untuk satu produk, jadi nama produk
+    // cukup di judul dan kolom Nama mendapat ruang lebih lebar.
+    const columns = [
+      { key: "memberId" as const, header: "ID", x: 6, width: 64 },
+      { key: "name" as const, header: "Nama", x: 72, width: 296 },
+      { key: "size" as const, header: "Size", x: 372, width: 66 },
+      { key: "sleeve" as const, header: "Lengan", x: 442, width: 81 },
+    ];
+    const title = productName ? `ROSTER PEMAKAI — ${safe(productName.toUpperCase())}` : "ROSTER PEMAKAI";
+    const poNo = safe(documentNo);
+    for (let offset = 0; offset < entries.length; offset += ROSTER_ROWS_PER_PAGE) {
+      addPage();
+      markUsed();
+      const heading = clipPdfText(
+        offset === 0 ? `${title} (${entries.length})` : `${title} (lanjutan)`,
+        bold,
+        15,
+        CONTENT_WIDTH - regular.widthOfTextAtSize(poNo, MIN_FONT_SIZE) - 12,
+      );
+      page.drawText(heading, { x: margin, y, size: 15, font: bold });
+      page.drawText(poNo, { x: A4.width - margin - regular.widthOfTextAtSize(poNo, MIN_FONT_SIZE), y, size: MIN_FONT_SIZE, font: regular });
+      y -= 30;
+      page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
+      columns.forEach((column) => {
+        page.drawText(clipPdfText(column.header, bold, MIN_FONT_SIZE, column.width - 8), {
+          x: margin + column.x,
+          y: y - TABLE_ROW_HEIGHT + 8,
+          size: MIN_FONT_SIZE,
+          font: bold,
+          color: rgb(1, 1, 1),
+        });
+      });
+      y -= TABLE_ROW_HEIGHT;
+      entries.slice(offset, offset + ROSTER_ROWS_PER_PAGE).forEach((entry) => {
+        page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.5, borderColor: rgb(0.82, 0.82, 0.82) });
+        const cells: Record<(typeof columns)[number]["key"], string> = {
+          memberId: safe(entry.memberId),
+          name: safe(entry.name),
+          size: safe(entry.size),
+          sleeve: entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang",
+        };
+        columns.forEach((column) => {
+          page.drawText(clipPdfText(cells[column.key], regular, MIN_FONT_SIZE, column.width - 8), {
+            x: margin + column.x,
+            y: y - TABLE_ROW_HEIGHT + 8,
+            size: MIN_FONT_SIZE,
+            font: regular,
+          });
+        });
+        y -= TABLE_ROW_HEIGHT;
+      });
+    }
+  }
+
   const showPerItem = data.items.length > 1;
   if (showPerItem) {
     // Tiap produk satu lembar mandiri: kop + identitas PO diulang, gambar desain menempel di lembar produknya.
@@ -519,6 +592,8 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
       drawProductSheet(item);
       // Revisi: desain penjahit produk ini langsung mengikuti di halaman penuh berikutnya.
       drawPenjahitDesignSheet(item);
+      // Roster ikut blok produknya, jadi halaman lanyard tidak lagi diselingi nama jersey.
+      drawRosterPages(data.rosterEntries.filter((entry) => entry.itemId === item.id), item.name);
     }
     // Revisi: lembar penutup "Total keseluruhan" dihapus untuk kedua varian (customer & penjahit) —
     // PDF berhenti setelah lembar produk terakhir.
@@ -546,62 +621,13 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     if (data.items.length === 1) drawPenjahitDesignSheet(data.items[0]);
   }
 
-  if (data.rosterEntries.length) {
-    const showProduct = data.items.length > 1;
-    // Lebar kolom dihitung agar teks 12 pt tidak saling menimpa pada halaman A4.
-    const columns = showProduct
-      ? [
-          { key: "memberId" as const, header: "ID", x: 6, width: 64 },
-          { key: "name" as const, header: "Nama", x: 72, width: 168 },
-          { key: "product" as const, header: "Produk", x: 244, width: 130 },
-          { key: "size" as const, header: "Size", x: 378, width: 62 },
-          { key: "sleeve" as const, header: "Lengan", x: 444, width: 79 },
-        ]
-      : [
-          { key: "memberId" as const, header: "ID", x: 6, width: 64 },
-          { key: "name" as const, header: "Nama", x: 72, width: 296 },
-          { key: "size" as const, header: "Size", x: 372, width: 66 },
-          { key: "sleeve" as const, header: "Lengan", x: 442, width: 81 },
-        ];
-    for (let offset = 0; offset < data.rosterEntries.length; offset += 25) {
-      addPage();
-      markUsed();
-      page.drawText("ROSTER PEMAKAI", { x: margin, y, size: 15, font: bold });
-      const poNo = safe(data.purchaseOrderNo);
-      page.drawText(poNo, { x: A4.width - margin - regular.widthOfTextAtSize(poNo, MIN_FONT_SIZE), y, size: MIN_FONT_SIZE, font: regular });
-      y -= 30;
-      page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
-      columns.forEach((column) => {
-        page.drawText(clipPdfText(column.header, bold, MIN_FONT_SIZE, column.width - 8), {
-          x: margin + column.x,
-          y: y - TABLE_ROW_HEIGHT + 8,
-          size: MIN_FONT_SIZE,
-          font: bold,
-          color: rgb(1, 1, 1),
-        });
-      });
-      y -= TABLE_ROW_HEIGHT;
-      data.rosterEntries.slice(offset, offset + 25).forEach((entry) => {
-        page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.5, borderColor: rgb(0.82, 0.82, 0.82) });
-        const cells: Record<(typeof columns)[number]["key"], string> = {
-          memberId: safe(entry.memberId),
-          name: safe(entry.name),
-          product: safe(itemNameById.get(entry.itemId) ?? "-"),
-          size: safe(entry.size),
-          sleeve: entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang",
-        };
-        columns.forEach((column) => {
-          page.drawText(clipPdfText(cells[column.key], regular, MIN_FONT_SIZE, column.width - 8), {
-            x: margin + column.x,
-            y: y - TABLE_ROW_HEIGHT + 8,
-            size: MIN_FONT_SIZE,
-            font: regular,
-          });
-        });
-        y -= TABLE_ROW_HEIGHT;
-      });
-    }
-  }
+  // PO satu produk: roster tetap di halaman penutup seperti sebelumnya. Baris roster lama
+  // (itemId "" dari sebelum roster per produk) juga ikut di sini agar tidak hilang.
+  const rosterItemIds = new Set(data.items.map((item) => item.id));
+  drawRosterPages(
+    showPerItem ? data.rosterEntries.filter((entry) => !rosterItemIds.has(entry.itemId)) : data.rosterEntries,
+    showPerItem ? null : data.items[0]?.name ?? null,
+  );
   // Buang halaman yang hanya memuat footer supaya PO tidak menyisakan halaman kosong.
   const keepPages = new Set(usedPages);
   for (const candidate of document.getPages()) {

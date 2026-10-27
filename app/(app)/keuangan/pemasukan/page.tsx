@@ -14,8 +14,9 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
-import { hppProjectDescription, getIncome, getProjectExpensesBySalesOrders } from "@/lib/finance/expense";
+import { hppProjectDescription, getIncome, getProjectExpensesBySalesOrders, type ProjectExpensePrefill } from "@/lib/finance/expense";
 import { parseOptionalFinanceDateRange } from "@/lib/finance/date-range";
+import { groupProjectRows } from "@/lib/finance/project-groups";
 import { getActivePaymentMethods } from "@/lib/master-data";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
@@ -28,6 +29,37 @@ function sumMoney(values: Array<string | null | undefined>) {
 }
 
 const HPP_KEY_BY_LABEL: Record<string, string> = { Kain: "kain", Zipper: "zipper", Jahit: "jahit", Pres: "pres", "DTF/Plastisol": "dtfPlastisol", Bordir: "bordir", "Lain-lain": "lainnya" };
+
+// Lebar kolom eksplisit supaya header dan isi selalu sejajar. Total = 196.5rem;
+// tabel memakai layout fixed dan scroll horizontal di container.
+const PROJECT_COLUMN_WIDTHS = [
+  "7rem",   // Tanggal
+  "8rem",   // Customer
+  "10rem",  // Nama order
+  "8.5rem", // Jenis busana
+  "3.5rem", // Qty
+  "7rem",   // Kain
+  "7rem",   // Zipper
+  "7rem",   // Jahit
+  "7rem",   // Pres
+  "8.5rem", // DTF/Plastisol
+  "7rem",   // Bordir
+  "7rem",   // Lain-lain
+  "11rem",  // Deskripsi
+  "7.5rem", // Total HPP
+  "8rem",   // Harga Asli
+  "11rem",  // Diskon
+  "6.5rem", // Pajak
+  "8rem",   // Total Invoice
+  "8rem",   // Laba Bersih
+  "5.5rem", // Margin %
+  "7rem",   // Deposit
+  "7rem",   // DP
+  "7rem",   // Lunas
+  "8rem",   // Keterangan
+  "7rem",   // Status
+  "7.5rem", // Aksi
+] as const;
 
 function projectPrefillKey(row: { hppKey: string | null; purpose: string }) {
   if (row.hppKey) return row.hppKey;
@@ -46,18 +78,34 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
   const pageSize = parsePageSizeParam(params.pageSize);
   const [data, methods] = await Promise.all([getIncome({ query, from: range.start, to: range.end, status, hppStatus, page, pageSize }), getActivePaymentMethods()]);
   const projectRows = await getProjectExpensesBySalesOrders(data.items.map((item) => item.id));
-  // Prefill multi-baris (R15): semua baris per jenis diurutkan createdAt asc, bukan baris pertama saja.
-  const projectPrefill = new Map(data.items.map((item) => {
-    const prefill: Partial<Record<string, HppProjectPrefill[]>> = {};
+  // Prefill dan Deskripsi kini per produk. Expense lama tanpa tautan produk
+  // ditempatkan pada produk pertama agar tidak hilang sebelum/sesudah migrasi.
+  const productPrefill = new Map<string, Partial<Record<string, HppProjectPrefill[]>>>();
+  const productDescription = new Map<string, string>();
+  for (const item of data.items) {
+    const fallbackCostId = item.products.find((product) => product.costId)?.costId ?? null;
+    const rowsByCost = new Map<string, ProjectExpensePrefill[]>();
     for (const row of projectRows.get(item.id) ?? []) {
-      const key = projectPrefillKey(row);
-      if (!key) continue;
-      (prefill[key] ??= []).push({ id: row.id, spentAt: row.spentAt, paymentMethodId: row.paymentMethodId, description: row.description, amount: row.amount, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType });
+      const costId = row.salesOrderProductCostId ?? fallbackCostId;
+      if (!costId) continue;
+      const list = rowsByCost.get(costId) ?? [];
+      list.push(row);
+      rowsByCost.set(costId, list);
     }
-    return [item.id, prefill] as const;
-  }));
-  // R17 — kolom Deskripsi per order: gabung baris HPP terisi.
-  const projectDescription = new Map(data.items.map((item) => [item.id, hppProjectDescription(projectRows.get(item.id) ?? [])]));
+    for (const product of item.products) {
+      if (!product.costId) continue;
+      const rows = rowsByCost.get(product.costId) ?? [];
+      const prefill: Partial<Record<string, HppProjectPrefill[]>> = {};
+      for (const row of rows) {
+        const key = projectPrefillKey(row);
+        if (!key) continue;
+        (prefill[key] ??= []).push({ id: row.id, spentAt: row.spentAt, paymentMethodId: row.paymentMethodId, description: row.description, amount: row.amount, proofPath: row.proofPath, proofFileName: row.proofFileName, proofMimeType: row.proofMimeType });
+      }
+      productPrefill.set(product.costId, prefill);
+      productDescription.set(product.costId, hppProjectDescription(rows));
+    }
+  }
+  const projectGroups = groupProjectRows(data.items);
   const persistent = { q: query || undefined, from: range.from || undefined, to: range.to || undefined, status: status === "all" ? undefined : status, hppStatus: hppStatus === "all" ? undefined : hppStatus, pageSize: pageSize === DATA_PAGE_SIZE ? undefined : String(pageSize) };
   const exportParams = Object.fromEntries(Object.entries(persistent).filter((entry): entry is [string, string] => Boolean(entry[1])));
   // Total dihitung dari seluruh baris data yang dimuat halaman ini (data.items).
@@ -106,7 +154,93 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
         </form>
       </div>
       {data.items.length ? <div className="flex min-h-112 flex-1 flex-col">
-        <Table className="min-w-[180rem]" containerClassName="min-h-0 flex-1 overflow-auto"><TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead>Tanggal</TableHead><TableHead>Customer</TableHead><TableHead>Nama order</TableHead><TableHead>Jenis busana</TableHead><TableHead className="text-right">Total QTY</TableHead>{["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}<TableHead>Deskripsi</TableHead>{["Total HPP", "Harga Asli", "Diskon", "Pajak", "Total Invoice", "Laba Bersih", "Margin %", "Deposit", "DP", "Lunas"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}<TableHead>Keterangan</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader><TableBody>{data.items.map((item) => <TableRow key={item.id}><TableCell>{item.paidAt ? formatDate(item.paidAt) : "-"}</TableCell><TableCell>{item.customer}</TableCell><TableCell>{item.orderName}</TableCell><TableCell>{item.garmentType}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell>{[item.kain, item.zipper, item.jahit, item.pres, item.dtfPlastisol, item.bordir, item.lainnya].map((value, index) => <TableCell key={index} className="text-right font-mono tabular-nums">{value === null ? "-" : formatCurrency(value)}</TableCell>)}<TableCell className="max-w-80 whitespace-pre-line break-words text-xs leading-relaxed">{projectDescription.get(item.id) || "-"}</TableCell>{[item.hpp, item.originalPrice, item.discount, item.tax, item.totalInvoice, item.netProfit].map((value, index) => <TableCell key={index} className="text-right font-mono tabular-nums">{value === null ? "-" : formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.deposit ? formatCurrency(item.deposit) : "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell><TableCell>{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell><TableCell>{item.costVersion !== null ? <HppCompleteSwitch salesOrderId={item.id} version={item.costVersion} checked={item.hppComplete} /> : <span className="text-muted-foreground">-</span>}</TableCell><TableCell className="text-right">{item.costVersion !== null ? <SalesOrderCostForm item={{ ...item, costVersion: item.costVersion }} methods={methods} projectExpenses={projectPrefill.get(item.id)} /> : "-"}</TableCell></TableRow>)}</TableBody><TableFooter><TableRow className="border-t bg-muted hover:bg-muted"><TableCell colSpan={4} className="font-medium">Total</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>{numericTotals.slice(0, 7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}<TableCell />{numericTotals.slice(7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{formatCurrency(value)}</TableCell>)}<TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDeposit)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalDp)}</TableCell><TableCell className="text-right font-mono font-medium tabular-nums">{formatCurrency(totalSettled)}</TableCell><TableCell /><TableCell /><TableCell /></TableRow></TableFooter></Table>
+        <Table className="min-w-[197rem] table-fixed" containerClassName="min-h-0 flex-1 overflow-auto">
+          <colgroup>
+            {PROJECT_COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
+          </colgroup>
+          <TableHeader className="sticky top-0 bg-muted">
+            <TableRow className="hover:bg-muted">
+              <TableHead>Tanggal</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Nama order</TableHead>
+              <TableHead>Jenis busana</TableHead>
+              <TableHead className="text-right">Qty</TableHead>
+              {["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}
+              <TableHead>Deskripsi</TableHead>
+              {["Total HPP", "Harga Asli", "Diskon", "Pajak", "Total Invoice", "Laba Bersih", "Margin %", "Deposit", "DP", "Lunas"].map((label) => <TableHead key={label} className="text-right" title={label === "Diskon" ? "Diskon total (termasuk pembulatan) = diskon produk + diskon order" : undefined}>{label}</TableHead>)}
+              <TableHead>Keterangan</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {projectGroups.map((dateGroup) => dateGroup.customers.map((customerGroup, customerIndex) => customerGroup.orders.map((orderGroup, orderIndex) => {
+              const item = orderGroup.item;
+              const itemDiscountValue = Number(item.itemDiscount);
+              const orderDiscountValue = Number(item.orderDiscount);
+              // totalDiscount juga memuat penyesuaian pembulatan ke Rp500.
+              const roundingDiscount = Number(item.discount) - itemDiscountValue - orderDiscountValue;
+              const hasRoundingDiscount = Math.abs(roundingDiscount) >= 1;
+              return item.products.map((product, productIndex) => {
+                // Tanggal hanya di baris pertama date group; customer di baris
+                // pertama setiap customer group (bukan hanya customer pertama).
+                const showDate = customerIndex === 0 && orderIndex === 0 && productIndex === 0;
+                const showCustomer = orderIndex === 0 && productIndex === 0;
+                const showOrder = productIndex === 0;
+                return <TableRow key={`${item.id}:${product.key}:${productIndex}`}>
+                  {showDate ? <TableCell rowSpan={dateGroup.rowCount} className="align-middle whitespace-nowrap">{dateGroup.paidAt ? formatDate(dateGroup.paidAt) : "-"}</TableCell> : null}
+                  {showCustomer ? <TableCell rowSpan={customerGroup.rowCount} className="align-middle whitespace-normal break-words">{customerGroup.customer}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle whitespace-normal break-words">{item.orderName}</TableCell> : null}
+                  <TableCell className="align-middle whitespace-normal break-words">
+                    <div className="font-medium">{product.label}</div>
+                    {product.label !== product.productName ? <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{product.productName}</div> : null}
+                  </TableCell>
+                  <TableCell className="align-middle text-right font-mono tabular-nums">{product.quantity}</TableCell>
+                  {[product.kain, product.zipper, product.jahit, product.pres, product.dtfPlastisol, product.bordir, product.lainnya].map((value, index) => <TableCell key={index} className="align-middle text-right font-mono tabular-nums">{value === null || Number(value) === 0 ? "-" : formatCurrency(value)}</TableCell>)}
+                  <TableCell className="align-middle whitespace-pre-line break-words text-xs leading-relaxed">{product.costId ? productDescription.get(product.costId) || "-" : "-"}</TableCell>
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.hpp === null || Number(item.hpp) === 0 ? "-" : formatCurrency(item.hpp)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.originalPrice)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums" title="Diskon total (termasuk pembulatan) = diskon produk + diskon order">
+                    <div>{formatCurrency(item.discount)}</div>
+                    {itemDiscountValue > 0 || orderDiscountValue > 0 ? <div className="mt-1 whitespace-normal font-sans text-[11px] leading-tight text-muted-foreground">
+                      {itemDiscountValue > 0 ? <div>Produk {formatCurrency(item.itemDiscount)}</div> : null}
+                      {orderDiscountValue > 0 ? <div>Total {formatCurrency(item.orderDiscount)}</div> : null}
+                      {hasRoundingDiscount ? <div>Pembulatan {formatCurrency(roundingDiscount)}</div> : null}
+                    </div> : null}
+                  </TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.tax)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.totalInvoice)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.netProfit === null ? "-" : formatCurrency(item.netProfit)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.deposit ? formatCurrency(item.deposit) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.costVersion !== null ? <HppCompleteSwitch salesOrderId={item.id} version={item.costVersion} checked={item.hppComplete} /> : <span className="text-muted-foreground">-</span>}</TableCell> : null}
+                  <TableCell className="align-middle text-right">
+                    {product.costId && product.costVersion !== null ? <SalesOrderCostForm item={{ id: item.id, productCostId: product.costId, productName: product.productName, costVersion: product.costVersion, kain: product.kain, zipper: product.zipper, jahit: product.jahit, pres: product.pres, dtfPlastisol: product.dtfPlastisol, bordir: product.bordir, lainnya: product.lainnya }} methods={methods} projectExpenses={productPrefill.get(product.costId)} /> : <span className="text-muted-foreground">-</span>}
+                  </TableCell>
+                </TableRow>;
+              });
+            })))}
+          </TableBody>
+          <TableFooter>
+            <TableRow className="border-t bg-muted hover:bg-muted">
+              <TableCell colSpan={4} className="font-medium">Total</TableCell>
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>
+              {numericTotals.slice(0, 7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
+              <TableCell />
+              {numericTotals.slice(7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell>
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalDeposit === 0 ? "-" : formatCurrency(totalDeposit)}</TableCell>
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalDp === 0 ? "-" : formatCurrency(totalDp)}</TableCell>
+              <TableCell className="text-right font-mono font-medium tabular-nums">{totalSettled === 0 ? "-" : formatCurrency(totalSettled)}</TableCell>
+              <TableCell />
+              <TableCell />
+              <TableCell />
+            </TableRow>
+          </TableFooter>
+        </Table>
         <DataPagination pathname="/keuangan/pemasukan" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
       </div> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada project</EmptyTitle><EmptyDescription>Invoice dengan pembayaran aktif akan tampil di sini.</EmptyDescription></EmptyHeader></Empty>}
     </section>

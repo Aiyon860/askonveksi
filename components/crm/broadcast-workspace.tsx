@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { ImagePicker } from "@/components/ui/image-picker";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -345,6 +346,15 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
                 <FieldDescription>
                   Variabel yang tersedia: {"{{customer_name}}"}, {"{{company_name}}"}, {"{{business_name}}"}, dan{" "}
                   {"{{sales_pic_name}}"}. Template terakhir yang Anda tulis disimpan di perangkat ini.
+                </FieldDescription>
+              </Field>
+
+              <Field className="gap-1.5">
+                <FieldLabel htmlFor="broadcast-image">Gambar pamflet/poster (opsional)</FieldLabel>
+                <ImagePicker id="broadcast-image" name="image" emptyLabel="Tanpa gambar" />
+                <FieldDescription>
+                  JPG, PNG, atau WebP maksimal 10 MB. Gambar dipakai untuk pengiriman ini lalu dihapus dari sistem,
+                  sehingga riwayat Kotak Masuk hanya menyimpan nama file.
                 </FieldDescription>
               </Field>
 

@@ -1,16 +1,22 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+
+import { AccessDeniedError } from "@/lib/auth/session";
 
 import type { FormActionState } from "./form-state";
 import { UserFacingError } from "./errors";
 
 export { UserFacingError };
 
+function isAccessDenied(error: unknown) {
+  return error instanceof AccessDeniedError || (error instanceof Error && error.message === "UNAUTHORIZED");
+}
+
 export function messageForError(error: unknown) {
   if (error instanceof UserFacingError) return error.message;
-  if (error instanceof Error && error.message === "UNAUTHORIZED") {
+  if (isAccessDenied(error)) {
     return "Sesi atau hak akses Anda sudah berubah. Masuk kembali lalu coba lagi.";
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -38,7 +44,7 @@ export type FlashMessage = {
 export function flashKindForError(error: unknown): Exclude<FlashMessage["kind"], "notice"> {
   if (error instanceof UserFacingError) return "warning";
   if (error instanceof Prisma.PrismaClientKnownRequestError || error instanceof Prisma.PrismaClientValidationError) return "warning";
-  if (error instanceof Error && error.message === "UNAUTHORIZED") return "warning";
+  if (isAccessDenied(error)) return "warning";
   return "error";
 }
 
@@ -64,6 +70,7 @@ export async function runRedirectingAction(
   try {
     destination = await work();
   } catch (error) {
+    unstable_rethrow(error);
     console.error("[redirecting-action]", fallbackPath, error);
     destination = await flashMessagePath(fallbackPath, flashKindForError(error), messageForError(error));
   }
@@ -79,6 +86,7 @@ export async function runFormAction(actionName: string, work: () => Promise<stri
   try {
     destination = await work();
   } catch (error) {
+    unstable_rethrow(error);
     console.error(`[form-action:${actionName}]`, error);
     return { ok: false, message: messageForError(error) };
   }

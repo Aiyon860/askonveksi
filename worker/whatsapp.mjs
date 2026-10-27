@@ -78,6 +78,41 @@ async function deleteWorkerMedia(paths) {
     if (error) console.error(`[whatsapp-worker] delete media: ${cleanError(error)}`);
   }
 }
+
+/**
+ * Kurangi sisa pemakaian gambar broadcast sementara. Saat tidak ada job yang
+ * tersisa, file dihapus dari storage dan baris penandanya dibuang.
+ */
+async function releaseTempMedia(payload) {
+  const mediaId = payload?.attachment?.tempMediaId;
+  if (typeof mediaId !== "string" || !mediaId) return;
+  try {
+    const row = await prisma.whatsAppTempMedia.update({
+      where: { id: mediaId },
+      data: { remaining: { decrement: 1 } },
+      select: { id: true, path: true, remaining: true },
+    });
+    if (row.remaining > 0) return;
+    await prisma.whatsAppTempMedia.deleteMany({ where: { id: row.id } });
+    await deleteWorkerMedia([row.path]);
+  } catch (error) {
+    // P2025 = baris sudah dibersihkan sweeper; bukan kegagalan berarti.
+    if (error?.code !== "P2025") console.error(`[whatsapp-worker] temp media ${mediaId}: ${cleanError(error)}`);
+  }
+}
+
+/** Bersihkan media broadcast yang kedaluwarsa atau sudah tidak dipakai job mana pun. */
+async function sweepTempMedia() {
+  const now = new Date();
+  const rows = await prisma.whatsAppTempMedia.findMany({
+    where: { OR: [{ expiresAt: { lt: now } }, { remaining: { lte: 0 } }] },
+    select: { id: true, path: true },
+    take: 100,
+  });
+  if (!rows.length) return;
+  await deleteWorkerMedia(rows.map((row) => row.path));
+  await prisma.whatsAppTempMedia.deleteMany({ where: { id: { in: rows.map((row) => row.id) } } });
+}
 const campaignRecipientAllowlist = process.env.BROADCAST_TEST_RECIPIENTS
   ? new Set(process.env.BROADCAST_TEST_RECIPIENTS.split(",").map(normalizeNumber).filter(Boolean))
   : null;
@@ -491,6 +526,17 @@ async function scheduleCampaigns() {
       continue;
     }
 
+    // Gambar campaign permanen: file yang sama dipakai semua penerima.
+    const campaignAttachment = campaign.imagePath
+      ? {
+          path: campaign.imagePath,
+          mimeType: campaign.imageMimeType || "image/jpeg",
+          fileName: campaign.imageFileName || "campaign.jpg",
+          sizeBytes: campaign.imageSizeBytes || 0,
+          kind: "IMAGE",
+        }
+      : null;
+
     let cursor = campaign.recipientCursor;
     // 5 batch x 100 agar muat 200M (sebelumnya 10 x 200).
     for (let batch = 0; batch < 5; batch += 1) {
@@ -510,7 +556,7 @@ async function scheduleCampaigns() {
         customerId: item.id,
         campaignId: campaign.id,
         scheduledAt: campaign.scheduledAt,
-        payload: { text: render(campaign.body, { customer_name: item.name, company_name: item.companyName || "", business_name: business?.name || "AS Konveksi" }).replace(/\s{2,}/g, " ") },
+        payload: { text: render(campaign.body, { customer_name: item.name, company_name: item.companyName || "", business_name: business?.name || "AS Konveksi" }).replace(/\s{2,}/g, " "), attachment: campaignAttachment },
       }));
       if (jobs.length) await prisma.whatsAppAutomationJob.createMany({ data: jobs, skipDuplicates: true });
       cursor = recipients.at(-1).customerId;
@@ -619,6 +665,7 @@ async function processOneJob() {
       prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null, lastError: "Sumber automasi sudah berubah atau selesai." } }),
       prisma.whatsAppMessage.updateMany({ where: { automationJobId: id, status: { in: ["QUEUED", "SENDING"] } }, data: { status: "CANCELLED" } }),
     ], WORKER_TRANSACTION_OPTIONS);
+    await releaseTempMedia(job.payload);
     return true;
   }
   if (job.message?.status === "SENDING") {
@@ -627,6 +674,7 @@ async function processOneJob() {
       prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "FAILED", leaseOwner: null, leaseExpiresAt: null, lastError: error } }),
       prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { status: "FAILED", failedAt: new Date(), errorMessage: error } }),
     ], WORKER_TRANSACTION_OPTIONS);
+    await releaseTempMedia(job.payload);
     return true;
   }
   let sendStarted = false;
@@ -662,7 +710,7 @@ async function processOneJob() {
     const conversation = await prisma.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, ...(job.customerId ? { customerId: job.customerId } : {}) }, update: job.customerId ? { customerId: job.customerId } : {} });
     const preparedMessage = job.message
       ? await prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { accountId: account.id, conversationId: conversation.id, status: "SENDING", errorMessage: null, failedAt: null } })
-      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? "DOCUMENT" : "TEXT", text, mediaFileName: payload.attachment?.type === "invoice" ? `invoice-${job.invoiceId}.pdf` : payload.attachment?.fileName ?? null, mediaMimeType: payload.attachment?.type === "invoice" ? "application/pdf" : payload.attachment?.mimeType ?? null, sentById: typeof payload.sentById === "string" ? payload.sentById : null, automationJobId: job.id, occurredAt: preparedAt } });
+      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? (payload.attachment.kind === "IMAGE" ? "IMAGE" : "DOCUMENT") : "TEXT", text, mediaFileName: payload.attachment?.type === "invoice" ? `invoice-${job.invoiceId}.pdf` : payload.attachment?.fileName ?? null, mediaMimeType: payload.attachment?.type === "invoice" ? "application/pdf" : payload.attachment?.mimeType ?? null, sentById: typeof payload.sentById === "string" ? payload.sentById : null, automationJobId: job.id, occurredAt: preparedAt } });
     await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { accountId: account.id } });
     sendStarted = true;
     const sent = await socket.sendMessage(remoteJid, content);
@@ -686,6 +734,7 @@ async function processOneJob() {
         }
       }
     }, WORKER_TRANSACTION_OPTIONS);
+    await releaseTempMedia(job.payload);
   } catch (error) {
     const detail = cleanError(error);
     const message = sendStarted ? `Status pengiriman ambigu: ${detail}` : detail;
@@ -695,6 +744,8 @@ async function processOneJob() {
     console.error(`[whatsapp-worker] job ${job.id}: ${message}`);
     await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: retry ? "RETRY" : "FAILED", attempts: offline ? { decrement: 1 } : undefined, nextAttemptAt: retry ? new Date(Date.now() + (offline ? 5 : Math.min(30, 2 ** job.attempts)) * 60_000) : null, leaseOwner: null, leaseExpiresAt: null, lastError: message } });
     await prisma.whatsAppMessage.updateMany({ where: { automationJobId: job.id }, data: { status: retry ? "QUEUED" : "FAILED", errorMessage: message, failedAt: retry ? null : new Date() } });
+    // Job yang menyerah tidak akan memakai gambar sementara lagi.
+    if (!retry) await releaseTempMedia(job.payload);
   }
   return true;
 }
@@ -712,6 +763,7 @@ async function tick() {
     if (Date.now() - lastAutomationAt >= 60_000) {
       await scheduleAutomations();
       await scheduleCampaigns();
+      await sweepTempMedia();
       lastAutomationAt = Date.now();
     }
     for (let index = 0; index < 5; index += 1) {

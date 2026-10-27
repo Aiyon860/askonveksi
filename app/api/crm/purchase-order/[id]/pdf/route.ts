@@ -33,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       include: {
         opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
         productCategory: { select: { name: true } },
-        items: { select: { id: true, name: true, pola: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, penjahitDesignType: true, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
+        items: { select: { id: true, name: true, pola: true, baseColor: true, variationColor: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, penjahitDesignType: true, designs: { select: { path: true, originalName: true, contentType: true }, orderBy: { position: "asc" } }, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
         sizes: { select: { itemId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
         rosterEntries: { select: { itemId: true, memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
         attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
@@ -66,23 +66,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   })));
   // Sprint 11 R3: varian penjahit menampilkan Desain Penjahit tiap produk di atas
   // gambar desain produksi; varian customer tidak menyertakannya (PDF customer tak berubah).
+  // Revisi: satu produk boleh punya beberapa gambar — tiap gambar menjadi satu halaman
+  // (lihat `drawPenjahitDesignSheet`). Kolom tunggal lama dipakai sebagai fallback.
   const penjahitAssets =
     variant === "penjahit"
       ? (await Promise.all(
           purchaseOrder.items.map(async (item) => {
-            const path = item.penjahitDesignPath;
-            if (!path) return null;
-            const label = `Desain penjahit ${item.name}`;
-            const originalName = item.penjahitDesignName ?? label;
-            const { data } = await erpStorage(PO_DESIGNS_BUCKET).download(path);
-            if (!data) return null;
-            try {
-              return { kind: "PENJAHIT_DESIGN", label, originalName, contentType: "image/png", bytes: await normalizePdfImage(new Uint8Array(await data.arrayBuffer())), itemId: item.id as string | null };
-            } catch {
-              return { kind: "PENJAHIT_DESIGN", label, originalName, contentType: item.penjahitDesignType ?? "image/png", bytes: new Uint8Array(), itemId: item.id as string | null };
-            }
+            const designs = item.designs.length
+              ? item.designs
+              : item.penjahitDesignPath
+                ? [{ path: item.penjahitDesignPath, originalName: item.penjahitDesignName ?? `Desain penjahit ${item.name}`, contentType: item.penjahitDesignType ?? "image/png" }]
+                : [];
+            const assets = await Promise.all(designs.map(async (design, index) => {
+              const suffix = designs.length > 1 ? ` (${index + 1}/${designs.length})` : "";
+              const label = `Desain penjahit ${item.name}${suffix}`;
+              const { data } = await erpStorage(PO_DESIGNS_BUCKET).download(design.path);
+              if (!data) return null;
+              try {
+                return { kind: "PENJAHIT_DESIGN", label, originalName: design.originalName || label, contentType: "image/png", bytes: await normalizePdfImage(new Uint8Array(await data.arrayBuffer())), itemId: item.id as string | null };
+              } catch {
+                return { kind: "PENJAHIT_DESIGN", label, originalName: design.originalName || label, contentType: design.contentType || "image/png", bytes: new Uint8Array(), itemId: item.id as string | null };
+              }
+            }));
+            return assets;
           }),
-        )).filter((asset): asset is NonNullable<typeof asset> => asset !== null)
+        )).flat().filter((asset): asset is NonNullable<typeof asset> => asset !== null)
       : [];
   const assets = [...penjahitAssets, ...(await Promise.all([...purchaseOrder.attachments, ...designAttachments].map(async (item) => {
     const label = item.caption || ATTACHMENT_LABEL[item.kind] || item.originalName;
@@ -107,10 +115,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     snapshotBusinessEmail: purchaseOrder.snapshotBusinessEmail ?? profile?.email ?? null,
     snapshotBusinessAddress: purchaseOrder.snapshotBusinessAddress ?? profile?.address ?? null,
   }, logoBytes, assets, variant);
+  // Nama file juga tanpa akhiran revisi (-R2/-R3) supaya customer/penjahit tidak
+  // melihat penanda revisi; revisi tetap tercatat di sistem.
+  const documentNo = purchaseOrder.purchaseOrderNo.replace(/-R\d+$/i, "");
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${downloadFilename(`purchase-order-${purchaseOrder.purchaseOrderNo}${variant === "penjahit" ? "-penjahit" : ""}`, "pdf")}"`,
+      "Content-Disposition": `${new URL(request.url).searchParams.has("preview") ? "inline" : "attachment"}; filename="${downloadFilename(`purchase-order-${documentNo}${variant === "penjahit" ? "-penjahit" : ""}`, "pdf")}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

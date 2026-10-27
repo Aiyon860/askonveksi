@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 
 import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { paymentTypeLabel } from "@/lib/finance/payment-label";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type FinanceReportState = { from: Date | null; to: Date | null };
@@ -25,8 +26,8 @@ export async function getFinanceReport(state: FinanceReportState) {
     prisma.paymentTransaction.findMany({
       where: paymentWhere,
       select: {
-        id: true, amount: true, paidAt: true,
-        payment: { select: { salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } } },
+        id: true, amount: true, paidAt: true, isDeposit: true, paymentTermId: true,
+        payment: { select: { kind: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } } } },
       },
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
     }),
@@ -36,9 +37,22 @@ export async function getFinanceReport(state: FinanceReportState) {
   ]);
   const groups = new Map<string, { date: string; income: { id: string; label: string; query: string; amount: string }[]; expenses: { id: string; label: string; amount: string }[] }>();
   const groupFor = (date: string) => { const current = groups.get(date); if (current) return current; const next = { date, income: [], expenses: [] }; groups.set(date, next); return next; };
-  payments.forEach((item) => { const order = item.payment.salesOrder; groupFor(dateKey(item.paidAt)).income.push({ id: item.id, label: `${order.snapshotCompanyName ?? order.snapshotCustomerName} · ${order.purchaseOrder.productName}`, query: order.invoiceNo, amount: item.amount.toString() }); });
+  payments.forEach((item) => {
+    const order = item.payment.salesOrder;
+    const type = paymentTypeLabel({ isDeposit: item.isDeposit, paymentTermId: item.paymentTermId, kind: item.payment.kind });
+    groupFor(dateKey(item.paidAt)).income.push({ id: item.id, label: `${order.snapshotCompanyName ?? order.snapshotCustomerName} · ${order.purchaseOrder.productName} · ${type}`, query: order.invoiceNo, amount: item.amount.toString() });
+  });
   expenses.forEach((item) => groupFor(item.spentAt.toISOString().slice(0, 10)).expenses.push({ id: item.id, label: item.purpose, amount: item.amount.toString() }));
   const totalIncome = payments.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
   const totalExpense = expenses.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-  return { groups: [...groups.values()].sort((a, b) => b.date.localeCompare(a.date)), allIncome: (allPaymentTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), allExpense: (allExpenseTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), totalIncome: totalIncome.toString(), totalExpense: totalExpense.toString() };
+  // Pengeluaran dicetak sebagai satu baris per tanggal di halaman laporan, jadi tiap grup
+  // membawa total hariannya sendiri. Dijumlah dengan Decimal agar tidak ada pembulatan float
+  // dan nilainya persis sama dengan total pengeluaran periode.
+  const dailyGroups = [...groups.values()]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((group) => ({
+      ...group,
+      expenseTotal: group.expenses.reduce((sum, item) => sum.add(new Prisma.Decimal(item.amount)), new Prisma.Decimal(0)).toString(),
+    }));
+  return { groups: dailyGroups, allIncome: (allPaymentTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), allExpense: (allExpenseTotal._sum.amount ?? new Prisma.Decimal(0)).toString(), totalIncome: totalIncome.toString(), totalExpense: totalExpense.toString() };
 }

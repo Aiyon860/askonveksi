@@ -21,6 +21,8 @@ const eslintConfig = defineConfig([
     ".gemini/**",
     ".github/skills/**",
     ".opencode/**",
+    // Artefak video/komposisi dari skill brag (bukan kode aplikasi, berisi bundle vendor):
+    "brag-output/**",
   ]),
 ]);
 

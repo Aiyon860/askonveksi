@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ChangeEvent, ComponentProps } from "react";
+import type { ChangeEvent, ComponentProps, ReactNode } from "react";
 
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { caretForDigits, countDigits, formatRupiahInput, parseRupiahInput, removeDigitAt } from "@/lib/money-input-format";
@@ -9,7 +9,10 @@ import { caretForDigits, countDigits, formatRupiahInput, parseRupiahInput, remov
 // useLayoutEffect memicu warning saat SSR; pakai useEffect di server dan useLayoutEffect di klien.
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-type MoneyInputProps = Omit<ComponentProps<"input">, "type">;
+type MoneyInputProps = Omit<ComponentProps<"input">, "type"> & {
+  /** Addon di ujung kanan, mis. toggle Rp/% pada input diskon. */
+  endAddon?: ReactNode;
+};
 
 /**
  * Input nominal rupiah: menampilkan ribuan id-ID ("1.000.000") saat mengetik,
@@ -28,6 +31,7 @@ export function MoneyInput({
   max,
   disabled,
   readOnly,
+  endAddon,
   ...rest
 }: MoneyInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +102,7 @@ export function MoneyInput({
           readOnly={readOnly}
           onChange={applyChange}
         />
+        {endAddon}
       </InputGroup>
       <input type="hidden" name={name} value={raw} disabled={disabled} />
     </>

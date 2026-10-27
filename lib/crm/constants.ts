@@ -86,6 +86,7 @@ export const ROLE_LABEL = {
   DESIGNER: "Desainer",
   PRODUCTION: "Produksi",
   QC: "QC",
+  ADMIN_SAGA: "Admin Saga",
 } as const;
 
 export const INVOICE_STATUS_LABEL = {

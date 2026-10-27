@@ -12,7 +12,7 @@ import { markWhatsAppConversationReadAction, sendWhatsAppMessageAction } from "@
 import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { FilePicker } from "@/components/ui/file-picker";
@@ -253,12 +253,6 @@ function Inbox(props: Props) {
         <Card size="sm" className="min-w-0">
           <CardHeader>
             <CardTitle>Percakapan</CardTitle>
-            <CardAction>
-              <Button type="button" size="sm" variant="outline" onClick={refreshInbox} disabled={busy} aria-busy={busy} aria-label="Cek pesan terbaru" title="Cek pesan terbaru">
-                <RefreshCw aria-hidden="true" className={busy ? "animate-spin" : undefined} />
-                Cek pesan
-              </Button>
-            </CardAction>
           </CardHeader>
           <CardContent className="gap-1 px-2">
             <form className="px-1 pb-2"><div className="relative"><Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" /><Input name="q" defaultValue={props.query} placeholder="Cari nama atau nomor" aria-label="Cari percakapan WhatsApp" className="pl-9" /></div></form>

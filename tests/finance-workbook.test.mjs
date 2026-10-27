@@ -34,7 +34,7 @@ const [
   readFile(new URL("prisma/schema.prisma", root), "utf8"),
 ]);
 
-test("workbook laporan keuangan memakai enam sheet dan urutan sesuai template klien", () => {
+test("workbook laporan keuangan memakai tujuh sheet dan urutan sesuai template klien", () => {
   assert.match(spec, /name: mode === "project" \? "PROJECT" : "DP"/);
   for (const sheet of ["PENGELUARAN", "SALDO AKHIR", "PNGELUARAN MURNI", "CATATAN"]) {
     assert.match(spec, new RegExp(`name: "${sheet}"`));
@@ -43,10 +43,10 @@ test("workbook laporan keuangan memakai enam sheet dan urutan sesuai template kl
   assert.match(spec, /name: "PNGELUARAN MURNI"/);
   assert.match(spec, /Pengeluaran murni \$\{data\.period\.monthTitle\}/);
   assert.match(spec, /data\.scope === "laporan"/);
-  assert.match(spec, /\[project\.sheet, expense\.sheet, cash\.sheet, dp\.sheet, pure\.sheet, notes\.sheet\]/);
+  assert.match(spec, /\[project\.sheet, expense\.sheet, cash\.sheet, dp\.sheet, pure\.sheet, notes\.sheet, detail\.sheet\]/);
   assert.match(spec, /data\.scope === "pemasukan"/);
   assert.match(spec, /\[project\.sheet, dp\.sheet\]/);
-  assert.match(spec, /\[expense\.sheet, cash\.sheet, pure\.sheet\]/);
+  assert.match(spec, /\[expense\.sheet, cash\.sheet, pure\.sheet, detail\.sheet\]/);
   assert.match(spec, /freeze: \{ row: secondHeaderNumber, column: 2 \}/);
   assert.match(spec, /printTitlesRow: `\$\{groupRow\}:\$\{secondHeaderNumber\}`/);
   assert.match(spec, /fitToPage: true/);
@@ -73,17 +73,17 @@ test("perhitungan HPP, laba, kas, dan catatan tidak menghitung ganda", () => {
   assert.match(spec, /E\$\{rowNumber - 1\}\+C\$\{rowNumber\}-D\$\{rowNumber\}/);
   assert.match(spec, /entries\.length/);
   assert.match(spec, /E\$\{openingRow\}/);
-  // Total pengeluaran menjumlah baris data saja, bukan baris subtotal.
-  assert.match(spec, /dataRanges\.join\(","\)/);
-  assert.match(spec, /dataRanges\.length/);
-  // Catatan memisahkan arus kas project dan operasional.
-  assert.match(spec, /'PENGELUARAN'!E:E,"Project"/);
-  assert.match(spec, /'PENGELUARAN'!E:E,"Operasional"/);
+  // Total pengeluaran menjumlah baris tanggal saja (sheet ringkas tanpa baris subtotal).
+  assert.match(spec, /sumFormula\("F", 3, rows\.length/);
+  // Catatan memisahkan arus kas project dan operasional (sumber: sheet rincian per item).
+  assert.match(spec, /'RINCIAN PENGELUARAN'!E:E,"Project"/);
+  assert.match(spec, /'RINCIAN PENGELUARAN'!E:E,"Operasional"/);
   assert.match(spec, /B3-B4/);
   assert.match(spec, /B5-B6/);
   // Guard data kosong.
   assert.match(spec, /lastDataRow >= firstDataRow/);
-  assert.match(spec, /leftLastDataRow >= 4/);
+  assert.match(spec, /sumFormula\("C", 4, leftLastDataRow/);
+  assert.match(spec, /expenseGroupLabel\(date\)/);
 });
 
 test("loader workbook memuat semua project aktif tetapi membatasi kas dan pembayaran per periode", () => {

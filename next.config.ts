@@ -20,6 +20,9 @@ const nextConfig: NextConfig = {
   compress: true,
   productionBrowserSourceMaps: false,
   experimental: {
+    // Mengaktifkan forbidden()/unauthorized() supaya halaman yang ditolak
+    // dirender sebagai 403 buatan sendiri, bukan error bawaan Next.
+    authInterrupts: true,
     serverActions: {
       bodySizeLimit: "28mb",
     },

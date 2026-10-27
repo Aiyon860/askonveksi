@@ -50,5 +50,7 @@ test("MoneyInput menampilkan angka berformat dengan nilai mentah terpisah", asyn
   assert.match(source, /type="hidden"[\s\S]*name=\{name\}[\s\S]*value=\{raw\}/);
   assert.match(source, /setSelectionRange/);
   assert.match(source, /setCustomValidity/);
+  assert.match(source, /endAddon\?: ReactNode/);
+  assert.match(source, /\{endAddon\}/);
   assert.doesNotMatch(source, /type="number"/);
 });

@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { Fragment, Suspense } from "react";
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CheckCircle2, FileDown, FileText, Paperclip } from "lucide-react";
 
-import { CommunicationEntryForm } from "@/components/crm/communication-entry-form";
-import { CommunicationHistory } from "@/components/crm/communication-history";
+import { DocumentRevisionHistory } from "@/components/crm/document-revision-history";
 import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceWorkflowSection } from "@/components/crm/invoice-workflow-section";
 import { OpportunityProcessPanel, OpportunityProcessTabs } from "@/components/crm/opportunity-process-tabs";
@@ -17,15 +16,16 @@ import { PageMessage } from "@/components/page-message";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OpportunityStatusBadge, SalesOrderStatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
-import { getCommunicationTimeline, getOpportunityDetail, getPurchaseOrderNoPreview } from "@/lib/crm/data";
+import { getOpportunityDetail, getOpportunityDocumentHistory, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
-import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
@@ -41,11 +41,12 @@ function documentRevisionLabel(revision: number) {
 
 export default async function OpportunityDetailPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ historyPage?: string | string[]; tab?: string | string[] }>;
+  searchParams: Promise<{ document?: string | string[]; historyPage?: string | string[]; tab?: string | string[] }>;
 }) {
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
   const historyPage = parsePageParam(resolvedSearchParams.historyPage);
+  const documentId = typeof resolvedSearchParams.document === "string" ? resolvedSearchParams.document : undefined;
   const initialTab = parseOpportunityDetailTab(resolvedSearchParams.tab);
 
   return (
@@ -63,7 +64,7 @@ export default async function OpportunityDetailPage({ params, searchParams }: {
 
       <div className="flex min-w-0 max-w-full flex-col">
         <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-          <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} />
+          <OpportunityContent id={id} initialTab={initialTab} historyPage={historyPage} documentId={documentId} />
         </Suspense>
       </div>
     </div>
@@ -91,18 +92,22 @@ async function OpportunityHeader({ id }: { id: string }) {
   );
 }
 
-async function OpportunityContent({ id, initialTab, historyPage }: { id: string; initialTab: OpportunityDetailTab; historyPage: number }) {
-  const [opportunity, actor, communicationHistory, sizeOptions, categoryOptions, paymentMethods] = await Promise.all([
+async function OpportunityContent({ id, initialTab, historyPage, documentId }: { id: string; initialTab: OpportunityDetailTab; historyPage: number; documentId?: string }) {
+  const [opportunity, actor, documentHistory, sizeOptions, categoryOptions, paymentMethods] = await Promise.all([
     getOpportunityDetail(id),
     getCurrentActor(),
-    getCommunicationTimeline({ opportunityId: id, page: historyPage }),
+    getOpportunityDocumentHistory({ opportunityId: id, page: historyPage, documentId }),
     getActiveGarmentSizes(),
     getActiveProductCategories(),
     getActivePaymentMethods(),
   ]);
   if (!opportunity || !actor) notFound();
   const purchaseOrderNoPreview = await getPurchaseOrderNoPreview(opportunity.customer);
-  if (historyPage > communicationHistory.pageCount) redirect(`/crm/peluang/${id}?tab=aktivitas&historyPage=${communicationHistory.pageCount}#communication-history`);
+  if (historyPage > documentHistory.pageCount) {
+    const params = new URLSearchParams({ tab: "aktivitas", historyPage: String(documentHistory.pageCount) });
+    if (documentHistory.documentId) params.set("document", documentHistory.documentId);
+    redirect(`/crm/peluang/${id}?${params.toString()}#document-history`);
+  }
 
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
   // D1: Admin PO boleh mengunggah desain langsung (read-only CRM lainnya tetap).
@@ -128,7 +133,8 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
   const invoiceDraft = opportunity.invoices.find((item) => item.status === "DRAFT");
   const cancelledInvoice = opportunity.invoices.find((item) => item.status === "CANCELLED");
   const issuedInvoice = opportunity.invoices.find((item) => item.status === "ISSUED" && item.purchaseOrderId === agreedPo?.id);
-  const scheduledPayment = issuedInvoice?.pendingPayment;
+  const latestInvoiceRevision = opportunity.invoices.reduce((latest, invoice) => Math.max(latest, invoice.revision), 0);
+  const scheduledPayment = invoiceDraft ? undefined : issuedInvoice?.pendingPayment;
   const readyForDeal = Boolean(agreedPo && issuedInvoice && !poDraft && !invoiceDraft);
   const poRevisionCount = Math.max(0, opportunity.purchaseOrders.length - 1);
   const poTabStatus = poDraft ? "Draft" : agreedPo ? "Disepakati" : cancelledPo ? "Dibatalkan" : poRevisionCount ? `${poRevisionCount} revisi` : opportunity.purchaseOrders.length ? "Dokumen awal" : "Belum ada";
@@ -172,7 +178,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
       status={{
         po: poTabStatus,
         invoice: invoiceTabStatus,
-        aktivitas: `${communicationHistory.total} entri`,
+        aktivitas: `${documentHistory.total} perubahan`,
       }}
     >
       <OpportunityProcessPanel value="po">
@@ -241,9 +247,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                         position: 0,
                         name: purchaseOrder.productName,
                         pola: purchaseOrder.pola ?? "",
+                        baseColor: purchaseOrder.baseColor ?? purchaseOrder.color,
+                        variationColor: purchaseOrder.variationColor,
                         productCategoryId: purchaseOrder.productCategoryId,
                         decorationMethods: purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []),
                         designNotes: purchaseOrder.designNotes ?? "",
+                        designs: [],
                       }];
                       return {
                         purchaseOrderNo: purchaseOrder.purchaseOrderNo,
@@ -275,6 +284,8 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                             key: poItem.id || `saved-${itemIndex}`,
                             name: poItem.name,
                             pola: poItem.pola ?? purchaseOrder.pola ?? "",
+                            baseColor: poItem.baseColor ?? "",
+                            variationColor: poItem.variationColor ?? "",
                             productCategoryId: poItem.productCategoryId ?? "",
                             decorationMethods: poItem.decorationMethods,
                             designNotes: poItem.designNotes ?? "",
@@ -298,8 +309,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       id: item.id,
                       name: item.name,
                       deadline: dateInputValue(item.penjahitDeadline) || null,
-                      hasDesign: Boolean(item.penjahitDesignPath),
-                      designName: item.penjahitDesignName,
+                      // Revisi: beberapa gambar per produk; fallback ke kolom tunggal lama.
+                      designs: item.designs.length
+                        ? item.designs.map((design) => ({ id: design.id, name: design.originalName }))
+                        : item.penjahitDesignPath
+                          ? [{ id: `legacy-${item.id}`, name: item.penjahitDesignName ?? "Desain penjahit" }]
+                          : [],
                     }))}
                   >
                     <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
@@ -355,6 +370,7 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       ...invoice.salesOrder.payment.terms.flatMap((term) => (term.transactions[0] ? [{ id: term.transactions[0].id, label: `Lihat Kwitansi Termin ${term.position + 1}` }] : [])),
                     ]
                   : [];
+                const hasNewerActiveRevision = opportunity.invoices.some((other) => other.id !== invoice.id && (other.status === "DRAFT" || other.status === "ISSUED") && other.revision > invoice.revision);
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
                   dueAt: invoice.dueAt?.toISOString().slice(0, 10) ?? "",
@@ -371,6 +387,12 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                   discountPercent: invoice.discountValue.toString(),
                   discountNominal: invoice.discountNominal.toString(),
                   taxPercent: invoice.taxPercent?.toString() ?? "0",
+                  // Invoice baru memakai Add On global; draft lama masih menyimpan Add On
+                  // per baris, jadi keduanya diratakan ke section Add On saat revisi.
+                  addons: [
+                    ...invoice.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty })),
+                    ...invoice.items.flatMap((item) => item.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty }))),
+                  ],
                   items: invoice.items.map((item) => ({
                     productName: item.productName ?? "",
                     description: item.description,
@@ -381,7 +403,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                     discountType: item.discountType,
                     discountPercent: item.discountPercent?.toString() ?? "0",
                     discountNominal: item.discountAmount?.toString() ?? "0",
-                    addons: item.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty })),
                   })),
                 };
                 return (
@@ -390,7 +411,6 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       opportunityId={opportunity.id}
                       invoiceId={invoice.id}
                       invoiceVersion={invoice.version}
-                      invoiceRevision={invoice.revision}
                       invoiceStatus={invoice.status}
                       title={`${invoice.invoiceNo} · ${documentRevisionLabel(invoice.revision)}`}
                       description={`Berdasarkan ${invoiceSourcePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
@@ -398,6 +418,9 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
                       canCancel={canCancelDocuments}
                       inNegotiation={inNegotiation}
                       purchaseOrder={editableInvoicePo}
+                      hasSalesOrder={Boolean(invoice.salesOrder)}
+                      hasNewerActiveRevision={hasNewerActiveRevision}
+                      revisionLimitReached={latestInvoiceRevision >= 4}
                       draftValues={invoiceDraftValues}
                       salesOrderHref={invoice.salesOrder ? `/sales-orders/${invoice.salesOrder.id}` : undefined}
                       salesOrderLabel={invoice.salesOrder ? `Lihat ${invoice.salesOrder.salesOrderNo}` : undefined}
@@ -476,15 +499,15 @@ async function OpportunityContent({ id, initialTab, historyPage }: { id: string;
       </OpportunityProcessPanel>
 
       <OpportunityProcessPanel value="aktivitas">
-      <CommunicationHistory
-        items={communicationHistory.items}
-        total={communicationHistory.total}
-        page={communicationHistory.page}
-        pageCount={communicationHistory.pageCount}
-        pathname={`/crm/peluang/${opportunity.id}`}
-        paginationParams={{ tab: "aktivitas" }}
-        form={canOperate && !opportunity.customer.archivedAt ? <CommunicationEntryForm context="opportunity" customerId={opportunity.customer.id} opportunityId={opportunity.id} initialOccurredAt={toDateTimeLocalValue(new Date())} /> : undefined}
-      />
+        <DocumentRevisionHistory
+          items={documentHistory.items}
+          total={documentHistory.total}
+          page={documentHistory.page}
+          pageCount={documentHistory.pageCount}
+          documents={documentHistory.documents}
+          documentId={documentHistory.documentId}
+          pathname={`/crm/peluang/${opportunity.id}`}
+        />
       </OpportunityProcessPanel>
     </OpportunityProcessTabs>
   );
@@ -503,8 +526,8 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <div><dt className="text-xs text-muted-foreground">Instansi</dt><dd className="mt-1">{purchaseOrder.instansi ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Pola</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${poItem.pola ?? purchaseOrder.pola ?? "-"}`).join(" · ") : purchaseOrder.pola ?? purchaseOrder.productName ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Bahan</dt><dd className="mt-1">{purchaseOrder.material}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Warna variasi</dt><dd className="mt-1">{purchaseOrder.variationColor ?? "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Warna dasar</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${poItem.baseColor ?? purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}`).join(" · ") : purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Warna variasi</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${poItem.variationColor ?? "-"}`).join(" · ") : purchaseOrder.variationColor ?? "-"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Deposit</dt><dd className="mt-1">{purchaseOrder.depositRequired ? "Perlu deposit" : "Tanpa deposit"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Metode dekorasi</dt><dd className="mt-1">{purchaseOrder.items.length ? purchaseOrder.items.map((poItem) => `${poItem.name}: ${decorationMethodsLabel(poItem.decorationMethods)}`).join(" · ") : decorationMethodsLabel(purchaseOrder.decorationMethods.length ? purchaseOrder.decorationMethods : (purchaseOrder.decorationMethod ? [purchaseOrder.decorationMethod] : []))}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Deadline produksi</dt><dd className="mt-1">{formatDate(purchaseOrder.deadline)}</dd></div>
@@ -523,7 +546,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
               <div key={poItem.id} className="rounded-lg border-2 border-primary/25 bg-primary/[0.04] p-3">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">{poItem.name}</span>
-                  <span className="text-xs text-muted-foreground">{decorationMethodsLabel(poItem.decorationMethods)} · Total {itemTotal.toLocaleString("id-ID")}</span>
+                  <span className="text-xs text-muted-foreground">{decorationMethodsLabel(poItem.decorationMethods)} · Warna {poItem.baseColor ?? purchaseOrder.baseColor ?? purchaseOrder.color ?? "-"}{poItem.variationColor ? ` / ${poItem.variationColor}` : ""} · Total {itemTotal.toLocaleString("id-ID")}</span>
                 </div>
                 {itemIsAccessory ? (
                   <p className="text-sm">Jumlah produk: <span className="font-mono">{itemTotal.toLocaleString("id-ID")}</span></p>
@@ -570,14 +593,38 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
 }
 
 function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][number] }) {
+  // Dokumen lama menyimpan Add On di baris; invoice baru di level invoice.
+  // Keduanya ditampilkan sebagai satu section Add On SETELAH semua produk.
+  const addons = [...invoice.addons, ...invoice.items.flatMap((item) => item.addons)];
   return (
     <div className="flex flex-col gap-4">
-      <Table>
+      <Table className="min-w-[42rem] table-fixed">
+        <colgroup>
+          <col className="w-[24%]" />
+          <col className="w-[30%]" />
+          <col className="w-[10%]" />
+          <col className="w-[12%]" />
+          <col className="w-[12%]" />
+          <col className="w-[12%]" />
+        </colgroup>
         <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
-        <TableBody>{invoice.items.map((item) => <Fragment key={item.id}>
-          <TableRow><TableCell>{item.productName ?? "Produk"}</TableCell><TableCell>{item.description || "-"}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.total)}</TableCell></TableRow>
-          {item.addons.map((addon) => <TableRow key={`${item.id}-${addon.label}`}><TableCell className="pl-6 text-muted-foreground">+ {addon.label}</TableCell><TableCell className="text-muted-foreground">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{addon.qty}</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono text-muted-foreground">-</TableCell><TableCell className="text-right font-mono text-muted-foreground">{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
-        </Fragment>)}</TableBody>
+        <TableBody>
+          {invoice.items.map((item) => {
+            const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount.toString()) * addon.qty, 0);
+            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
+          })}
+          {addons.length ? <>
+            <TableRow className="bg-info-surface hover:bg-info-surface">
+              <TableCell colSpan={6} className="border-t-2 border-info/20 px-2 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="info">Add On</Badge>
+                  <span className="text-xs text-info-surface-foreground">Item tambahan di luar produk</span>
+                </div>
+              </TableCell>
+            </TableRow>
+            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono">{addon.qty}</TableCell><TableCell className="text-right font-mono">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono">-</TableCell><TableCell className="text-right font-mono">{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
+          </> : null}
+        </TableBody>
       </Table>
       <dl className="ml-auto grid w-full max-w-xs gap-2 text-sm">
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-mono">{formatCurrency(invoice.subtotal)}</dd></div>

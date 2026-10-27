@@ -153,6 +153,8 @@ UNION ALL SELECT 'AKAN DIHAPUS', 'PaymentTransaction', count(*) FROM "PaymentTra
   WHERE "paymentId" IN (SELECT id FROM "DealPayment" WHERE "salesOrderId" IN (SELECT id FROM _del_so))
 UNION ALL SELECT 'AKAN DIHAPUS', 'PurchaseOrderDeposit', count(*) FROM "PurchaseOrderDeposit"
   WHERE "purchaseOrderId" IN (SELECT id FROM _del_po)
+UNION ALL SELECT 'AKAN DIHAPUS', 'SalesOrderCost', count(*) FROM "SalesOrderCost" WHERE "salesOrderId" IN (SELECT id FROM _del_so)
+UNION ALL SELECT 'AKAN DIHAPUS', 'SalesOrderProductCost', count(*) FROM "SalesOrderProductCost" WHERE "salesOrderId" IN (SELECT id FROM _del_so)
 UNION ALL SELECT 'AKAN DIHAPUS', 'Expense (spentAt >= 17 Okt)', count(*) FROM _del_expense
 UNION ALL SELECT 'AKAN DIHAPUS', 'Attendance (17 Okt s.d. hari ini)', count(*) FROM _del_attendance
 UNION ALL SELECT 'AKAN DIHAPUS', 'CommunicationActivity', count(*) FROM _del_comm
@@ -293,6 +295,7 @@ DELETE FROM "ProductionStep" WHERE "workOrderId" IN (SELECT id FROM _del_wo);
 DELETE FROM "ProductionWorkOrder" WHERE id IN (SELECT id FROM _del_wo);
 
 -- 4f. Sales Order
+DELETE FROM "SalesOrderProductCost" WHERE "salesOrderId" IN (SELECT id FROM _del_so);
 DELETE FROM "SalesOrderCost" WHERE "salesOrderId" IN (SELECT id FROM _del_so);
 DELETE FROM "SalesOrderItem" WHERE "salesOrderId" IN (SELECT id FROM _del_so);
 DELETE FROM "SalesOrder" WHERE id IN (SELECT id FROM _del_so);

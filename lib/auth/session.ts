@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AppRole } from "@prisma/client";
+import { forbidden } from "next/navigation";
 import { cache } from "react";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -15,6 +16,16 @@ export type Actor = {
   name: string;
   role: AppRole;
 };
+
+/** Ditolak karena role, bukan karena sesi habis. Dipetakan ke 403, bukan 500. */
+export class AccessDeniedError extends Error {
+  // Pesan dipertahankan "UNAUTHORIZED" agar pemeriksaan lama di route/aksi
+  // (yang memetakannya ke 403) tetap bekerja tanpa diubah satu per satu.
+  constructor(message = "UNAUTHORIZED") {
+    super(message);
+    this.name = "AccessDeniedError";
+  }
+}
 
 export const getCurrentActor = cache(async (): Promise<Actor | null> => {
   const supabase = await createClient();
@@ -63,17 +74,32 @@ export async function requireActor(
   const actor = await getCurrentActor();
 
   if (!actor || !hasRole(actor.role, allowedRoles)) {
-    throw new Error("UNAUTHORIZED");
+    throw new AccessDeniedError();
   }
 
   return actor;
+}
+
+/**
+ * Guard untuk Server Component / halaman: kegagalan akses dirender sebagai
+ * halaman 403 buatan sendiri (bukan error bawaan Next).
+ */
+export async function requirePageActor(
+  allowedRoles: readonly AppRole[] = CRM_ROLES,
+) {
+  try {
+    return await requireActor(allowedRoles);
+  } catch (error) {
+    if (error instanceof AccessDeniedError) forbidden();
+    throw error;
+  }
 }
 
 export async function requireDeveloperActor() {
   const actor = await getCurrentActor();
 
   if (!actor || actor.role !== "DEVELOPER") {
-    throw new Error("UNAUTHORIZED");
+    throw new AccessDeniedError();
   }
 
   return actor;

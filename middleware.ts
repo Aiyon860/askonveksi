@@ -3,8 +3,19 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
+/**
+ * Teruskan pathname saat ini ke Server Component lewat header `x-pathname`.
+ * Layout `(app)` memakainya untuk memilih aturan akses halaman (403), jadi
+ * keputusan akses tetap satu tempat tanpa menduplikasi daftar rute di sini.
+ */
+function nextWithPathname(request: NextRequest) {
+  const headers = new Headers(request.headers);
+  headers.set("x-pathname", request.nextUrl.pathname);
+  return NextResponse.next({ request: { headers } });
+}
+
 export default async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  let response = nextWithPathname(request);
   const { url, publishableKey } = getSupabasePublicConfig();
 
   const supabase = createServerClient(url, publishableKey, {
@@ -17,7 +28,9 @@ export default async function middleware(request: NextRequest) {
           request.cookies.set(name, value);
         }
 
-        response = NextResponse.next({ request });
+        // Header `x-pathname` disusun ulang dari request terbaru agar cookie
+        // hasil refresh sesi tidak hilang saat response diganti.
+        response = nextWithPathname(request);
 
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);

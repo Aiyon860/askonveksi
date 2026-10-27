@@ -1,4 +1,5 @@
 import type { WorkbookCell, WorkbookCellValue, WorkbookPayload, WorkbookRow, WorkbookSheet } from "@/lib/export/workbook-types";
+import { expenseGroupLabel } from "../finance/expense-group-label.ts";
 import type { FinanceWorkbookData } from "@/lib/finance/workbook";
 import type { WorkbookProject } from "@/lib/finance/expense";
 
@@ -452,17 +453,105 @@ function buildProjectLikeSheet(data: FinanceWorkbookData, mode: "project" | "dp"
   };
 }
 
+/** Nilai unik digabung koma untuk baris ringkasan satu tanggal. */
+function uniqueText(values: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  for (const value of values) {
+    const text = (value ?? "").trim();
+    if (text && text !== "-") seen.add(text);
+  }
+  return seen.size ? [...seen].join(", ") : "-";
+}
+
+function expenseKindLabel(items: FinanceWorkbookData["expenses"]) {
+  const hasProject = items.some((item) => item.kind === "PROJECT");
+  const hasOperational = items.some((item) => item.kind !== "PROJECT");
+  if (hasProject && hasOperational) return "Project + Operasional";
+  return hasProject ? "Project" : "Operasional";
+}
+
+function proofSummary(items: FinanceWorkbookData["expenses"]) {
+  const withProof = items.filter((item) => item.proof === "Ada").length;
+  return withProof ? `${withProof} dari ${items.length}` : "-";
+}
+
+/**
+ * Sheet PENGELUARAN: satu baris per tanggal supaya laporan ringkas — semua pengeluaran
+ * pada tanggal yang sama digabung menjadi "Pengeluaran tanggal 1 Oktober 2026" beserta
+ * totalnya. Rincian tiap pengeluaran tetap utuh di sheet RINCIAN PENGELUARAN, jadi tidak
+ * ada data yang hilang dari file.
+ */
 function buildExpenseSheet(data: FinanceWorkbookData) {
   const width = 11;
   const rows: WorkbookRow[] = [];
   const merges: string[] = [];
   rows.push({ cells: fullRow(width, `BEBAN BULANAN ASKONVEKSI ${data.period.rangeLabel}`, TITLE_STYLE), height: 36 });
   merges.push("A1:K1");
+  const headers = ["TANGGAL", "PENGELUARAN", "CUSTOMER / PROJECT", "KATEGORI", "JENIS", "TOTAL", "METODE", "BUKTI", "DICATAT OLEH", "REFERENSI", "RINCIAN ITEM"];
+  rows.push({ cells: headers.map((header) => headerCell(header, { fill: COLORS.yellow })), height: 28 });
+
+  const groups = groupByDate(data.expenses);
+  for (const [date, items] of groups) {
+    rows.push({
+      cells: [
+        centerCell(dayDateLabel(date)),
+        dataCell(expenseGroupLabel(date)),
+        dataCell(uniqueText(items.map((item) => item.customerProject))),
+        dataCell(uniqueText(items.map((item) => item.categoryLabel))),
+        centerCell(expenseKindLabel(items)),
+        moneyCell(sumAmounts(items, (item) => item.amount)),
+        dataCell(uniqueText(items.map((item) => item.method))),
+        centerCell(proofSummary(items)),
+        dataCell(uniqueText(items.map((item) => item.createdBy))),
+        dataCell(uniqueText(items.map((item) => item.reference))),
+        dataCell(uniqueText(items.map((item) => item.purpose))),
+      ],
+      height: 20,
+    });
+  }
+
+  const totalCells = blankRow(width, TOTAL_STYLE);
+  totalCells[1] = cell("TOTAL PENGELUARAN", { ...TOTAL_STYLE, align: "left" });
+  // Baris data selalu berurutan mulai baris 3 sampai baris terakhir sebelum total.
+  totalCells[5] = moneyCell(
+    sumFormula("F", 3, rows.length, sumAmounts(data.expenses, (item) => item.amount)),
+    TOTAL_STYLE,
+  );
+  rows.push({ cells: totalCells, height: 24 });
+
+  addNotes(rows, merges, width, [
+    "Satu baris mewakili satu tanggal; total dihitung dari baris tanggal tersebut.",
+    "Rincian tiap pengeluaran ada di sheet RINCIAN PENGELUARAN.",
+    `Dibuat otomatis oleh Askonveksi pada ${data.generatedAt}.`,
+  ]);
+
+  return {
+    sheet: {
+      name: "PENGELUARAN",
+      columns: EXPENSE_WIDTHS.map((columnWidth) => ({ width: columnWidth })),
+      rows,
+      merges,
+      freeze: { row: 2, column: 0 },
+      pageSetup: { ...LANDSCAPE_PAGE, printTitlesRow: "1:2" },
+      properties: { defaultRowHeight: 20 },
+    } satisfies WorkbookSheet,
+  };
+}
+
+/**
+ * Sheet RINCIAN PENGELUARAN: bentuk lama (satu baris per pengeluaran + subtotal per tanggal).
+ * Dipakai sebagai sumber formula CATATAN dan sebagai bukti audit per item.
+ */
+function buildExpenseDetailSheet(data: FinanceWorkbookData) {
+  const width = 11;
+  const rows: WorkbookRow[] = [];
+  const merges: string[] = [];
+  rows.push({ cells: fullRow(width, `RINCIAN PENGELUARAN ${data.period.rangeLabel}`, TITLE_STYLE), height: 36 });
+  merges.push("A1:K1");
   const headers = ["TANGGAL", "PENGELUARAN", "CUSTOMER / PROJECT", "KATEGORI", "JENIS", "TOTAL", "METODE", "BUKTI", "DICATAT OLEH", "REFERENSI", "DESKRIPSI"];
   rows.push({ cells: headers.map((header) => headerCell(header, { fill: COLORS.yellow })), height: 28 });
 
   const groups = groupByDate(data.expenses);
-  const dataRanges: string[] = [];
   for (const [date, items] of groups) {
     const groupStart = rows.length + 1;
     items.forEach((item, index) => {
@@ -485,7 +574,6 @@ function buildExpenseSheet(data: FinanceWorkbookData) {
     });
     const groupEnd = rows.length;
     if (groupEnd > groupStart) merges.push(`A${groupStart}:A${groupEnd}`);
-    dataRanges.push(`F${groupStart}:F${groupEnd}`);
     const subtotal = sumAmounts(items, (item) => item.amount);
     const subtotalCells = blankRow(width, { ...BASE, fill: COLORS.subtotal, bold: true });
     subtotalCells[1] = cell(`Subtotal ${dayDateLabel(date)}`, { ...BASE, fill: COLORS.subtotal, bold: true, align: "left" });
@@ -493,25 +581,15 @@ function buildExpenseSheet(data: FinanceWorkbookData) {
     rows.push({ cells: subtotalCells, height: 20 });
   }
 
-  const totalCells = blankRow(width, TOTAL_STYLE);
-  totalCells[1] = cell("TOTAL PENGELUARAN", { ...TOTAL_STYLE, align: "left" });
-  totalCells[5] = moneyCell(
-    dataRanges.length
-      ? { formula: `SUM(${dataRanges.join(",")})`, result: sumAmounts(data.expenses, (item) => item.amount) }
-      : 0,
-    TOTAL_STYLE,
-  );
-  rows.push({ cells: totalCells, height: 24 });
-
   addNotes(rows, merges, width, [
-    "Total dihitung dari baris pengeluaran; baris subtotal tidak ikut dijumlahkan.",
+    "Subtotal per tanggal hanya penanda; total periode ada di sheet PENGELUARAN.",
     "Pengeluaran project dan operasional dipisahkan agar tidak terjadi hitung ganda.",
     `Dibuat otomatis oleh Askonveksi pada ${data.generatedAt}.`,
   ]);
 
   return {
     sheet: {
-      name: "PENGELUARAN",
+      name: "RINCIAN PENGELUARAN",
       columns: EXPENSE_WIDTHS.map((columnWidth) => ({ width: columnWidth })),
       rows,
       merges,
@@ -555,20 +633,17 @@ function buildPureExpenseSheet(data: FinanceWorkbookData) {
     { column: 6, cell: headerCell("TOTAL", { fill: COLORS.yellow }) },
   ]);
 
+  // Satu baris per tanggal, mengikuti sheet PENGELUARAN agar laporan ringkas.
   const groups = groupByDate(operational);
   let leftRow = 4;
   for (const [date, items] of groups) {
-    const groupStart = leftRow;
-    items.forEach((item, index) => {
-      setGridRow(grid, leftRow, [
-        { column: 0, cell: centerCell(index === 0 ? dayDateLabel(date) : null) },
-        { column: 1, cell: dataCell(item.purpose) },
-        { column: 2, cell: moneyCell(item.amount) },
-        { column: 3, cell: dataCell(item.categoryLabel) },
-      ]);
-      leftRow += 1;
-    });
-    if (leftRow - 1 > groupStart) merges.push(`A${groupStart}:A${leftRow - 1}`);
+    setGridRow(grid, leftRow, [
+      { column: 0, cell: centerCell(dayDateLabel(date)) },
+      { column: 1, cell: dataCell(expenseGroupLabel(date)) },
+      { column: 2, cell: moneyCell(sumAmounts(items, (item) => item.amount)) },
+      { column: 3, cell: dataCell(uniqueText(items.map((item) => item.categoryLabel))) },
+    ]);
+    leftRow += 1;
   }
   const leftLastDataRow = leftRow - 1;
   const operationalTotal = sumAmounts(operational, (item) => item.amount);
@@ -585,12 +660,9 @@ function buildPureExpenseSheet(data: FinanceWorkbookData) {
     const categoryTotal = sumAmounts(operational.filter((item) => item.category === category.key), (item) => item.amount);
     setGridRow(grid, recapRow, [
       { column: 5, cell: dataCell(category.label) },
-      {
-        column: 6,
-        cell: moneyCell(leftLastDataRow >= 4
-          ? { formula: `SUMIF($D$4:$D$${leftLastDataRow},$F${recapRow},$C$4:$C$${leftLastDataRow})`, result: categoryTotal }
-          : 0),
-      },
+      // Satu tanggal bisa berisi beberapa kategori, jadi rekap ditulis sebagai nilai hasil
+      // hitung dari data — SUMIF per baris tidak lagi bisa dipakai di sheet ringkas.
+      { column: 6, cell: moneyCell(categoryTotal) },
     ]);
     recapRow += 1;
   }
@@ -791,9 +863,9 @@ function buildNotesSheet(data: FinanceWorkbookData, refs: { projectTotalRow: num
 
   const summary: Array<[number, string, string, number]> = [
     [3, "Uang masuk", `'SALDO AKHIR'!C${refs.cashFinalRow}`, totalPayments],
-    [4, "Terbelanjakan project", `SUMIF('PENGELUARAN'!E:E,"Project",'PENGELUARAN'!F:F)`, projectExpenses],
+    [4, "Terbelanjakan project", `SUMIF('RINCIAN PENGELUARAN'!E:E,"Project",'RINCIAN PENGELUARAN'!F:F)`, projectExpenses],
     [5, "Sisa setelah project", "B3-B4", totalPayments - projectExpenses],
-    [6, "Pengeluaran operasional", `SUMIF('PENGELUARAN'!E:E,"Operasional",'PENGELUARAN'!F:F)`, operationalExpenses],
+    [6, "Pengeluaran operasional", `SUMIF('RINCIAN PENGELUARAN'!E:E,"Operasional",'RINCIAN PENGELUARAN'!F:F)`, operationalExpenses],
     [7, "Bersih", "B5-B6", finalBalance],
     [8, "Saldo akhir", `'SALDO AKHIR'!E${refs.cashFinalRow}`, finalBalance],
   ];
@@ -896,20 +968,24 @@ export function buildFinanceWorkbookSpec(data: FinanceWorkbookData): WorkbookPay
   const cash = buildCashSheet(data);
   const pure = buildPureExpenseSheet(data);
   const notes = buildNotesSheet(data, { projectTotalRow: project.totalRow, cashFinalRow: cash.finalRow });
+  // Rincian per item tetap disertakan di akhir workbook supaya data audit tidak hilang
+  // saat sheet PENGELUARAN diringkas menjadi satu baris per tanggal.
+  const detail = buildExpenseDetailSheet(data);
 
   const sheets = data.scope === "laporan"
-    ? [project.sheet, expense.sheet, cash.sheet, dp.sheet, pure.sheet, notes.sheet]
+    ? [project.sheet, expense.sheet, cash.sheet, dp.sheet, pure.sheet, notes.sheet, detail.sheet]
     : data.scope === "pemasukan"
       ? [project.sheet, dp.sheet]
-      : [expense.sheet, cash.sheet, pure.sheet];
+      : [expense.sheet, cash.sheet, pure.sheet, detail.sheet];
 
   const operationalCount = data.expenses.filter((expenseItem) => expenseItem.kind === "OPERASIONAL").length;
   const depositCount = data.payments.filter((payment) => payment.kind === "DEPOSIT").length;
+  const expenseDates = new Set(data.expenses.map((expenseItem) => expenseItem.spentAt)).size;
   const rowCount = data.scope === "laporan"
-    ? data.projects.length * 2 + data.expenses.length * 2 + data.payments.length + operationalCount + depositCount
+    ? data.projects.length * 2 + expenseDates + data.expenses.length + data.payments.length + operationalCount + depositCount
     : data.scope === "pemasukan"
       ? data.projects.length * 2
-      : data.expenses.length + data.payments.length + operationalCount;
+      : expenseDates + data.expenses.length + data.payments.length + operationalCount;
 
   return {
     spec: { sheets },

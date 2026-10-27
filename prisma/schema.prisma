@@ -18,6 +18,7 @@ enum AppRole {
   DESIGNER
   PRODUCTION
   QC
+  ADMIN_SAGA
 }
 
 enum AttendanceStatus {
@@ -336,38 +337,41 @@ model AppUser {
 }
 
 model Expense {
-  id              String          @id @default(cuid())
-  purpose         String          @db.VarChar(500)
-  description     String?         @db.VarChar(240)
-  spentAt         DateTime        @db.Date
-  amount          Decimal         @db.Decimal(18, 2)
-  category        ExpenseCategory
-  paymentMethodId String
-  isReimbursable  Boolean         @default(false)
-  proofPath       String?         @db.VarChar(500)
-  proofFileName   String?         @db.VarChar(255)
-  proofMimeType   String?         @db.VarChar(100)
-  proofSize       Int?
-  createdById     String
-  reimbursedAt    DateTime?       @db.Timestamptz(3)
-  salesOrderId    String?
-  customerName    String?         @db.VarChar(160)
-  hppKey          String?         @db.VarChar(32)
-  deletedAt       DateTime?       @db.Timestamptz(3)
-  deletedById     String?
-  deleteReason    String?         @db.Text
-  paymentMethod   PaymentMethod   @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
-  createdBy       AppUser         @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  deletedBy       AppUser?        @relation("ExpenseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
-  salesOrder      SalesOrder?     @relation("ExpenseSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
-  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+  id                      String                 @id @default(cuid())
+  purpose                 String                 @db.VarChar(500)
+  description             String?                @db.VarChar(240)
+  spentAt                 DateTime               @db.Date
+  amount                  Decimal                @db.Decimal(18, 2)
+  category                ExpenseCategory
+  paymentMethodId         String
+  isReimbursable          Boolean                @default(false)
+  proofPath               String?                @db.VarChar(500)
+  proofFileName           String?                @db.VarChar(255)
+  proofMimeType           String?                @db.VarChar(100)
+  proofSize               Int?
+  createdById             String
+  reimbursedAt            DateTime?              @db.Timestamptz(3)
+  salesOrderId            String?
+  salesOrderProductCostId String?
+  customerName            String?                @db.VarChar(160)
+  hppKey                  String?                @db.VarChar(32)
+  deletedAt               DateTime?              @db.Timestamptz(3)
+  deletedById             String?
+  deleteReason            String?                @db.Text
+  paymentMethod           PaymentMethod          @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  createdBy               AppUser                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  deletedBy               AppUser?               @relation("ExpenseDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  salesOrder              SalesOrder?            @relation("ExpenseSalesOrder", fields: [salesOrderId], references: [id], onDelete: SetNull)
+  salesOrderProductCost   SalesOrderProductCost? @relation(fields: [salesOrderProductCostId], references: [id], onDelete: SetNull)
+  createdAt               DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime               @updatedAt @db.Timestamptz(3)
 
   @@index([createdById, spentAt])
   @@index([paymentMethodId, spentAt])
   @@index([category, spentAt])
   @@index([deletedAt, spentAt])
   @@index([salesOrderId])
+  @@index([salesOrderProductCostId, hppKey])
   @@index([customerName])
   @@index([salesOrderId, hppKey])
 }
@@ -763,29 +767,54 @@ model DesignAttachment {
 }
 
 model PurchaseOrderItem {
-  id                 String                @id @default(cuid())
+  id                 String                    @id @default(cuid())
   purchaseOrderId    String
   position           Int
-  name               String                @db.VarChar(120)
+  name               String                    @db.VarChar(120)
   // Revisi: Pola pindah dari header PO ke tiap produk (wajib di form; kolom global PO.legacy tetap untuk data lama).
-  pola               String?               @db.VarChar(120)
+  pola               String?                   @db.VarChar(120)
+  // Revisi: Warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
+  // Kolom warna di header PO tetap ada sebagai data lama/fallback dokumen lama.
+  baseColor          String?                   @db.VarChar(120)
+  variationColor     String?                   @db.VarChar(240)
   productCategoryId  String?
   garmentType        GarmentType?
-  decorationMethods  String[]              @default([])
-  designNotes        String?               @db.Text
-  // Sprint 11 (R3): deadline penjahit per produk + desain khusus penjahit (maks 1 gambar, timpa = ganti).
-  penjahitDeadline   DateTime?             @db.Date
-  penjahitDesignPath String?               @db.VarChar(500)
-  penjahitDesignName String?               @db.VarChar(255)
-  penjahitDesignType String?               @db.VarChar(64)
-  purchaseOrder      PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  productCategory    ProductCategory?      @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
+  decorationMethods  String[]                  @default([])
+  designNotes        String?                   @db.Text
+  // Sprint 11 (R3): deadline penjahit per produk.
+  penjahitDeadline   DateTime?                 @db.Date
+  // Legacy: desain penjahit tunggal (maks 1 gambar). Data baru disimpan di PurchaseOrderItemDesign.
+  penjahitDesignPath String?                   @db.VarChar(500)
+  penjahitDesignName String?                   @db.VarChar(255)
+  penjahitDesignType String?                   @db.VarChar(64)
+  purchaseOrder      PurchaseOrder             @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  productCategory    ProductCategory?          @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
+  designs            PurchaseOrderItemDesign[]
   workOrders         ProductionWorkOrder[]
-  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  createdAt          DateTime                  @default(now()) @db.Timestamptz(3)
 
   @@unique([purchaseOrderId, position])
   @@index([purchaseOrderId])
   @@index([productCategoryId])
+}
+
+/**
+ * Gambar desain penjahit per produk — boleh lebih dari satu.
+ * Satu gambar dicetak sebagai satu halaman penuh pada PDF varian penjahit.
+ */
+model PurchaseOrderItemDesign {
+  id           String            @id @default(cuid())
+  itemId       String
+  position     Int
+  path         String            @db.VarChar(500)
+  originalName String            @db.VarChar(255)
+  contentType  String            @db.VarChar(64)
+  sizeBytes    Int?
+  item         PurchaseOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@unique([itemId, position])
+  @@index([itemId, position])
 }
 
 model PurchaseOrderSize {
@@ -882,6 +911,7 @@ model Invoice {
   purchaseOrder             PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   createdBy                 AppUser                 @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   items                     InvoiceItem[]
+  addons                    InvoiceAddon[]
   salesOrder                SalesOrder?
   pendingPayment            PendingDealPayment?
   whatsappJobs              WhatsAppAutomationJob[]
@@ -939,46 +969,64 @@ model InvoiceItemAddon {
   @@index([invoiceItemId])
 }
 
+/// Add On level invoice: berdiri sendiri di bawah seluruh produk, tidak terikat baris produk.
+/// InvoiceItemAddon lama tetap dipertahankan untuk dokumen yang sudah terbit sebelum perubahan ini.
+model InvoiceAddon {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  position    Int
+  label       String   @db.VarChar(120)
+  description String?  @db.VarChar(240)
+  unitAmount  Decimal  @db.Decimal(18, 2)
+  qty         Int      @default(1)
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([invoiceId, position])
+  @@index([invoiceId])
+}
+
 model SalesOrder {
-  id                   String                @id @default(cuid())
-  salesOrderNo         String                @unique @db.VarChar(28)
+  id                   String                  @id @default(cuid())
+  salesOrderNo         String                  @unique @db.VarChar(28)
   opportunityId        String
-  purchaseOrderId      String                @unique
-  invoiceId            String                @unique
-  purchaseOrderNo      String                @db.VarChar(28)
-  invoiceNo            String                @db.VarChar(28)
-  status               SalesOrderStatus      @default(ACTIVE)
-  snapshotCustomerName String                @db.VarChar(160)
-  snapshotCompanyName  String?               @db.VarChar(160)
-  snapshotWhatsapp     String?               @db.VarChar(32)
-  snapshotEmail        String?               @db.VarChar(320)
-  snapshotInstagram    String?               @db.VarChar(80)
-  snapshotAddress      String?               @db.Text
+  purchaseOrderId      String                  @unique
+  invoiceId            String                  @unique
+  purchaseOrderNo      String                  @db.VarChar(28)
+  invoiceNo            String                  @db.VarChar(28)
+  status               SalesOrderStatus        @default(ACTIVE)
+  snapshotCustomerName String                  @db.VarChar(160)
+  snapshotCompanyName  String?                 @db.VarChar(160)
+  snapshotWhatsapp     String?                 @db.VarChar(32)
+  snapshotEmail        String?                 @db.VarChar(320)
+  snapshotInstagram    String?                 @db.VarChar(80)
+  snapshotAddress      String?                 @db.Text
   discountType         DiscountType
-  discountValue        Decimal               @db.Decimal(7, 4)
-  discountNominal      Decimal               @default(0) @db.Decimal(18, 2)
-  subtotal             Decimal               @db.Decimal(18, 2)
-  totalDiscount        Decimal               @default(0) @db.Decimal(18, 2)
-  taxPercent           Decimal               @default(0) @db.Decimal(7, 4)
-  taxAmount            Decimal               @default(0) @db.Decimal(18, 2)
-  total                Decimal               @db.Decimal(18, 2)
-  acceptedAt           DateTime              @db.Timestamptz(3)
+  discountValue        Decimal                 @db.Decimal(7, 4)
+  discountNominal      Decimal                 @default(0) @db.Decimal(18, 2)
+  subtotal             Decimal                 @db.Decimal(18, 2)
+  totalDiscount        Decimal                 @default(0) @db.Decimal(18, 2)
+  taxPercent           Decimal                 @default(0) @db.Decimal(7, 4)
+  taxAmount            Decimal                 @default(0) @db.Decimal(18, 2)
+  total                Decimal                 @db.Decimal(18, 2)
+  acceptedAt           DateTime                @db.Timestamptz(3)
   createdById          String
-  cancelledAt          DateTime?             @db.Timestamptz(3)
-  cancelReason         String?               @db.Text
+  cancelledAt          DateTime?               @db.Timestamptz(3)
+  cancelReason         String?                 @db.Text
   cancelledById        String?
-  opportunity          Opportunity           @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  purchaseOrder        PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  invoice              Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  createdBy            AppUser               @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  cancelledBy          AppUser?              @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  opportunity          Opportunity             @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  purchaseOrder        PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  invoice              Invoice                 @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  createdBy            AppUser                 @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy          AppUser?                @relation("SalesOrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
   items                SalesOrderItem[]
   payment              DealPayment?
-  customerReminders    CustomerReminder[]    @relation("CustomerReminderSourceOrder")
+  customerReminders    CustomerReminder[]      @relation("CustomerReminderSourceOrder")
   productionWorkOrders ProductionWorkOrder[]
   cost                 SalesOrderCost?
-  expenses             Expense[]             @relation("ExpenseSalesOrder")
-  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  productCosts         SalesOrderProductCost[]
+  expenses             Expense[]               @relation("ExpenseSalesOrder")
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
 
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
@@ -1002,6 +1050,31 @@ model SalesOrderCost {
   createdAt    DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
 
+  @@index([updatedAt])
+}
+
+/// HPP per produk dalam satu Sales Order. `SalesOrderCost` tetap menjadi agregat
+/// order + status `hppComplete` agar dashboard dan export tidak berubah.
+model SalesOrderProductCost {
+  id           String     @id @default(cuid())
+  salesOrderId String
+  productName  String     @db.VarChar(120)
+  position     Int        @default(0)
+  kain         Decimal?   @db.Decimal(18, 2)
+  zipper       Decimal?   @db.Decimal(18, 2)
+  jahit        Decimal?   @db.Decimal(18, 2)
+  pres         Decimal?   @db.Decimal(18, 2)
+  dtfPlastisol Decimal?   @db.Decimal(18, 2)
+  bordir       Decimal?   @db.Decimal(18, 2)
+  lainnya      Decimal?   @db.Decimal(18, 2)
+  version      Int        @default(1)
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  expenses     Expense[]
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@unique([salesOrderId, productName])
+  @@index([salesOrderId, position])
   @@index([updatedAt])
 }
 
@@ -1373,6 +1446,12 @@ model WhatsAppCampaign {
   snapshotCompletedAt DateTime?                   @db.Timestamptz(3)
   completedAt         DateTime?                   @db.Timestamptz(3)
   cancelledAt         DateTime?                   @db.Timestamptz(3)
+  // Gambar campaign (pamflet/poster) bersifat permanen selama campaign ada.
+  // Diganti = file lama dihapus; campaign dihapus = file ikut dihapus.
+  imagePath           String?                     @db.VarChar(300)
+  imageMimeType       String?                     @db.VarChar(80)
+  imageFileName       String?                     @db.VarChar(160)
+  imageSizeBytes      Int?
   createdById         String
   updatedById         String
   createdBy           AppUser                     @relation("WhatsAppCampaignCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -1385,6 +1464,23 @@ model WhatsAppCampaign {
   @@index([status, scheduledAt])
   @@index([createdById, createdAt])
   @@index([updatedById, updatedAt])
+}
+
+// Media sementara pengiriman broadcast. Gambar tidak disimpan di sistem:
+// setelah semua job penerima selesai (remaining = 0) worker menghapus file,
+// dan sweeper membersihkan sisa file bila worker sempat mati.
+model WhatsAppTempMedia {
+  id        String   @id @default(cuid())
+  path      String   @unique @db.VarChar(300)
+  mimeType  String   @db.VarChar(80)
+  fileName  String   @db.VarChar(160)
+  sizeBytes Int
+  remaining Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@index([remaining])
 }
 
 model WhatsAppAutomationJob {

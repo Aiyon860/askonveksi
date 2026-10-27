@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { flashMessagePath, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
+import { landingPathForRole } from "@/lib/auth/landing-path";
 import { APP_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { firstValidationMessage, loginSchema, updatePasswordSchema } from "@/lib/crm/validation";
@@ -38,7 +39,7 @@ export async function loginAction(formData: FormData) {
       throw new UserFacingError("Akun tidak aktif atau belum terdaftar di aplikasi.");
     }
 
-    return profile.role === "ADMIN_PO" ? "/produksi" : "/dashboard";
+    return landingPathForRole(profile.role);
   });
 }
 
@@ -72,6 +73,6 @@ export async function updatePasswordAction(formData: FormData) {
       },
     });
 
-    return flashMessagePath(actor.role === "ADMIN_PO" ? "/produksi" : "/dashboard", "notice", "Password berhasil diperbarui.");
+    return flashMessagePath(landingPathForRole(actor.role), "notice", "Password berhasil diperbarui.");
   });
 }

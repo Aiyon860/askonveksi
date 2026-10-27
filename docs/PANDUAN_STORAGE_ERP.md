@@ -2,6 +2,20 @@
 
 Dokumen ini menjelaskan cara kerja penyimpanan biner ERP: **gambar dan PDF di disk VPS**, sedangkan **teks, metadata, dan path relatif tetap di Supabase Postgres**.
 
+## 0. Status produksi (2026-10-27)
+
+| Aspek | Kondisi saat ini |
+|---|---|
+| Driver produksi | `hybrid` — baca dari VPS (fallback Supabase bila belum ada), tulis ke **VPS + Supabase** (fail-hard) |
+| `ERP_STORAGE_DIR` | `/var/lib/askonveksi/storage` (di luar release, owner `askonveksipedurungan`, dir `0750`, file `0640`) |
+| Backfill | **Selesai**: 118 objek / 36 MB dari 4 bucket; `--verify` bersih (missing=0, mismatched=0, extra=0); checksum SHA-256 sampel 19/19 cocok |
+| Audit database | **74/74 path unik** yang dirujuk database ada di disk VPS |
+| Backup | Cron harian 02:15 WIB + monitor disk mingguan; arsip `0600`, rotasi 14 file; uji restore non-destruktif lulus |
+| Offsite | **Belum aktif** (ditunda) — arsip backup masih di disk yang sama dengan data |
+| Baca file lama | Sejak backfill, permintaan file lama **tidak lagi** memicu `[erp-storage] fallback-supabase` |
+| Supabase Storage | **Masih menyimpan salinan** semua objek (konsekuensi `hybrid`), baru dikosongkan pada Fase 6 |
+| Sisa | UAT fitur penuh oleh OWNER/DEVELOPER dan cutover `local` setelah grace period ≥14 hari |
+
 ## 1. Prinsip
 
 - Database tidak pernah menyimpan URL atau prefix `vps/`. Nilai kolom tetap seperti sebelumnya, misalnya `design/<taskId>/<uuid>.png`.
@@ -94,15 +108,17 @@ Titik upload: desain PO (`app/actions/design.ts`), revisi/penjahit (`app/actions
 
 ## 5. Menyiapkan VPS
 
+Nilai aktual produksi: user/group `askonveksipedurungan`, `DEPLOY_PATH=/var/www/askonveksi`, proses PM2 `askonveksi-web` dan `askonveksi-web-wa`.
+
 ```bash
-sudo install -d -o askonveksi -g askonveksi -m 0750 /var/lib/askonveksi/storage
-sudo install -d -o askonveksi -g askonveksi -m 0750 /var/backups/askonveksi
+sudo install -d -o askonveksipedurungan -g askonveksipedurungan -m 0750 /var/lib/askonveksi/storage
+sudo install -d -o askonveksipedurungan -g askonveksipedurungan -m 0750 /var/backups/askonveksi
 ```
 
 Pastikan user PM2 dapat menulis:
 
 ```bash
-sudo -u askonveksi test -w /var/lib/askonveksi/storage && echo OK
+test -w /var/lib/askonveksi/storage && echo OK      # jalankan sebagai user aplikasi
 ```
 
 Tambahkan env ke `$DEPLOY_PATH/shared/.env`, lalu deploy/restart. Deploy workflow memverifikasi bahwa `ERP_STORAGE_DIR` ada, absolut, di luar `DEPLOY_PATH`, dan writable saat driver bukan `supabase`.
@@ -122,27 +138,30 @@ npm run storage:migrate
 npm run storage:verify
 ```
 
-Script membaca bucket `crm-po-designs`, `business-assets`, `payment-proofs`, dan `whatsapp-media`, lalu menulis dengan `putFile(..., { upsert: true })`. File dengan ukuran sama dilewati sehingga aman dijalankan ulang.
+Script membaca bucket `crm-po-designs`, `business-assets`, `payment-proofs`, dan `whatsapp-media`, lalu menulis dengan `putFile(..., { upsert: true })`. File dengan ukuran sama dilewati sehingga aman dijalankan ulang. Backfill produksi 2026-10-27 memerlukan ±5 menit untuk 118 objek / 36 MB.
 
-Jalankan sebagai user aplikasi, bukan root:
+### Menjalankan di VPS (cara yang dipakai produksi)
 
-```bash
-sudo -u askonveksi -H bash -lc '
-  set -euo pipefail
-  cd /path/ke/repo
-  set -a; . "$DEPLOY_PATH/shared/.env"; set +a
-  node scripts/migrate-storage-to-vps.mjs --dry-run
-  node scripts/migrate-storage-to-vps.mjs
-  node scripts/migrate-storage-to-vps.mjs --verify
-'
-```
-
-Jika terpaksa root, perbaiki ownership sebelum restart:
+Repo bersifat privat dan VPS tidak memiliki kunci GitHub, jadi **jangan** mengandalkan `git clone`. Script sudah ikut ter-deploy di release:
 
 ```bash
-sudo chown -R askonveksi:askonveksi /var/lib/askonveksi/storage
-sudo find /var/lib/askonveksi/storage -type f -exec chmod 0640 {} +
+cd /var/www/askonveksi/current
+node scripts/migrate-storage-to-vps.mjs --dry-run
+nohup node scripts/migrate-storage-to-vps.mjs > /tmp/storage-migrate.log 2>&1 &
+node scripts/migrate-storage-to-vps.mjs --verify
 ```
+
+`current/.env` adalah symlink ke `shared/.env`, dan `node_modules` (dotenv + `@supabase/supabase-js`) sudah ada, sehingga `npm ci` tidak diperlukan. Gunakan `nohup` agar proses tidak terputus saat sesi SSH ditutup.
+
+Catatan penting:
+
+- Jalankan sebagai user aplikasi, bukan `root`. Bila terpaksa root, perbaiki ownership sebelum restart:
+  ```bash
+  sudo chown -R askonveksipedurungan:askonveksipedurungan /var/lib/askonveksi/storage
+  sudo find /var/lib/askonveksi/storage -type f -exec chmod 0640 {} +
+  ```
+- `--verify` hanya membandingkan bucket ↔ disk. Untuk memastikan **path yang benar-benar dipakai aplikasi** ada, jalankan audit database → filesystem (lihat `FILE_TO_VPS.md` §7.1).
+- Selama `hybrid`, file lama yang belum di-backfill tetap tampil lewat fallback Supabase, tetapi memicu log `[erp-storage] fallback-supabase`.
 
 ## 7. Backup dan restore
 
@@ -152,15 +171,26 @@ sudo find /var/lib/askonveksi/storage -type f -exec chmod 0640 {} +
 npm run storage:backup
 ```
 
-Script membuat `$ERP_STORAGE_BACKUP_DIR/erp-storage-<STAMP>.tar.gz`, mode `0600`, dan menyimpan 14 arsip terbaru (ubah dengan `ERP_STORAGE_BACKUP_KEEP`).
+Script membuat `$ERP_STORAGE_BACKUP_DIR/erp-storage-<STAMP>.tar.gz`, mode `0600`, dan menyimpan 14 arsip terbaru (ubah dengan `ERP_STORAGE_BACKUP_KEEP`). Script membaca `ERP_STORAGE_DIR`/`ERP_STORAGE_BACKUP_DIR` dari `.env` di root repo/release, jadi aman dipanggil dari cron tanpa env tambahan.
 
-Cron user aplikasi:
+Cron yang **sudah terpasang** di produksi (user `askonveksipedurungan`):
 
 ```cron
-15 2 * * * /path/ke/repo/scripts/backup-erp-storage.sh >> /var/log/erp-storage-backup.log 2>&1
+# Backup harian biner ERP (Supabase Storage -> disk VPS). Simpan 14 arsip.
+15 2 * * * /var/www/askonveksi/current/scripts/backup-erp-storage.sh >> /var/log/erp-storage-backup.log 2>&1
+
+# Monitor kapasitas disk storage ERP; tulis peringatan bila pemakaian >= 80 persen.
+0 6 * * 1 USE=$(df -P /var/lib/askonveksi/storage | awk "NR==2 {print \$5}" | tr -dc "0-9"); if [ -n "$USE" ] && [ "$USE" -ge 80 ]; then echo "[storage-disk] $(date -Is) WARNING pemakaian ${USE} persen" >> /var/log/erp-storage-backup.log; fi
 ```
 
-Aktifkan salinan offsite, misalnya:
+Detail: log `/var/log/erp-storage-backup.log` (milik user aplikasi, `0640`); pemanggilan lewat `current/scripts` agar mengikuti release terbaru; hindari karakter `%` mentah di baris cron (karena itu monitor disk memakai `awk` + `tr`, bukan `gsub(/%/,…)`).
+
+Offsite **belum aktif** (2026-10-27, ditunda). Bila diaktifkan nanti:
+
+```bash
+sudo apt-get install -y rclone   # atau installer resmi rclone.org
+rclone config                    # buat remote, mis. B2/S3/Drive
+```
 
 ```cron
 0 4 * * * rclone copy /var/backups/askonveksi remote:askonveksi-backups --min-age 1h
@@ -168,12 +198,16 @@ Aktifkan salinan offsite, misalnya:
 
 ### Restore
 
+Uji 2026-10-27 (non-destruktif, ekstrak ke `/tmp`): 118/118 file, SHA-256 8/8 sampel cocok, permission `0640`/`0750` utuh.
+
+Drill penuh saat downtime terjadwal:
+
 ```bash
-pm2 stop <pm2-app> <pm2-wa>
+pm2 stop askonveksi-web askonveksi-web-wa
 tar -C /var/lib/askonveksi -xzf /var/backups/askonveksi/erp-storage-<STAMP>.tar.gz
-sudo chown -R askonveksi:askonveksi /var/lib/askonveksi/storage
-pm2 start <pm2-app> <pm2-wa>
-npm run storage:verify
+chown -R askonveksipedurungan:askonveksipedurungan /var/lib/askonveksi/storage   # bila diekstrak sebagai root
+pm2 start askonveksi-web askonveksi-web-wa
+cd /var/www/askonveksi/current && node scripts/migrate-storage-to-vps.mjs --verify
 ```
 
 Restore database Supabase dan file VPS harus dari waktu yang berdekatan. Path di database menunjuk ke file; file yang hilang menghasilkan 404, bukan crash.
@@ -185,7 +219,7 @@ Restore database Supabase dan file VPS harus dari waktu yang berdekatan. Path di
 | Bug saat hybrid | Set `ERP_STORAGE_DRIVER=supabase`, restart app + worker. Upload baru kembali ke Supabase; file yang sudah hybrid ada di kedua tempat. |
 | File VPS rusak/hilang | Restore tar terbaru, perbaiki ownership, jalankan `npm run storage:verify`. |
 | Worker `ERR_MODULE_NOT_FOUND` | Pastikan `lib/storage/local-store.mjs` ada di release dan tarball (deploy workflow sudah memverifikasi). |
-| Semua gambar 404 setelah pindah driver | Cek `ERP_STORAGE_DIR`, ownership `askonveksi`, dan hasil `storage:verify`; jangan arahkan ke folder release. |
+| Semua gambar 404 setelah pindah driver | Cek `ERP_STORAGE_DIR`, ownership `askonveksipedurungan`, dan hasil `storage:verify`; jangan arahkan ke folder release. |
 
 ## 9. Troubleshooting
 
@@ -194,7 +228,7 @@ Restore database Supabase dan file VPS harus dari waktu yang berdekatan. Path di
 - **`Path penyimpanan tidak valid`** — path dari database mengandung `..`, backslash, NUL, atau segmen tersembunyi. Periksa data, jangan melemahkan validasi.
 - **`File sudah ada`** — upload `upsert: false` ke path yang sudah terisi. Gunakan path unik atau `upsert: true` bila memang menimpa.
 - **`hybrid-put-rollback`** — tulis Supabase gagal; periksa kredensial/bucket. File VPS sudah dibersihkan.
-- **`fallback-supabase` sering muncul** — backfill belum selesai; jalankan `storage:verify` lalu migrasi.
+- **`fallback-supabase` sering muncul** — backfill belum selesai; jalankan `storage:verify` lalu migrasi. Setelah backfill 2026-10-27 baris ini seharusnya tidak muncul lagi untuk file lama; bila muncul untuk file **baru**, berarti tulisan hybrid tidak sampai ke VPS — periksa `ERP_STORAGE_DIR` dan permission.
 
 ## 10. Checklist presentasi lokal
 

@@ -16,6 +16,9 @@ export type PurchaseOrderItemDraftValues = {
   key: string;
   name: string;
   pola: string;
+  /** Revisi: warna per produk (wajib dasar, variasi opsional). */
+  baseColor: string;
+  variationColor: string;
   productCategoryId: string;
   decorationMethods: string[];
   designNotes: string;

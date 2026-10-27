@@ -50,6 +50,8 @@ type PdfInvoice = {
     total: { toString(): string };
     addons?: Array<{ label: string; description?: string | null; unitAmount: { toString(): string }; qty?: number }>;
   }>;
+  /** Add On level invoice untuk dokumen baru. */
+  addons?: Array<{ label: string; description?: string | null; unitAmount: { toString(): string }; qty?: number }>;
   salesOrder: { payment: { kind?: string; transactions: Array<{ amount: { toString(): string }; status: string }> } | null } | null;
 };
 
@@ -365,6 +367,9 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   for (const item of invoice.items) {
     const productLines = wrapCell(item.productName ?? "-", 0);
     const descLines = wrapCell(item.description || "-", 1);
+    // Dokumen lama menyimpan Add On di dalam baris. Nominal baris produk
+    // dikurangi Add On legacy agar tidak tampil dobel saat ditampilkan terpisah.
+    const legacyAddonTotal = (item.addons ?? []).reduce((sum, addon) => sum + Number(addon.unitAmount.toString()) * (addon.qty ?? item.quantity), 0);
     tableRows.push({
       cells: [
         productLines,
@@ -373,31 +378,34 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
         [templateNumber(item.unitPrice.toString())],
         [templateNumber(item.discountAmount?.toString() ?? "0")],
         ["-"],
-        [templateNumber(item.total.toString())],
+        [templateNumber(Number(item.total.toString()) - legacyAddonTotal)],
       ],
       lines: Math.max(productLines.length, descLines.length),
       addon: false,
     });
-    for (const addon of item.addons ?? []) {
-      const addonQty = addon.qty ?? item.quantity;
-      const addonTotal = Number(addon.unitAmount.toString()) * addonQty;
-      const addonProductLines = wrapCell(`+ ${addon.label}`, 0);
-      const addonDescText = addon.description?.trim() || "-";
-      const addonDescLines = wrapCell(addonDescText, 1);
-      tableRows.push({
-        cells: [
-          addonProductLines,
-          addonDescLines,
-          [String(addonQty)],
-          [templateNumber(addon.unitAmount.toString())],
-          ["-"],
-          ["-"],
-          [templateNumber(addonTotal)],
-        ],
-        lines: Math.max(addonProductLines.length, addonDescLines.length),
-        addon: true,
-      });
-    }
+  }
+  const addonRows = [
+    ...(invoice.addons ?? []),
+    ...invoice.items.flatMap((item) => (item.addons ?? []).map((addon) => ({ ...addon, qty: addon.qty ?? item.quantity }))),
+  ];
+  for (const addon of addonRows) {
+    const addonQty = addon.qty ?? 1;
+    const addonTotal = Number(addon.unitAmount.toString()) * addonQty;
+    const addonProductLines = wrapCell(addon.label, 0);
+    const addonDescLines = wrapCell(addon.description?.trim() || "-", 1);
+    tableRows.push({
+      cells: [
+        addonProductLines,
+        addonDescLines,
+        [String(addonQty)],
+        [templateNumber(addon.unitAmount.toString())],
+        ["-"],
+        ["-"],
+        [templateNumber(addonTotal)],
+      ],
+      lines: Math.max(addonProductLines.length, addonDescLines.length),
+      addon: true,
+    });
   }
   drawTableHeader();
   tableRows.forEach((row, rowIndex) => {

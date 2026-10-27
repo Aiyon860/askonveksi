@@ -233,12 +233,13 @@ export const invoiceAddonSchema = z.object({
 });
 
 export const invoiceItemSchema = z.object({
-  purchaseOrderSizeId: entityIdSchema,
+  /** Produk PO sumber baris; kosong untuk data lama yang belum punya itemId. */
+  purchaseOrderItemId: z.string().trim().max(64).default(""),
   productName: z.string().trim().min(2, "Produk minimal 2 karakter.").max(120),
-  size: z.string().trim().min(1).max(40),
-  sleeveLength: z.enum(["PENDEK", "PANJANG"]),
+  // Invoice tidak lagi membawa ukuran/lengan: satu baris = seluruh qty produk PO.
+  size: z.string().trim().max(40).default(""),
+  sleeveLength: z.enum(["PENDEK", "PANJANG"]).nullable().default(null),
   description: z.string().trim().max(240),
-  quantity: z.coerce.number().int().positive().max(10_000_000),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
   discountType: invoiceDiscountTypeSchema.default("PERCENTAGE"),
   discountPercent: z.preprocess(
@@ -249,7 +250,6 @@ export const invoiceItemSchema = z.object({
     (v) => (v === undefined || v === null || v === "" ? "0" : v),
     z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Diskon nominal per item tidak valid."),
   ),
-  addons: z.array(invoiceAddonSchema).max(5, "Maksimal 5 add on per baris.").default([]),
 });
 
 export const invoiceScheduleTermSchema = z.object({
@@ -300,6 +300,7 @@ export const invoiceDraftSchema = z.object({
   notes: optionalText(2000),
   schedule: invoiceScheduleSchema.optional(),
   items: z.array(invoiceItemSchema).min(1, "Minimal satu item invoice.").max(200),
+  addons: z.array(invoiceAddonSchema).max(20, "Maksimal 20 add on per invoice.").default([]),
 });
 
 export const invoiceIdSchema = z.object({
@@ -335,6 +336,10 @@ const purchaseOrderItemSchema = z.object({
   name: z.string().trim().min(2, "Nama produk wajib diisi.").max(120),
   // Revisi: Pola per produk (sebelumnya global di header PO).
   pola: z.string().trim().min(2, "Pola wajib diisi.").max(120),
+  // Revisi: warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
+  // Warna dasar wajib per produk; warna variasi (list) tetap opsional.
+  baseColor: z.string().trim().min(1, "Warna dasar wajib diisi.").max(120),
+  variationColor: optionalText(240),
   productCategoryId: optionalEntityId,
   decorationMethods: z.array(z.enum(DECORATION_METHODS)).min(1, "Pilih minimal satu metode dekorasi.").max(7),
   designNotes: optionalText(4000),
@@ -527,7 +532,7 @@ export const updatePasswordSchema = z
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER", "ADMIN_SAGA"]),
   password: strongPasswordSchema,
 });
 
@@ -536,7 +541,7 @@ export const updateUserSchema = z.object({
   updatedAt: z.string().datetime(),
   name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(120),
   email: z.email("Email tidak valid.").trim().max(320),
-  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER"]),
+  role: z.enum(["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER", "ADMIN_SAGA"]),
   password: z.preprocess(
     (value) => (typeof value === "string" && value === "" ? undefined : value),
     strongPasswordSchema.optional(),

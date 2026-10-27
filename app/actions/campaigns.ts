@@ -9,6 +9,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { campaignRecipientFilterSchema, campaignRecipientSelectionSchema, campaignTestSchema, campaignFieldsSchema, deleteCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema, updateCampaignSchema } from "@/lib/whatsapp/campaigns";
 import { getCampaignRecipientOptions } from "@/lib/whatsapp/data";
 import { enqueueCampaignTestWhatsAppMessage } from "@/lib/whatsapp/jobs";
+import { removeWhatsAppMedia, uploadWhatsAppImage } from "@/lib/whatsapp/attachment";
 
 function campaignInput(formData: FormData) {
   return { name: formData.get("name"), body: formData.get("body"), scheduledAt: formData.get("scheduledAt") };
@@ -20,13 +21,60 @@ export async function sendCampaignTestAction(formData: FormData) {
     const parsed = campaignTestSchema.safeParse({ body: formData.get("body"), phoneNumber: formData.get("phoneNumber") });
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Data test campaign tidak valid.");
 
-    const business = await getPrismaClient().businessProfile.findUnique({ where: { id: "default" }, select: { name: true } });
+    const prisma = getPrismaClient();
+    const business = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } });
     const text = renderCampaignMessage(parsed.data.body, {
       customer_name: "Customer Test",
       company_name: "Perusahaan Test",
       business_name: business?.name ?? "AS Konveksi",
     });
-    await enqueueCampaignTestWhatsAppMessage(actor, parsed.data.phoneNumber, text);
+
+    // Gambar form dipakai sebagai file sementara (dihapus worker setelah terkirim);
+    // bila kosong, gambar campaign yang sudah tersimpan ikut diuji.
+    const file = formData.get("image");
+    const pickedFile = file instanceof File && file.size ? file : null;
+    let uploaded: Awaited<ReturnType<typeof uploadWhatsAppImage>> | null = null;
+    let tempMediaId: string | null = null;
+    if (pickedFile) {
+      uploaded = await uploadWhatsAppImage(pickedFile, "broadcast-temp");
+      const media = await prisma.whatsAppTempMedia.create({
+        data: { path: uploaded.path, mimeType: uploaded.mimeType, fileName: uploaded.fileName, sizeBytes: uploaded.sizeBytes, remaining: 1, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+        select: { id: true },
+      });
+      tempMediaId = media.id;
+    }
+
+    let attachment: { path: string; mimeType: string; fileName: string; sizeBytes: number; kind: "IMAGE"; tempMediaId?: string } | undefined = uploaded && tempMediaId
+      ? { ...uploaded, tempMediaId }
+      : undefined;
+    if (!attachment) {
+      const campaignId = String(formData.get("campaignId") ?? "");
+      if (campaignId) {
+        const campaign = await prisma.whatsAppCampaign.findUnique({
+          where: { id: campaignId },
+          select: { imagePath: true, imageMimeType: true, imageFileName: true, imageSizeBytes: true },
+        });
+        if (campaign?.imagePath) {
+          attachment = {
+            path: campaign.imagePath,
+            mimeType: campaign.imageMimeType ?? "image/jpeg",
+            fileName: campaign.imageFileName ?? "campaign.jpg",
+            sizeBytes: campaign.imageSizeBytes ?? 0,
+            kind: "IMAGE",
+          };
+        }
+      }
+    }
+
+    try {
+      await enqueueCampaignTestWhatsAppMessage(actor, parsed.data.phoneNumber, text, attachment);
+    } catch (error) {
+      if (uploaded && tempMediaId) {
+        await prisma.whatsAppTempMedia.deleteMany({ where: { id: tempMediaId } });
+        await removeWhatsAppMedia([uploaded.path]);
+      }
+      throw error;
+    }
     revalidatePath("/campaigns");
     revalidatePath("/whatsapp/jobs");
     return flashMessagePath("/campaigns", "notice", "Pesan test dijadwalkan untuk dikirim.");
@@ -40,13 +88,36 @@ export async function createCampaignAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Campaign tidak valid.");
     const scheduledAt = parseJakartaDateTime(parsed.data.scheduledAt)!;
     if (scheduledAt <= new Date()) throw new UserFacingError("Jadwal campaign harus di masa depan.");
-    await getPrismaClient().$transaction(async (tx) => {
-      const campaign = await tx.whatsAppCampaign.create({
-        data: { name: parsed.data.name, body: parsed.data.body, scheduledAt, createdById: actor.id, updatedById: actor.id },
-        select: { id: true },
+
+    const file = formData.get("image");
+    const image = file instanceof File && file.size ? await uploadWhatsAppImage(file, "campaign") : null;
+    try {
+      await getPrismaClient().$transaction(async (tx) => {
+        const campaign = await tx.whatsAppCampaign.create({
+          data: {
+            name: parsed.data.name,
+            body: parsed.data.body,
+            scheduledAt,
+            createdById: actor.id,
+            updatedById: actor.id,
+            ...(image ? { imagePath: image.path, imageMimeType: image.mimeType, imageFileName: image.fileName, imageSizeBytes: image.sizeBytes } : {}),
+          },
+          select: { id: true },
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId: actor.id,
+            entityType: "WhatsAppCampaign",
+            entityId: campaign.id,
+            action: "CAMPAIGN_CREATED",
+            changedFields: image ? ["name", "body", "scheduledAt", "image"] : ["name", "body", "scheduledAt"],
+          },
+        });
       });
-      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "WhatsAppCampaign", entityId: campaign.id, action: "CAMPAIGN_CREATED", changedFields: ["name", "body", "scheduledAt"] } });
-    });
+    } catch (error) {
+      if (image) await removeWhatsAppMedia([image.path]);
+      throw error;
+    }
     revalidatePath("/campaigns");
     return flashMessagePath("/campaigns", "notice", "Campaign dijadwalkan.");
   });
@@ -59,14 +130,52 @@ export async function updateCampaignAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Campaign tidak valid.");
     const scheduledAt = parseJakartaDateTime(parsed.data.scheduledAt)!;
     if (scheduledAt <= new Date()) throw new UserFacingError("Jadwal campaign harus di masa depan.");
-    await getPrismaClient().$transaction(async (tx) => {
-      const updated = await tx.whatsAppCampaign.updateMany({
-        where: { id: parsed.data.campaignId, version: parsed.data.version, status: { in: ["SCHEDULED", "PAUSED"] } },
-        data: { name: parsed.data.name, body: parsed.data.body, scheduledAt, updatedById: actor.id, version: { increment: 1 } },
+
+    const file = formData.get("image");
+    const image = file instanceof File && file.size ? await uploadWhatsAppImage(file, "campaign") : null;
+    let replacedImage: string | null = null;
+    try {
+      await getPrismaClient().$transaction(async (tx) => {
+        // Campaign yang sudah berjalan tidak boleh berganti gambar: sebagian
+        // penerima mungkin sudah menerima gambar sebelumnya.
+        const current = await tx.whatsAppCampaign.findUnique({
+          where: { id: parsed.data.campaignId },
+          select: { imagePath: true, status: true },
+        });
+        if (!current) throw new UserFacingError("Campaign tidak ditemukan. Muat ulang halaman.");
+        if (current.status !== "SCHEDULED" && current.status !== "PAUSED") {
+          throw new UserFacingError("Campaign sudah mulai dikirim sehingga gambar tidak dapat diubah.");
+        }
+        const updated = await tx.whatsAppCampaign.updateMany({
+          where: { id: parsed.data.campaignId, version: parsed.data.version, status: { in: ["SCHEDULED", "PAUSED"] } },
+          data: {
+            name: parsed.data.name,
+            body: parsed.data.body,
+            scheduledAt,
+            updatedById: actor.id,
+            version: { increment: 1 },
+            ...(image ? { imagePath: image.path, imageMimeType: image.mimeType, imageFileName: image.fileName, imageSizeBytes: image.sizeBytes } : {}),
+          },
+        });
+        if (!updated.count) throw new UserFacingError("Campaign sudah mulai atau berubah. Muat ulang halaman.");
+        if (image) replacedImage = current.imagePath;
+        await tx.auditEvent.create({
+          data: {
+            actorId: actor.id,
+            entityType: "WhatsAppCampaign",
+            entityId: parsed.data.campaignId,
+            action: "CAMPAIGN_UPDATED",
+            changedFields: image ? ["name", "body", "scheduledAt", "image"] : ["name", "body", "scheduledAt"],
+          },
+        });
       });
-      if (!updated.count) throw new UserFacingError("Campaign sudah mulai atau berubah. Muat ulang halaman.");
-      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "WhatsAppCampaign", entityId: parsed.data.campaignId, action: "CAMPAIGN_UPDATED", changedFields: ["name", "body", "scheduledAt"] } });
-    });
+    } catch (error) {
+      if (image) await removeWhatsAppMedia([image.path]);
+      throw error;
+    }
+    // File lama baru dihapus setelah perubahan tersimpan, agar gambar aktif
+    // tidak pernah hilang saat penyimpanan gagal.
+    if (replacedImage) await removeWhatsAppMedia([replacedImage]);
     revalidatePath("/campaigns");
     return flashMessagePath("/campaigns", "notice", "Campaign diperbarui.");
   });
@@ -205,7 +314,14 @@ export async function deleteCampaignAction(formData: FormData) {
     const parsed = deleteCampaignSchema.safeParse({ campaignId: formData.get("campaignId"), version: formData.get("version") });
     if (!parsed.success) throw new UserFacingError("Campaign tidak valid.");
 
+    let imageToDelete: string | null = null;
     await getPrismaClient().$transaction(async (tx) => {
+      const current = await tx.whatsAppCampaign.findUnique({
+        where: { id: parsed.data.campaignId },
+        select: { imagePath: true },
+      });
+      imageToDelete = current?.imagePath ?? null;
+
       const locked = await tx.whatsAppCampaign.updateMany({
         where: { id: parsed.data.campaignId, version: parsed.data.version },
         data: { updatedById: actor.id, version: { increment: 1 } },
@@ -224,6 +340,8 @@ export async function deleteCampaignAction(formData: FormData) {
       await tx.whatsAppCampaign.delete({ where: { id: parsed.data.campaignId } });
       await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "WhatsAppCampaign", entityId: parsed.data.campaignId, action: "CAMPAIGN_DELETED", changedFields: ["campaign"] } });
     });
+    // Gambar campaign ikut terhapus agar storage tidak menyimpan file yatim.
+    if (imageToDelete) await removeWhatsAppMedia([imageToDelete]);
     revalidatePath("/campaigns");
     revalidatePath("/whatsapp/jobs");
     return flashMessagePath("/campaigns", "notice", "Campaign dihapus.");

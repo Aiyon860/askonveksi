@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { ImagePicker } from "@/components/ui/image-picker";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
@@ -100,13 +101,24 @@ function CampaignEditLockedCard({ campaign, closeHref }: { campaign: { name: str
   return <Card className="self-start xl:sticky xl:top-6"><CardHeader><CardTitle>Campaign tidak bisa diedit</CardTitle></CardHeader><CardContent className="flex flex-col gap-3"><p className="text-sm text-muted-foreground">Campaign <strong className="font-medium text-foreground">{campaign.name}</strong> sudah berstatus <strong className="font-medium text-foreground">{campaignStatuses[campaign.status].label}</strong>. Isi dan jadwal campaign dikunci setelah pengiriman dimulai, jadi formulir edit tidak ditampilkan agar tidak membuat campaign baru tanpa sengaja.</p><div className="flex justify-end"><Button variant="outline" render={<Link href={closeHref} />} nativeButton={false}>Tutup</Button></div></CardContent></Card>;
 }
 
-function CampaignForm({ canSendTest, edit, cancelHref }: { canSendTest: boolean; edit: { id: string; name: string; body: string; scheduledAt: Date; version: number } | undefined; cancelHref: string }) {
+function CampaignForm({ canSendTest, edit, cancelHref }: { canSendTest: boolean; edit: { id: string; name: string; body: string; scheduledAt: Date; version: number; imagePath: string | null; imageFileName: string | null } | undefined; cancelHref: string }) {
   return <Card className="self-start xl:sticky xl:top-6"><CardHeader><CardTitle>{edit ? "Edit campaign" : "Campaign baru"}</CardTitle></CardHeader><CardContent><form action={edit ? updateCampaignAction : createCampaignAction}>
     {edit ? <><input type="hidden" name="campaignId" value={edit.id} /><input type="hidden" name="version" value={edit.version} /></> : null}
     <FieldGroup>
       <Field><FieldLabel htmlFor="campaign-name">Nama campaign</FieldLabel><Input id="campaign-name" name="name" required minLength={2} maxLength={120} defaultValue={edit?.name ?? ""} /></Field>
       <Field><FieldLabel htmlFor="campaign-scheduled">Mulai kirim (WIB)</FieldLabel><Input id="campaign-scheduled" name="scheduledAt" type="datetime-local" required defaultValue={edit ? jakartaDateTimeInput(edit.scheduledAt) : ""} /></Field>
       <Field><FieldLabel htmlFor="campaign-body">Pesan WhatsApp</FieldLabel><Textarea id="campaign-body" name="body" required maxLength={4000} rows={7} defaultValue={edit?.body ?? ""} /><FieldDescription>Variabel: {CAMPAIGN_VARIABLES.map((name) => `{{${name}}}`).join(", ")}</FieldDescription></Field>
+      <Field>
+        <FieldLabel htmlFor="campaign-image">Gambar pamflet/poster (opsional)</FieldLabel>
+        <ImagePicker
+          id="campaign-image"
+          name="image"
+          existingSrc={edit?.imagePath ? `/api/whatsapp/campaigns/${edit.id}/image` : null}
+          existingLabel={edit?.imageFileName ? `Tersimpan: ${edit.imageFileName}` : null}
+          emptyLabel="Tanpa gambar"
+        />
+        <FieldDescription>JPG, PNG, atau WebP maksimal 10 MB. Gambar ikut terkirim ke setiap penerima dan dapat diganti selama campaign belum berjalan.</FieldDescription>
+      </Field>
       {canSendTest ? <Field><FieldLabel htmlFor="campaign-test-phone">Nomor WhatsApp test</FieldLabel><Input id="campaign-test-phone" name="phoneNumber" inputMode="tel" maxLength={32} /><FieldDescription>Pesan dikirim hanya ke nomor ini memakai data contoh.</FieldDescription></Field> : null}
       <div className="flex justify-end gap-2">{edit ? <Button variant="outline" render={<Link href={cancelHref} />} nativeButton={false}>Batal edit</Button> : null}{canSendTest ? <SubmitButton formAction={sendCampaignTestAction} formNoValidate variant="outline" pendingLabel="Menjadwalkan test...">Kirim test</SubmitButton> : null}<SubmitButton>{edit ? "Simpan perubahan" : "Jadwalkan campaign"}</SubmitButton></div>
     </FieldGroup>
@@ -138,7 +150,7 @@ async function CampaignsContent({ searchParams }: { searchParams: CampaignSearch
     // Target edit dicari langsung per id, bukan dari baris tabel yang sedang tampil: campaign bisa
     // sudah berpindah halaman/filter atau berubah status sejak halaman dirender.
     editId
-      ? prisma.whatsAppCampaign.findUnique({ where: { id: editId }, select: { id: true, name: true, body: true, scheduledAt: true, status: true, version: true } })
+      ? prisma.whatsAppCampaign.findUnique({ where: { id: editId }, select: { id: true, name: true, body: true, scheduledAt: true, status: true, version: true, imagePath: true, imageFileName: true } })
       : null,
   ]);
   const pageCount = Math.max(1, Math.ceil(total / state.pageSize));

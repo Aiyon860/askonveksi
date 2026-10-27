@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "historyId": "49af67a9-b608-4e5a-8c09-9fc3fb78953b",
+  "currentRevision": "bcba55cb-90a8-460a-b345-01e4f8eb541b",
+  "pendingChanges": false,
+  "files": {
+    "assets/fonts/Inter-latin.woff2": {
+      "hash": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/31/3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+    },
+    "assets/gsap.min.js": {
+      "hash": "92bb9a96476f983d212a2bc4f54c889039c1696dd4461d40a736860938570fbb",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/92/92bb9a96476f983d212a2bc4f54c889039c1696dd4461d40a736860938570fbb"
+    },
+    "assets/music/audio-data.js": {
+      "hash": "c012925d83ff80a557167ec7e9b0f88e88259c6bf0dfe7ac2846320ac2a19066",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/c0/c012925d83ff80a557167ec7e9b0f88e88259c6bf0dfe7ac2846320ac2a19066"
+    },
+    "assets/music/audio-data.json": {
+      "hash": "cb546265207689d7b3cb75e1506d0a8c4a7278ec86aa74017ac66f90c974bdde",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/cb/cb546265207689d7b3cb75e1506d0a8c4a7278ec86aa74017ac66f90c974bdde"
+    },
+    "assets/music/bed.mp3": {
+      "hash": "02091242bd2a6c3ce5eb7af28e59d2ef81e74eab209c0d140e2d4a43fbe67cd5",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/02/02091242bd2a6c3ce5eb7af28e59d2ef81e74eab209c0d140e2d4a43fbe67cd5"
+    },
+    "assets/sfx/impact/impactSoft_medium_001.ogg": {
+      "hash": "7642a4fd43e547afe4f7adfadb3dabb681c0ff512f52c1674bae30a726841faf",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/76/7642a4fd43e547afe4f7adfadb3dabb681c0ff512f52c1674bae30a726841faf"
+    },
+    "assets/sfx/interface/bong_001.ogg": {
+      "hash": "d21d0f0b782445db579d11e2506b24cd1ac9d664ee33aeaf807761aa7b6fd710",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/d2/d21d0f0b782445db579d11e2506b24cd1ac9d664ee33aeaf807761aa7b6fd710"
+    },
+    "assets/sfx/interface/click_003.ogg": {
+      "hash": "2fa929138bc3a0f432696588f66eac94b8f6d463905ec8808c6461ce4b054292",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/2f/2fa929138bc3a0f432696588f66eac94b8f6d463905ec8808c6461ce4b054292"
+    },
+    "assets/sfx/ui/rollover2.ogg": {
+      "hash": "d0bc0fcba496d73df1da8c145e5330df75f87ab5a4f33a9b71461b006b5c338e",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/d0/d0bc0fcba496d73df1da8c145e5330df75f87ab5a4f33a9b71461b006b5c338e"
+    },
+    "index.html": {
+      "hash": "edae83a963f50bc9bb71d5a6ab89cee9fdb41036466bdc0e49e9b645d75c64bb",
+      "content": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/ed/edae83a963f50bc9bb71d5a6ab89cee9fdb41036466bdc0e49e9b645d75c64bb"
+    }
+  },
+  "revisions": {
+    "8a1699e5-02d8-4894-968a-f0efe2a19749": {
+      "actor": {
+        "kind": "outside",
+        "name": "Outside"
+      },
+      "label": "Changed outside the app",
+      "startedAt": 1792866210849,
+      "endedAt": 1792866210849,
+      "files": {
+        "index.html": {
+          "before": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/08/08988043c744f1c0c934ca1de63d1c0f02e0360d4773d2eb28a9feb4e39fadcc",
+          "after": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/9a/9a0e20bb28cb4912161b93baf3aa11bfe3142c923f048d908fec50be987c902d"
+        }
+      }
+    },
+    "bcba55cb-90a8-460a-b345-01e4f8eb541b": {
+      "actor": {
+        "kind": "outside",
+        "name": "Outside"
+      },
+      "label": "Changed outside the app",
+      "startedAt": 1792866270789,
+      "endedAt": 1792866270789,
+      "files": {
+        "index.html": {
+          "before": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/9a/9a0e20bb28cb4912161b93baf3aa11bfe3142c923f048d908fec50be987c902d",
+          "after": "/home/haydar/.cache/hyperframes/history/49af67a9-b608-4e5a-8c09-9fc3fb78953b/blobs/ed/edae83a963f50bc9bb71d5a6ab89cee9fdb41036466bdc0e49e9b645d75c64bb"
+        }
+      }
+    }
+  },
+  "checks": {
+    "latest": {
+      "revision": null,
+      "id": "07f52b17-168a-42b4-929d-be47fc410efc"
+    },
+    "revisions": {
+      "8a1699e5-02d8-4894-968a-f0efe2a19749": [
+        {
+          "id": "b95dd17a-8244-4845-83a0-541b172664ea",
+          "scope": "project",
+          "metadata": {
+            "ok": true,
+            "browserSkipped": false,
+            "options": {
+              "samples": 9,
+              "atTransitions": false,
+              "maxIssues": 30,
+              "collapseStatic": true,
+              "tolerance": 2,
+              "timeout": 3000,
+              "contrast": true,
+              "strict": false,
+              "snapshots": false,
+              "browserGpuMode": "auto"
+            }
+          },
+          "createdAt": 1792866251875,
+          "contentHash": "d345870280753a4d6d9c1f0c428302418114d06250a9e139ee186028e931f108",
+          "revision": "8a1699e5-02d8-4894-968a-f0efe2a19749",
+          "inputFingerprint": "a8e2b8d81993e3e1449d9cdf2443fbdcf51f693c9fbb9d896996ac5be92f9b65",
+          "inputScope": "local-project-files",
+          "attribution": "recorded-revision",
+          "status": "cleaned",
+          "cleanedAfterRender": "d2ad4738-83ad-48fe-8739-9d3f205bb55e"
+        }
+      ]
+    },
+    "unversioned": [
+      {
+        "id": "07f52b17-168a-42b4-929d-be47fc410efc",
+        "scope": "project",
+        "report": "/home/haydar/Code/askonveksi/askonveksi/brag-output/composition/.hyperframes/artifacts/checks/07f52b17-168a-42b4-929d-be47fc410efc.json",
+        "metadata": {
+          "ok": false,
+          "browserSkipped": true,
+          "options": {
+            "samples": 9,
+            "atTransitions": false,
+            "maxIssues": 40,
+            "collapseStatic": true,
+            "tolerance": 2,
+            "timeout": 3000,
+            "contrast": true,
+            "strict": false,
+            "snapshots": false,
+            "browserGpuMode": "auto"
+          }
+        },
+        "createdAt": 1792866193477,
+        "contentHash": "22e6cc93c428ba04b483f8fc42d71e7caa177c26c24ac48a7acf842cba1aa107",
+        "revision": null,
+        "inputFingerprint": "da6bec92cb1595188b10e37bac57bceadc14f38aa9be9e978dcf7edbcbabbc7e",
+        "inputScope": "local-project-files",
+        "attribution": "unversioned"
+      }
+    ]
+  },
+  "snapshots": {
+    "latest": null,
+    "revisions": {},
+    "unversioned": []
+  },
+  "renders": {
+    "latest": {
+      "id": "d2ad4738-83ad-48fe-8739-9d3f205bb55e",
+      "completedAt": 1792866294437,
+      "output": "/home/haydar/Code/askonveksi/askonveksi/brag-output/brag.mp4",
+      "status": "completed",
+      "revision": "bcba55cb-90a8-460a-b345-01e4f8eb541b"
+    },
+    "retainedRevisions": [
+      "bcba55cb-90a8-460a-b345-01e4f8eb541b"
+    ]
+  },
+  "pendingArtifactCleanup": []
+}
