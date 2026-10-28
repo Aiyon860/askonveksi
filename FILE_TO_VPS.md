@@ -5,7 +5,8 @@
 > Produksi VPS (`askonveksi-cloud`): kode Fase 1–3 ter-deploy dan sha256 modul storage identik dengan repo.
 > Backfill produksi selesai: **118 objek / 36 MB** dari 4 bucket ada di `/var/lib/askonveksi/storage`, `--verify` bersih (missing=0, mismatched=0, extra=0), checksum SHA-256 sampel 19/19 cocok, dan **seluruh 74 path unik yang dirujuk database ada di VPS**.
 > Backup harian + monitor disk sudah terpasang via cron; uji restore non-destruktif lulus (118/118 file, sha sampel 8/8 cocok).
-> Tersisa: **offsite backup** (ditunda atas keputusan pemilik), **pengosongan bucket Supabase** (T6.3, setelah 1 bulan stabil), dan **UAT fungsional penuh** oleh OWNER/DEVELOPER.
+> Bucket Supabase sudah **dikosongkan** (2026-10-28, 122 objek dihapus, bucket tetap ada) setelah verifikasi 118/118 objek + 74/74 path DB ada di VPS dan arsip backup diunduh ke laptop operator.
+> Tersisa: **offsite backup otomatis** (ditunda atas keputusan pemilik) dan **UAT fungsional penuh** oleh OWNER/DEVELOPER.
 > Revisi 2 mengadopsi hasil audit kode dan mengganti beberapa keputusan revisi 1 (lihat bagian **0.4**).
 > Prinsip proyek (AGENTS.md): setiap perubahan tidak boleh mengurangi akses role DEVELOPER; semua perubahan wajib lulus `npm run lint && npx tsc --noEmit && npm test && npm run build`.
 
@@ -493,7 +494,7 @@ Kriteria masuk: tidak ada `fallback-supabase` selama 14 hari, backup rutin sukse
 
 - [x] T6.1 `ERP_STORAGE_DRIVER=local`, restart PM2 app + worker — 2026-10-27 22:34 WIB. Pre-flight: backup baru (`erp-storage-20261027-223408.tar.gz`, 34 MB), `--verify` bersih (54/9/55/0), audit DB→disk 74/74, lalu env diubah (backup `shared/.env.bak.pre-local.20261027-223447`) dan PM2 restart.
 - [x] T6.2 Spot-check teknis `local`: landing 200, logo `200 image/webp 87.630 B` (dilayani dari VPS), uji tulis/baca/hapus `local-store.mjs` lulus, worker health `ok`, **jumlah objek Supabase tetap 118** (tidak ada tulisan keluar), nol error storage di log PM2. UAT fungsional penuh oleh pemilik menyusul.
-- [ ] T6.3 Simpan bucket Supabase **kosong** sebagai cold copy selama 1 bulan pertama `local`; hapus setelah stabil (atau via dashboard). Kondisi 2026-10-27: bucket utuh 118 objek + 4 `.emptyFolderPlaceholder`, hanya tidak lagi ditulis.
+- [x] T6.3 Kosongkan bucket Supabase — 2026-10-28 08:41 WIB, **122 objek dihapus** (54 `crm-po-designs` + 9 `business-assets` + 55 `payment-proofs` + 4 `.emptyFolderPlaceholder`), sisa 0 di keempat bucket. Bucket **tidak dihapus** agar rollback masih bisa menulis. Prasyarat yang dipenuhi sebelum hapus: `--verify` missing=0/mismatched=0, audit DB→disk 74/74, arsip `erp-storage-20261028-083945.tar.gz` (35 MB, 119 file) diunduh ke laptop operator, `gzip -t` OK. Setelah hapus: situs 200, logo 200, uji tulis/baca/hapus `local` lulus, audit DB→disk tetap 74/74, log bersih.
 - [~] T6.4 `erp-storage.ts` dibiarkan apa adanya (jalur Supabase jadi kode mati yang sengaja dipertahankan untuk rollback); `docs/PANDUAN_STORAGE_ERP.md` sudah diperbarui, `README.md` belum menyebut storage VPS.
 - [ ] T6.5 Catat penghematan & tanggal di `TRACKING_REVISI.md`.
 
