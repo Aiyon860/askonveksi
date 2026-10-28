@@ -121,6 +121,7 @@ let stopping = false;
 let lastTickAt = 0;
 let lastAutomationAt = 0;
 let lastInvoiceScanAt = 0;
+let lastHeartbeatAt = 0;
 let lastLagMs = 0;
 let ticking = false;
 
@@ -223,6 +224,7 @@ async function issuePairingCode(socket, account, delay = 0) {
   await prisma.whatsAppAccount.update({
     where: { id: account.id },
     data: { status: "PAIRING", pairingCode: code, pairingCodeExpiresAt: new Date(Date.now() + 60_000), lastError: null },
+    select: { id: true },
   });
 }
 
@@ -241,20 +243,20 @@ async function connectAccount(account) {
     } catch (error) {
       const detail = cleanError(error);
       console.error(`[whatsapp-worker] pairing ${account.id}: ${detail}`);
-      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "ERROR", lastError: detail } });
+      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "ERROR", lastError: detail }, select: { id: true } });
     }
   }
 
   socket.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
     if (connection === "open") {
-      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "CONNECTED", connectedAt: new Date(), pairingCode: null, pairingCodeExpiresAt: null, lastError: null } });
+      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "CONNECTED", connectedAt: new Date(), pairingCode: null, pairingCodeExpiresAt: null, lastError: null }, select: { id: true } });
     }
     if (connection === "close") {
       sessions.delete(account.id);
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       console.error(`[whatsapp-worker] disconnect ${account.id}: status=${statusCode ?? "?"} ${cleanError(lastDisconnect?.error)}`);
       const loggedOut = statusCode === DisconnectReason.loggedOut;
-      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: loggedOut ? "LOGGED_OUT" : "DISCONNECTED", ...(loggedOut ? { sendEnabled: false } : {}), disconnectedAt: new Date(), lastError: cleanError(lastDisconnect?.error) } });
+      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: loggedOut ? "LOGGED_OUT" : "DISCONNECTED", ...(loggedOut ? { sendEnabled: false } : {}), disconnectedAt: new Date(), lastError: cleanError(lastDisconnect?.error) }, select: { id: true } });
       if (!loggedOut && !stopping) setTimeout(() => void reloadAccounts(), 5_000 + Math.floor(Math.random() * 5_000));
     }
   });
@@ -312,11 +314,13 @@ async function storeInbound(accountId, message, remoteJid) {
       where: { accountId_remoteJid: { accountId, remoteJid } },
       create: { accountId, remoteJid, customerId: customer?.id, unreadCount: 1, lastMessageAt: occurredAt, lastMessagePreview: (text || `[${kind.toLowerCase()}]`).slice(0, 240) },
       update: { customerId: customer?.id || undefined, unreadCount: { increment: 1 }, isResolved: false, lastMessageAt: occurredAt, lastMessagePreview: (text || `[${kind.toLowerCase()}]`).slice(0, 240) },
+      select: { id: true },
     });
     const stored = await tx.whatsAppMessage.upsert({
       where: { accountId_whatsappMessageId: { accountId, whatsappMessageId: message.key.id } },
       create: { accountId, conversationId: conversation.id, whatsappMessageId: message.key.id, direction: "INBOUND", kind, status: "DELIVERED", text, mediaPath, mediaMimeType, mediaFileName, mediaSizeBytes, occurredAt },
       update: {},
+      select: { id: true },
     });
     if (customer) {
       const authorId = customer.salesPicId || (await tx.appUser.findFirst({ where: { role: "OWNER", isActive: true }, select: { id: true } }))?.id;
@@ -363,7 +367,18 @@ async function processAccountDeletion(account) {
 }
 
 async function reloadAccounts() {
-  const accounts = await prisma.whatsAppAccount.findMany();
+  const accounts = await prisma.whatsAppAccount.findMany({
+    select: {
+      id: true,
+      phoneNumber: true,
+      status: true,
+      connectRequestedAt: true,
+      disconnectRequestedAt: true,
+      disconnectedAt: true,
+      deleteRequestedAt: true,
+      pairingCodeExpiresAt: true,
+    },
+  });
   for (const account of accounts) {
     // ponytail: hapus bertahap lintas tick (500 baris/tick) agar event-loop tak kecekek; file gagal di-log saja.
     if (account.deleteRequestedAt) {
@@ -371,7 +386,7 @@ async function reloadAccounts() {
         await processAccountDeletion(account);
       } catch (error) {
         console.error(`[whatsapp-worker] delete ${account.id}: ${cleanError(error)}`);
-        await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { lastError: cleanError(error) } }).catch(() => undefined);
+        await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { lastError: cleanError(error) }, select: { id: true } }).catch(() => undefined);
       }
       continue;
     }
@@ -380,7 +395,7 @@ async function reloadAccounts() {
       if (socket) await socket.logout().catch(() => undefined);
       sessions.delete(account.id);
       await rm(path.join(authRoot, account.id), { recursive: true, force: true });
-      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "LOGGED_OUT", sendEnabled: false, disconnectedAt: new Date(), connectRequestedAt: null, pairingCode: null, pairingCodeExpiresAt: null } });
+      await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "LOGGED_OUT", sendEnabled: false, disconnectedAt: new Date(), connectRequestedAt: null, pairingCode: null, pairingCodeExpiresAt: null }, select: { id: true } });
       continue;
     }
     const socket = sessions.get(account.id);
@@ -388,14 +403,21 @@ async function reloadAccounts() {
       try {
         await issuePairingCode(socket, account);
       } catch (error) {
-        await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "ERROR", lastError: cleanError(error) } });
+        await prisma.whatsAppAccount.update({ where: { id: account.id }, data: { status: "ERROR", lastError: cleanError(error) }, select: { id: true } });
       }
     } else if (account.status !== "LOGGED_OUT" && (account.connectRequestedAt || account.status === "CONNECTED") && !socket) {
       await connectAccount(account);
     }
   }
   const ids = [...sessions.keys()];
-  if (ids.length) await prisma.whatsAppAccount.updateMany({ where: { id: { in: ids } }, data: { heartbeatAt: new Date() } });
+  const heartbeatNow = Date.now();
+  if (ids.length && heartbeatNow - lastHeartbeatAt >= 10_000) {
+    await prisma.whatsAppAccount.updateMany({
+      where: { id: { in: ids } },
+      data: { heartbeatAt: new Date(heartbeatNow) },
+    });
+    lastHeartbeatAt = heartbeatNow;
+  }
   const knownIds = new Set(accounts.map((account) => account.id));
   for (const [id, socket] of sessions) {
     if (knownIds.has(id)) continue;
@@ -407,9 +429,14 @@ async function reloadAccounts() {
 
 async function scheduleAutomations() {
   const now = new Date();
-  const templates = await prisma.whatsAppTemplate.findMany({ where: { isActive: true } });
+  const [templates, business] = await Promise.all([
+    prisma.whatsAppTemplate.findMany({
+      where: { isActive: true },
+      select: { id: true, triggerType: true, body: true },
+    }),
+    prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true, invoiceReminderOffsets: true } }),
+  ]);
   const byType = new Map(templates.map((template) => [template.triggerType, template]));
-  const business = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true, invoiceReminderOffsets: true } });
   const baseValues = { business_name: business?.name || "AS Konveksi" };
   const reminderOffsets = business?.invoiceReminderOffsets || [-3, 0, 3];
   const reminderSettingsKey = reminderOffsets.join(",");
@@ -444,30 +471,30 @@ async function scheduleAutomations() {
   // ponytail: scan invoice berat tiap 5 menit, sisanya tiap 60 dtk. Naikkan
   // frekuensi bila reminder invoice harus lebih real-time.
   if (Date.now() - lastInvoiceScanAt >= 300_000) {
-  const invoices = await prisma.invoice.findMany({
-    where: { status: "ISSUED", opportunity: { customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" } } } },
-    select: {
-      id: true,
-      invoiceNo: true,
-      issuedAt: true,
-      dueAt: true,
-      total: true,
-      opportunityId: true,
-      opportunity: {
-        select: {
-          opportunityNo: true,
-          title: true,
-          customerId: true,
-          customer: { select: { name: true, companyName: true } },
-          salesPic: { select: { name: true } },
+    const invoices = await prisma.invoice.findMany({
+      where: { status: "ISSUED", opportunity: { customer: { archivedAt: null, whatsapp: { not: null }, whatsappConsentStatus: { not: "OPTED_OUT" } } } },
+      select: {
+        id: true,
+        invoiceNo: true,
+        issuedAt: true,
+        dueAt: true,
+        total: true,
+        opportunityId: true,
+        opportunity: {
+          select: {
+            opportunityNo: true,
+            title: true,
+            customerId: true,
+            customer: { select: { name: true, companyName: true } },
+            salesPic: { select: { name: true } },
+          },
         },
+        pendingPayment: { select: { id: true, kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true } } } },
+        salesOrder: { select: { status: true, payment: { select: { id: true, terms: { select: { id: true, position: true, amount: true, dueAt: true, transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 } } } } } } },
       },
-      pendingPayment: { select: { id: true, kind: true, initialAmount: true, initialDueAt: true, terms: { select: { id: true, position: true, amount: true, dueAt: true } } } },
-      salesOrder: { select: { status: true, payment: { select: { id: true, terms: { select: { id: true, position: true, amount: true, dueAt: true, transactions: { where: { status: "ACTIVE" }, select: { id: true }, take: 1 } } } } } } },
-    },
-    take: 100,
-  });
-  for (const invoice of invoices) {
+      take: 100,
+    });
+    for (const invoice of invoices) {
     const values = { ...baseValues, customer_name: invoice.opportunity.customer.name, company_name: invoice.opportunity.customer.companyName || "", sales_pic_name: invoice.opportunity.salesPic?.name || "", opportunity_no: invoice.opportunity.opportunityNo, opportunity_title: invoice.opportunity.title, invoice_no: invoice.invoiceNo, invoice_total: new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(invoice.total)), invoice_due_date: invoice.dueAt?.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" }) || "" };
     const issuedTemplate = byType.get("INVOICE_ISSUED") || { id: null, body: DEFAULT_INVOICE_ISSUED_TEMPLATE };
     if (issuedTemplate && invoice.issuedAt) await createScheduledJob({ idempotencyKey: `invoice-issued:${invoice.id}`, type: "INVOICE_ISSUED", template: issuedTemplate, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, scheduledAt: invoice.issuedAt, values, attachment: { type: "invoice", invoiceId: invoice.id } });
@@ -492,9 +519,10 @@ async function scheduleAutomations() {
   }
     lastInvoiceScanAt = Date.now();
   }
+  return business?.name || "AS Konveksi";
 }
 
-async function scheduleCampaigns() {
+async function scheduleCampaigns(businessName) {
   const now = new Date();
   await prisma.whatsAppCampaign.updateMany({
     where: { status: "PAUSED", scheduledAt: { lte: now } },
@@ -502,10 +530,22 @@ async function scheduleCampaigns() {
   });
   const campaigns = await prisma.whatsAppCampaign.findMany({
     where: { OR: [{ status: "SCHEDULED", scheduledAt: { lte: now } }, { status: "PROCESSING", snapshotCompletedAt: null }] },
+    select: {
+      id: true,
+      name: true,
+      body: true,
+      scheduledAt: true,
+      status: true,
+      startedAt: true,
+      recipientCursor: true,
+      imagePath: true,
+      imageMimeType: true,
+      imageFileName: true,
+      imageSizeBytes: true,
+    },
     orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
     take: 10,
   });
-  const business = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } });
   for (const campaign of campaigns) {
     const startedAt = campaign.startedAt || now;
     if (campaign.status === "SCHEDULED") {
@@ -516,8 +556,11 @@ async function scheduleCampaigns() {
       if (!started.count) continue;
     }
     // Campaign hanya dikirim ke customer yang dipilih lewat dialog "Pilih Customer".
-    const recipientCount = await prisma.whatsAppCampaignRecipient.count({ where: { campaignId: campaign.id } });
-    if (!recipientCount) {
+    const recipient = await prisma.whatsAppCampaignRecipient.findFirst({
+      where: { campaignId: campaign.id },
+      select: { id: true },
+    });
+    if (!recipient) {
       console.warn(`[whatsapp] Campaign ${campaign.id} (${campaign.name}) dilewati: belum ada customer yang dipilih.`);
       await prisma.whatsAppCampaign.updateMany({
         where: { id: campaign.id, status: "PROCESSING" },
@@ -556,7 +599,7 @@ async function scheduleCampaigns() {
         customerId: item.id,
         campaignId: campaign.id,
         scheduledAt: campaign.scheduledAt,
-        payload: { text: render(campaign.body, { customer_name: item.name, company_name: item.companyName || "", business_name: business?.name || "AS Konveksi" }).replace(/\s{2,}/g, " "), attachment: campaignAttachment },
+        payload: { text: render(campaign.body, { customer_name: item.name, company_name: item.companyName || "", business_name: businessName }).replace(/\s{2,}/g, " "), attachment: campaignAttachment },
       }));
       if (jobs.length) await prisma.whatsAppAutomationJob.createMany({ data: jobs, skipDuplicates: true });
       cursor = recipients.at(-1).customerId;
@@ -572,14 +615,25 @@ async function scheduleCampaigns() {
     select: { id: true },
     take: 50,
   });
-  for (const campaign of running) {
-    const pending = await prisma.whatsAppAutomationJob.count({
-      where: { campaignId: campaign.id, status: { in: ["QUEUED", "PROCESSING", "RETRY"] } },
+  if (running.length) {
+    const pendingJobs = await prisma.whatsAppAutomationJob.groupBy({
+      by: ["campaignId"],
+      where: {
+        campaignId: { in: running.map((campaign) => campaign.id) },
+        status: { in: ["QUEUED", "PROCESSING", "RETRY"] },
+      },
+      _count: { _all: true },
     });
-    if (!pending) await prisma.whatsAppCampaign.updateMany({
-      where: { id: campaign.id, status: "PROCESSING" },
-      data: { status: "COMPLETED", completedAt: new Date() },
-    });
+    const pendingCampaignIds = new Set(pendingJobs.map((item) => item.campaignId));
+    const completedCampaignIds = running
+      .map((campaign) => campaign.id)
+      .filter((campaignId) => !pendingCampaignIds.has(campaignId));
+    if (completedCampaignIds.length) {
+      await prisma.whatsAppCampaign.updateMany({
+        where: { id: { in: completedCampaignIds }, status: "PROCESSING" },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      });
+    }
   }
 }
 
@@ -599,6 +653,7 @@ async function createScheduledJob({ template, values, attachment, metadata, ...d
     where: { idempotencyKey: data.idempotencyKey },
     create: { ...data, templateId: template.id || null, scheduledAt, payload },
     update: {},
+    select: { id: true },
   });
 }
 
@@ -632,6 +687,17 @@ async function automationSourceIsValid(job) {
     const reminder = await prisma.customerReminder.findUnique({ where: { id: job.reminderId || "" }, select: { type: true, generation: true, resolvedAt: true, customer: { select: { archivedAt: true, whatsappConsentStatus: true, orderReminderEnabled: true, opportunities: { where: { stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] } }, select: { id: true }, take: 1 } } } } });
     return Boolean(reminder && !reminder.resolvedAt && reminder.type === "REACTIVATION" && !reminder.customer.archivedAt && reminder.customer.whatsappConsentStatus !== "OPTED_OUT" && reminder.customer.orderReminderEnabled && !reminder.customer.opportunities.length && job.idempotencyKey === `reminder:${job.reminderId}:${reminder.generation}`);
   }
+  if (job.type === "INVOICE_ISSUED") {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: job.invoiceId || "" },
+      select: {
+        status: true,
+        opportunity: { select: { customer: { select: { archivedAt: true, whatsappConsentStatus: true } } } },
+      },
+    });
+    return Boolean(invoice?.status === "ISSUED" && !invoice.opportunity.customer.archivedAt && invoice.opportunity.customer.whatsappConsentStatus !== "OPTED_OUT");
+  }
+
   const invoice = await prisma.invoice.findUnique({ where: { id: job.invoiceId || "" }, select: {
     status: true,
     opportunity: { select: { customer: { select: { archivedAt: true, whatsappConsentStatus: true } } } },
@@ -640,7 +706,6 @@ async function automationSourceIsValid(job) {
   } });
   if (!invoice || invoice.status !== "ISSUED") return false;
   if (invoice.opportunity.customer.archivedAt || invoice.opportunity.customer.whatsappConsentStatus === "OPTED_OUT") return false;
-  if (job.type === "INVOICE_ISSUED") return true;
   const settings = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { invoiceReminderOffsets: true } });
   if (!settings || !settings.invoiceReminderOffsets.includes(job.payload?.metadata?.offset)) return false;
   const key = job.payload?.metadata?.paymentTarget;
@@ -657,12 +722,40 @@ async function processOneJob() {
   if (!id) return false;
   const job = await prisma.whatsAppAutomationJob.findUnique({
     where: { id },
-    include: { customer: true, message: { include: { conversation: { select: { remoteJid: true } } } } },
+    select: {
+      id: true,
+      idempotencyKey: true,
+      type: true,
+      accountId: true,
+      customerId: true,
+      opportunityId: true,
+      invoiceId: true,
+      reminderId: true,
+      campaignId: true,
+      payload: true,
+      attempts: true,
+      customer: {
+        select: {
+          archivedAt: true,
+          whatsappConsentStatus: true,
+          whatsapp: true,
+          salesPicId: true,
+        },
+      },
+      message: {
+        select: {
+          id: true,
+          status: true,
+          sentById: true,
+          conversation: { select: { remoteJid: true } },
+        },
+      },
+    },
   });
   if (!job) return true;
   if (!await automationSourceIsValid(job)) {
     await prisma.$transaction([
-      prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null, lastError: "Sumber automasi sudah berubah atau selesai." } }),
+      prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null, lastError: "Sumber automasi sudah berubah atau selesai." }, select: { id: true } }),
       prisma.whatsAppMessage.updateMany({ where: { automationJobId: id, status: { in: ["QUEUED", "SENDING"] } }, data: { status: "CANCELLED" } }),
     ], WORKER_TRANSACTION_OPTIONS);
     await releaseTempMedia(job.payload);
@@ -671,8 +764,8 @@ async function processOneJob() {
   if (job.message?.status === "SENDING") {
     const error = "Status pengiriman ambigu setelah worker restart; periksa WhatsApp sebelum mengulang manual.";
     await prisma.$transaction([
-      prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "FAILED", leaseOwner: null, leaseExpiresAt: null, lastError: error } }),
-      prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { status: "FAILED", failedAt: new Date(), errorMessage: error } }),
+      prisma.whatsAppAutomationJob.update({ where: { id }, data: { status: "FAILED", leaseOwner: null, leaseExpiresAt: null, lastError: error }, select: { id: true } }),
+      prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { status: "FAILED", failedAt: new Date(), errorMessage: error }, select: { id: true } }),
     ], WORKER_TRANSACTION_OPTIONS);
     await releaseTempMedia(job.payload);
     return true;
@@ -681,8 +774,8 @@ async function processOneJob() {
   try {
     if (job.customer?.archivedAt) throw new Error("Customer tidak tersedia.");
     const account = job.accountId
-      ? await prisma.whatsAppAccount.findUnique({ where: { id: job.accountId } })
-      : await prisma.whatsAppAccount.findFirst({ where: { sendEnabled: true, status: "CONNECTED" } });
+      ? await prisma.whatsAppAccount.findUnique({ where: { id: job.accountId }, select: { id: true, status: true, sendEnabled: true } })
+      : await prisma.whatsAppAccount.findFirst({ where: { sendEnabled: true, status: "CONNECTED" }, select: { id: true, status: true, sendEnabled: true } });
     const socket = account && sessions.get(account.id);
     if (!account || account.status !== "CONNECTED" || !account.sendEnabled || !socket) throw new Error("Nomor WhatsApp aktif sedang offline.");
     const payload = job.payload;
@@ -707,25 +800,27 @@ async function processOneJob() {
         : { document: buffer, mimetype: payload.attachment.mimeType, fileName: payload.attachment.fileName, caption: text };
     }
     const preparedAt = new Date();
-    const conversation = await prisma.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, ...(job.customerId ? { customerId: job.customerId } : {}) }, update: job.customerId ? { customerId: job.customerId } : {} });
+    const conversation = await prisma.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, ...(job.customerId ? { customerId: job.customerId } : {}) }, update: job.customerId ? { customerId: job.customerId } : {}, select: { id: true } });
     const preparedMessage = job.message
-      ? await prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { accountId: account.id, conversationId: conversation.id, status: "SENDING", errorMessage: null, failedAt: null } })
-      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? (payload.attachment.kind === "IMAGE" ? "IMAGE" : "DOCUMENT") : "TEXT", text, mediaFileName: payload.attachment?.type === "invoice" ? `invoice-${job.invoiceId}.pdf` : payload.attachment?.fileName ?? null, mediaMimeType: payload.attachment?.type === "invoice" ? "application/pdf" : payload.attachment?.mimeType ?? null, sentById: typeof payload.sentById === "string" ? payload.sentById : null, automationJobId: job.id, occurredAt: preparedAt } });
-    await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { accountId: account.id } });
+      ? await prisma.whatsAppMessage.update({ where: { id: job.message.id }, data: { accountId: account.id, conversationId: conversation.id, status: "SENDING", errorMessage: null, failedAt: null }, select: { id: true, sentById: true } })
+      : await prisma.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", status: "SENDING", kind: payload.attachment ? (payload.attachment.kind === "IMAGE" ? "IMAGE" : "DOCUMENT") : "TEXT", text, mediaFileName: payload.attachment?.type === "invoice" ? `invoice-${job.invoiceId}.pdf` : payload.attachment?.fileName ?? null, mediaMimeType: payload.attachment?.type === "invoice" ? "application/pdf" : payload.attachment?.mimeType ?? null, sentById: typeof payload.sentById === "string" ? payload.sentById : null, automationJobId: job.id, occurredAt: preparedAt }, select: { id: true, sentById: true } });
+    await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { accountId: account.id }, select: { id: true } });
     sendStarted = true;
     const sent = await socket.sendMessage(remoteJid, content);
     consoleInfo(`[whatsapp-worker] job ${job.id} sent to ${remoteJid}`);
     const occurredAt = new Date();
     await prisma.$transaction(async (tx) => {
-      await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { isResolved: false, lastMessageAt: occurredAt, lastMessagePreview: activityContent.slice(0, 240) } });
-      const message = await tx.whatsAppMessage.update({ where: { id: preparedMessage.id }, data: { whatsappMessageId: sent.key.id, status: "SENT", sentAt: occurredAt, occurredAt } });
+      await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { isResolved: false, lastMessageAt: occurredAt, lastMessagePreview: activityContent.slice(0, 240) }, select: { id: true } });
+      const message = await tx.whatsAppMessage.update({ where: { id: preparedMessage.id }, data: { whatsappMessageId: sent.key.id, status: "SENT", sentAt: occurredAt, occurredAt }, select: { sentById: true } });
       const authorId = message.sentById || job.customer?.salesPicId || (await tx.appUser.findFirst({ where: { role: "OWNER", isActive: true }, select: { id: true } }))?.id;
       if (authorId && job.customerId) await tx.communicationActivity.upsert({ where: { whatsappMessageId: message.id }, create: { customerId: job.customerId, opportunityId: job.opportunityId, authorId, kind: "COMMUNICATION", channel: "WHATSAPP", direction: "OUTBOUND", content: activityContent, occurredAt, whatsappMessageId: message.id }, update: {} });
-      await tx.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: "COMPLETED", accountId: account.id, completedAt: occurredAt, leaseOwner: null, leaseExpiresAt: null, lastError: null } });
+      await tx.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: "COMPLETED", accountId: account.id, completedAt: occurredAt, leaseOwner: null, leaseExpiresAt: null, lastError: null }, select: { id: true } });
       if (job.type === "REACTIVATION" && job.reminderId) {
-        const reminder = await tx.customerReminder.findUnique({ where: { id: job.reminderId }, select: { generation: true, nextOccurrence: true, sourceSalesOrder: { select: { acceptedAt: true } } } });
+        const [reminder, settings] = await Promise.all([
+          tx.customerReminder.findUnique({ where: { id: job.reminderId }, select: { generation: true, nextOccurrence: true, sourceSalesOrder: { select: { acceptedAt: true } } } }),
+          tx.businessProfile.findUnique({ where: { id: "default" }, select: { repeatOrderIntervals: true } }),
+        ]);
         if (reminder) {
-          const settings = await tx.businessProfile.findUnique({ where: { id: "default" }, select: { repeatOrderIntervals: true } });
           const intervals = settings?.repeatOrderIntervals || [6, 5];
           let occurrence = reminder.nextOccurrence + 1;
           let dueAt = repeatOrderDueAt(reminder.sourceSalesOrder.acceptedAt, intervals, occurrence);
@@ -742,7 +837,7 @@ async function processOneJob() {
     const permanent = message.includes("tidak dapat menerima") || message.includes("tidak valid") || message.includes("Konfigurasi");
     const retry = !sendStarted && (offline || (!permanent && job.attempts < 5));
     console.error(`[whatsapp-worker] job ${job.id}: ${message}`);
-    await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: retry ? "RETRY" : "FAILED", attempts: offline ? { decrement: 1 } : undefined, nextAttemptAt: retry ? new Date(Date.now() + (offline ? 5 : Math.min(30, 2 ** job.attempts)) * 60_000) : null, leaseOwner: null, leaseExpiresAt: null, lastError: message } });
+    await prisma.whatsAppAutomationJob.update({ where: { id: job.id }, data: { status: retry ? "RETRY" : "FAILED", attempts: offline ? { decrement: 1 } : undefined, nextAttemptAt: retry ? new Date(Date.now() + (offline ? 5 : Math.min(30, 2 ** job.attempts)) * 60_000) : null, leaseOwner: null, leaseExpiresAt: null, lastError: message }, select: { id: true } });
     await prisma.whatsAppMessage.updateMany({ where: { automationJobId: job.id }, data: { status: retry ? "QUEUED" : "FAILED", errorMessage: message, failedAt: retry ? null : new Date() } });
     // Job yang menyerah tidak akan memakai gambar sementara lagi.
     if (!retry) await releaseTempMedia(job.payload);
@@ -761,8 +856,8 @@ async function tick() {
   try {
     await reloadAccounts();
     if (Date.now() - lastAutomationAt >= 60_000) {
-      await scheduleAutomations();
-      await scheduleCampaigns();
+      const businessName = await scheduleAutomations();
+      await scheduleCampaigns(businessName);
       await sweepTempMedia();
       lastAutomationAt = Date.now();
     }

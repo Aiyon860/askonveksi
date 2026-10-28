@@ -140,7 +140,7 @@ test("pilihan penerima disimpan per campaign dengan audit dan guard status", asy
 test("worker hanya mengirim campaign ke customer terpilih dan melewati campaign kosong", async () => {
   const worker = await read("worker/whatsapp.mjs");
 
-  assert.match(worker, /prisma\.whatsAppCampaignRecipient\.count/);
+  assert.match(worker, /prisma\.whatsAppCampaignRecipient\.findFirst\(\{\s*where: \{ campaignId: campaign\.id \},\s*select: \{ id: true \}/);
   assert.match(worker, /dilewati: belum ada customer yang dipilih/);
   assert.ok(worker.includes('data: { status: "SKIPPED", recipientCursor: null }'));
   assert.ok(worker.includes('where: { campaignId: campaign.id, ...(cursor ? { customerId: { gt: cursor } } : {}) }'));

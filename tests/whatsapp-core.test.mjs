@@ -34,6 +34,46 @@ test("pesan invoice menyertakan template dan menghapus kalimat deadline saat tan
   assert.doesNotMatch(message, /Batas pembayaran/);
 });
 
+test("worker memproyeksikan hanya field akun dan job yang dipakai saat memproses", () => {
+  const reloadAccounts = workerSource.slice(workerSource.indexOf("async function reloadAccounts()"), workerSource.indexOf("async function scheduleAutomations()"));
+  const processOneJob = workerSource.slice(workerSource.indexOf("async function processOneJob()"), workerSource.indexOf("async function tick()"));
+
+  assert.match(reloadAccounts, /whatsAppAccount\.findMany\(\{\s*select:/);
+  const accountData = whatsappDataSource.slice(whatsappDataSource.indexOf("export async function getWhatsAppAccounts()"), whatsappDataSource.indexOf("export type WhatsAppTemplateSort"));
+  assert.match(accountData, /whatsAppAccount\.findMany\(\{\s*select:/);
+  assert.match(accountData, /requireActor\(WHATSAPP_ACCOUNT_MANAGER_ROLES\)/);
+  for (const field of ["id", "label", "phoneNumber", "status", "sendEnabled", "connectRequestedAt", "disconnectRequestedAt", "deleteRequestedAt", "pairingCode", "pairingCodeExpiresAt", "connectedAt", "disconnectedAt", "heartbeatAt", "lastError"]) {
+    assert.match(accountData, new RegExp(`\\b${field}: true`));
+  }
+  assert.match(workerSource, /whatsAppTemplate\.findMany\(\{\s*where: \{ isActive: true \},\s*select: \{ id: true, triggerType: true, body: true \}/);
+  assert.match(workerSource, /whatsAppCampaign\.findMany\(\{[\s\S]*?select: \{[\s\S]*?recipientCursor: true[\s\S]*?imageSizeBytes: true/);
+  assert.match(workerSource, /whatsAppAutomationJob\.groupBy\(\{[\s\S]*?campaignId: \{ in: running\.map\(\(campaign\) => campaign\.id\) \}/);
+  assert.match(workerSource, /whatsAppCampaignRecipient\.findFirst\(\{\s*where: \{ campaignId: campaign\.id \},\s*select: \{ id: true \}/);
+  assert.match(workerSource, /whatsAppMessage\.upsert\([\s\S]*?select: \{ id: true \}/);
+  assert.match(jobsSource, /whatsAppConversation\.upsert\([\s\S]*?select: \{ id: true \}/);
+  assert.match(jobsSource, /whatsAppAutomationJob\.create\(\{ data: \{ idempotencyKey: `manual-invoice:/);
+  assert.match(jobsSource, /whatsAppAutomationJob\.create\([\s\S]*?select: \{ id: true \}/);
+  assert.match(jobsSource, /whatsAppMessage\.create\([\s\S]*?select: \{ id: true \}/);
+  assert.match(jobsSource, /whatsAppConversation\.update\([\s\S]*?select: \{ id: true \}/);
+  for (const field of ["id", "phoneNumber", "status", "connectRequestedAt", "disconnectRequestedAt", "disconnectedAt", "deleteRequestedAt", "pairingCodeExpiresAt"]) {
+    assert.match(reloadAccounts, new RegExp(`\\b${field}: true`));
+  }
+  assert.match(processOneJob, /whatsAppAutomationJob\.findUnique\(\{\s*where: \{ id \},\s*select:/);
+  assert.match(processOneJob, /whatsAppAccount\.findUnique\(\{ where: \{ id: job\.accountId \}, select:/);
+  assert.match(processOneJob, /whatsAppAccount\.findFirst\(\{ where: \{ sendEnabled: true, status: "CONNECTED" \}, select:/);
+  assert.match(processOneJob, /whatsAppConversation\.upsert\([\s\S]*?select: \{ id: true \}/);
+  assert.match(processOneJob, /whatsAppMessage\.update\(\{ where: \{ id: job\.message\.id \}, data: \{[\s\S]*?select: \{ id: true, sentById: true \}/);
+  assert.match(processOneJob, /const message = await tx\.whatsAppMessage\.update\([\s\S]*?select: \{ sentById: true \}/);
+  const invoiceIssuedStart = workerSource.indexOf('if (job.type === "INVOICE_ISSUED")');
+  const invoiceIssuedEnd = workerSource.indexOf("const invoice = await prisma.invoice.findUnique", workerSource.indexOf("return Boolean(invoice?.status", invoiceIssuedStart));
+  const invoiceIssuedValidation = workerSource.slice(invoiceIssuedStart, invoiceIssuedEnd);
+  assert.match(invoiceIssuedValidation, /select: \{[\s\S]*?status: true,[\s\S]*?customer: \{ select: \{ archivedAt: true, whatsappConsentStatus: true \} \}/);
+  assert.doesNotMatch(processOneJob, /include: \{ customer: true/);
+  for (const field of ["idempotencyKey", "type", "accountId", "customerId", "opportunityId", "invoiceId", "reminderId", "campaignId", "payload", "attempts"]) {
+    assert.match(processOneJob, new RegExp(`\\b${field}: true`));
+  }
+});
+
 test("worker menagih pembayaran per target dan menjadwalkan reminder order berikutnya", () => {
   assert.match(workerSource, /pending-initial:/);
   assert.match(workerSource, /pending-term:/);

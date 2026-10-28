@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [dataSource, dashboardDataSource, dashboardSource] = await Promise.all([
+const [dataSource, dashboardDataSource, dashboardSource, analyticsSource] = await Promise.all([
   readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
   readFile(new URL("../lib/crm/dashboard-data.ts", import.meta.url), "utf8"),
   readFile(new URL("../components/dashboard/dashboard-content-client.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../lib/crm/analytics-data.ts", import.meta.url), "utf8"),
 ]);
 const [permissionsSource, loginSource, authActionsSource, navSource, dashboardPageSource] = await Promise.all([
   readFile(new URL("../lib/auth/permissions.ts", import.meta.url), "utf8"),
@@ -102,6 +103,54 @@ test("menu Broadcast dan WhatsApp hanya tampil untuk peran yang lolos gerbang se
   // Detail Desain memakai requireDeveloperActor, jadi tidak boleh ditawarkan
   // lewat pencarian dashboard untuk Admin Customer/Admin PO.
   assert.doesNotMatch(dashboardSource, /"\/detail-desain"\]/);
+});
+
+test("pipeline mengambil total dengan count tanpa mengubah preview/agregasi tampilan", () => {
+  const pipeline = dataSource.slice(dataSource.indexOf("const getCachedPipelineData"), dataSource.indexOf("export async function getPipelineData"));
+  assert.match(pipeline, /take: 500/);
+  assert.match(pipeline, /opportunity\.count\(\{ where \}\)/);
+  assert.match(pipeline, /truncated: total > rows\.length/);
+  assert.doesNotMatch(pipeline, /opportunity\.groupBy\(/);
+});
+
+test("customer list dan ekspor membatasi reminder ke satu jadwal terdekat", () => {
+  const blocks = [
+    dataSource.slice(dataSource.indexOf("export async function getCustomers({"), dataSource.indexOf("export async function getCustomersForExport({")),
+    dataSource.slice(dataSource.indexOf("export async function getCustomersForExport({"), dataSource.indexOf("export type ProspectSort")),
+  ];
+  for (const block of blocks) {
+    assert.match(block, /reminders:\s*\{[\s\S]*?orderBy: \{ dueAt: "asc" \},\s*take: 1/);
+  }
+});
+
+test("customer popup membatasi reminder terdekat tanpa membatasi histori opportunity", () => {
+  const popup = dataSource.slice(dataSource.indexOf("export async function getCustomerPopupDetail("), dataSource.indexOf("export async function getCustomerDetail("));
+  assert.match(popup, /reminders:\s*\{[\s\S]*?orderBy: \{ dueAt: "asc" \},\s*take: 1/);
+  assert.match(popup, /opportunities:\s*\{[\s\S]*?take: 6/);
+});
+
+test("customer detail membatasi hanya reminder yang dipakai halaman", () => {
+  const detail = dataSource.slice(dataSource.indexOf("export async function getCustomerDetail("), dataSource.indexOf("export type CustomerCommunicationFilter"));
+  assert.match(detail, /reminders:\s*\{[\s\S]*?orderBy: \{ dueAt: "asc" \},\s*take: 1/);
+  assert.match(detail, /opportunities:\s*\{\s*select: \{\s*id: true,\s*opportunityNo: true,\s*title: true,\s*stage: true,\s*\},\s*orderBy: \{ updatedAt: "desc" \},\s*\}/);
+  assert.doesNotMatch(detail, /_count: \{\s*select: \{ opportunities: \{ where:/);
+});
+
+test("dashboard menghitung funnel per-stage dengan filter periode yang sama", () => {
+  const batch = dashboardDataSource.slice(dashboardDataSource.indexOf("// Batch 3: Deep-dive marketing analytics"), dashboardDataSource.indexOf("const funnel = funnelCounts.map"));
+  assert.match(batch, /opportunity\.groupBy\(\{\s*by: \["stage"\]/);
+  assert.match(batch, /where: period\.start && period\.end \? \{ createdAt: \{ gte: period\.start, lt: period\.end \} \} : \{\}/);
+  assert.match(batch, /countByStage\.get\("FOLLOW_UP"\)[\s\S]*?countByStage\.get\("NEGOSIASI"\)[\s\S]*?countByStage\.get\("DEAL"\)/);
+  assert.match(batch, /prisma\.salesOrder\.count\(/);
+});
+
+test("analytics menghitung overdue dan due-today dalam satu query dengan batas waktu konsisten", () => {
+  const block = analyticsSource.slice(analyticsSource.indexOf("// Follow up alerts are aggregated in one scan"), analyticsSource.indexOf("// Trend points grouped by day or month"));
+  assert.match(block, /COUNT\(\*\) FILTER \(WHERE "nextActionAt" < \$\{new Date\(\)\}\)/);
+  assert.match(block, /"nextActionAt" >= \$\{new Date\(new Date\(\)\.setHours\(0, 0, 0, 0\)\)\}/);
+  assert.match(block, /"nextActionAt" < \$\{new Date\(new Date\(\)\.setHours\(23, 59, 59, 999\)\)\}/);
+  assert.match(block, /WHERE stage IN \('LEAD_BARU', 'FOLLOW_UP', 'NEGOSIASI'\)/);
+  assert.match(block, /then\(\(\[counts\]\) => \[counts\?\.overdueCount \?\? 0, counts\?\.dueTodayCount \?\? 0\] as const\)/);
 });
 
 test("dashboard per peran: Admin Customer fokus customer, Admin PO fokus produksi", () => {

@@ -104,10 +104,10 @@ export async function enqueueInvoiceWhatsAppMessage(actor: Actor, invoiceId: str
     if (actor.role === "SALES" && invoice.opportunity.salesPicId !== actor.id) throw new UserFacingError("Invoice ini bukan bagian Anda.");
     const remoteJid = remoteJidForNumber(invoice.opportunity.customer.whatsapp ?? "");
     if (!remoteJid) throw new UserFacingError("Nomor WhatsApp customer tidak valid.");
-    const conversation = await tx.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, customerId: invoice.opportunity.customerId }, update: { customerId: invoice.opportunity.customerId } });
-    const job = await tx.whatsAppAutomationJob.create({ data: { idempotencyKey: `manual-invoice:${invoice.id}:${crypto.randomUUID()}`, type: "MANUAL", accountId: account.id, templateId, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, payload: { text, attachment: { type: "invoice", invoiceId: invoice.id } }, scheduledAt: new Date() } });
-    await tx.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", kind: "DOCUMENT", status: "QUEUED", text, mediaFileName: `invoice-${invoice.invoiceNo}.pdf`, mediaMimeType: "application/pdf", sentById: actor.id, automationJobId: job.id } });
-    await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date(), lastMessagePreview: text.slice(0, 240), isResolved: false } });
+    const conversation = await tx.whatsAppConversation.upsert({ where: { accountId_remoteJid: { accountId: account.id, remoteJid } }, create: { accountId: account.id, remoteJid, customerId: invoice.opportunity.customerId }, update: { customerId: invoice.opportunity.customerId }, select: { id: true } });
+    const job = await tx.whatsAppAutomationJob.create({ data: { idempotencyKey: `manual-invoice:${invoice.id}:${crypto.randomUUID()}`, type: "MANUAL", accountId: account.id, templateId, customerId: invoice.opportunity.customerId, opportunityId: invoice.opportunityId, invoiceId: invoice.id, payload: { text, attachment: { type: "invoice", invoiceId: invoice.id } }, scheduledAt: new Date() }, select: { id: true } });
+    await tx.whatsAppMessage.create({ data: { accountId: account.id, conversationId: conversation.id, direction: "OUTBOUND", kind: "DOCUMENT", status: "QUEUED", text, mediaFileName: `invoice-${invoice.invoiceNo}.pdf`, mediaMimeType: "application/pdf", sentById: actor.id, automationJobId: job.id }, select: { id: true } });
+    await tx.whatsAppConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date(), lastMessagePreview: text.slice(0, 240), isResolved: false }, select: { id: true } });
     return conversation.id;
   }, WHATSAPP_TRANSACTION_OPTIONS);
 }
@@ -260,10 +260,12 @@ export async function enqueueManualWhatsAppMessage({
         sentById: actor.id,
         automationJobId: job.id,
       },
+      select: { id: true },
     });
     await tx.whatsAppConversation.update({
       where: { id: conversation.id },
       data: { lastMessageAt: new Date(), lastMessagePreview: renderedText.slice(0, 240), isResolved: false },
+      select: { id: true },
     });
     return conversation.id;
   }, WHATSAPP_TRANSACTION_OPTIONS);

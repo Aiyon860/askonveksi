@@ -385,8 +385,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
     workOrderStats,
     workOrderStages,
     // Follow up alerts
-    overdueFollowUps,
-    dueTodayFollowUps,
+    followUpCountRows,
     // Trend points
     trendRows,
     // Cashflow Inflow & Outstanding AR
@@ -735,22 +734,17 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       GROUP BY "currentStage"
       ORDER BY count DESC
     `),
-    // Follow up alerts
-    prisma.opportunity.count({
-      where: {
-        stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
-        nextActionAt: { lt: new Date() },
-      },
-    }),
-    prisma.opportunity.count({
-      where: {
-        stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
-        nextActionAt: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          lt: new Date(new Date().setHours(23, 59, 59, 999)),
-        },
-      },
-    }),
+    // Follow up alerts are aggregated in one scan with identical boundaries.
+    prisma.$queryRaw<Array<{ overdueCount: number; dueTodayCount: number }>>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (WHERE "nextActionAt" < ${new Date()})::int AS "overdueCount",
+        COUNT(*) FILTER (
+          WHERE "nextActionAt" >= ${new Date(new Date().setHours(0, 0, 0, 0))}
+            AND "nextActionAt" < ${new Date(new Date().setHours(23, 59, 59, 999))}
+        )::int AS "dueTodayCount"
+      FROM "Opportunity"
+      WHERE stage IN ('LEAD_BARU', 'FOLLOW_UP', 'NEGOSIASI')
+    `).then(([counts]) => [counts?.overdueCount ?? 0, counts?.dueTodayCount ?? 0] as const),
     // Trend points grouped by day or month
     prisma.$queryRaw<Array<{
       timeBucket: string;
@@ -1166,6 +1160,9 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       actionHref: "/production/orders",
     });
   }
+
+  const overdueFollowUps = followUpCountRows[0];
+  const dueTodayFollowUps = followUpCountRows[1];
 
   return {
     actor: {
