@@ -36,6 +36,17 @@ test("endpoint membatasi data berdasarkan sesi dan pemilik job", async () => {
   assert.match(source, /if \(!actor\).*status: 401/);
   assert.match(source, /message: \{ is: \{ sentById: actor\.id \} \}/);
   assert.match(source, /manager \? safeError\(account\.lastError\) : null/);
+  assert.match(source, /whatsAppAutomationJob\.count\(\{/);
+});
+
+test("health monitor mengurangi polling tanpa mengubah tenggat health worker", async () => {
+  const [monitor, health] = await Promise.all([
+    readFile(new URL("../components/whatsapp-health-monitor.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/whatsapp/health.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(monitor, /timer = setTimeout\(schedule, 10_000\)/);
+  assert.match(monitor, /void poll\(\)\.finally\(\(\) => \{[\s\S]*?timer = setTimeout\(schedule, 10_000\)/);
+  assert.match(health, /WHATSAPP_HEARTBEAT_TIMEOUT_MS = 30_000/);
 });
 
 test("Admin Customer mengelola akun WhatsApp tanpa mendapat akses Data Master", async () => {

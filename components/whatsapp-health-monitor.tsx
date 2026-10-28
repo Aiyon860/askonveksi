@@ -49,7 +49,7 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
           const s = stableRef.current;
           s.count = s.state === next.state ? s.count + 1 : 1;
           s.state = next.state;
-          // ponytail: toast hanya bila status sama 3x poll beruntun (~9 dtk);
+          // ponytail: toast hanya bila status sama 3x poll beruntun (~30 dtk);
           // flap sesaat tidak bunyi. Naikkan angka bila masih berisik.
           if (s.count === 3) {
             const healthy = next.state === "HEALTHY";
@@ -75,9 +75,13 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
 
     function schedule() {
       if (timer) clearTimeout(timer);
-      if (document.visibilityState !== "visible") return;
-      void poll();
-      timer = setTimeout(schedule, 3_000);
+      if (document.visibilityState !== "visible") {
+        controller?.abort();
+        return;
+      }
+      void poll().finally(() => {
+        if (document.visibilityState === "visible") timer = setTimeout(schedule, 10_000);
+      });
     }
 
     schedule();

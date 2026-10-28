@@ -115,15 +115,16 @@ const opportunitySummarySelect = {
 const getCachedPipelineData = unstable_cache(
   async (actorRole: AppRole) => {
     const prisma = getPrismaClient();
+    const where = { customer: { archivedAt: null } } satisfies Prisma.OpportunityWhereInput;
     const [rows, total] = await Promise.all([
       prisma.opportunity.findMany({
         relationLoadStrategy: "join",
-        where: { customer: { archivedAt: null } },
+        where,
         select: opportunitySummarySelect,
         orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
         take: 500,
       }),
-      prisma.opportunity.count({ where: { customer: { archivedAt: null } } }),
+      prisma.opportunity.count({ where }),
     ]);
 
     const opportunities: PipelineOpportunity[] = rows.map((row) => ({
@@ -294,6 +295,7 @@ export async function getCustomers({
             },
           },
           orderBy: { dueAt: "asc" },
+          take: 1,
         },
       },
       orderBy,
@@ -361,6 +363,7 @@ export async function getCustomersForExport({
           },
         },
         orderBy: { dueAt: "asc" },
+        take: 1,
       },
     },
     orderBy: customerOrderBy(sort, direction),
@@ -517,6 +520,7 @@ export async function getCustomerPopupDetail(customerId: string) {
           },
         },
         orderBy: { dueAt: "asc" },
+        take: 1,
       },
     },
   });
@@ -572,6 +576,7 @@ export async function getCustomerDetail(customerId: string) {
           },
         },
         orderBy: { dueAt: "asc" },
+        take: 1,
       },
     },
   });

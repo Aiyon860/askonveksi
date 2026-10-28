@@ -74,7 +74,25 @@ export async function getWhatsAppConversationMessages(actor: Actor, conversation
 
 export async function getWhatsAppAccounts() {
   await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
-  return getPrismaClient().whatsAppAccount.findMany({ orderBy: [{ sendEnabled: "desc" }, { label: "asc" }] });
+  return getPrismaClient().whatsAppAccount.findMany({
+    select: {
+      id: true,
+      label: true,
+      phoneNumber: true,
+      status: true,
+      sendEnabled: true,
+      connectRequestedAt: true,
+      disconnectRequestedAt: true,
+      deleteRequestedAt: true,
+      pairingCode: true,
+      pairingCodeExpiresAt: true,
+      connectedAt: true,
+      disconnectedAt: true,
+      heartbeatAt: true,
+      lastError: true,
+    },
+    orderBy: [{ sendEnabled: "desc" }, { label: "asc" }],
+  });
 }
 
 export type WhatsAppTemplateSort = "name" | "triggerType" | "isActive" | "updatedAt";

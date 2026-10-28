@@ -801,13 +801,21 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
     financeCashRaw,
     urgentOpportunities,
   ] = await Promise.all([
-    Promise.all([
-      prisma.opportunity.count({ where: { ...(period.start && period.end ? { createdAt: { gte: period.start, lt: period.end } } : {}) } }),
-      prisma.opportunity.count({ where: { stage: { in: ["FOLLOW_UP", "NEGOSIASI", "DEAL"] }, ...(period.start && period.end ? { createdAt: { gte: period.start, lt: period.end } } : {}) } }),
-      prisma.opportunity.count({ where: { stage: { in: ["NEGOSIASI", "DEAL"] }, ...(period.start && period.end ? { createdAt: { gte: period.start, lt: period.end } } : {}) } }),
-      prisma.opportunity.count({ where: { stage: "DEAL", ...(period.start && period.end ? { createdAt: { gte: period.start, lt: period.end } } : {}) } }),
-      prisma.salesOrder.count({ where: { status: "ACTIVE", ...(period.start && period.end ? { acceptedAt: { gte: period.start, lt: period.end } } : {}) } }),
-    ]),
+    (async () => {
+      const [groups, orders] = await Promise.all([
+        prisma.opportunity.groupBy({
+          by: ["stage"],
+          where: period.start && period.end ? { createdAt: { gte: period.start, lt: period.end } } : {},
+          _count: { _all: true },
+        }),
+        prisma.salesOrder.count({ where: { status: "ACTIVE", ...(period.start && period.end ? { acceptedAt: { gte: period.start, lt: period.end } } : {}) } }),
+      ]);
+      const countByStage = new Map(groups.map((group) => [group.stage, group._count._all]));
+      const lead = [...countByStage.values()].reduce((sum, count) => sum + count, 0);
+      const followUp = (countByStage.get("FOLLOW_UP") ?? 0) + (countByStage.get("NEGOSIASI") ?? 0) + (countByStage.get("DEAL") ?? 0);
+      const negotiation = (countByStage.get("NEGOSIASI") ?? 0) + (countByStage.get("DEAL") ?? 0);
+      return [lead, followUp, negotiation, countByStage.get("DEAL") ?? 0, orders] as const;
+    })(),
     prisma.$queryRaw<Array<{ typeName: string; orderCount: number; revenue: string }>>(Prisma.sql`
       SELECT
         COALESCE(ct.name, 'Umum / Retail') AS "typeName",
