@@ -13,7 +13,7 @@ Dokumen ini menjelaskan cara kerja penyimpanan biner ERP: **gambar dan PDF di di
 | Backup | Cron harian 02:15 WIB + monitor disk mingguan; arsip `0600`, rotasi 14 file; uji restore non-destruktif lulus |
 | Offsite | **Belum aktif** (ditunda) — arsip backup masih di disk yang sama dengan data |
 | Baca file lama | Tidak lagi memicu `[erp-storage] fallback-supabase` sejak backfill |
-| Supabase Storage | **Masih menyimpan salinan** 118 objek sebagai cold copy, tetapi **tidak lagi ditulis**. Jangan dihapus sampai sistem stabil ±1 bulan |
+| Supabase Storage | **Kosong** (0 objek) sejak 2026-10-28. **Bucket tetap ada** (tidak dihapus) agar rollback ke `hybrid`/`supabase` masih bisa menulis. Salinan cadangan: arsip tar di VPS + salinan di laptop operator |
 | Sisa | UAT fungsional penuh oleh OWNER/DEVELOPER, pengosongan bucket Supabase (T6.3), dan offsite backup |
 
 **Rollback ke `hybrid`:** ubah `ERP_STORAGE_DRIVER=hybrid` di `shared/.env`, restart PM2. File yang lahir selama mode `local` hanya ada di VPS — jangan rollback ke `supabase` murni.
@@ -162,7 +162,8 @@ Catatan penting:
   sudo chown -R askonveksipedurungan:askonveksipedurungan /var/lib/askonveksi/storage
   sudo find /var/lib/askonveksi/storage -type f -exec chmod 0640 {} +
   ```
-- `--verify` hanya membandingkan bucket ↔ disk. Untuk memastikan **path yang benar-benar dipakai aplikasi** ada, jalankan audit database → filesystem (lihat `FILE_TO_VPS.md` §7.1).
+- `--verify` hanya membandingkan bucket ↔ disk. Setelah bucket Supabase dikosongkan (2026-10-28), hasil normalnya adalah `extra=N` (semua file hanya ada di VPS) dan `missing=0`. Jangan panik melihat `extra`; yang berbahaya hanya `missing`/`mismatched`.
+- Untuk memastikan **path yang benar-benar dipakai aplikasi** ada, jalankan audit database → filesystem (lihat `FILE_TO_VPS.md` §7.1). Ini pemeriksaan yang utama sekarang, karena Supabase bukan lagi cadangan aktif.
 - Selama `hybrid`, file lama yang belum di-backfill tetap tampil lewat fallback Supabase, tetapi memicu log `[erp-storage] fallback-supabase`.
 
 ## 7. Backup dan restore
