@@ -69,6 +69,35 @@ import {
 import { fetcher } from "@/lib/fetcher";
 import { formatCurrency } from "@/lib/crm/format";
 import type { FullDashboardData } from "@/lib/crm/dashboard-data";
+
+type TrendSeriesKey = "omzet" | "order" | "lead" | "pcs";
+
+type TrendSeries = {
+  key: TrendSeriesKey;
+  dataKey: "omzet" | "orders" | "leads" | "pcs";
+  label: string;
+  color: string;
+  axis: "currency" | "count";
+};
+
+// Warna tetap per metrik supaya garis, lencana filter, dan tooltip selalu cocok.
+const TREND_SERIES: TrendSeries[] = [
+  { key: "omzet", dataKey: "omzet", label: "Omzet", color: "#10b981", axis: "currency" },
+  { key: "order", dataKey: "orders", label: "Order", color: "#f59e0b", axis: "count" },
+  { key: "lead", dataKey: "leads", label: "Lead", color: "#06b6d4", axis: "count" },
+  { key: "pcs", dataKey: "pcs", label: "Pcs", color: "#9333ea", axis: "count" },
+];
+
+function formatCompactRupiah(value: number) {
+  if (value >= 1_000_000) return `Rp ${(value / 1_000_000).toFixed(1)}jt`;
+  if (value >= 1_000) return `Rp ${(value / 1_000).toFixed(0)}rb`;
+  return `Rp ${value}`;
+}
+
+function formatTrendSeriesValue(series: TrendSeries, value: number) {
+  if (series.key === "omzet") return formatCurrency(value);
+  return `${value} ${series.label.toLowerCase()}`;
+}
 import { ExportButton } from "@/components/export/export-button";
 import { cn } from "@/lib/utils";
 
@@ -197,16 +226,17 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
   const isFullScope = scope === "FULL";
   const isCustomerScope = scope === "CUSTOMER";
   const isProductionScope = scope === "PRODUCTION";
-  const initialTrendMetric: "omzet" | "order" | "lead" | "pcs" = canViewFinancialData
-    ? "omzet"
-    : isProductionScope
-      ? "pcs"
-      : isCustomerScope
-        ? "lead"
-        : "order";
-
   // UI States
-  const [trendMetric, setTrendMetric] = useState<"omzet" | "order" | "lead" | "pcs">(initialTrendMetric);
+  // Default: semua metrik yang boleh dilihat tampil bersamaan agar perbandingan
+  // langsung terlihat; lencana metrik dipakai untuk mengisolasi satu garis.
+  const [trendSeries, setTrendSeries] = useState<TrendSeriesKey[]>(() => {
+    const keys: TrendSeriesKey[] = [];
+    if (initialData.canViewFinancialData) keys.push("omzet");
+    keys.push("order");
+    if (scope !== "PRODUCTION") keys.push("lead");
+    if (scope !== "CUSTOMER") keys.push("pcs");
+    return keys;
+  });
   const [categoryMetric, setCategoryMetric] = useState<"revenue" | "pcs">(
     data.canViewFinancialData ? "revenue" : "pcs",
   );
@@ -443,15 +473,39 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
     setIsDarkMode(isDark);
   };
 
-  // Helper for trend chart formatting
-  const getTrendYAxisTick = (val: number) => {
-    if (trendMetric === "omzet") {
-      if (val >= 1000000) return `Rp ${(val / 1000000).toFixed(1)}jt`;
-      if (val >= 1000) return `Rp ${(val / 1000).toFixed(0)}rb`;
-      return `Rp ${val}`;
-    }
-    return val.toString();
-  };
+  // Series yang tersedia mengikuti hak akses & cakupan peran dashboard.
+  const availableTrendSeries = useMemo(
+    () =>
+      TREND_SERIES.filter(
+        (series) =>
+          (series.key !== "omzet" || canViewFinancialData) &&
+          (series.key !== "lead" || !isProductionScope) &&
+          (series.key !== "pcs" || !isCustomerScope),
+      ),
+    [canViewFinancialData, isProductionScope, isCustomerScope],
+  );
+  const visibleTrendSeries = availableTrendSeries.filter((series) =>
+    trendSeries.includes(series.key),
+  );
+  const showTrendCurrencyAxis = visibleTrendSeries.some((series) => series.axis === "currency");
+  const showTrendCountAxis = visibleTrendSeries.some((series) => series.axis === "count");
+  const isSingleTrendSeries = visibleTrendSeries.length === 1;
+
+  function toggleTrendSeries(key: TrendSeriesKey) {
+    const availableKeys = availableTrendSeries.map((series) => series.key);
+    setTrendSeries((prev) => {
+      const validPrev = prev.filter((item) => availableKeys.includes(item));
+      // Saat semua metrik aktif, klik satu metrik = isolasi metrik tersebut.
+      if (validPrev.length === availableKeys.length) return [key];
+      if (validPrev.includes(key)) {
+        // Minimal satu garis harus tetap tampil.
+        return validPrev.length === 1 ? validPrev : validPrev.filter((item) => item !== key);
+      }
+      return availableTrendSeries
+        .filter((series) => validPrev.includes(series.key) || series.key === key)
+        .map((series) => series.key);
+    });
+  }
 
   return (
     <div className="flex flex-col gap-6 text-base text-slate-800 dark:text-slate-100">
@@ -1121,62 +1175,55 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Metric Switcher Pills */}
-              <div className="flex items-center rounded-xl neu-inset p-1">
-                {canViewFinancialData && (
-                  <button
-                    type="button"
-                    onClick={() => setTrendMetric("omzet")}
-                    className={cn(
-                      "rounded-lg px-3 py-1.5 text-base sm:text-lg font-semibold transition",
-                      trendMetric === "omzet"
-                        ? "neu-button-primary font-semibold"
-                        : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-                    )}
-                  >
-                    Omzet
-                  </button>
-                )}
+              {/* Legenda sekaligus filter metrik */}
+              <div className="flex flex-wrap items-center gap-1.5 rounded-xl neu-inset p-1">
                 <button
                   type="button"
-                  onClick={() => setTrendMetric("order")}
+                  onClick={() => setTrendSeries(availableTrendSeries.map((series) => series.key))}
+                  aria-pressed={visibleTrendSeries.length === availableTrendSeries.length}
                   className={cn(
                     "rounded-lg px-3 py-1.5 text-base sm:text-lg font-semibold transition",
-                    trendMetric === "order"
+                    visibleTrendSeries.length === availableTrendSeries.length
                       ? "neu-button-primary font-semibold"
                       : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
                   )}
                 >
-                  Order
+                  Semua
                 </button>
-                {!isProductionScope && (
-                <button
-                  type="button"
-                  onClick={() => setTrendMetric("lead")}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-base sm:text-lg font-semibold transition",
-                    trendMetric === "lead"
-                      ? "neu-button-primary font-semibold"
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-                  )}
-                >
-                  Lead
-                </button>
-                )}
-                {!isCustomerScope && (
-                <button
-                  type="button"
-                  onClick={() => setTrendMetric("pcs")}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-base sm:text-lg font-semibold transition",
-                    trendMetric === "pcs"
-                      ? "neu-button-primary font-semibold"
-                      : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
-                  )}
-                >
-                  Pcs
-                </button>
-                )}
+                {availableTrendSeries.map((series) => {
+                  const isActive = trendSeries.includes(series.key);
+                  return (
+                    <button
+                      key={series.key}
+                      type="button"
+                      onClick={() => toggleTrendSeries(series.key)}
+                      aria-pressed={isActive}
+                      title={
+                        isActive
+                          ? `Sembunyikan ${series.label}`
+                          : `Tampilkan ${series.label}`
+                      }
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg px-3 py-1.5 text-base sm:text-lg font-semibold transition",
+                        isActive
+                          ? "bg-white shadow-xs dark:bg-slate-800"
+                          : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                      )}
+                      style={
+                        isActive
+                          ? { color: series.color, boxShadow: `inset 0 0 0 1px ${series.color}55` }
+                          : undefined
+                      }
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: series.color, opacity: isActive ? 1 : 0.35 }}
+                      />
+                      {series.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1184,10 +1231,32 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           {/* Chart Container */}
           <div className="mt-6 h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.trendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <LineChart
+                data={data.trendData}
+                margin={{ top: 10, right: showTrendCountAxis ? 0 : 10, left: showTrendCurrencyAxis ? -15 : 0, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" strokeOpacity={0.4} />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 14, fill: "#94a3b8" }} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 14, fill: "#94a3b8" }} tickFormatter={getTrendYAxisTick} />
+                {showTrendCurrencyAxis && (
+                  <YAxis
+                    yAxisId="currency"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 14, fill: "#94a3b8" }}
+                    tickFormatter={formatCompactRupiah}
+                  />
+                )}
+                {showTrendCountAxis && (
+                  <YAxis
+                    yAxisId="count"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 14, fill: "#94a3b8" }}
+                    allowDecimals={false}
+                    width={40}
+                  />
+                )}
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
@@ -1195,29 +1264,57 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
                       return (
                         <div className="rounded-xl neu-popover p-3.5 shadow-xl">
                           <p className="text-base font-semibold text-slate-500">{item.fullDate}</p>
-                          <p className="mt-1 text-base font-bold text-blue-600 dark:text-blue-400">
-                            {trendMetric === "omzet" ? formatCurrency(item.omzet) : `${item[trendMetric]} ${trendMetric}`}
-                          </p>
-                          <p className="mt-1 text-base text-slate-400">
-                            {item.orders} order · {item.leads} lead · {item.pcs} pcs
-                          </p>
+                          <div className="mt-1.5 space-y-1">
+                            {visibleTrendSeries.map((series) => (
+                              <p
+                                key={series.key}
+                                className="flex items-center justify-between gap-5 text-base font-bold"
+                                style={{ color: series.color }}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <span
+                                    aria-hidden="true"
+                                    className="size-2.5 rounded-full"
+                                    style={{ backgroundColor: series.color }}
+                                  />
+                                  {series.label}
+                                </span>
+                                <span className="font-mono">{formatTrendSeriesValue(series, item[series.dataKey])}</span>
+                              </p>
+                            ))}
+                          </div>
                         </div>
                       );
                     }
                     return null;
                   }}
                 />
-                <Line
-                  type="monotone"
-                  dataKey={trendMetric}
-                  stroke="#2563eb"
-                  strokeWidth={2.5}
-                  dot={{ r: 4, stroke: "#2563eb", strokeWidth: 2, fill: "#fff" }}
-                  activeDot={{ r: 6, stroke: "#2563eb", strokeWidth: 2, fill: "#2563eb" }}
-                />
+                {visibleTrendSeries.map((series) => (
+                  <Line
+                    key={series.key}
+                    yAxisId={series.axis}
+                    type="monotone"
+                    dataKey={series.dataKey}
+                    name={series.label}
+                    stroke={series.color}
+                    strokeWidth={isSingleTrendSeries ? 2.5 : 2}
+                    dot={
+                      isSingleTrendSeries
+                        ? { r: 4, stroke: series.color, strokeWidth: 2, fill: "#fff" }
+                        : false
+                    }
+                    activeDot={{ r: 6, stroke: series.color, strokeWidth: 2, fill: series.color }}
+                    isAnimationActive={false}
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            Sumbu kiri: omzet (rupiah) · sumbu kanan: jumlah order, lead, dan pcs. Klik
+            lencana untuk mengisolasi satu metrik, atau &quot;Semua&quot; untuk
+            membandingkan semuanya.
+          </p>
         </div>
 
         {/* List: Order Terbaru (5 Cols) - Zero Overlap, Spacious Layout */}
