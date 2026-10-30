@@ -48,6 +48,7 @@ export type PipelineOpportunity = {
     status: "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
     productName: string;
     garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
+    productCategory: { id: string; name: string } | null;
     totalQuantity: number;
     depositAmount: string | null;
   } | null;
@@ -98,6 +99,7 @@ const opportunitySummarySelect = {
       status: true,
       productName: true,
       garmentType: true,
+      productCategory: { select: { id: true, name: true } },
       sizes: { select: { quantity: true } },
       deposit: { select: { amount: true } },
     },
@@ -155,6 +157,7 @@ const getCachedPipelineData = unstable_cache(
       status: row.purchaseOrders[0].status,
       productName: row.purchaseOrders[0].productName,
       garmentType: row.purchaseOrders[0].garmentType,
+      productCategory: row.purchaseOrders[0].productCategory,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
       depositAmount: row.purchaseOrders[0].deposit?.amount.toString() ?? null,
     } : null,
@@ -168,7 +171,7 @@ const getCachedPipelineData = unstable_cache(
 
   return { opportunities, total, truncated: total > rows.length, actorRole };
   },
-  ["pipeline-data"],
+  ["pipeline-data", "product-category-v2"],
   { tags: ["pipeline-data"], revalidate: 30 },
 );
 

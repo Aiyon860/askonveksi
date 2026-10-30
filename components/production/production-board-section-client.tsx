@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { ListFilter, RotateCcw } from "lucide-react";
@@ -21,8 +22,8 @@ import {
   productionBoardFilterParams,
   type ProductionBoardFilters,
 } from "@/lib/production/board-filters";
-import type { ProductionBoardGroup } from "@/lib/production/workflow";
-import type { getProductionBoard } from "@/lib/production/data";
+import { PRODUCTION_BOARD_GROUP_LABEL, type ProductionBoardGroup } from "@/lib/production/workflow";
+import type { getProductionBoard, ProductionSearchSuggestion } from "@/lib/production/data";
 
 const ProductionBoard = dynamic(
   () => import("@/components/production/production-board").then((m) => ({ default: m.ProductionBoard })),
@@ -34,12 +35,18 @@ type ProductionData = Awaited<ReturnType<typeof getProductionBoard>>;
 export function ProductionBoardSectionClient({
   group,
   productCategoryId,
+  categoryParam,
+  categoryName,
+  searchSuggestions = [],
   filters = EMPTY_PRODUCTION_BOARD_FILTERS,
   picOptions = [],
   initialData,
 }: {
   group: ProductionBoardGroup;
   productCategoryId: string | null;
+  categoryParam: string | null;
+  categoryName?: string | null;
+  searchSuggestions?: ProductionSearchSuggestion[];
   filters?: ProductionBoardFilters;
   picOptions?: ProductionPicOption[];
   initialData: ProductionData;
@@ -72,9 +79,20 @@ export function ProductionBoardSectionClient({
   const isFiltering = hasActiveProductionBoardFilters(filters);
   const selectedPic = filters.pic === NO_PIC ? null : picOptions.find((option) => option.id === filters.pic)?.name ?? null;
   const activeFilterLabels = activeProductionBoardFilterLabels(filters, selectedPic);
+  const groupLabel = PRODUCTION_BOARD_GROUP_LABEL[group];
+  const scopeLabel = categoryName && categoryName !== groupLabel ? `${groupLabel} · ${categoryName}` : groupLabel;
+
+  function suggestionHref(suggestion: ProductionSearchSuggestion) {
+    const params = new URLSearchParams({
+      jalur: suggestion.group,
+      kategori: suggestion.productCategoryId,
+      ...productionBoardFilterParams(filters),
+    });
+    return `${pathname}?${params.toString()}`;
+  }
 
   function resetFilters() {
-    const params = new URLSearchParams({ jalur: group, ...(productCategoryId ? { kategori: productCategoryId } : {}) });
+    const params = new URLSearchParams({ jalur: group, ...(categoryParam ? { kategori: categoryParam } : {}) });
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
@@ -112,11 +130,29 @@ export function ProductionBoardSectionClient({
             <EmptyTitle className="text-base">Tidak ada Work Order yang cocok</EmptyTitle>
             <EmptyDescription>
               {activeFilterLabels.length
-                ? `Tidak ada Work Order untuk ${activeFilterLabels.join(" · ")}. Hapus salah satu filter atau reset untuk melihat pekerjaan lain.`
-                : "Ubah atau hapus filter untuk melihat pekerjaan lain."}
+                ? `Tidak ada Work Order untuk ${activeFilterLabels.join(" · ")} di ${scopeLabel}. Hapus salah satu filter atau pilih jalur/kategori lain.`
+                : `Tidak ada Work Order di ${scopeLabel}. Ubah atau hapus filter untuk melihat pekerjaan lain.`}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
+            {searchSuggestions.length ? (
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-sm text-muted-foreground">Ditemukan juga di papan lain:</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {searchSuggestions.map((suggestion) => (
+                    <Button
+                      key={`${suggestion.group}:${suggestion.productCategoryId}`}
+                      variant="outline"
+                      size="sm"
+                      nativeButton={false}
+                      render={<Link href={suggestionHref(suggestion)} />}
+                    >
+                      Buka {suggestion.groupLabel} · {suggestion.productCategoryName} ({suggestion.count})
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <Button type="button" variant="outline" size="sm" onClick={resetFilters}>
               <RotateCcw data-icon="inline-start" aria-hidden="true" />
               Reset filter

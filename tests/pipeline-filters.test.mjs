@@ -79,6 +79,78 @@ test("filter kategori produk mendukung opsi tanpa kategori", () => {
   assert.deepEqual(withoutCategory.map((row) => row.id), ["b"]);
 });
 
+test("kategori PO terakhir dipakai saat kategori peluang kosong", () => {
+  const poRows = [
+    {
+      id: "po-jersey",
+      stage: "DEAL",
+      createdAt: "2026-02-10T03:00:00.000Z",
+      customer: { id: "cust-1" },
+      productCategory: null,
+      purchaseOrder: { productCategory: { id: "cat-jersey" } },
+    },
+    {
+      id: "po-kemeja",
+      stage: "NEGOSIASI",
+      createdAt: "2026-02-10T03:00:00.000Z",
+      customer: { id: "cust-2" },
+      productCategory: null,
+      purchaseOrder: { productCategory: { id: "cat-kemeja" } },
+    },
+    {
+      id: "po-kosong",
+      stage: "FOLLOW_UP",
+      createdAt: "2026-02-10T03:00:00.000Z",
+      customer: { id: "cust-3" },
+      productCategory: null,
+      purchaseOrder: { productCategory: null },
+    },
+    {
+      id: "tanpa-po",
+      stage: "PROSPEK",
+      createdAt: "2026-02-10T03:00:00.000Z",
+      customer: { id: "cust-4" },
+      productCategory: null,
+    },
+  ];
+
+  const jersey = filterPipelineOpportunities(poRows, { ...EMPTY_PIPELINE_FILTERS, categoryId: "cat-jersey" });
+  assert.deepEqual(jersey.map((row) => row.id), ["po-jersey"]);
+
+  const kemeja = filterPipelineOpportunities(poRows, { ...EMPTY_PIPELINE_FILTERS, categoryId: "cat-kemeja" });
+  assert.deepEqual(kemeja.map((row) => row.id), ["po-kemeja"]);
+
+  const withoutCategory = filterPipelineOpportunities(poRows, { ...EMPTY_PIPELINE_FILTERS, categoryId: NO_PRODUCT_CATEGORY });
+  assert.deepEqual(withoutCategory.map((row) => row.id), ["po-kosong", "tanpa-po"]);
+});
+
+test("kategori peluang tetap menang saat kategori PO berbeda", () => {
+  const mixed = [
+    {
+      id: "peluang-jersey-po-kemeja",
+      stage: "DEAL",
+      createdAt: "2026-02-10T03:00:00.000Z",
+      customer: { id: "cust-1" },
+      productCategory: { id: "cat-jersey" },
+      purchaseOrder: { productCategory: { id: "cat-kemeja" } },
+    },
+    {
+      id: "peluang-jersey-tanpa-kategori-po",
+      stage: "NEGOSIASI",
+      createdAt: "2026-02-10T03:00:00.000Z",
+      customer: { id: "cust-2" },
+      productCategory: { id: "cat-jersey" },
+      purchaseOrder: { productCategory: null },
+    },
+  ];
+
+  const jersey = filterPipelineOpportunities(mixed, { ...EMPTY_PIPELINE_FILTERS, categoryId: "cat-jersey" });
+  assert.deepEqual(jersey.map((row) => row.id), ["peluang-jersey-po-kemeja", "peluang-jersey-tanpa-kategori-po"]);
+
+  const kemeja = filterPipelineOpportunities(mixed, { ...EMPTY_PIPELINE_FILTERS, categoryId: "cat-kemeja" });
+  assert.deepEqual(kemeja, []);
+});
+
 test("tiga filter digabung dengan AND", () => {
   const result = filterPipelineOpportunities(rows, {
     customerId: "cust-1",

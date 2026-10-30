@@ -20,6 +20,8 @@ type PipelineFilterItem = {
   createdAt: string;
   customer: { id: string };
   productCategory: { id: string } | null;
+  /** PO terakhir jadi fallback untuk peluang lama yang kategorinya belum terisi. */
+  purchaseOrder?: { productCategory: { id: string } | null } | null;
 };
 
 const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -63,8 +65,9 @@ export function filterPipelineOpportunities<T extends PipelineFilterItem>(
   return items.filter((item) => {
     if (customerId && item.customer.id !== customerId) return false;
     if (month && jakartaMonthKey(item.createdAt) !== month) return false;
-    if (categoryId === NO_PRODUCT_CATEGORY) return !item.productCategory;
-    if (categoryId && item.productCategory?.id !== categoryId) return false;
+    const category = item.productCategory ?? item.purchaseOrder?.productCategory ?? null;
+    if (categoryId === NO_PRODUCT_CATEGORY) return !category;
+    if (categoryId && category?.id !== categoryId) return false;
     return true;
   });
 }

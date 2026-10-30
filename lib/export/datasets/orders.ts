@@ -17,7 +17,7 @@ import {
   PRODUCTION_STAGE_LABEL,
   parseProductionBoardGroup,
 } from "@/lib/production/workflow";
-import { activeProductionBoardFilterLabels, NO_PIC, parseProductionBoardFilters, productionBoardWhere } from "@/lib/production/board-filters";
+import { activeProductionBoardFilterLabels, ALL_PRODUCTION_CATEGORIES, NO_PIC, parseProductionBoardFilters, productionBoardWhere } from "@/lib/production/board-filters";
 import { exportDate, exportDateKey, exportDateTime, exportFilterSummary, exportRange, exportText } from "@/lib/export/params";
 import type { ExportColumn, ExportDatasetResult, ExportRow } from "@/lib/export/types";
 
@@ -325,7 +325,9 @@ export async function loadProduksi({ searchParams, page }: LoadInput): Promise<E
   // Filter papan dipakai apa adanya supaya isi Excel sama dengan yang terlihat
   // di board: satu parser + satu builder where untuk halaman, API, dan export.
   const filters = parseProductionBoardFilters(Object.fromEntries(searchParams.entries()));
-  const where = productionBoardWhere({ group, productCategoryId: kategori || null, filters });
+  const productCategoryId =
+    kategori === ALL_PRODUCTION_CATEGORIES ? null : kategori || null;
+  const where = productionBoardWhere({ group, productCategoryId, filters });
   const prisma = getPrismaClient();
   // Nama PIC untuk ringkasan filter di header Excel.
   const picName =

@@ -4,17 +4,20 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 import {
+  ALL_PRODUCTION_CATEGORIES,
   EMPTY_PRODUCTION_BOARD_FILTERS,
   NO_PIC,
   activeProductionBoardFilterLabels,
   deadlineRange,
   hasActiveProductionBoardFilters,
   jakartaToday,
+  matchingProductionCategoryScopes,
   parseProductionBoardFilters,
   productionBoardCacheKey,
   productionBoardFilterConditions,
   productionBoardFilterParams,
   productionBoardWhere,
+  resolveProductionCategorySelection,
 } from "../lib/production/board-filters.ts";
 
 const root = new URL("..", import.meta.url);
@@ -61,6 +64,7 @@ test("parse filter menerima array parameter dan membatasi panjang pencarian", ()
 });
 
 test("filter tanpa nilai menghasilkan parameter URL kosong dan tidak dianggap aktif", () => {
+  assert.equal(ALL_PRODUCTION_CATEGORIES, "all");
   const filters = parseProductionBoardFilters({});
   assert.deepEqual(filters, EMPTY_PRODUCTION_BOARD_FILTERS);
   assert.equal(hasActiveProductionBoardFilters(filters), false);
@@ -105,7 +109,7 @@ test("batas tanggal deadline memakai kalender Jakarta, bukan jam browser", () =>
   });
 });
 
-test("pencarian mencakup nomor WO, produk, Sales Order, dan customer", () => {
+test("pencarian mencakup nomor WO, produk, Sales Order, customer, dan kategori", () => {
   const [condition] = productionBoardFilterConditions({ ...EMPTY_PRODUCTION_BOARD_FILTERS, q: "budi" }, NOW);
   const fields = JSON.stringify(condition);
   assert.match(fields, /"workOrderNo"/);
@@ -113,7 +117,74 @@ test("pencarian mencakup nomor WO, produk, Sales Order, dan customer", () => {
   assert.match(fields, /"salesOrderNo"/);
   assert.match(fields, /"snapshotCustomerName"/);
   assert.match(fields, /"snapshotCompanyName"/);
+  assert.match(fields, /"productCategory"/);
+  assert.match(fields, /"name"/);
   assert.match(fields, /insensitive/);
+});
+
+test("pilihan Semua hanya dipakai saat jalur punya lebih dari satu kategori", () => {
+  const jersey = [{ id: "cat-jersey" }];
+  const nonJersey = [{ id: "cat-kemeja" }, { id: "cat-pdh" }];
+
+  assert.deepEqual(resolveProductionCategorySelection("all", jersey), {
+    allCategoriesSelected: false,
+    kategoriId: "cat-jersey",
+    categoryParam: "cat-jersey",
+  });
+  assert.deepEqual(resolveProductionCategorySelection(undefined, jersey), {
+    allCategoriesSelected: false,
+    kategoriId: "cat-jersey",
+    categoryParam: "cat-jersey",
+  });
+  assert.deepEqual(resolveProductionCategorySelection("all", nonJersey), {
+    allCategoriesSelected: true,
+    kategoriId: null,
+    categoryParam: "all",
+  });
+  assert.deepEqual(resolveProductionCategorySelection("cat-pdh", nonJersey), {
+    allCategoriesSelected: false,
+    kategoriId: "cat-pdh",
+    categoryParam: "cat-pdh",
+  });
+  assert.deepEqual(resolveProductionCategorySelection("kategori-hilang", nonJersey), {
+    allCategoriesSelected: false,
+    kategoriId: "cat-kemeja",
+    categoryParam: "cat-kemeja",
+  });
+  assert.deepEqual(resolveProductionCategorySelection("all", []), {
+    allCategoriesSelected: false,
+    kategoriId: null,
+    categoryParam: null,
+  });
+});
+
+test("saran pindah papan hanya menampilkan kategori lain yang cocok", () => {
+  const categories = [
+    { id: "cat-jersey", name: "Jersey", garmentType: "JERSEY" },
+    { id: "cat-kemeja", name: "Kemeja", garmentType: "NON_JERSEY" },
+    { id: "cat-pdh", name: "PDH / PDL", garmentType: "NON_JERSEY" },
+    { id: "cat-topi", name: "Topi", garmentType: "AKSESORI" },
+  ];
+
+  assert.deepEqual(
+    matchingProductionCategoryScopes(categories, "kemeja", "JERSEY", "cat-jersey").map((category) => category.id),
+    ["cat-kemeja"],
+  );
+  assert.deepEqual(
+    matchingProductionCategoryScopes(categories, "kemeja", "NON_JERSEY", "cat-kemeja"),
+    [],
+    "kategori yang sedang aktif tidak disarankan lagi",
+  );
+  assert.deepEqual(
+    matchingProductionCategoryScopes(categories, "kemeja", "NON_JERSEY", null),
+    [],
+    "saat semua kategori dipilih, kategori satu jalur sudah tercakup",
+  );
+  assert.deepEqual(
+    matchingProductionCategoryScopes(categories, "topi", "NON_JERSEY", "cat-kemeja").map((category) => category.id),
+    ["cat-topi"],
+  );
+  assert.deepEqual(matchingProductionCategoryScopes(categories, "", "JERSEY", "cat-jersey"), []);
 });
 
 test("PIC dibaca dari tahap aktif, termasuk kartu yang belum punya PIC", () => {
@@ -160,6 +231,21 @@ test("penanda digabung sebagai 'salah satu' di dalam AND, bukan menimpa OR jalur
   assert.deepEqual(where.designCompletedAt, { not: null });
 });
 
+test("kategori item kosong memakai kategori PO, bukan cocok ke semua kategori", () => {
+  const where = productionBoardWhere({ group: "NON_JERSEY", productCategoryId: "cat-kemeja" });
+  assert.ok(Array.isArray(where.AND));
+  assert.deepEqual(where.AND[1], {
+    OR: [
+      { purchaseOrderItem: { is: { productCategoryId: "cat-kemeja" } } },
+      {
+        purchaseOrderItem: { is: { productCategoryId: null } },
+        salesOrder: { purchaseOrder: { productCategoryId: "cat-kemeja" } },
+      },
+      { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { productCategoryId: "cat-kemeja" } } },
+    ],
+  });
+});
+
 test("tanpa filter, where papan sama seperti sebelumnya untuk setiap jalur", () => {
   const jersey = productionBoardWhere({ group: "JERSEY" });
   assert.equal(jersey.route, "JERSEY");
@@ -203,10 +289,11 @@ test("cache papan memuat setiap filter agar hasil filter lain tidak bocor", () =
 });
 
 test("halaman, API polling, dan export memakai builder filter yang sama", async () => {
-  const [page, section, sectionClient, route, exportData, data] = await Promise.all([
+  const [page, section, sectionClient, filtersBar, route, exportData, data] = await Promise.all([
     read("app/(app)/produksi/page.tsx"),
     read("components/production/production-board-section.tsx"),
     read("components/production/production-board-section-client.tsx"),
+    read("components/production/production-filters.tsx"),
     read("app/api/produksi/board/route.ts"),
     read("lib/export/datasets/orders.ts"),
     read("lib/production/data.ts"),
@@ -214,25 +301,37 @@ test("halaman, API polling, dan export memakai builder filter yang sama", async 
 
   // Halaman membaca filter dari URL dan meneruskannya ke board + tombol export.
   assert.match(page, /parseProductionBoardFilters\(params\)/);
-  assert.match(page, /<ProductionFiltersBar group=\{group\} productCategoryId=\{kategoriId\} filters=\{filters\} picOptions=\{picOptions\} \/>/);
   assert.match(page, /productionBoardFilterParams\(filters\)/);
-  assert.match(page, /<ProductionBoardSection group=\{group\} productCategoryId=\{kategoriId\} filters=\{filters\} picOptions=\{picOptions\} \/>/);
+  assert.match(page, /categoryParam=\{kategoriParam\}/);
+  assert.match(page, /categoryName=\{selectedCategoryName\}/);
+  assert.match(page, /categories=\{categoryOptions\}/);
+  assert.match(page, /ALL_PRODUCTION_CATEGORIES/);
+  assert.match(page, /resolveProductionCategorySelection\(rawKategori, categories\)/);
+  assert.match(page, /categories.length > 1/);
+  assert.match(page, />\s*Semua\s*<\/Button>/);
   // Filter ikut terbawa saat pindah jalur/kategori.
   assert.match(page, /const withFilters = \(query: string\) => \(filterQuery \? `\$\{query\}&\$\{filterQuery\}` : query\)/);
 
   assert.match(section, /getProductionBoard\(\{ group, productCategoryId, filters \}\)/);
+  assert.match(section, /getProductionSearchSuggestions/);
   // Polling memakai filter yang sama, kalau tidak kartu terfilter muncul lagi.
   assert.match(sectionClient, /\/api\/produksi\/board\?jalur=\$\{group\}&kategori=\$\{productCategoryId \?\? ""\}\$\{filterQuery \? `&\$\{filterQuery\}` : ""\}/);
   assert.match(sectionClient, /isFiltering && board\.items\.length === 0/);
   assert.match(sectionClient, /activeProductionBoardFilterLabels\(filters, selectedPic\)/);
+  assert.match(sectionClient, /searchSuggestions/);
+  assert.match(sectionClient, /Ditemukan juga di papan lain/);
+  assert.match(filtersBar, /Cari di \{scopeLabel\}/);
+  assert.match(filtersBar, /categoryParam/);
 
   assert.match(route, /parseProductionBoardFilters\(Object\.fromEntries\(params\.entries\(\)\)\)/);
   assert.match(route, /getProductionBoard\(\{ group, productCategoryId, filters \}\)/);
 
   // Export memakai where yang identik dengan board (termasuk WO lawas tanpa item).
-  assert.match(exportData, /productionBoardWhere\(\{ group, productCategoryId: kategori \|\| null, filters \}\)/);
+  assert.match(exportData, /kategori === ALL_PRODUCTION_CATEGORIES/);
+  assert.match(exportData, /productionBoardWhere\(\{ group, productCategoryId, filters \}\)/);
   assert.match(data, /productionBoardWhere\(filter\)/);
   assert.match(data, /productionBoardCacheKey\(filter\)/);
+  assert.match(data, /matchingProductionCategoryScopes/);
   // Pilihan PIC dibatasi jalur + kategori, bukan filter aktif lainnya.
   assert.match(data, /workOrder: productionBoardWhere\(scope\)/);
 });

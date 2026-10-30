@@ -5,15 +5,23 @@ import type { Prisma } from "@prisma/client";
 
 import { PRODUCTION_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { getActiveProductCategories } from "@/lib/master-data";
 import {
   EMPTY_PRODUCTION_BOARD_FILTERS,
   NO_PIC,
+  matchingProductionCategoryScopes,
   productionBoardCacheKey,
   productionBoardWhere,
   type ProductionBoardFilters,
+  type ProductionCategoryScope,
 } from "@/lib/production/board-filters";
 import { getPrismaClient } from "@/lib/prisma";
-import { isStageRole, type ProductionBoardGroup } from "@/lib/production/workflow";
+import {
+  isStageRole,
+  PRODUCTION_BOARD_GROUP_LABEL,
+  PRODUCTION_BOARD_GROUPS,
+  type ProductionBoardGroup,
+} from "@/lib/production/workflow";
 
 export type ProductionBoardFilter = {
   group: ProductionBoardGroup;
@@ -146,6 +154,70 @@ export async function getProductionBoard(input: ProductionBoardFilter) {
     actor: { id: actor.id, role: actor.role },
     canManage: isStageRole(actor.role),
   };
+}
+
+export type ProductionSearchSuggestion = {
+  group: ProductionBoardGroup;
+  groupLabel: string;
+  productCategoryId: string;
+  productCategoryName: string;
+  count: number;
+};
+
+/**
+ * Saran pindah papan saat pencarian kosong. Hanya kategori yang namanya cocok
+ * dengan kata kunci yang dihitung, supaya tidak perlu memindai semua kategori.
+ */
+export async function getProductionSearchSuggestions(input: {
+  group: ProductionBoardGroup;
+  productCategoryId?: string | null;
+  filters?: ProductionBoardFilters;
+  categories?: ProductionCategoryScope[];
+}): Promise<ProductionSearchSuggestion[]> {
+  const filters = input.filters ?? EMPTY_PRODUCTION_BOARD_FILTERS;
+  if (!filters.q.trim()) return [];
+
+  const categories =
+    input.categories ??
+    (await getActiveProductCategories()).map(({ id, name, garmentType }) => ({ id, name, garmentType }));
+  const scopes = matchingProductionCategoryScopes(
+    categories,
+    filters.q,
+    input.group,
+    input.productCategoryId ?? null,
+  );
+  if (!scopes.length) return [];
+
+  const prisma = getPrismaClient();
+  const suggestions = await Promise.all(
+    scopes.map(async (category) => {
+      const count = await prisma.productionWorkOrder.count({
+        where: productionBoardWhere({
+          group: category.garmentType,
+          productCategoryId: category.id,
+          filters,
+        }),
+      });
+      if (count === 0) return null;
+      return {
+        group: category.garmentType,
+        groupLabel: PRODUCTION_BOARD_GROUP_LABEL[category.garmentType],
+        productCategoryId: category.id,
+        productCategoryName: category.name,
+        count,
+      } satisfies ProductionSearchSuggestion;
+    }),
+  );
+
+  return suggestions
+    .filter((suggestion): suggestion is ProductionSearchSuggestion => suggestion !== null)
+    .sort(
+      (a, b) =>
+        PRODUCTION_BOARD_GROUPS.indexOf(a.group) - PRODUCTION_BOARD_GROUPS.indexOf(b.group) ||
+        b.count - a.count ||
+        a.productCategoryName.localeCompare(b.productCategoryName, "id-ID"),
+    )
+    .slice(0, 3);
 }
 
 export async function getProductionDetail(id: string) {

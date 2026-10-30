@@ -20,7 +20,7 @@ import {
   type ProductionBoardFilters,
   type ProductionPenanda,
 } from "@/lib/production/board-filters";
-import type { ProductionBoardGroup } from "@/lib/production/workflow";
+import { PRODUCTION_BOARD_GROUP_LABEL, type ProductionBoardGroup } from "@/lib/production/workflow";
 import { cn } from "@/lib/utils";
 
 export type ProductionPicOption = { id: string; name: string };
@@ -31,19 +31,24 @@ export type ProductionPicOption = { id: string; name: string };
  */
 export function ProductionFiltersBar({
   group,
-  productCategoryId,
+  categoryParam,
+  categoryName,
   filters,
   picOptions,
 }: {
   group: ProductionBoardGroup;
-  productCategoryId: string | null;
+  /** Nilai URL kategori: id kategori, `all`, atau null bila tidak ada kategori. */
+  categoryParam: string | null;
+  categoryName?: string | null;
   filters: ProductionBoardFilters;
   picOptions: ProductionPicOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   // Parameter halaman yang harus selalu ikut: jalur + kategori aktif.
-  const baseParams = { jalur: group, ...(productCategoryId ? { kategori: productCategoryId } : {}) };
+  const baseParams = { jalur: group, ...(categoryParam ? { kategori: categoryParam } : {}) };
+  const groupLabel = PRODUCTION_BOARD_GROUP_LABEL[group];
+  const scopeLabel = categoryName && categoryName !== groupLabel ? `${groupLabel} · ${categoryName}` : groupLabel;
   const active = hasActiveProductionBoardFilters(filters);
 
   function navigate(next: ProductionBoardFilters) {
@@ -66,7 +71,7 @@ export function ProductionFiltersBar({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end" aria-label="Filter papan produksi">
       <Field className="gap-1.5 sm:min-w-64 sm:flex-1">
-        <FieldLabel htmlFor="production-filter-search">Cari</FieldLabel>
+        <FieldLabel htmlFor="production-filter-search">Cari di {scopeLabel}</FieldLabel>
         {/*
           Pencarian memakai input debounce yang sudah dipakai daftar lain:
           seluruh filter lain dipertahankan, hanya `q` yang berubah.
@@ -76,8 +81,8 @@ export function ProductionFiltersBar({
           initialValue={filters.q}
           pathname={PRODUCTION_BOARD_PATH}
           params={{ ...baseParams, ...productionBoardFilterParams({ ...filters, q: "" }) }}
-          placeholder="Nomor WO, produk, SO, atau customer"
-          ariaLabel="Cari Work Order, produk, Sales Order, atau customer"
+          placeholder="Nomor WO, produk, SO, customer di tab ini"
+          ariaLabel={`Cari Work Order, produk, Sales Order, atau customer di ${scopeLabel}`}
         />
       </Field>
 

@@ -33,6 +33,58 @@ export type ProductionBoardFilters = {
 /** Nilai filter khusus untuk kartu yang tahap aktifnya belum punya PIC. */
 export const NO_PIC = "none";
 
+/** Nilai URL untuk menampilkan semua kategori dalam satu jalur. */
+export const ALL_PRODUCTION_CATEGORIES = "all";
+
+export type ProductionCategoryScope = {
+  id: string;
+  name: string;
+  garmentType: ProductionBoardGroup;
+};
+
+/**
+ * Menentukan kategori yang sedang aktif. "Semua" hanya bermakna saat jalur
+ * punya lebih dari satu kategori; di jalur satu kategori, pilihan itu
+ * dinormalisasi ke kategori tersebut supaya tidak ada state kosong yang sama.
+ */
+export function resolveProductionCategorySelection(
+  rawKategori: string | undefined,
+  categories: readonly { id: string }[],
+) {
+  const allCategoriesSelected =
+    rawKategori === ALL_PRODUCTION_CATEGORIES && categories.length > 1;
+  const kategoriId = allCategoriesSelected
+    ? null
+    : categories.some((category) => category.id === rawKategori)
+      ? (rawKategori ?? null)
+      : categories[0]?.id ?? null;
+
+  return {
+    allCategoriesSelected,
+    kategoriId,
+    categoryParam: allCategoriesSelected ? ALL_PRODUCTION_CATEGORIES : kategoriId,
+  };
+}
+
+/** Kategori lain yang namanya cocok dengan kata kunci, untuk saran pindah papan. */
+export function matchingProductionCategoryScopes(
+  categories: ProductionCategoryScope[],
+  q: string,
+  currentGroup: ProductionBoardGroup,
+  currentCategoryId: string | null,
+) {
+  const needle = q.trim().toLocaleLowerCase("id");
+  if (!needle) return [];
+
+  return categories.filter((category) => {
+    if (!category.name.toLocaleLowerCase("id").includes(needle)) return false;
+    const inCurrentScope =
+      category.garmentType === currentGroup &&
+      (currentCategoryId === null || category.id === currentCategoryId);
+    return !inCurrentScope;
+  });
+}
+
 export const EMPTY_PRODUCTION_BOARD_FILTERS: ProductionBoardFilters = {
   q: "",
   pic: "",
@@ -186,6 +238,8 @@ export function productionBoardFilterConditions(
         { salesOrder: { salesOrderNo: { contains: filters.q, mode: "insensitive" } } },
         { salesOrder: { snapshotCustomerName: { contains: filters.q, mode: "insensitive" } } },
         { salesOrder: { snapshotCompanyName: { contains: filters.q, mode: "insensitive" } } },
+        { purchaseOrderItem: { is: { productCategory: { name: { contains: filters.q, mode: "insensitive" } } } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { productCategory: { name: { contains: filters.q, mode: "insensitive" } } } } },
       ],
     });
   }
@@ -255,14 +309,15 @@ export function productionBoardWhere({
     });
   }
 
-  // Kategori mengikuti produk WO (itemnya); WO lawas tanpa item memakai kategori PO.
-  // Item yang belum berkategori ikut tampil agar tak ada Work Order hilang.
+  // Kategori mengikuti produk WO (itemnya). Item yang belum punya kategori
+  // memakai kategori PO sebagai cadangan; kalau keduanya kosong, kartu hanya
+  // muncul di "Semua" dan tidak bocor ke setiap kategori.
   if (productCategoryId) {
     conditions.push({
       OR: [
         { purchaseOrderItem: { is: { productCategoryId } } },
-        { purchaseOrderItem: { is: { productCategoryId: null } } },
-        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { OR: [{ productCategoryId }, { productCategoryId: null }] } } },
+        { purchaseOrderItem: { is: { productCategoryId: null } }, salesOrder: { purchaseOrder: { productCategoryId } } },
+        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { productCategoryId } } },
       ],
     });
   }

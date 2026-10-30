@@ -329,8 +329,8 @@ test("halaman Produksi menampilkan tab jalur dan chip kategori dengan pilihan pe
   assert.match(productionPage, /aria-label="Filter jalur produksi"/);
   assert.match(productionPage, /PRODUCTION_BOARD_GROUPS\.map\(\(target\) =>/);
   assert.match(productionPage, /aria-label="Filter kategori produk"/);
-  assert.match(productionPage, /categories\.some\(\(category\) => category\.id === rawKategori\)/);
-  assert.match(productionPage, /categories\[0\]\?\.id \?\? null/);
+  assert.match(productionPage, /resolveProductionCategorySelection\(rawKategori, categories\)/);
+  assert.match(productionPage, /categories.length > 1/);
   assert.match(productionPage, /key=\{`\$\{group\}:\$\{kategoriId \?\? ""\}`\}/);
   assert.match(productionPage, /stageRouteForGroup\(group\)/);
   assert.match(boardSection, /getProductionBoard\(\{ group, productCategoryId, filters \}\)/);
