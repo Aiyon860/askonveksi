@@ -4,10 +4,13 @@ import test from "node:test";
 
 import { designAnnotationsSchema } from "../lib/production/design-annotations.ts";
 
-const [schema, migration, board, detail, designList, productionDetailPage, actions, pdfRoute, pdf, nav, editor, designEditorPage] = await Promise.all([
+const [schema, migration, board, boardFilters, detail, designList, productionDetailPage, actions, pdfRoute, pdf, nav, editor, designEditorPage] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260924010000_production_design_detail/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../lib/production/data.ts", import.meta.url), "utf8"),
+  // Aturan where kanban (termasuk gerbang anotasi desain) tinggal di modul filter
+  // bersama agar halaman, API polling, dan export memakai sumber yang sama.
+  readFile(new URL("../lib/production/board-filters.ts", import.meta.url), "utf8"),
   readFile(new URL("../lib/production/design-detail.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/detail-desain/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/produksi/[id]/page.tsx", import.meta.url), "utf8"),
@@ -29,7 +32,9 @@ test("D3: detailing opsional — simpan dan kirim tanpa anotasi pun sah", () => 
 test("WO menunggu anotasi produksi sebelum masuk kanban", () => {
   assert.match(schema, /designCompletedAt\s+DateTime\?/);
   assert.match(migration, /ADD COLUMN "designCompletedAt"/);
-  assert.match(board, /designCompletedAt: \{ not: null \}/);
+  assert.match(boardFilters, /designCompletedAt: \{ not: null \}/);
+  // Pembaca kanban memakai where bersama itu (halaman, API, export seragam).
+  assert.match(board, /productionBoardWhere\(filter\)/);
   assert.match(detail, /status: \{ not: "CANCELLED" \}/);
 });
 
@@ -61,7 +66,9 @@ test("Detail Desain dan PDF memakai gambar desain yang disetujui", () => {
   assert.match(designList, /DataPagination/);
   assert.match(designList, /SortableTableHead/);
   assert.match(designList, /Pencil data-icon="inline-start"/);
-  assert.match(detail, /skip: \(page - 1\) \* pageSize/);
+  // Paginasi tetap diterapkan, kini lewat helper sliceArgs agar ukuran "Semua"
+  // (tanpa skip/take) bisa dipakai bersama halaman lain.
+  assert.match(detail, /\.\.\.sliceArgs\(page, pageSize\)/);
   assert.match(productionDetailPage, /PaymentProofPreview/);
   assert.match(productionDetailPage, /Desain final/);
   assert.match(productionDetailPage, /hoverLabel="Perbesar gambar"/);

@@ -70,3 +70,4 @@ public/vendor/exceljs.min.js
 *.tsv
 # Laporan internal berisi angka & nama customer
 /laporan-pengecekan-data-keuangan-dan-crm.md
+/laporan-tanggal-uang-masuk.md

@@ -5,6 +5,7 @@ import type { Prisma, WhatsAppJobStatus } from "@prisma/client";
 import { CRM_OPERATOR_ROLES, hasRole, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
 import { getActiveProductCategories } from "@/lib/master-data";
+import { pageCountFor, sliceArgs } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
 import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
 import { parseJakartaDateTime, MAX_CAMPAIGN_RECIPIENTS, type CampaignRecipientOption } from "@/lib/whatsapp/campaigns";
@@ -137,12 +138,11 @@ export async function getWhatsAppTemplates(input: WhatsAppTemplateTableInput) {
       where,
       select: { id: true, name: true, triggerType: true, body: true, isActive: true, version: true, updatedAt: true },
       orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      ...sliceArgs(page, pageSize),
     }),
     prisma.whatsAppTemplate.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  return { items, total, pageCount: pageCountFor(total, pageSize) };
 }
 
 export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {

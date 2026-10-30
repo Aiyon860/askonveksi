@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { requireDeveloperActor } from "@/lib/auth/session";
+import { pageCountFor, sliceArgs } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
 import { isStageRole } from "@/lib/production/workflow";
 
@@ -113,8 +114,7 @@ export async function getProductionDesignDetails({
     getPrismaClient().productionWorkOrder.findMany({
       where,
       orderBy: designDetailOrderBy(sort, direction),
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      ...sliceArgs(page, pageSize),
       select: designSelect,
     }),
     getPrismaClient().productionWorkOrder.count({ where }),
@@ -122,7 +122,7 @@ export async function getProductionDesignDetails({
   return {
     items: items.map(withOwnProductDesign),
     total,
-    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    pageCount: pageCountFor(total, pageSize),
     canManage: isStageRole(actor.role),
   };
 }

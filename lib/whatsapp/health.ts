@@ -3,15 +3,28 @@ import type { WhatsAppAccountStatus } from "@prisma/client";
 export const WHATSAPP_HEARTBEAT_TIMEOUT_MS = 30_000;
 
 export type WhatsAppHealthState = "HEALTHY" | "NOT_CONFIGURED" | "WORKER_OFFLINE" | "DISCONNECTED" | "LOGGED_OUT" | "ERROR";
-export type WhatsAppHealthBanner = "CONNECTION" | "FAILED_JOBS";
 
-export function whatsappHealthChanged(previous: WhatsAppHealthState | null, next: WhatsAppHealthState) {
-  return previous !== null && previous !== next;
+/** Satu-satunya keadaan yang berarti nomor siap dipakai. */
+export function isWhatsAppConnected(state: WhatsAppHealthState) {
+  return state === "HEALTHY";
 }
 
-export function classifyWhatsAppHealthBanner(state: WhatsAppHealthState, failedCount: number): WhatsAppHealthBanner | null {
-  if (state !== "HEALTHY") return "CONNECTION";
-  return failedCount > 0 ? "FAILED_JOBS" : null;
+/** Penjelasan singkat per keadaan, dipakai sebagai tooltip status di navigasi. */
+export function describeWhatsAppHealth(state: WhatsAppHealthState): string {
+  switch (state) {
+    case "HEALTHY":
+      return "Nomor WhatsApp terhubung dan worker aktif.";
+    case "NOT_CONFIGURED":
+      return "Belum ada nomor WhatsApp aktif.";
+    case "WORKER_OFFLINE":
+      return "Worker WhatsApp tidak memberi heartbeat.";
+    case "DISCONNECTED":
+      return "Nomor WhatsApp terputus.";
+    case "LOGGED_OUT":
+      return "Nomor WhatsApp telah logout dan perlu dipasangkan ulang.";
+    case "ERROR":
+      return "Integrasi WhatsApp mengalami kendala.";
+  }
 }
 
 export function classifyWhatsAppHealth(

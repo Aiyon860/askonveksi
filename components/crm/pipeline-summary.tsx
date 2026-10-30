@@ -6,10 +6,13 @@ import { cn } from "@/lib/utils";
 export function PipelineSummary({
   opportunities,
   total,
+  grandTotal,
   className,
 }: {
   opportunities: PipelineOpportunity[];
   total: number;
+  /** Jumlah seluruh peluang; hanya dikirim saat filter aktif untuk konteks "dari X". */
+  grandTotal?: number;
   className?: string;
 }) {
   const counts = PIPELINE_STAGES.map((stage) => ({
@@ -25,6 +28,9 @@ export function PipelineSummary({
       <div className="flex shrink-0 items-baseline gap-2">
         <span className="text-muted-foreground">Total peluang</span>
         <span className="font-mono text-lg font-semibold tabular-nums text-primary">{total}</span>
+        {grandTotal !== undefined && grandTotal > total ? (
+          <span className="text-xs text-muted-foreground">dari {grandTotal}</span>
+        ) : null}
       </div>
       <div className="flex min-w-max items-center gap-3">
         {counts.map(({ stage, count }) => (

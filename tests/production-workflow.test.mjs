@@ -12,7 +12,7 @@ import {
   stageRouteForGroup,
 } from "../lib/production/workflow.ts";
 
-const [schema, migration, skipMigration, automationMigration, workflow, actions, crmActions, service, seed, packageJson, board, revertMigration, sectionClient, data, obstacleTimestampMigration, productionPage, boardRoute, boardSection, productionDetail, summary, backfillPoScript, qcRevertedMigration] = await Promise.all([
+const [schema, migration, skipMigration, automationMigration, workflow, actions, crmActions, service, seed, packageJson, board, revertMigration, sectionClient, data, obstacleTimestampMigration, productionPage, boardRoute, boardSection, productionDetail, summary, backfillPoScript, qcRevertedMigration, boardFilters] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260902000000_production_workflow/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20260903000000_non_jersey_stage_skip/migration.sql", import.meta.url), "utf8"),
@@ -35,6 +35,7 @@ const [schema, migration, skipMigration, automationMigration, workflow, actions,
   readFile(new URL("../components/production/production-summary.tsx", import.meta.url), "utf8"),
   readFile(new URL("../scripts/backfill-purchase-order-categories.mjs", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20261017000000_production_qc_reverted/migration.sql", import.meta.url), "utf8"),
+  readFile(new URL("../lib/production/board-filters.ts", import.meta.url), "utf8"),
 ]);
 
 test("workflow Produksi memiliki dua jalur yang disepakati", () => {
@@ -281,12 +282,15 @@ test("kanban Produksi punya tiga jalur bertingkat dengan filter kategori produk 
 
   // Kanban dikelompokkan per produk WO (jenis + kategori item), bukan atribut level PO,
   // agar PO multi-produk (mis. Topi + Jaket) tampil pada jalurnya masing-masing.
-  assert.match(data, /purchaseOrderItem: \{ is: \{ garmentType: "AKSESORI" \} \}/);
-  assert.match(data, /purchaseOrderItem: \{ is: \{ garmentType: "NON_JERSEY" \} \}/);
-  assert.match(data, /purchaseOrderItem: \{ is: \{ productCategoryId \} \}/);
-  assert.match(data, /purchaseOrderItem: \{ is: null \}/);
-  assert.match(data, /route: group === "JERSEY" \? "JERSEY" : "NON_JERSEY"/);
-  assert.match(data, /\["production-board", filter\.group, filter\.productCategoryId \?\? ""\]/);
+  // Aturan where tinggal di lib/production/board-filters.ts agar halaman, API, dan
+  // export memakai sumber yang sama.
+  assert.match(boardFilters, /purchaseOrderItem: \{ is: \{ garmentType: "AKSESORI" \} \}/);
+  assert.match(boardFilters, /purchaseOrderItem: \{ is: \{ garmentType: "NON_JERSEY" \} \}/);
+  assert.match(boardFilters, /purchaseOrderItem: \{ is: \{ productCategoryId \} \}/);
+  assert.match(boardFilters, /purchaseOrderItem: \{ is: null \}/);
+  assert.match(boardFilters, /route: group === "JERSEY" \? "JERSEY" : "NON_JERSEY"/);
+  assert.match(data, /productionBoardCacheKey\(filter\)/);
+  assert.match(boardFilters, /"production-board",/);
 });
 
 test("kartu Retur berdiam di kolom Retur sampai dipindahkan, badge bertahan, merah hilang di Selesai", () => {
@@ -325,11 +329,12 @@ test("halaman Produksi menampilkan tab jalur dan chip kategori dengan pilihan pe
   assert.match(productionPage, /aria-label="Filter jalur produksi"/);
   assert.match(productionPage, /PRODUCTION_BOARD_GROUPS\.map\(\(target\) =>/);
   assert.match(productionPage, /aria-label="Filter kategori produk"/);
-  assert.match(productionPage, /categories\.some\(\(category\) => category\.id === rawKategori\)/);
-  assert.match(productionPage, /categories\[0\]\?\.id \?\? null/);
+  assert.match(productionPage, /resolveProductionCategorySelection\(rawKategori, categories\)/);
+  assert.match(productionPage, /categories.length > 1/);
   assert.match(productionPage, /key=\{`\$\{group\}:\$\{kategoriId \?\? ""\}`\}/);
   assert.match(productionPage, /stageRouteForGroup\(group\)/);
-  assert.match(boardSection, /getProductionBoard\(\{ group, productCategoryId \}\)/);
+  assert.match(boardSection, /getProductionBoard\(\{ group, productCategoryId, filters \}\)/);
+  assert.match(boardSection, /filters=\{filters\}/);
   assert.match(sectionClient, /\/api\/produksi\/board\?jalur=\$\{group\}&kategori=\$\{productCategoryId \?\? ""\}/);
   assert.match(boardRoute, /parseProductionBoardGroup\(params\.get\("jalur"\) \?\? undefined\)/);
   assert.match(boardRoute, /entityIdSchema\.safeParse\(rawKategori\)/);

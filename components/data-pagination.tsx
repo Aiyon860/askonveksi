@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { PageSizeSelect } from "@/components/page-size-select";
+import { pageWindow } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -52,8 +53,9 @@ export function DataPagination({
   className?: string;
 }) {
   if (total === 0) return null;
-  const first = (page - 1) * pageSize + 1;
-  const last = Math.min(page * pageSize, total);
+  const view = pageWindow(total, page, pageSize);
+  const first = view.first;
+  const last = view.last;
   const pageSizeParams = Object.fromEntries(
     Object.entries(params).filter(([key]) => key !== pageSizeParam && key !== pageParam),
   );

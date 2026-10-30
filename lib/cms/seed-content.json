@@ -559,7 +559,12 @@
       "catalogVisible": false,
       "catalogOrder": 26,
       "cardImage": null,
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/celana-formal/2026-10-30-113606-0.webp",
+          "alt": "Celana formal custom produksi Askonveksi"
+        }
+      ],
       "features": [
         "Potongan lurus dengan finishing rapi",
         "Bahan nyaman dan tidak mudah kusut",
@@ -587,7 +592,24 @@
       "catalogVisible": false,
       "catalogOrder": 27,
       "cardImage": null,
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/celana-training/2026-10-29-130725-1.webp",
+          "alt": "Celana training custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/celana-training/2026-10-30-113318-0.webp",
+          "alt": "Celana training custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/celana-training/2026-10-30-113319-0.webp",
+          "alt": "Celana training custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/celana-training/2026-10-30-113319-1.webp",
+          "alt": "Celana training custom produksi Askonveksi"
+        }
+      ],
       "features": [
         "Bahan lentur dan ringan",
         "Pinggang karet yang nyaman",
@@ -791,6 +813,62 @@
         {
           "src": "/assets/jerysey-webp/USM.webp",
           "alt": "Jersey kerah pesanan USM produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/1.webp",
+          "alt": "Jersey kerah pesanan 1 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/2.webp",
+          "alt": "Jersey kerah pesanan 2 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/3.webp",
+          "alt": "Jersey kerah pesanan 3 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/4.webp",
+          "alt": "Jersey kerah pesanan 4 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/5.webp",
+          "alt": "Jersey kerah pesanan 5 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/6.webp",
+          "alt": "Jersey kerah pesanan 6 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/7.webp",
+          "alt": "Jersey kerah pesanan 7 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/8-1.webp",
+          "alt": "Jersey kerah pesanan 8 (1) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/8-2.webp",
+          "alt": "Jersey kerah pesanan 8 (2) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/8-3.webp",
+          "alt": "Jersey kerah pesanan 8 (3) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/8-4.webp",
+          "alt": "Jersey kerah pesanan 8 (4) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/8-5.webp",
+          "alt": "Jersey kerah pesanan 8 (5) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/8-6.webp",
+          "alt": "Jersey kerah pesanan 8 (6) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-kerah/jersey-kov.webp",
+          "alt": "Jersey kerah pesanan JERSEY KOV produksi Askonveksi"
         }
       ],
       "features": [
@@ -875,6 +953,26 @@
         {
           "src": "/assets/jerysey-webp/USM.webp",
           "alt": "Jersey oblong pesanan USM produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-oblong/1-1.webp",
+          "alt": "Jersey oblong pesanan 1 (1) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-oblong/1-2.webp",
+          "alt": "Jersey oblong pesanan 1 (2) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-oblong/atlas-training-camp.webp",
+          "alt": "Jersey oblong pesanan Atlas Training Camp produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-oblong/mockup-jersey-futuristik-xonic-x1.webp",
+          "alt": "Jersey oblong pesanan Jersey Futuristik Xonic-X1 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jersey-oblong/pbpi.webp",
+          "alt": "Jersey oblong pesanan PBPI produksi Askonveksi"
         }
       ],
       "features": [
@@ -1057,6 +1155,66 @@
         {
           "src": "/assets/pdh-kemeja/SMA%20N%209%20SMG.webp",
           "alt": "Kemeja PDH pesanan SMA N 9 Semarang produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-28-221137-1.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-28-221138-0.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-28-221140-1.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-28-234757-0.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-28-234759-0.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-29-130718-0.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-29-130721-0.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-29-130722-3.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-29-130724-0.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-29-130725-2.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/2026-10-29-130727-0.webp",
+          "alt": "Kemeja PDH custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/alfamart-group.webp",
+          "alt": "Kemeja PDH pesanan ALFAMART GROUP produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/greef.webp",
+          "alt": "Kemeja PDH pesanan GREEF produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/hydrotech-undip.webp",
+          "alt": "Kemeja PDH pesanan HYDROTECH UNDIP produksi Askonveksi"
+        },
+        {
+          "src": "/assets/pdh-kemeja/pramuka-indonesia.webp",
+          "alt": "Kemeja PDH pesanan PRAMUKA INDONESIA produksi Askonveksi"
         }
       ],
       "features": [
@@ -1088,7 +1246,36 @@
         "src": "/product/kemeja.png",
         "alt": "Produk Workshirt Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/workshirt/2026-10-28-234800-2.webp",
+          "alt": "Workshirt custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/workshirt/2026-10-29-130721-2.webp",
+          "alt": "Workshirt custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/workshirt/2026-10-29-130723-0.webp",
+          "alt": "Workshirt custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/workshirt/2026-10-29-130724-1.webp",
+          "alt": "Workshirt custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/workshirt/2026-10-29-130724-2.webp",
+          "alt": "Workshirt custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/workshirt/2026-10-29-130726-2.webp",
+          "alt": "Workshirt custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/workshirt/pt-aegis.webp",
+          "alt": "Workshirt pesanan PT AEGIS produksi Askonveksi"
+        }
+      ],
       "features": [
         "Bahan twill / drill yang tahan pakai",
         "Saku dada fungsional",
@@ -1126,6 +1313,42 @@
         {
           "src": "/assets/seragam-kerja/VIRGIN%20BAKERY.webp",
           "alt": "Seragam kerja pesanan Virgin Bakery produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/2026-10-28-221136-2.webp",
+          "alt": "Seragam kerja custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/2026-10-28-221138-2.webp",
+          "alt": "Seragam kerja custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/2026-10-28-221140-3.webp",
+          "alt": "Seragam kerja custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/2026-10-28-221141-0.webp",
+          "alt": "Seragam kerja custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/2026-10-28-234759-2.webp",
+          "alt": "Seragam kerja custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/2026-10-28-234800-1.webp",
+          "alt": "Seragam kerja custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/mockup-kemeja-boxy-krim-tampak-depan-belakang.webp",
+          "alt": "Seragam kerja pesanan Kemeja Boxy Krim Tampak Depan Belakang produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/piama-kov-whims.webp",
+          "alt": "Seragam kerja pesanan PIAMA KOV WHIMS produksi Askonveksi"
+        },
+        {
+          "src": "/assets/seragam-kerja/skin-glow-abadi.webp",
+          "alt": "Seragam kerja pesanan SKIN GLOW ABADI produksi Askonveksi"
         }
       ],
       "features": [
@@ -1235,6 +1458,50 @@
         {
           "src": "/assets/polo-webp/SPPG.webp",
           "alt": "Poloshirt pesanan SPPG produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/1.webp",
+          "alt": "Poloshirt pesanan 1 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/2.webp",
+          "alt": "Poloshirt pesanan 2 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/3.webp",
+          "alt": "Poloshirt pesanan 3 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/4-1.webp",
+          "alt": "Poloshirt pesanan 4 (1) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/4-2.webp",
+          "alt": "Poloshirt pesanan 4 (2) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/4-3.webp",
+          "alt": "Poloshirt pesanan 4 (3) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/4-4.webp",
+          "alt": "Poloshirt pesanan 4 (4) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/4-5.webp",
+          "alt": "Poloshirt pesanan 4 (5) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/mockup-polo-adhisatya-eksa-6.webp",
+          "alt": "Poloshirt pesanan Polo Adhisatya EKSA 6 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/mockup-polo-olahraga-depan-belakang.webp",
+          "alt": "Poloshirt pesanan Polo Olahraga Depan Belakang produksi Askonveksi"
+        },
+        {
+          "src": "/assets/polo-webp/po-cust-2-10.webp",
+          "alt": "Poloshirt pesanan PO CUST 2 (10) produksi Askonveksi"
         }
       ],
       "features": [
@@ -1266,7 +1533,156 @@
         "src": "/product/kaos.png",
         "alt": "Produk Kaos Sablon Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/kaos/2026-10-29-130721-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160042-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160042-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160042-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160043-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160043-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160303-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160303-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160303-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160304-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160304-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160304-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160305-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160305-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-29-160305-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112635-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112635-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112635-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112636-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112636-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112636-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112636-3.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112637-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112637-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-112637-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-113318-1.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-113319-2.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-113319-3.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/2026-10-30-115603-0.webp",
+          "alt": "Kaos sablon custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/entelemi-soldier.webp",
+          "alt": "Kaos sablon pesanan Entelemi Soldier produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/khaf.webp",
+          "alt": "Kaos sablon pesanan KHAF produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/mockup-kaos-biru-walisongo-choir.webp",
+          "alt": "Kaos sablon pesanan Kaos Biru Walisongo Choir produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/mockup-kaos-diponegoro-orchestra.webp",
+          "alt": "Kaos sablon pesanan Kaos Diponegoro Orchestra produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/mockup-kaos-navy-smanda-hooligan.webp",
+          "alt": "Kaos sablon pesanan Kaos Navy Smanda Hooligan produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/pakem.webp",
+          "alt": "Kaos sablon pesanan PAKEM produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/vegan-travel-asia.webp",
+          "alt": "Kaos sablon pesanan Vegan Travel Asia produksi Askonveksi"
+        },
+        {
+          "src": "/assets/kaos/whims-coffe.webp",
+          "alt": "Kaos sablon pesanan WHIMS COFFE produksi Askonveksi"
+        }
+      ],
       "features": [
         "Teknik DTF untuk desain full color detail",
         "Plastisol untuk hasil timbul yang awet",
@@ -1296,7 +1712,12 @@
         "src": "/product/kaos.png",
         "alt": "Produk Kaos Vneck Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/kaos-vneck/kov-motion-barista.webp",
+          "alt": "Kaos v-neck pesanan KOV MOTION BARISTA produksi Askonveksi"
+        }
+      ],
       "features": [
         "Bahan cotton combed yang lembut",
         "Rib kerah V yang tidak melar",
@@ -1326,7 +1747,12 @@
         "src": "/product/kaos.png",
         "alt": "Produk Kaos Raglan Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/kaos-raglan/kov-motion.webp",
+          "alt": "Kaos raglan pesanan KOV MOTION produksi Askonveksi"
+        }
+      ],
       "features": [
         "Kombinasi warna badan dan lengan bebas",
         "Bahan cotton combed yang adem",
@@ -1356,7 +1782,100 @@
         "src": "/product/jaket.png",
         "alt": "Produk Jacket Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/jacket/2026-10-26-205543-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205544-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205544-1.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205544-2.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205545-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205546-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205546-1.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205546-2.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205546-3.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205547-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-26-205547-1.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-221135-1.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-221136-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-221139-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-221139-1.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-221140-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-221140-2.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-234755-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-234756-1.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-234756-2.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-28-234758-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-29-130722-2.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/jacket/2026-10-29-130725-0.webp",
+          "alt": "Jaket custom produksi Askonveksi"
+        }
+      ],
       "features": [
         "Bahan waterproof / fleece sesuai kebutuhan",
         "Bordir & sablon logo yang tahan lama",
@@ -1386,7 +1905,24 @@
         "src": "/product/kaos.png",
         "alt": "Produk Lanyard Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/lanyard/2026-10-29-162504-0.webp",
+          "alt": "Lanyard custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/lanyard/2026-10-29-162505-0.webp",
+          "alt": "Lanyard custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/lanyard/2026-10-29-162505-1.webp",
+          "alt": "Lanyard custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/lanyard/2026-10-29-162505-2.webp",
+          "alt": "Lanyard custom produksi Askonveksi"
+        }
+      ],
       "features": [
         "Cetak desain full color dua sisi",
         "Lebar tali 1,5 cm dan 2 cm",
@@ -1440,6 +1976,58 @@
         {
           "src": "/assets/rompi-apron/SPPG%20MANGUNHARJO%2003.webp",
           "alt": "Rompi pesanan SPPG Mangunharjo 03 produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-221135-2.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-221135-3.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-221137-0.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-221138-1.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-234754-2.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-234755-1.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-234756-0.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-234759-1.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-28-234759-3.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-29-130721-3.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-29-130722-1.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/2026-10-29-130724-3.webp",
+          "alt": "Rompi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/rompi-apron/abna-parfum.webp",
+          "alt": "Rompi pesanan ABNA PARFUM produksi Askonveksi"
         }
       ],
       "features": [
@@ -1471,7 +2059,40 @@
         "src": "/product/kaos.png",
         "alt": "Produk Totebag Topi Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/totebag-topi/2026-10-28-234757-1.webp",
+          "alt": "Totebag dan topi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/totebag-topi/2026-10-28-234800-0.webp",
+          "alt": "Totebag dan topi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/totebag-topi/2026-10-30-115144-0.webp",
+          "alt": "Totebag dan topi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/totebag-topi/2026-10-30-115603-1.webp",
+          "alt": "Totebag dan topi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/totebag-topi/2026-10-30-115603-2.webp",
+          "alt": "Totebag dan topi custom produksi Askonveksi"
+        },
+        {
+          "src": "/assets/totebag-topi/po-cust-askonveksi-new-34.webp",
+          "alt": "Totebag dan topi pesanan PO CUST ASKONVEKSI NEW (34) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/totebag-topi/po-cust-askonveksi-new-35.webp",
+          "alt": "Totebag dan topi pesanan PO CUST ASKONVEKSI NEW (35) produksi Askonveksi"
+        },
+        {
+          "src": "/assets/totebag-topi/po-cust-askonveksi-new-36.webp",
+          "alt": "Totebag dan topi pesanan PO CUST ASKONVEKSI NEW (36) produksi Askonveksi"
+        }
+      ],
       "features": [
         "Totebag kanvas dan spunbond berbagai ukuran",
         "Topi snapback, trucker, dan baseball",
@@ -1501,7 +2122,12 @@
         "src": "/product/kaos.png",
         "alt": "Produk Gantungan Kunci Askonveksi"
       },
-      "gallery": [],
+      "gallery": [
+        {
+          "src": "/assets/gantungan-kunci/2026-10-30-115144-1.webp",
+          "alt": "Gantungan kunci custom produksi Askonveksi"
+        }
+      ],
       "features": [
         "Bahan akrilik, karet, dan besi",
         "Desain dua sisi full color",
@@ -1546,6 +2172,38 @@
       "seoTitle": "Stiker",
       "seoDescription": "Stiker custom untuk label produk, kemasan, dan promosi brand. Tersedia dalam bahan vinyl, chromo, dan transparan dengan potongan kiss-cut atau die-cut mengikuti bentuk desain, lengkap dengan pilihan finishing laminasi glossy atau doff.",
       "published": true
+    },
+    {
+      "id": "baju-selam",
+      "name": "Baju Selam",
+      "tagline": "Pakaian selam custom untuk aktivitas air dan tim lapangan",
+      "description": "Baju selam custom untuk kebutuhan menyelam, olahraga air, dan tim yang bekerja di lingkungan basah. Diproduksi mengikuti ukuran dan identitas tim Anda, dengan potongan yang tetap nyaman saat bergerak.",
+      "parentSlug": null,
+      "menuVisible": true,
+      "menuOrder": 12,
+      "catalogVisible": false,
+      "catalogOrder": 24,
+      "cardImage": null,
+      "gallery": [
+        {
+          "src": "/assets/baju-selam/2026-10-29-130723-2.webp",
+          "alt": "Baju selam custom produksi Askonveksi"
+        }
+      ],
+      "features": [
+        "Ukuran custom sesuai tubuh",
+        "Logo dan identitas tim",
+        "Potongan nyaman saat bergerak",
+        "Tersedia untuk pesanan tim"
+      ],
+      "useCases": [
+        "Menyelam",
+        "Olahraga air",
+        "Tim SAR dan lapangan"
+      ],
+      "seoTitle": "Baju Selam",
+      "seoDescription": "Baju selam custom untuk kebutuhan menyelam, olahraga air, dan tim yang bekerja di lingkungan basah. Diproduksi mengikuti ukuran dan identitas tim Anda, dengan potongan yang tetap nyaman saat bergerak.",
+      "published": true
     }
   ],
   "portfolio": {
@@ -1568,7 +2226,7 @@
         "visible": true
       }
     ],
-    "eyebrow": "Dipercaya 27 perusahaan & instansi",
+    "eyebrow": "Dipercaya 39 perusahaan & instansi",
     "title": "Portofolio Kami",
     "description": "Kumpulan hasil produksi seragam dan apparel custom untuk perusahaan, instansi, komunitas, dan brand yang telah memercayakan kebutuhannya kepada Askonveksi.",
     "items": [
@@ -1785,6 +2443,102 @@
         "logo": {
           "src": "/client/puskesmas-bangetayu.webp",
           "alt": "Logo Puskesmas Bangetayu"
+        },
+        "visible": true
+      },
+      {
+        "name": "Semesta School Semarang",
+        "logo": {
+          "src": "/client/semesta.webp",
+          "alt": "Logo Semesta School Semarang"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Sipa Indonesia Service Center",
+        "logo": {
+          "src": "/client/sipa.webp",
+          "alt": "Logo PT Sipa Indonesia Service Center"
+        },
+        "visible": true
+      },
+      {
+        "name": "Genius Research and Education Center",
+        "logo": {
+          "src": "/client/genius.webp",
+          "alt": "Logo Genius Research and Education Center"
+        },
+        "visible": true
+      },
+      {
+        "name": "SMP IT PAPB Semarang",
+        "logo": {
+          "src": "/client/papb.webp",
+          "alt": "Logo SMP IT PAPB Semarang"
+        },
+        "visible": true
+      },
+      {
+        "name": "SMP Al-Rifa'ie",
+        "logo": {
+          "src": "/client/al-rifaie.webp",
+          "alt": "Logo SMP Al-Rifa'ie"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Abadi Ogan Cemerlang",
+        "logo": {
+          "src": "/client/abadi-ogan-cemerlang.webp",
+          "alt": "Logo PT Abadi Ogan Cemerlang"
+        },
+        "visible": true
+      },
+      {
+        "name": "TIS Petroleum",
+        "logo": {
+          "src": "/client/tis.webp",
+          "alt": "Logo TIS Petroleum"
+        },
+        "visible": true
+      },
+      {
+        "name": "Yayasan Badan Wakaf Sultan Agung",
+        "logo": {
+          "src": "/client/ybwsa.webp",
+          "alt": "Logo Yayasan Badan Wakaf Sultan Agung"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Nesta Indo Media",
+        "logo": {
+          "src": "/client/nesta.webp",
+          "alt": "Logo PT Nesta Indo Media"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Inti Artha Buana",
+        "logo": {
+          "src": "/client/inti-artha-buana.webp",
+          "alt": "Logo PT Inti Artha Buana"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT KMU Konstruksi Indonesia",
+        "logo": {
+          "src": "/client/kmu.webp",
+          "alt": "Logo PT KMU Konstruksi Indonesia"
+        },
+        "visible": true
+      },
+      {
+        "name": "MES Jawa Tengah",
+        "logo": {
+          "src": "/client/mes-jateng.webp",
+          "alt": "Logo MES Jawa Tengah"
         },
         "visible": true
       }

@@ -3127,7 +3127,7 @@ async function finalizeDeal(tx: Tx, actor: Actor, invoiceId: string, initialPaym
       taxAmount: true,
       total: true,
       salesOrder: { select: { id: true } },
-      purchaseOrder: { select: { purchaseOrderNo: true, status: true, garmentType: true, deadline: true, deposit: { select: { amount: true, paidAt: true, paymentMethodId: true, reference: true, note: true, createdById: true } } } },
+      purchaseOrder: { select: { purchaseOrderNo: true, productName: true, status: true, garmentType: true, deadline: true, deposit: { select: { amount: true, paidAt: true, paymentMethodId: true, reference: true, note: true, createdById: true } } } },
       pendingPayment: {
         select: {
           id: true,
@@ -3216,7 +3216,7 @@ async function finalizeDeal(tx: Tx, actor: Actor, invoiceId: string, initialPaym
       createdById: actor.id,
       items: { create: invoice.items },
       cost: { create: {} },
-      productCosts: { create: productCostSeeds(invoice.items) },
+      productCosts: { create: productCostSeeds(invoice.items, invoice.purchaseOrder.productName) },
       payment: {
         create: {
           kind: invoice.pendingPayment.kind,

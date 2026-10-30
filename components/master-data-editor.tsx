@@ -30,7 +30,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { groupProductCategories } from "@/lib/crm/constants";
-import { DATA_PAGE_SIZE, DATA_PAGE_SIZES } from "@/lib/pagination";
+import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, pageSizeLabel, pageWindow, paginate } from "@/lib/pagination";
 
 export type MasterItem = {
   id: string;
@@ -211,8 +211,9 @@ function MasterDataPagination({
 }) {
   if (!total) return null;
 
-  const first = disabled ? 1 : (page - 1) * pageSize + 1;
-  const last = disabled ? total : Math.min(page * pageSize, total);
+  const view = pageWindow(total, page, pageSize);
+  const first = disabled ? (total === 0 ? 0 : 1) : view.first;
+  const last = disabled ? total : view.last;
 
   return (
     <div className="flex min-w-0 flex-col gap-4 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -233,7 +234,7 @@ function MasterDataPagination({
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
           >
             {DATA_PAGE_SIZES.map((option) => (
-              <NativeSelectOption key={option} value={option}>{option}</NativeSelectOption>
+              <NativeSelectOption key={option} value={option}>{pageSizeLabel(option)}</NativeSelectOption>
             ))}
           </NativeSelect>
         </div>
@@ -320,10 +321,9 @@ export function MasterDataEditor({
       || (kindOptions?.find((option) => option.value === item.kind)?.label ?? "").toLocaleLowerCase("id").includes(debouncedQuery)
     ));
   }, [debouncedQuery, draftItems, kindOptions]);
-  const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
-  const visibleItems = isEditing
-    ? draftItems
-    : filteredItems.slice((page - 1) * pageSize, page * pageSize);
+  const paged = paginate(filteredItems, page, pageSize);
+  const pageCount = paged.pageCount;
+  const visibleItems = isEditing ? draftItems : paged.items;
 
   function startEditing() {
     setDraftItems(createDraft(items, kindOptions));

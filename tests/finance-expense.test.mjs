@@ -309,10 +309,10 @@ test("Project memecah baris per produk dan HPP tersimpan per produk", async () =
 
   // Simpan HPP hanya menyentuh produk yang dipilih, lalu agregat order dihitung ulang.
   assert.match(actions, /tx\.salesOrderProductCost\.updateMany/);
-  assert.match(actions, /salesOrderProductCostId: productCostId/);
+  assert.match(actions, /salesOrderProductCostId: resolvedProductCostId/);
   assert.match(actions, /tx\.\$executeRaw/);
   assert.match(actions, /UPDATE "SalesOrderCost"/);
-  assert.match(crm, /productCosts: \{ create: productCostSeeds\(invoice\.items\) \}/);
+  assert.match(crm, /productCosts: \{ create: productCostSeeds\(invoice\.items, invoice\.purchaseOrder\.productName\) \}/);
   assert.match(broadcast, /productCosts: \{ create: \[\{ productName: "Order Historis", position: 0 \}\] \}/);
 
   // Produk digabung per nama (baris ukuran lama) dan diberi label dari item PO.
@@ -320,7 +320,7 @@ test("Project memecah baris per produk dan HPP tersimpan per produk", async () =
   assert.match(groups, /rowCount/);
   assert.match(products, /export function buildProjectProducts/);
   assert.match(products, /current\.quantity \+= item\.quantity/);
-  assert.match(products, /if \(!rows\.size\) rows\.set\("produk"/);
+  assert.match(products, /if \(!rows\.size\) \{/);
   assert.match(products, /poItem\?\.productCategory\?\.name\?\.trim\(\) \|\| poItem\?\.garmentType/);
   assert.match(expenseData, /buildProjectProducts\(/);
   assert.match(expenseData, /itemDiscount: itemDiscount\.toString\(\)/);
@@ -334,7 +334,10 @@ test("Project memecah baris per produk dan HPP tersimpan per produk", async () =
   assert.match(page, /const showDate = customerIndex === 0 && orderIndex === 0 && productIndex === 0/);
   assert.match(page, /const showCustomer = orderIndex === 0 && productIndex === 0/);
   assert.doesNotMatch(page, /align-top/);
-  assert.match(page, /product\.costId && product\.costVersion !== null/);
+  // Semua produk bisa Edit HPP: baris HPP dibuat otomatis saat disimpan.
+  assert.doesNotMatch(page, /product\.costId && product\.costVersion !== null/);
+  assert.match(page, /<SalesOrderCostForm item=\{\{ id: item\.id, productCostId: product\.costId/);
+  assert.match(page, /projectExpenses=\{product\.costId \? productPrefill\.get\(product\.costId\) : undefined\}/);
   assert.match(page, /productDescription\.get\(product\.costId\)/);
   assert.match(page, /Produk \{formatCurrency\(item\.itemDiscount\)\}/);
   assert.match(page, /Total \{formatCurrency\(item\.orderDiscount\)\}/);

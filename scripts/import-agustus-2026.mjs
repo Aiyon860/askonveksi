@@ -40,6 +40,8 @@ import ExcelJS from "exceljs";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { hppValues, productCostSeedRows } from "./lib/project-product-costs.mjs";
+
 const APPLY = process.argv.includes("--apply");
 const ALLOW_REMOTE = process.argv.includes("--allow-remote");
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -796,6 +798,14 @@ async function main() {
                 cost: {
                   create: Object.fromEntries(HPP_KEYS.map((key) => [key, new Prisma.Decimal(item.buckets[key])])),
                 },
+                // HPP per produk: semua nilai HPP impor menempel pada produk order ini
+                // supaya Edit HPP di tabel Project langsung terisi.
+                productCosts: {
+                  create: productCostSeedRows([{ position: 0, productName: item.jenis }], purchaseOrder.productName).map((row, index) => ({
+                    ...row,
+                    ...(index === 0 ? hppValues(item.buckets) : {}),
+                  })),
+                },
                 payment: {
                   create: {
                     kind: item.kind,
@@ -824,7 +834,7 @@ async function main() {
                   },
                 },
               },
-              include: { payment: { include: { terms: { orderBy: { position: "asc" } } } } },
+              include: { payment: { include: { terms: { orderBy: { position: "asc" } } } }, productCosts: { select: { id: true }, orderBy: { position: "asc" }, take: 1 } },
             });
 
             for (let termIndex = 0; termIndex < laterEvents.length; termIndex += 1) {
@@ -857,6 +867,7 @@ async function main() {
                 isReimbursable: false,
                 customerName,
                 salesOrderId: salesOrder ? salesOrder.id : null,
+                salesOrderProductCostId: salesOrder ? (salesOrder.productCosts[0]?.id ?? null) : null,
                 hppKey: key,
                 createdById: owner.id,
                 createdAt: invoiceDate,

@@ -33,7 +33,7 @@ import {
 import type { AttendanceCorrectionTarget, AttendanceEmployeeOption, AttendanceLocationView } from "@/lib/attendance/types";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 import { formatPercentage } from "@/lib/crm/format";
-import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageSizeParam } from "@/lib/pagination";
+import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, pageSizeLabel, parsePageSizeParam } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
 type SearchParams = Promise<{
@@ -261,7 +261,7 @@ export default async function AttendanceReportPage({ searchParams }: { searchPar
               defaultValue={String(pageSize)}
             >
               {DATA_PAGE_SIZES.map((size) => (
-                <NativeSelectOption key={size} value={String(size)}>{size} baris</NativeSelectOption>
+                <NativeSelectOption key={size} value={String(size)}>{pageSizeLabel(size)}</NativeSelectOption>
               ))}
             </NativeSelect>
           </Field>

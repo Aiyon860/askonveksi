@@ -3,12 +3,20 @@ import { Suspense } from "react";
 import type { ProductionRoute } from "@prisma/client";
 
 import { ProductionBoardSection } from "@/components/production/production-board-section";
+import { ProductionFiltersBar } from "@/components/production/production-filters";
 import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getActiveProductCategories } from "@/lib/master-data";
+import {
+  ALL_PRODUCTION_CATEGORIES,
+  parseProductionBoardFilters,
+  productionBoardFilterParams,
+  resolveProductionCategorySelection,
+} from "@/lib/production/board-filters";
+import { getProductionPicOptions } from "@/lib/production/data";
 import {
   parseProductionBoardGroup,
   productionStagesForGroup,
@@ -23,75 +31,128 @@ import { cn } from "@/lib/utils";
 export default async function ProductionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ jalur?: string | string[]; kategori?: string | string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
   const group = parseProductionBoardGroup(params.jalur);
   const stageRoute = stageRouteForGroup(group);
+  // Filter papan hidup di URL (bukan state browser) agar ikut terbawa saat pindah
+  // Jalur/Kategori, bisa dibagikan, dan dipakai tombol Export.
+  const filters = parseProductionBoardFilters(params);
 
   // Filter tingkat kedua: kategori produk aktif per grup, urut Jersey > Non-jersey > Aksesoris.
   const activeCategories = await getActiveProductCategories();
+  const categoryOptions = activeCategories.map(({ id, name, garmentType }) => ({ id, name, garmentType }));
   const categoriesByGroup: Record<ProductionBoardGroup, { id: string; name: string }[]> = {
     JERSEY: [],
     NON_JERSEY: [],
     AKSESORI: [],
   };
-  for (const category of activeCategories) categoriesByGroup[category.garmentType].push({ id: category.id, name: category.name });
+  for (const category of categoryOptions) categoriesByGroup[category.garmentType].push({ id: category.id, name: category.name });
 
   const categories = categoriesByGroup[group];
   const rawKategori = Array.isArray(params.kategori) ? params.kategori[0] : params.kategori;
-  const kategoriId = categories.some((category) => category.id === rawKategori)
-    ? (rawKategori ?? null)
-    : categories[0]?.id ?? null;
+  const {
+    allCategoriesSelected,
+    kategoriId,
+    categoryParam: kategoriParam,
+  } = resolveProductionCategorySelection(rawKategori, categories);
+  const selectedCategoryName = kategoriId
+    ? categories.find((category) => category.id === kategoriId)?.name ?? null
+    : "Semua kategori";
+
+  // Filter aktif ikut terbawa saat berpindah Jalur/Kategori.
+  const filterQuery = new URLSearchParams(productionBoardFilterParams(filters)).toString();
+  const withFilters = (query: string) => (filterQuery ? `${query}&${filterQuery}` : query);
 
   function groupHref(target: ProductionBoardGroup) {
+    if (allCategoriesSelected) {
+      return withFilters(`/produksi?jalur=${target}&kategori=${ALL_PRODUCTION_CATEGORIES}`);
+    }
     const firstId = categoriesByGroup[target][0]?.id;
-    return firstId ? `/produksi?jalur=${target}&kategori=${firstId}` : `/produksi?jalur=${target}`;
+    return withFilters(firstId ? `/produksi?jalur=${target}&kategori=${firstId}` : `/produksi?jalur=${target}`);
   }
+
+  const picOptions = await getProductionPicOptions({ group, productCategoryId: kategoriId, selectedPicId: filters.pic });
 
   return (
     <>
       <PageHeader
         title="Produksi"
         description="Pantau setiap Sales Order dari tahap pertama sampai selesai."
-        action={<ExportButton dataset="produksi" params={{ jalur: group, ...(kategoriId ? { kategori: kategoriId } : {}) }} />}
+        action={<ExportButton dataset="produksi" params={{ jalur: group, ...(kategoriId ? { kategori: kategoriId } : {}), ...productionBoardFilterParams(filters) }} />}
       />
       <PageMessage />
       <div className="flex flex-col gap-3">
-        <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1" aria-label="Filter jalur produksi">
-          {PRODUCTION_BOARD_GROUPS.map((target) => (
-            <Button
-              key={target}
-              size="sm"
-              variant={group === target ? "default" : "ghost"}
-              render={<Link href={groupHref(target)} />}
-              nativeButton={false}
-              aria-current={group === target ? "page" : undefined}
-            >
-              {PRODUCTION_BOARD_GROUP_LABEL[target]}
-            </Button>
-          ))}
-        </div>
-        {categories.length ? (
-          <div className="-mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1" aria-label="Filter kategori produk">
-            {categories.map((category) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-14 shrink-0 text-xs font-medium text-muted-foreground">Jalur</span>
+          <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1" aria-label="Filter jalur produksi">
+            {PRODUCTION_BOARD_GROUPS.map((target) => (
               <Button
-                key={category.id}
+                key={target}
                 size="sm"
-                className="shrink-0"
-                variant={kategoriId === category.id ? "default" : "outline"}
-                render={<Link href={`/produksi?jalur=${group}&kategori=${category.id}`} />}
+                variant={group === target ? "default" : "ghost"}
+                render={<Link href={groupHref(target)} />}
                 nativeButton={false}
-                aria-current={kategoriId === category.id ? "true" : undefined}
+                aria-current={group === target ? "page" : undefined}
               >
-                {category.name}
+                {PRODUCTION_BOARD_GROUP_LABEL[target]}
               </Button>
             ))}
           </div>
+        </div>
+        {categories.length ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="w-14 shrink-0 text-xs font-medium text-muted-foreground">Kategori</span>
+            <div className="-mx-1 flex min-w-0 flex-nowrap gap-2 overflow-x-auto px-1 pb-1" aria-label="Filter kategori produk">
+              {categories.length > 1 ? (
+                <Button
+                  size="sm"
+                  className="shrink-0"
+                  variant={kategoriId === null ? "default" : "outline"}
+                  render={<Link href={withFilters(`/produksi?jalur=${group}&kategori=${ALL_PRODUCTION_CATEGORIES}`)} />}
+                  nativeButton={false}
+                  aria-current={kategoriId === null ? "true" : undefined}
+                >
+                  Semua
+                </Button>
+              ) : null}
+              {categories.map((category) => (
+                <Button
+                  key={category.id}
+                  size="sm"
+                  className="shrink-0"
+                  variant={kategoriId === category.id ? "default" : "outline"}
+                  render={<Link href={withFilters(`/produksi?jalur=${group}&kategori=${category.id}`)} />}
+                  nativeButton={false}
+                  aria-current={kategoriId === category.id ? "true" : undefined}
+                >
+                  {category.name}
+                </Button>
+              ))}
+            </div>
+          </div>
         ) : null}
+        <ProductionFiltersBar
+          group={group}
+          categoryParam={kategoriParam}
+          categoryName={selectedCategoryName}
+          filters={filters}
+          picOptions={picOptions}
+        />
       </div>
+      {/* Kunci Suspense sengaja hanya grup:kategori — filter tidak boleh
+          me-remount board, cukup mengganti data di dalamnya. */}
       <Suspense fallback={<ProductionSkeleton group={group} route={stageRoute} />} key={`${group}:${kategoriId ?? ""}`}>
-        <ProductionBoardSection group={group} productCategoryId={kategoriId} />
+        <ProductionBoardSection
+          group={group}
+          productCategoryId={kategoriId}
+          categoryParam={kategoriParam}
+          categoryName={selectedCategoryName}
+          categories={categoryOptions}
+          filters={filters}
+          picOptions={picOptions}
+        />
       </Suspense>
     </>
   );

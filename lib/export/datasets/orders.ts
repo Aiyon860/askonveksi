@@ -16,8 +16,8 @@ import {
   PRODUCTION_ROUTE_LABEL,
   PRODUCTION_STAGE_LABEL,
   parseProductionBoardGroup,
-  stageRouteForGroup,
 } from "@/lib/production/workflow";
+import { activeProductionBoardFilterLabels, ALL_PRODUCTION_CATEGORIES, NO_PIC, parseProductionBoardFilters, productionBoardWhere } from "@/lib/production/board-filters";
 import { exportDate, exportDateKey, exportDateTime, exportFilterSummary, exportRange, exportText } from "@/lib/export/params";
 import type { ExportColumn, ExportDatasetResult, ExportRow } from "@/lib/export/types";
 
@@ -45,7 +45,7 @@ export const PURCHASE_ORDER_COLUMNS: ExportColumn[] = [
   { header: "Perusahaan", width: 26 },
   { header: "Produk", width: 26 },
   { header: "Kategori", width: 20 },
-  { header: "Jenis busana", width: 16 },
+  { header: "Jenis order", width: 16 },
   { header: "Total QTY", format: "number", width: 10 },
   { header: "Roster", format: "number", width: 10 },
   { header: "Status", width: 14 },
@@ -320,29 +320,20 @@ export const PRODUKSI_COLUMNS: ExportColumn[] = [
 
 export async function loadProduksi({ searchParams, page }: LoadInput): Promise<ExportDatasetResult> {
   await requireActor(PRODUCTION_VIEW_ROLES);
-  const query = exportText(searchParams.get("q"));
   const group = parseProductionBoardGroup(searchParams.get("jalur") ?? undefined);
-  const route = stageRouteForGroup(group);
   const kategori = exportText(searchParams.get("kategori"), 40);
-  const rawStatus = searchParams.get("status");
-  const status = rawStatus === "ACTIVE" || rawStatus === "COMPLETED" || rawStatus === "CANCELLED" ? rawStatus : undefined;
-  const where = {
-    route,
-    ...(status ? { status } : {}),
-    ...(kategori ? { purchaseOrderItem: { productCategoryId: kategori } } : {}),
-    ...(query
-      ? {
-          OR: [
-            { workOrderNo: { contains: query, mode: "insensitive" as const } },
-            { productName: { contains: query, mode: "insensitive" as const } },
-            { salesOrder: { salesOrderNo: { contains: query, mode: "insensitive" as const } } },
-            { salesOrder: { snapshotCustomerName: { contains: query, mode: "insensitive" as const } } },
-            { salesOrder: { snapshotCompanyName: { contains: query, mode: "insensitive" as const } } },
-          ],
-        }
-      : {}),
-  } satisfies Prisma.ProductionWorkOrderWhereInput;
+  // Filter papan dipakai apa adanya supaya isi Excel sama dengan yang terlihat
+  // di board: satu parser + satu builder where untuk halaman, API, dan export.
+  const filters = parseProductionBoardFilters(Object.fromEntries(searchParams.entries()));
+  const productCategoryId =
+    kategori === ALL_PRODUCTION_CATEGORIES ? null : kategori || null;
+  const where = productionBoardWhere({ group, productCategoryId, filters });
   const prisma = getPrismaClient();
+  // Nama PIC untuk ringkasan filter di header Excel.
+  const picName =
+    filters.pic && filters.pic !== NO_PIC
+      ? (await prisma.appUser.findUnique({ where: { id: filters.pic }, select: { name: true } }))?.name ?? null
+      : null;
   const [items, total] = await Promise.all([
     prisma.productionWorkOrder.findMany({
       where,
@@ -394,8 +385,7 @@ export async function loadProduksi({ searchParams, page }: LoadInput): Promise<E
     total,
     filterSummary: exportFilterSummary([
       PRODUCTION_BOARD_GROUP_LABEL[group],
-      status ? (status === "ACTIVE" ? "Aktif" : status === "COMPLETED" ? "Selesai" : "Dibatalkan") : "Semua status",
-      query ? `Pencarian: ${query}` : null,
+      ...activeProductionBoardFilterLabels(filters, picName),
     ]),
   };
 }

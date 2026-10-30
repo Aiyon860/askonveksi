@@ -18,6 +18,7 @@ export function DebouncedSearchInput({
   maxLength = 80,
   queryParam = "q",
   pageParam = "page",
+  id,
 }: {
   initialValue: string;
   pathname: string;
@@ -29,6 +30,8 @@ export function DebouncedSearchInput({
   maxLength?: number;
   queryParam?: string;
   pageParam?: string;
+  /** Dipakai saat input diberi label eksplisit (`FieldLabel htmlFor`). */
+  id?: string;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(initialValue);
@@ -57,6 +60,7 @@ export function DebouncedSearchInput({
     <div className={cn("w-full", className)}>
       <InputGroup>
         <InputGroupInput
+          id={id}
           type="search"
           maxLength={maxLength}
           value={value}

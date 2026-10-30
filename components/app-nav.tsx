@@ -6,10 +6,13 @@ import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, Shirt, SlidersHorizontal, Tags, UserPlus, Users, UsersRound, Wallet, Waypoints } from "lucide-react";
+import useSWR from "swr";
 
 import { Badge } from "@/components/ui/badge";
 import { hasRole, CRM_OPERATOR_ROLES, CRM_VIEW_ROLES, GARMENT_SIZE_ROLES, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
+import { fetcher } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
+import { describeWhatsAppHealth, isWhatsAppConnected, type WhatsAppHealthState } from "@/lib/whatsapp/health";
 import { WHATSAPP_INBOX_ROLES } from "@/lib/whatsapp/access";
 
 const mainItems = [
@@ -136,6 +139,41 @@ function NavGroup({ label, icon: Icon, tone, children }: { label: ReactNode; ico
   );
 }
 
+const WHATSAPP_STATUS_POLL_MS = 10_000;
+
+/**
+ * Status koneksi nomor WhatsApp, menggantikan banner “WhatsApp perlu perhatian”
+ * yang dulu muncul di setiap halaman. Polling hanya berjalan saat grup WhatsApp
+ * tampil, dan SWR melewati polling ketika tab tidak terlihat.
+ */
+function WhatsAppStatusChip({ enabled }: { enabled: boolean }) {
+  const { data } = useSWR<{ state: WhatsAppHealthState }>(enabled ? "/api/whatsapp/health" : null, fetcher, {
+    refreshInterval: WHATSAPP_STATUS_POLL_MS,
+    dedupingInterval: 5_000,
+    shouldRetryOnError: false,
+    revalidateOnFocus: true,
+  });
+
+  const state = data?.state;
+  if (!state) return null;
+  const connected = isWhatsAppConnected(state);
+
+  return (
+    <span
+      title={describeWhatsAppHealth(state)}
+      className={cn(
+        "ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] leading-none font-semibold tracking-normal",
+        connected
+          ? "border-nav-status-connected/40 bg-nav-status-connected/10 text-nav-status-connected"
+          : "border-nav-status-disconnected/40 bg-nav-status-disconnected/10 text-nav-status-disconnected",
+      )}
+    >
+      <span aria-hidden="true" className={cn("size-1.5 rounded-full", connected ? "bg-nav-status-connected" : "bg-nav-status-disconnected")} />
+      {connected ? "Connect" : "Disconnect"}
+    </span>
+  );
+}
+
 export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole; onNavigate?: () => void }) {
   const pathname = usePathname();
   const [whatsAppCount, setWhatsAppCount] = useState(0);
@@ -200,7 +238,16 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
         </NavGroup>
       ) : null}
       {whatsAppVisibleItems.length ? (
-        <NavGroup label={<span>WhatsApp</span>} icon={MessageCircle} tone="text-nav-tone-whatsapp">
+        <NavGroup
+          label={
+            <>
+              <span>WhatsApp</span>
+              <WhatsAppStatusChip enabled={canViewWhatsAppInbox} />
+            </>
+          }
+          icon={MessageCircle}
+          tone="text-nav-tone-whatsapp"
+        >
           {whatsAppVisibleItems.map((item) => <NavLink key={item.href} pathname={pathname} item={item.href === "/whatsapp" ? { ...item, count: whatsAppCount } : item} nested tone="text-nav-tone-whatsapp" onNavigate={onNavigate} />)}
         </NavGroup>
       ) : null}

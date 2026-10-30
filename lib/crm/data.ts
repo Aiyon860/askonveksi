@@ -17,6 +17,7 @@ import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
 import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "@/lib/crm/numbers";
 import { activityStatusFromSchedule, CUSTOMER_ACTIVITY_LABELS } from "@/lib/crm/reminder-types";
+import { pageCountFor, sliceArgs } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
 
 export type PipelineOpportunity = {
@@ -30,7 +31,9 @@ export type PipelineOpportunity = {
   nextAction: string | null;
   nextActionAt: string | null;
   cancelReason: string | null;
+  createdAt: string;
   updatedAt: string;
+  productCategory: { id: string; name: string } | null;
   customer: {
     id: string;
     customerNo: string;
@@ -45,6 +48,7 @@ export type PipelineOpportunity = {
     status: "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
     productName: string;
     garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null;
+    productCategory: { id: string; name: string } | null;
     totalQuantity: number;
     depositAmount: string | null;
   } | null;
@@ -76,6 +80,7 @@ const opportunitySummarySelect = {
   nextAction: true,
   nextActionAt: true,
   cancelReason: true,
+  createdAt: true,
   updatedAt: true,
   customer: {
     select: {
@@ -85,6 +90,7 @@ const opportunitySummarySelect = {
       companyName: true,
     },
   },
+  productCategory: { select: { id: true, name: true } },
   salesPic: { select: { id: true, name: true } },
   purchaseOrders: {
     select: {
@@ -93,6 +99,7 @@ const opportunitySummarySelect = {
       status: true,
       productName: true,
       garmentType: true,
+      productCategory: { select: { id: true, name: true } },
       sizes: { select: { quantity: true } },
       deposit: { select: { amount: true } },
     },
@@ -138,7 +145,9 @@ const getCachedPipelineData = unstable_cache(
     nextAction: row.nextAction,
     nextActionAt: row.nextActionAt?.toISOString() ?? null,
     cancelReason: row.cancelReason,
+    createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    productCategory: row.productCategory,
     customer: row.customer,
     activityCount: row._count.communicationActivities,
     salesPic: row.salesPic,
@@ -148,6 +157,7 @@ const getCachedPipelineData = unstable_cache(
       status: row.purchaseOrders[0].status,
       productName: row.purchaseOrders[0].productName,
       garmentType: row.purchaseOrders[0].garmentType,
+      productCategory: row.purchaseOrders[0].productCategory,
       totalQuantity: row.purchaseOrders[0].sizes.reduce((sum, item) => sum + item.quantity, 0),
       depositAmount: row.purchaseOrders[0].deposit?.amount.toString() ?? null,
     } : null,
@@ -161,7 +171,7 @@ const getCachedPipelineData = unstable_cache(
 
   return { opportunities, total, truncated: total > rows.length, actorRole };
   },
-  ["pipeline-data"],
+  ["pipeline-data", "product-category-v2"],
   { tags: ["pipeline-data"], revalidate: 30 },
 );
 
@@ -299,8 +309,7 @@ export async function getCustomers({
         },
       },
       orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      ...sliceArgs(page, pageSize),
     }),
     prisma.customer.count({ where }),
   ]);
@@ -316,7 +325,7 @@ export async function getCustomers({
   return {
     items: items.map((item) => ({ ...item, hasOpenOpportunity: openCustomerIds.has(item.id) })),
     total,
-    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    pageCount: pageCountFor(total, pageSize),
   };
 }
 
@@ -458,12 +467,11 @@ export async function getProspects({
         salesPic: { select: { name: true } },
       },
       orderBy: prospectOrderBy(sort, direction),
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      ...sliceArgs(page, pageSize),
     }),
     prisma.opportunity.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  return { items, total, pageCount: pageCountFor(total, pageSize) };
 }
 
 export async function getCustomerPopupDetail(customerId: string) {
@@ -618,10 +626,10 @@ export async function getCustomerCommunicationHistory({ customerId, query, filte
   } satisfies Prisma.CommunicationActivityWhereInput;
   const prisma = getPrismaClient();
   const [items, total] = await Promise.all([
-    prisma.communicationActivity.findMany({ where, select: communicationActivitySelect, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.communicationActivity.findMany({ where, select: communicationActivitySelect, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], ...sliceArgs(page, pageSize) }),
     prisma.communicationActivity.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  return { items, total, pageCount: pageCountFor(total, pageSize) };
 }
 
 export async function getCustomerSalesOrders({ customerId, query, status, start, end, page, pageSize }: {
@@ -649,10 +657,10 @@ export async function getCustomerSalesOrders({ customerId, query, status, start,
   } satisfies Prisma.SalesOrderWhereInput;
   const prisma = getPrismaClient();
   const [items, total] = await Promise.all([
-    prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, status: true, total: true, acceptedAt: true, opportunity: { select: { id: true, opportunityNo: true, title: true } }, items: { select: { id: true, description: true, quantity: true, position: true }, orderBy: { position: "asc" } } }, orderBy: { acceptedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, status: true, total: true, acceptedAt: true, opportunity: { select: { id: true, opportunityNo: true, title: true } }, items: { select: { id: true, description: true, quantity: true, position: true }, orderBy: { position: "asc" } } }, orderBy: { acceptedAt: "desc" }, ...sliceArgs(page, pageSize) }),
     prisma.salesOrder.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  return { items, total, pageCount: pageCountFor(total, pageSize) };
 }
 
 export async function getCustomerOpportunities({ customerId, query, stage, page, pageSize }: {
@@ -670,10 +678,10 @@ export async function getCustomerOpportunities({ customerId, query, stage, page,
   } satisfies Prisma.OpportunityWhereInput;
   const prisma = getPrismaClient();
   const [items, total] = await Promise.all([
-    prisma.opportunity.findMany({ where, select: { id: true, opportunityNo: true, title: true, stage: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.opportunity.findMany({ where, select: { id: true, opportunityNo: true, title: true, stage: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, ...sliceArgs(page, pageSize) }),
     prisma.opportunity.count({ where }),
   ]);
-  return { items, total, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  return { items, total, pageCount: pageCountFor(total, pageSize) };
 }
 
 export const getOpportunityDetail = cache(async function getOpportunityDetail(opportunityId: string) {
@@ -1754,8 +1762,7 @@ const getCachedPurchaseOrders = unstable_cache(
           designTask: { select: { revisions: { select: { itemId: true } } } },
         },
         orderBy: purchaseOrderOrderBy(sort, direction),
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        ...sliceArgs(page, pageSize),
       }),
       prisma.purchaseOrder.count({ where }),
     ]);
@@ -1778,7 +1785,7 @@ const getCachedPurchaseOrders = unstable_cache(
         };
       }),
       total,
-      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+      pageCount: pageCountFor(total, pageSize),
     };
   },
   ["purchase-orders"],
@@ -1862,8 +1869,7 @@ const getCachedInvoices = unstable_cache(
           pendingPayment: { select: { kind: true } },
         },
         orderBy: invoiceOrderBy(sort, direction),
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        ...sliceArgs(page, pageSize),
       }),
       prisma.invoice.count({ where }),
     ]);
@@ -1886,7 +1892,7 @@ const getCachedInvoices = unstable_cache(
                 : "UNSCHEDULED" as const,
       })),
       total,
-      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+      pageCount: pageCountFor(total, pageSize),
     };
   },
   ["invoices"],
@@ -1938,7 +1944,7 @@ const getCachedSalesOrders = unstable_cache(
     } satisfies Prisma.SalesOrderWhereInput;
     const prisma = getPrismaClient();
     const [items, total] = await Promise.all([
-      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrders: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrders: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), ...sliceArgs(page, pageSize) }),
       prisma.salesOrder.count({ where }),
     ]);
     return {
@@ -1959,7 +1965,7 @@ const getCachedSalesOrders = unstable_cache(
         };
       }),
       total,
-      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+      pageCount: pageCountFor(total, pageSize),
     };
   },
   ["sales-orders"],
@@ -2181,14 +2187,13 @@ export async function getUsers({
         updatedAt: true,
       },
       orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      ...sliceArgs(page, pageSize),
     }),
     prisma.appUser.count({ where }),
     prisma.appUser.count({ where: { isActive: true, ...(canManageDevelopers ? {} : { role: { not: "DEVELOPER" as AppRole } }) } }),
     prisma.appUser.count({ where: canManageDevelopers ? {} : { role: { not: "DEVELOPER" as AppRole } } }),
   ]);
-  return { items, total, activeTotal, allTotal, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+  return { items, total, activeTotal, allTotal, pageCount: pageCountFor(total, pageSize) };
 }
 
 type BusinessTrendRevenueRow = {
