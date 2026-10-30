@@ -339,7 +339,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
 
 function PipelineStageColumn({ stage, canDrop, children }: { stage: OpportunityStage; canDrop: boolean; children: React.ReactNode }) {
   const { isOver, setNodeRef } = useDroppable({ id: stage, disabled: !canDrop });
-  return <section ref={setNodeRef} aria-labelledby={`stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
+  return <section ref={setNodeRef} aria-labelledby={`stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-18rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }
 
 function DraggablePipelineCard({ opportunity, draggable, entering, previewing, children }: { opportunity: PipelineOpportunity; draggable: boolean; entering: boolean; previewing: boolean; children: (drag: Pick<ReturnType<typeof useDraggable>, "attributes" | "listeners" | "setActivatorNodeRef"> & { draggable: boolean }) => React.ReactNode }) {

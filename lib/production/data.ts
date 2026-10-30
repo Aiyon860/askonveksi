@@ -5,53 +5,67 @@ import type { Prisma } from "@prisma/client";
 
 import { PRODUCTION_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import {
+  EMPTY_PRODUCTION_BOARD_FILTERS,
+  NO_PIC,
+  productionBoardCacheKey,
+  productionBoardWhere,
+  type ProductionBoardFilters,
+} from "@/lib/production/board-filters";
 import { getPrismaClient } from "@/lib/prisma";
 import { isStageRole, type ProductionBoardGroup } from "@/lib/production/workflow";
 
-export type ProductionBoardFilter = { group: ProductionBoardGroup; productCategoryId?: string | null };
+export type ProductionBoardFilter = {
+  group: ProductionBoardGroup;
+  productCategoryId?: string | null;
+  filters?: ProductionBoardFilters;
+};
 
 const DESIGN_REVISION_ORDER_BY: Prisma.DesignRevisionOrderByWithRelationInput[] = [{ revision: "desc" }, { createdAt: "desc" }];
 
-type BoardWhere = { group: ProductionBoardGroup; productCategoryId: string | null };
+type BoardWhere = { group: ProductionBoardGroup; productCategoryId: string | null; filters: ProductionBoardFilters };
 
-function boardWhere({ group, productCategoryId }: BoardWhere): Prisma.ProductionWorkOrderWhereInput {
-  const woConditions: Prisma.ProductionWorkOrderWhereInput[] = [];
-  // WO dibuat per produk PO, jadi pembagian jalur memakai jenis tiap item (bukan jenis PO).
-  // Work Order aksesoris memakai route NON_JERSEY; grup menentukan pembagian tampilannya.
-  // WO lawas tanpa item tetap memakai jenis PO sebagai cadangan.
-  if (group === "AKSESORI") {
-    woConditions.push({
-      OR: [
-        { purchaseOrderItem: { is: { garmentType: "AKSESORI" } } },
-        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { garmentType: "AKSESORI" } } },
-      ],
-    });
-  } else if (group === "NON_JERSEY") {
-    woConditions.push({
-      OR: [
-        { purchaseOrderItem: { is: { garmentType: "NON_JERSEY" } } },
-        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { OR: [{ garmentType: "NON_JERSEY" }, { garmentType: null }] } } },
-      ],
-    });
-  }
-  // Kategori mengikuti produk WO (itemnya); WO lawas tanpa item memakai kategori PO.
-  // Item yang belum berkategori ikut tampil agar tak ada Work Order hilang.
-  if (productCategoryId) {
-    woConditions.push({
-      OR: [
-        { purchaseOrderItem: { is: { productCategoryId } } },
-        { purchaseOrderItem: { is: { productCategoryId: null } } },
-        { purchaseOrderItem: { is: null }, salesOrder: { purchaseOrder: { OR: [{ productCategoryId }, { productCategoryId: null }] } } },
-      ],
-    });
-  }
+/**
+ * Pilihan filter PIC: hanya user yang benar-benar memegang tahap aktif pada
+ * jalur + kategori ini, supaya tidak ada pilihan yang pasti kosong.
+ * Sengaja tidak ikut filter lain agar opsi tidak saling menghapus.
+ */
+export async function getProductionPicOptions(input: {
+  group: ProductionBoardGroup;
+  productCategoryId?: string | null;
+  /** PIC yang sedang dipilih tetap ditampilkan walau sudah tak memegang kartu di sini. */
+  selectedPicId?: string | null;
+}) {
+  const scope = { group: input.group, productCategoryId: input.productCategoryId ?? null };
+  const options = await unstable_cache(
+    async () => {
+      const steps = await getPrismaClient().productionStep.findMany({
+        where: { status: "ACTIVE", assigneeId: { not: null }, workOrder: productionBoardWhere(scope) },
+        select: { assigneeId: true, assignee: { select: { id: true, name: true } } },
+        distinct: ["assigneeId"],
+        orderBy: { assigneeId: "asc" },
+      });
 
-  return {
-    route: group === "JERSEY" ? "JERSEY" : "NON_JERSEY",
-    status: { not: "CANCELLED" },
-    designCompletedAt: { not: null },
-    ...(woConditions.length ? { AND: woConditions } : {}),
-  };
+      return steps
+        .flatMap((step) => (step.assignee ? [step.assignee] : []))
+        .sort((a, b) => a.name.localeCompare(b.name, "id-ID") || a.id.localeCompare(b.id));
+    },
+    ["production-board-pic", scope.group, scope.productCategoryId ?? ""],
+    { revalidate: 30, tags: ["production-board"] },
+  )();
+
+  // Filter terbawa saat pindah Jalur/Kategori. Tanpa ini, dropdown menampilkan
+  // "Semua PIC" padahal URL masih menyaring PIC tersebut — kontrol jadi berbohong.
+  const selectedId = input.selectedPicId && input.selectedPicId !== NO_PIC ? input.selectedPicId : null;
+  if (!selectedId || options.some((option) => option.id === selectedId)) return options;
+
+  const selected = await getPrismaClient().appUser.findUnique({
+    where: { id: selectedId },
+    select: { id: true, name: true },
+  });
+  if (!selected) return options;
+
+  return [...options, selected].sort((a, b) => a.name.localeCompare(b.name, "id-ID") || a.id.localeCompare(b.id));
 }
 
 // Cache 30s per grup + kategori agar tiap render/SWR tak RTT Sydney. Actor diambil di luar cache agar tak bocor antar user.
@@ -61,7 +75,7 @@ const getCachedBoardRows = (filter: BoardWhere) =>
   unstable_cache(
     async () => {
       const prisma = getPrismaClient();
-      const where = boardWhere(filter);
+      const where = productionBoardWhere(filter);
       const [rows, total] = await Promise.all([
         prisma.productionWorkOrder.findMany({
           relationLoadStrategy: "join",
@@ -112,12 +126,16 @@ const getCachedBoardRows = (filter: BoardWhere) =>
         })),
       };
     },
-    ["production-board", filter.group, filter.productCategoryId ?? ""],
+    productionBoardCacheKey(filter),
     { revalidate: 30, tags: ["production-board"] },
   )();
 
 export async function getProductionBoard(input: ProductionBoardFilter) {
-  const filter: BoardWhere = { group: input.group, productCategoryId: input.productCategoryId ?? null };
+  const filter: BoardWhere = {
+    group: input.group,
+    productCategoryId: input.productCategoryId ?? null,
+    filters: input.filters ?? EMPTY_PRODUCTION_BOARD_FILTERS,
+  };
   const actor = await requireActor(PRODUCTION_VIEW_ROLES);
   const { rows, total } = await getCachedBoardRows(filter);
 

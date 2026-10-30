@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { auditEntityLabel } from "@/lib/audit/labels";
 import { AUDIT_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { pageCountFor, sliceArgs } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
 
 const auditEventSelect = {
@@ -67,15 +68,14 @@ export async function getAuditEventPage(filter: AuditEventListFilter) {
       where,
       select: auditEventSelect,
       orderBy: { createdAt: "desc" },
-      skip: (filter.page - 1) * filter.pageSize,
-      take: filter.pageSize,
+      ...sliceArgs(filter.page, filter.pageSize),
     }),
   ]);
 
   return {
     items,
     total,
-    pageCount: Math.max(1, Math.ceil(total / filter.pageSize)),
+    pageCount: pageCountFor(total, filter.pageSize),
   };
 }
 

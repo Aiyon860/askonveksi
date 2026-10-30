@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { formatCurrency } from "@/lib/crm/format";
+import { ALL_PAGE_SIZE, pageCountFor, sliceArgs } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
 import { jakartaDateKey } from "@/lib/finance/date-range";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory, type ExpenseTypeFilter } from "@/lib/finance/expense-categories";
@@ -55,7 +56,8 @@ export async function getExpenses(state: ExpenseListState) {
     prisma.appUser.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.expense.aggregate({ where, _sum: { amount: true } }),
   ]);
-  const pageDates = dates.slice((bounded.page - 1) * bounded.pageSize, bounded.page * bounded.pageSize).map((item) => item.spentAt);
+  const window = bounded.pageSize === ALL_PAGE_SIZE ? dates : dates.slice((bounded.page - 1) * bounded.pageSize, bounded.page * bounded.pageSize);
+  const pageDates = window.map((item) => item.spentAt);
   const items = pageDates.length ? await prisma.expense.findMany({ where: { ...where, spentAt: { in: pageDates } }, select: { id: true, purpose: true, description: true, spentAt: true, amount: true, category: true, paymentMethodId: true, paymentMethod: { select: { name: true } }, isReimbursable: true, reimbursedAt: true, createdById: true, proofPath: true, proofMimeType: true, salesOrderId: true, customerName: true, hppKey: true, salesOrder: { select: { invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, purchaseOrder: { select: { productName: true } } } }, createdBy: { select: { name: true } } }, orderBy: [{ spentAt: bounded.order }, { createdAt: "desc" }] }) : [];
   const grouped = new Map(pageDates.map((spentAt) => [spentAt.getTime(), { spentAt, items: [] as typeof items }]));
   items.forEach((item) => grouped.get(item.spentAt.getTime())?.items.push(item));
@@ -73,7 +75,7 @@ export async function getExpenses(state: ExpenseListState) {
     });
     return { spentAt: group.spentAt, operasional, projects };
   });
-  return { groups, total: dates.length, creators, pageCount: Math.max(1, Math.ceil(dates.length / bounded.pageSize)), totalAmount: (totalAgg._sum.amount ?? new Prisma.Decimal(0)).toString() };
+  return { groups, total: dates.length, creators, pageCount: pageCountFor(dates.length, bounded.pageSize), totalAmount: (totalAgg._sum.amount ?? new Prisma.Decimal(0)).toString() };
 }
 
 export function projectGroupLabel(salesOrder: { invoiceNo: string; snapshotCustomerName: string; snapshotCompanyName: string | null; purchaseOrder: { productName: string } } | null, customerName: string | null) {
@@ -131,14 +133,13 @@ export async function getDeletedExpenses(page: number, pageSize: number) {
       where,
       select: { id: true, purpose: true, spentAt: true, amount: true, category: true, customerName: true, deleteReason: true, deletedAt: true, createdBy: { select: { name: true } }, deletedBy: { select: { name: true } } },
       orderBy: { deletedAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      ...sliceArgs(page, pageSize),
     }),
   ]);
   return {
     items: items.map((item) => ({ ...item, amount: item.amount.toString(), category: item.category as ExpenseCategory })),
     total,
-    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    pageCount: pageCountFor(total, pageSize),
   };
 }
 
@@ -180,7 +181,7 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
   }
   const netProfit = hpp ? order.invoice.total.sub(hpp) : null;
   const margin = netProfit && !order.invoice.total.isZero() ? netProfit.div(order.invoice.total).toNumber() : null;
-  const latest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt > date ? item.paidAt : date, null);
+  const earliest = transactions.reduce<Date | null>((date, item) => !date || item.paidAt < date ? item.paidAt : date, null);
   // Diskon tetap satu angka per order agar tidak dijumlahkan dua kali. Rincian
   // produk vs order hanya untuk subteks di sel Diskon.
   const itemDiscount = order.invoice.items.reduce((sum, item) => sum.add(item.discountAmount), new Prisma.Decimal(0));
@@ -191,7 +192,7 @@ function mapIncome(order: Awaited<ReturnType<typeof getIncomeOrders>>[number]) {
     fallbackProductName: order.purchaseOrder.productName,
     fallbackGarmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-",
   });
-  return { id: order.id, invoiceNo: order.invoiceNo, customerId: order.opportunity.customerId, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), products, kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hppComplete: costs?.hppComplete ?? false, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), itemDiscount: itemDiscount.toString(), orderDiscount: order.invoice.discountNominal.toString(), discount: order.invoice.totalDiscount.toString(), tax: order.invoice.taxAmount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, deposit: depositAmount.isZero() ? null : depositAmount.toString(), settled: settled.isZero() ? null : settled.toString(), paid: paid.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: latest?.toISOString() ?? null, acceptedAt: order.acceptedAt.toISOString(), paymentKind: payment?.kind ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
+  return { id: order.id, invoiceNo: order.invoiceNo, customerId: order.opportunity.customerId, customer: order.snapshotCompanyName ?? order.snapshotCustomerName, orderName: order.purchaseOrder.productName, garmentType: order.purchaseOrder.productCategory?.name ?? order.purchaseOrder.garmentType ?? "-", quantity: order.invoice.items.reduce((sum, item) => sum + item.quantity, 0), products, kain: costs?.kain?.toString() ?? null, zipper: costs?.zipper?.toString() ?? null, jahit: costs?.jahit?.toString() ?? null, pres: costs?.pres?.toString() ?? null, dtfPlastisol: costs?.dtfPlastisol?.toString() ?? null, bordir: costs?.bordir?.toString() ?? null, lainnya: costs?.lainnya?.toString() ?? null, costVersion: costs?.version ?? null, hppComplete: costs?.hppComplete ?? false, hpp: hpp?.toString() ?? null, originalPrice: order.invoice.subtotal.toString(), itemDiscount: itemDiscount.toString(), orderDiscount: order.invoice.discountNominal.toString(), discount: order.invoice.totalDiscount.toString(), tax: order.invoice.taxAmount.toString(), netProfit: netProfit?.toString() ?? null, margin, totalInvoice: order.invoice.total.toString(), dp: dp?.isZero() ? null : dp?.toString() ?? null, deposit: depositAmount.isZero() ? null : depositAmount.toString(), settled: settled.isZero() ? null : settled.toString(), paid: paid.toString(), remaining: Prisma.Decimal.max(order.invoice.total.sub(paid), 0).toString(), paidAt: earliest?.toISOString() ?? null, acceptedAt: order.acceptedAt.toISOString(), paymentKind: payment?.kind ?? null, hppStatus: complete ? "COMPLETE" as const : "INCOMPLETE" as const };
 }
 
 async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number, take?: number) {
@@ -235,8 +236,9 @@ async function getIncomeOrders(where: Prisma.SalesOrderWhereInput, skip?: number
 export async function getIncome(state: IncomeListState) {
   await requireActor(FINANCE_ROLES);
   const where = incomeWhere(state);
-  const [items, total] = await Promise.all([getIncomeOrders(where, (state.page - 1) * state.pageSize, state.pageSize), getPrismaClient().salesOrder.count({ where })]);
-  return { items: items.map(mapIncome), total, pageCount: Math.max(1, Math.ceil(total / state.pageSize)) };
+  const range = sliceArgs(state.page, state.pageSize);
+  const [items, total] = await Promise.all([getIncomeOrders(where, range.skip, range.take), getPrismaClient().salesOrder.count({ where })]);
+  return { items: items.map(mapIncome), total, pageCount: pageCountFor(total, state.pageSize) };
 }
 
 export async function getIncomeForExport(state: Omit<IncomeListState, "page" | "pageSize">, page: ExportPageRequest) {

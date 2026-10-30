@@ -50,6 +50,8 @@
   --color-nav-tone-analytics: var(--nav-tone-analytics);
   --color-nav-tone-master: var(--nav-tone-master);
   --color-nav-tone-attendance: var(--nav-tone-attendance);
+  --color-nav-status-connected: var(--nav-status-connected);
+  --color-nav-status-disconnected: var(--nav-status-disconnected);
   --color-accent-surface: var(--accent-surface);
   --color-accent-surface-line: var(--accent-surface-line);
   --color-accent-chip: var(--accent-chip);
@@ -203,6 +205,13 @@
   --nav-tone-analytics: oklch(0.78 0.13 295);
   --nav-tone-master: oklch(0.78 0.02 256);
   --nav-tone-attendance: oklch(0.8 0.12 170);
+  /*
+    Status koneksi WhatsApp di judul grup navigasi. Sama seperti tone grup,
+    keduanya selalu duduk di atas navy gelap sehingga dibuat terang; teks kecil
+    10px butuh kontras jauh di atas 4.5:1.
+  */
+  --nav-status-connected: oklch(0.85 0.15 156);
+  --nav-status-disconnected: oklch(0.8 0.15 25);
   --accent-surface: oklch(0.47 0.19 258);
   --accent-surface-line: oklch(0.58 0.16 258);
   --accent-chip: oklch(0.58 0.17 258);
@@ -454,6 +463,8 @@
   --nav-tone-analytics: oklch(0.8 0.12 295);
   --nav-tone-master: oklch(0.72 0.02 256);
   --nav-tone-attendance: oklch(0.82 0.11 170);
+  --nav-status-connected: oklch(0.85 0.15 156);
+  --nav-status-disconnected: oklch(0.8 0.15 25);
   --accent-surface: oklch(0.44 0.16 259);
   --accent-surface-line: oklch(0.56 0.14 259);
   --accent-chip: oklch(0.57 0.15 259);

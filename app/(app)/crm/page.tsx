@@ -9,20 +9,36 @@ import { PipelineBoardSection } from "@/components/crm/pipeline-board-section";
 function PipelineSkeleton() {
   return (
     <LoadingPage label="Memuat pipeline CRM">
-      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-hidden="true">
-        <div className="flex min-h-9 min-w-0 items-center gap-4 overflow-hidden py-1">
-          <Skeleton className="h-5 w-28 shrink-0" />
-          <div className="flex items-center gap-3">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Skeleton className="h-5 w-20" />
-                <Skeleton className="h-5 w-6" />
-              </div>
-            ))}
+      <div className="flex flex-col gap-3">
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-hidden="true">
+          <div className="flex min-h-9 min-w-0 items-center gap-4 overflow-hidden py-1">
+            <Skeleton className="h-5 w-28 shrink-0" />
+            <div className="flex items-center gap-3">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-5 w-6" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <Skeleton className="h-9 w-32 shrink-0" />
+        </section>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end" aria-hidden="true">
+          <div className="flex flex-col gap-2 sm:max-w-sm sm:min-w-56 sm:flex-1">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <div className="flex flex-col gap-2 sm:w-44">
+            <Skeleton className="h-3.5 w-12" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <div className="flex flex-col gap-2 sm:w-56">
+            <Skeleton className="h-3.5 w-28" />
+            <Skeleton className="h-9 w-full" />
           </div>
         </div>
-        <Skeleton className="h-9 w-32 shrink-0" />
-      </section>
+      </div>
       <KanbanSkeleton columns={4} cardsPerColumn={[2, 1, 1, 1]} />
     </LoadingPage>
   );

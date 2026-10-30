@@ -95,7 +95,7 @@ export const PROJECT_COLUMNS: ExportColumn[] = [
   { header: "Tanggal", format: "date", width: 14 },
   { header: "Customer", width: 26 },
   { header: "Nama order", width: 28 },
-  { header: "Jenis busana", width: 18 },
+  { header: "Jenis order", width: 18 },
   { header: "Total QTY", format: "number", width: 10 },
   { header: "Kain", format: "currency", width: 14 },
   { header: "Zipper", format: "currency", width: 14 },

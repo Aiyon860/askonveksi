@@ -28,8 +28,12 @@ const hppRowSchema = z.object({
 // Edit HPP multi-baris (R15): tiap jenis boleh punya banyak baris; nominal kosong/0
 // diabaikan — baris existing yang dikosongkan justru dihapus (soft-delete).
 const salesOrderProductCostSchema = z.object({
-  productCostId: z.string().trim().min(1).max(64),
-  version: z.coerce.number().int().positive(),
+  // Baris HPP bisa belum ada untuk data lama/impor; aksi simpan membuatnya dari
+  // (salesOrderId, productName) supaya semua produk tetap bisa diedit.
+  productCostId: z.preprocess(blankToUndefined, z.string().trim().max(64).optional()),
+  salesOrderId: z.preprocess(blankToUndefined, z.string().trim().max(64).optional()),
+  productName: z.preprocess(blankToUndefined, z.string().trim().max(120).optional()),
+  version: z.coerce.number().int().min(0).default(0),
   rows: z.object({
     kain: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Kain."),
     zipper: z.array(hppRowSchema).max(HPP_ROW_LIMIT, "Maksimal 12 baris Zipper."),
@@ -158,11 +162,14 @@ export async function updateSalesOrderProductCostAction(formData: FormData) {
     const raw = Object.fromEntries(HPP_KEYS.map((key) => [key, readHppRows(formData, key)])) as Record<(typeof HPP_KEYS)[number], HppRowForm[]>;
     const parsed = salesOrderProductCostSchema.safeParse({
       productCostId: formData.get("productCostId"),
+      salesOrderId: formData.get("salesOrderId"),
+      productName: formData.get("productName"),
       version: formData.get("version"),
       rows: Object.fromEntries(HPP_KEYS.map((key) => [key, raw[key].map((row) => ({ id: row.id, amount: row.amount, description: row.description, spentAt: row.spentAt, method: row.method }))])),
     });
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Biaya HPP tidak valid.");
-    const { productCostId, version, rows } = parsed.data;
+    const { productCostId, salesOrderId, productName, version, rows } = parsed.data;
+    if (!productCostId && (!salesOrderId || !productName)) throw new UserFacingError("Produk HPP tidak lengkap. Muat ulang halaman.");
     // Nominal kosong/0 = baris diabaikan; id baris existing yang dikosongkan = dihapus user.
     // Pakai baris mentah (raw) agar field File bukti tidak hilang saat zod parse.
     const plans = HPP_KEYS.flatMap((key) => raw[key].map((row) => ({ key, row }))).filter((plan) => plan.row.amount !== "" && Number(plan.row.amount) > 0);
@@ -176,9 +183,15 @@ export async function updateSalesOrderProductCostAction(formData: FormData) {
     }
     await Promise.all([...new Set(plans.map((plan) => plan.row.method as string))].map((methodId) => assertPaymentMethod(methodId)));
     const prisma = getPrismaClient();
+    // Baris HPP per produk bisa belum ada (order impor/lama). Cari baris yang cocok
+    // lebih dulu agar prefill expense dan pengecekan versi memakai data yang benar.
+    const existing = await prisma.salesOrderProductCost.findUnique({
+      where: productCostId ? { id: productCostId } : { salesOrderId_productName: { salesOrderId: salesOrderId as string, productName: productName as string } },
+      select: { id: true, version: true },
+    });
     // Hanya baris milik produk ini yang boleh diedit/dihapus. Produk lain pada
     // order yang sama tidak boleh tersentuh dari dialog HPP produk ini.
-    const previous = await prisma.expense.findMany({ where: { salesOrderProductCostId: productCostId, category: "PROJECT", deletedAt: null }, select: { id: true, proofPath: true } });
+    const previous = existing ? await prisma.expense.findMany({ where: { salesOrderProductCostId: existing.id, category: "PROJECT", deletedAt: null }, select: { id: true, proofPath: true } }) : [];
     const previousById = new Map(previous.map((row) => [row.id, row]));
     const usedIds = new Set<string>();
     const claim = (id: string) => {
@@ -205,20 +218,43 @@ export async function updateSalesOrderProductCostAction(formData: FormData) {
     const supersededProofPaths: string[] = [];
     try {
       const updated = await prisma.$transaction(async (tx) => {
-        const productCost = await tx.salesOrderProductCost.findUnique({
-          where: { id: productCostId },
-          select: {
-            id: true,
-            salesOrderId: true,
-            productName: true,
-            salesOrder: { select: { id: true, status: true, snapshotCustomerName: true, snapshotCompanyName: true } },
-          },
-        });
+        const productCostSelect = {
+          id: true,
+          salesOrderId: true,
+          productName: true,
+          salesOrder: { select: { id: true, status: true, snapshotCustomerName: true, snapshotCompanyName: true } },
+        } as const;
+        let productCost = existing ? await tx.salesOrderProductCost.findUnique({ where: { id: existing.id }, select: productCostSelect }) : null;
+        if (!productCost) {
+          // Belum ada baris HPP untuk produk ini: buat sekarang supaya semua produk
+          // di tabel Project bisa diisi HPP-nya.
+          const order = await tx.salesOrder.findFirst({
+            where: { id: salesOrderId, status: "ACTIVE" },
+            select: { id: true, snapshotCustomerName: true, snapshotCompanyName: true },
+          });
+          if (!order) throw new UserFacingError("Order tidak aktif.");
+          const lastPosition = await tx.salesOrderProductCost.aggregate({ where: { salesOrderId: order.id }, _max: { position: true } });
+          try {
+            productCost = await tx.salesOrderProductCost.create({
+              data: { salesOrderId: order.id, productName: productName as string, position: (lastPosition._max.position ?? -1) + 1 },
+              select: productCostSelect,
+            });
+          } catch (error) {
+            // Balapan dua tab: baris sudah dibuat permintaan lain, pakai baris itu.
+            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
+            productCost = await tx.salesOrderProductCost.findUnique({
+              where: { salesOrderId_productName: { salesOrderId: order.id, productName: productName as string } },
+              select: productCostSelect,
+            });
+          }
+        }
         if (!productCost || productCost.salesOrder.status !== "ACTIVE") throw new UserFacingError("Order tidak aktif.");
+        const resolvedProductCostId = productCost.id;
         // Kolom agregat per jenis = jumlah baris terisi; jenis tanpa baris kembali null.
         const totals = Object.fromEntries(HPP_KEYS.map((key) => [key, plans.filter((plan) => plan.key === key).reduce((sum, plan) => sum + Number(plan.row.amount), 0)])) as Record<(typeof HPP_KEYS)[number], number>;
+        // Baris lama memakai optimistic lock; baris yang baru dibuat tidak punya versi sebelumnya.
         const result = await tx.salesOrderProductCost.updateMany({
-          where: { id: productCostId, version, salesOrder: { status: "ACTIVE" } },
+          where: { id: resolvedProductCostId, salesOrder: { status: "ACTIVE" }, ...(existing ? { version } : {}) },
           data: { ...Object.fromEntries(HPP_KEYS.map((key) => [key, totals[key] > 0 ? new Prisma.Decimal(totals[key]) : null])), version: { increment: 1 } },
         });
         if (result.count !== 1) throw new UserFacingError("Data HPP produk sudah berubah atau order tidak aktif. Muat ulang halaman.");
@@ -239,7 +275,7 @@ export async function updateSalesOrderProductCostAction(formData: FormData) {
             "updatedAt" = now()
           WHERE "salesOrderId" = ${productCost.salesOrderId}
         `;
-        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrderProductCost", entityId: productCostId, action: "SALES_ORDER_PRODUCT_HPP_UPDATED", changedFields: [...HPP_KEYS] } });
+        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "SalesOrderProductCost", entityId: resolvedProductCostId, action: "SALES_ORDER_PRODUCT_HPP_UPDATED", changedFields: [...HPP_KEYS] } });
         const customerName = productCost.salesOrder.snapshotCompanyName ?? productCost.salesOrder.snapshotCustomerName;
         // (1) Baris existing yang masih terisi: timpa in-place — tidak masuk Riwayat Hapus.
         for (const plan of plans) {
@@ -274,7 +310,7 @@ export async function updateSalesOrderProductCostAction(formData: FormData) {
               isReimbursable: false,
               customerName,
               salesOrderId: productCost.salesOrderId,
-              salesOrderProductCostId: productCostId,
+              salesOrderProductCostId: resolvedProductCostId,
               hppKey: plan.key,
               ...(proofUpload ?? {}),
               createdById: actor.id,

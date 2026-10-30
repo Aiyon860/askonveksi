@@ -3,12 +3,15 @@ import { Suspense } from "react";
 import type { ProductionRoute } from "@prisma/client";
 
 import { ProductionBoardSection } from "@/components/production/production-board-section";
+import { ProductionFiltersBar } from "@/components/production/production-filters";
 import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getActiveProductCategories } from "@/lib/master-data";
+import { parseProductionBoardFilters, productionBoardFilterParams } from "@/lib/production/board-filters";
+import { getProductionPicOptions } from "@/lib/production/data";
 import {
   parseProductionBoardGroup,
   productionStagesForGroup,
@@ -23,11 +26,14 @@ import { cn } from "@/lib/utils";
 export default async function ProductionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ jalur?: string | string[]; kategori?: string | string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
   const group = parseProductionBoardGroup(params.jalur);
   const stageRoute = stageRouteForGroup(group);
+  // Filter papan hidup di URL (bukan state browser) agar ikut terbawa saat pindah
+  // Jalur/Kategori, bisa dibagikan, dan dipakai tombol Export.
+  const filters = parseProductionBoardFilters(params);
 
   // Filter tingkat kedua: kategori produk aktif per grup, urut Jersey > Non-jersey > Aksesoris.
   const activeCategories = await getActiveProductCategories();
@@ -44,17 +50,23 @@ export default async function ProductionPage({
     ? (rawKategori ?? null)
     : categories[0]?.id ?? null;
 
+  // Filter aktif ikut terbawa saat berpindah Jalur/Kategori.
+  const filterQuery = new URLSearchParams(productionBoardFilterParams(filters)).toString();
+  const withFilters = (query: string) => (filterQuery ? `${query}&${filterQuery}` : query);
+
   function groupHref(target: ProductionBoardGroup) {
     const firstId = categoriesByGroup[target][0]?.id;
-    return firstId ? `/produksi?jalur=${target}&kategori=${firstId}` : `/produksi?jalur=${target}`;
+    return withFilters(firstId ? `/produksi?jalur=${target}&kategori=${firstId}` : `/produksi?jalur=${target}`);
   }
+
+  const picOptions = await getProductionPicOptions({ group, productCategoryId: kategoriId, selectedPicId: filters.pic });
 
   return (
     <>
       <PageHeader
         title="Produksi"
         description="Pantau setiap Sales Order dari tahap pertama sampai selesai."
-        action={<ExportButton dataset="produksi" params={{ jalur: group, ...(kategoriId ? { kategori: kategoriId } : {}) }} />}
+        action={<ExportButton dataset="produksi" params={{ jalur: group, ...(kategoriId ? { kategori: kategoriId } : {}), ...productionBoardFilterParams(filters) }} />}
       />
       <PageMessage />
       <div className="flex flex-col gap-3">
@@ -80,7 +92,7 @@ export default async function ProductionPage({
                 size="sm"
                 className="shrink-0"
                 variant={kategoriId === category.id ? "default" : "outline"}
-                render={<Link href={`/produksi?jalur=${group}&kategori=${category.id}`} />}
+                render={<Link href={withFilters(`/produksi?jalur=${group}&kategori=${category.id}`)} />}
                 nativeButton={false}
                 aria-current={kategoriId === category.id ? "true" : undefined}
               >
@@ -89,9 +101,12 @@ export default async function ProductionPage({
             ))}
           </div>
         ) : null}
+        <ProductionFiltersBar group={group} productCategoryId={kategoriId} filters={filters} picOptions={picOptions} />
       </div>
+      {/* Kunci Suspense sengaja hanya grup:kategori — filter tidak boleh
+          me-remount board, cukup mengganti data di dalamnya. */}
       <Suspense fallback={<ProductionSkeleton group={group} route={stageRoute} />} key={`${group}:${kategoriId ?? ""}`}>
-        <ProductionBoardSection group={group} productCategoryId={kategoriId} />
+        <ProductionBoardSection group={group} productCategoryId={kategoriId} filters={filters} picOptions={picOptions} />
       </Suspense>
     </>
   );

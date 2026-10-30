@@ -107,7 +107,7 @@ export const PELUANG_COLUMNS: ExportColumn[] = [
   { header: "Judul", width: 32 },
   { header: "Produk", width: 24 },
   { header: "Kategori", width: 20 },
-  { header: "Jenis busana", width: 16 },
+  { header: "Jenis order", width: 16 },
   { header: "Tahap", width: 16 },
   { header: "Asal", width: 16 },
   { header: "Sumber lead", width: 18 },

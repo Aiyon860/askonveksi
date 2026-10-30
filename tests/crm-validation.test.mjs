@@ -1184,6 +1184,7 @@ test("parameter pagination dibatasi pada nilai aman", () => {
   assert.equal(parsePageSizeParam("10"), 10);
   assert.equal(parsePageSizeParam(["50", "10"]), 50);
   assert.equal(parsePageSizeParam("5000"), DATA_PAGE_SIZE);
+  assert.equal(parsePageSizeParam("0"), 0);
 });
 
 test("customer mendukung menu mandiri, halaman detail, dan import export XLSX yang dibatasi", async () => {

@@ -1,5 +1,7 @@
 export const DATA_PAGE_SIZE = 20;
-export const DATA_PAGE_SIZES = [10, DATA_PAGE_SIZE, 50] as const;
+/** Nilai ukuran halaman yang berarti tampilkan semua baris dalam satu halaman. */
+export const ALL_PAGE_SIZE = 0;
+export const DATA_PAGE_SIZES = [10, DATA_PAGE_SIZE, 50, ALL_PAGE_SIZE] as const;
 export type DataPageSize = (typeof DATA_PAGE_SIZES)[number];
 const MAX_PAGE = 10_000;
 
@@ -11,12 +13,26 @@ export function parsePageParam(value: string | string[] | undefined) {
 
 export function parsePageSizeParam(value: string | string[] | undefined): DataPageSize {
   const raw = Array.isArray(value) ? value[0] : value;
+  if (raw == null || raw === "") return DATA_PAGE_SIZE;
   const parsed = Number(raw);
+  if (parsed === ALL_PAGE_SIZE) return ALL_PAGE_SIZE;
   return DATA_PAGE_SIZES.find((size) => size === parsed) ?? DATA_PAGE_SIZE;
 }
 
-/** Nilai ukuran halaman yang berarti tampilkan semua baris dalam satu halaman. */
-export const ALL_PAGE_SIZE = 0;
+export function pageSizeLabel(size: number) {
+  return size === ALL_PAGE_SIZE ? "Semua" : String(size);
+}
+
+/** Argumen Prisma. `take: 0` berarti nol baris, jadi Semua tidak mengirim skip/take. */
+export function sliceArgs(page: number, pageSize: number): { skip?: number; take?: number } {
+  if (pageSize === ALL_PAGE_SIZE) return {};
+  return { skip: (page - 1) * pageSize, take: pageSize };
+}
+
+export function pageCountFor(total: number, pageSize: number) {
+  if (pageSize === ALL_PAGE_SIZE) return 1;
+  return Math.max(1, Math.ceil(total / pageSize));
+}
 
 /** Pilihan baris per halaman untuk tabel pemilih penerima (Broadcast & Pilih Customer). */
 export const RECIPIENT_PAGE_SIZES = [10, 25, 100] as const;

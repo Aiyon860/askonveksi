@@ -1,6 +1,7 @@
 "use client";
 
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { pageSizeLabel } from "@/lib/pagination";
 
 export function PageSizeSelect({
   pathname,
@@ -35,7 +36,7 @@ export function PageSizeSelect({
       >
         {options.map((option) => (
           <NativeSelectOption key={option} value={option}>
-            {option}
+            {pageSizeLabel(option)}
           </NativeSelectOption>
         ))}
       </NativeSelect>

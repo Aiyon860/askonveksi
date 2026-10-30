@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { readFile } from "node:fs/promises";
-import { classifyWhatsAppHealth, classifyWhatsAppHealthBanner, whatsappHealthChanged } from "../lib/whatsapp/health.ts";
+import { classifyWhatsAppHealth, describeWhatsAppHealth, isWhatsAppConnected } from "../lib/whatsapp/health.ts";
+import { canAccessWhatsAppInbox } from "../lib/whatsapp/access.ts";
 
 const now = new Date("2026-09-10T12:00:00.000Z");
 const account = (status, heartbeatAt = now) => ({ status, heartbeatAt });
@@ -18,17 +19,27 @@ test("health WhatsApp mengklasifikasikan seluruh kondisi akun", () => {
   assert.equal(classifyWhatsAppHealth(account("PAIRING", null), now), "HEALTHY");
 });
 
-test("perubahan health hanya memberi notifikasi setelah status awal diketahui", () => {
-  assert.equal(whatsappHealthChanged(null, "DISCONNECTED"), false);
-  assert.equal(whatsappHealthChanged("DISCONNECTED", "DISCONNECTED"), false);
-  assert.equal(whatsappHealthChanged("DISCONNECTED", "HEALTHY"), true);
+test("hanya status HEALTHY yang dianggap terhubung", () => {
+  assert.equal(isWhatsAppConnected("HEALTHY"), true);
+  for (const state of ["NOT_CONFIGURED", "WORKER_OFFLINE", "DISCONNECTED", "LOGGED_OUT", "ERROR"]) {
+    assert.equal(isWhatsAppConnected(state), false);
+  }
 });
 
-test("banner hilang hanya ketika koneksi sehat dan tidak ada job gagal", () => {
-  assert.equal(classifyWhatsAppHealthBanner("WORKER_OFFLINE", 0), "CONNECTION");
-  assert.equal(classifyWhatsAppHealthBanner("DISCONNECTED", 2), "CONNECTION");
-  assert.equal(classifyWhatsAppHealthBanner("HEALTHY", 2), "FAILED_JOBS");
-  assert.equal(classifyWhatsAppHealthBanner("HEALTHY", 0), null);
+test("DEVELOPER tetap melihat grup WhatsApp beserta statusnya", () => {
+  assert.equal(canAccessWhatsAppInbox("DEVELOPER"), true);
+  assert.equal(canAccessWhatsAppInbox("OWNER"), true);
+  assert.equal(canAccessWhatsAppInbox("ADMIN_CUSTOMER"), true);
+  assert.equal(canAccessWhatsAppInbox("DESIGNER"), false);
+});
+
+test("setiap kondisi punya penjelasan untuk tooltip status", () => {
+  assert.match(describeWhatsAppHealth("HEALTHY"), /terhubung/);
+  assert.match(describeWhatsAppHealth("NOT_CONFIGURED"), /Belum ada nomor/);
+  assert.match(describeWhatsAppHealth("WORKER_OFFLINE"), /heartbeat/);
+  assert.match(describeWhatsAppHealth("DISCONNECTED"), /terputus/);
+  assert.match(describeWhatsAppHealth("LOGGED_OUT"), /logout/);
+  assert.match(describeWhatsAppHealth("ERROR"), /kendala/);
 });
 
 test("endpoint membatasi data berdasarkan sesi dan pemilik job", async () => {
@@ -39,23 +50,37 @@ test("endpoint membatasi data berdasarkan sesi dan pemilik job", async () => {
   assert.match(source, /whatsAppAutomationJob\.count\(\{/);
 });
 
-test("health monitor mengurangi polling tanpa mengubah tenggat health worker", async () => {
-  const [monitor, health] = await Promise.all([
+test("status WhatsApp dipantau dari judul menu, bukan banner di setiap halaman", async () => {
+  const [nav, monitor, shell] = await Promise.all([
+    readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/whatsapp-health-monitor.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../lib/whatsapp/health.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/app-shell.tsx", import.meta.url), "utf8"),
   ]);
+
+  // Polling status hidup di navigasi dan hanya berjalan saat grup WhatsApp tampil.
+  assert.match(nav, /const WHATSAPP_STATUS_POLL_MS = 10_000/);
+  assert.match(nav, /enabled \? "\/api\/whatsapp\/health" : null/);
+  assert.match(nav, /refreshInterval: WHATSAPP_STATUS_POLL_MS/);
+  assert.match(nav, /connected \? "Connect" : "Disconnect"/);
+  assert.match(nav, /text-nav-status-connected/);
+  assert.match(nav, /text-nav-status-disconnected/);
+  assert.match(nav, /<WhatsAppStatusChip enabled=\{canViewWhatsAppInbox\} \/>/);
+
+  // Banner danger lama sudah tidak dirender, dan monitor hanya mengurus job manual.
+  assert.doesNotMatch(monitor, /WhatsApp perlu perhatian/);
+  assert.doesNotMatch(monitor, /<Alert/);
+  assert.match(monitor, /Pesan WhatsApp terkirim/);
   assert.match(monitor, /timer = setTimeout\(schedule, 10_000\)/);
-  assert.match(monitor, /void poll\(\)\.finally\(\(\) => \{[\s\S]*?timer = setTimeout\(schedule, 10_000\)/);
-  assert.match(health, /WHATSAPP_HEARTBEAT_TIMEOUT_MS = 30_000/);
+  assert.match(shell, /<WhatsAppHealthMonitor \/>/);
+  assert.doesNotMatch(shell, /<WhatsAppHealthMonitor role=/);
 });
 
 test("Admin Customer mengelola akun WhatsApp tanpa mendapat akses Data Master", async () => {
-  const [permissions, actions, data, nav, monitor] = await Promise.all([
+  const [permissions, actions, data, nav] = await Promise.all([
     readFile(new URL("../lib/auth/permissions.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/actions/whatsapp.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/whatsapp/data.ts", import.meta.url), "utf8"),
     readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/whatsapp-health-monitor.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(permissions, /WHATSAPP_ACCOUNT_MANAGER_ROLES = \["ADMIN_CUSTOMER"\]/);
@@ -66,7 +91,6 @@ test("Admin Customer mengelola akun WhatsApp tanpa mendapat akses Data Master", 
   assert.match(nav, /label: "Template Pesan"/);
   assert.match(nav, /label: "Akun & Koneksi"/);
   assert.doesNotMatch(nav, /href: "\/master-data\/whatsapp\/accounts", label: "Account WhatsApp"/);
-  assert.match(monitor, /WHATSAPP_ACCOUNT_MANAGER_ROLES/);
 });
 
 test("logout membersihkan pemicu pairing agar status tidak mental kembali", async () => {

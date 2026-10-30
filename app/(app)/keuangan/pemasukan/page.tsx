@@ -30,13 +30,14 @@ function sumMoney(values: Array<string | null | undefined>) {
 
 const HPP_KEY_BY_LABEL: Record<string, string> = { Kain: "kain", Zipper: "zipper", Jahit: "jahit", Pres: "pres", "DTF/Plastisol": "dtfPlastisol", Bordir: "bordir", "Lain-lain": "lainnya" };
 
-// Lebar kolom eksplisit supaya header dan isi selalu sejajar. Total = 196.5rem;
-// tabel memakai layout fixed dan scroll horizontal di container.
+// Lebar kolom eksplisit supaya header dan isi selalu sejajar. Empat kolom
+// identitas memakai CSS variable karena lebarnya mengecil di layar kecil dan
+// offset `left` kolom beku harus persis mengikuti lebar kolom sebelumnya.
 const PROJECT_COLUMN_WIDTHS = [
-  "7rem",   // Tanggal
-  "8rem",   // Customer
-  "10rem",  // Nama order
-  "8.5rem", // Jenis busana
+  "var(--project-date)",     // Tanggal
+  "var(--project-customer)", // Customer
+  "var(--project-order)",    // Nama order
+  "var(--project-type)",     // Jenis order
   "3.5rem", // Qty
   "7rem",   // Kain
   "7rem",   // Zipper
@@ -60,6 +61,41 @@ const PROJECT_COLUMN_WIDTHS = [
   "7rem",   // Status
   "7.5rem", // Aksi
 ] as const;
+
+/*
+  Kolom identitas dibekukan saat tabel digeser ke samping. Di bawah `lg` hanya
+  Tanggal + Customer yang beku supaya HP masih punya ruang untuk menggeser kolom
+  lain; mulai `lg` keempat kolom ikut beku. Offset tiap kolom dihitung dari lebar
+  kolom di depannya, jadi nilainya harus sama dengan `PROJECT_COLUMN_WIDTHS`.
+*/
+const PROJECT_STICKY_LEFT = [
+  "0px",
+  "var(--project-date)",
+  "calc(var(--project-date) + var(--project-customer))",
+  "calc(var(--project-date) + var(--project-customer) + var(--project-order))",
+] as const;
+
+// Header dan sel beku butuh latar solid; tanpa itu teks yang tergeser tembus.
+// Garis batas memakai inset shadow karena border pada sel sticky tidak selalu
+// ikut bergerak saat `border-collapse: collapse` (perilaku Chromium) — termasuk
+// garis antar-baris, yang harus digambar ulang di sel beku. Nama kelas ditulis
+// utuh (bukan dirangkai) supaya tetap terbaca pemindai Tailwind.
+const PROJECT_STICKY_HEAD = [
+  "sticky left-0 z-20 bg-muted",
+  "sticky z-20 bg-muted shadow-[inset_-1px_0_0_var(--border)] lg:shadow-none",
+  "lg:sticky lg:z-20 lg:bg-muted",
+  "lg:sticky lg:z-20 lg:bg-muted lg:shadow-[inset_-1px_0_0_var(--border)]",
+] as const;
+const PROJECT_STICKY_CELL = [
+  "sticky left-0 z-10 bg-card shadow-[inset_0_-1px_0_var(--border)] group-hover/row:bg-highlight-surface",
+  "sticky z-10 bg-card shadow-[inset_-1px_0_0_var(--border),inset_0_-1px_0_var(--border)] group-hover/row:bg-highlight-surface lg:shadow-[inset_0_-1px_0_var(--border)]",
+  "lg:sticky lg:z-10 lg:bg-card lg:shadow-[inset_0_-1px_0_var(--border)] lg:group-hover/row:bg-highlight-surface",
+  "lg:sticky lg:z-10 lg:bg-card lg:shadow-[inset_-1px_0_0_var(--border),inset_0_-1px_0_var(--border)] lg:group-hover/row:bg-highlight-surface",
+] as const;
+
+// 163rem = total 22 kolom yang tidak dibekukan (196,5rem − 33,5rem).
+const PROJECT_TABLE_VARS = "[--project-date:5.5rem] [--project-customer:6.5rem] [--project-order:8rem] [--project-type:7rem] xl:[--project-date:7rem] xl:[--project-customer:8rem] xl:[--project-order:10rem] xl:[--project-type:8.5rem]";
+const PROJECT_TABLE_WIDTH = "calc(163rem + var(--project-date) + var(--project-customer) + var(--project-order) + var(--project-type))";
 
 function projectPrefillKey(row: { hppKey: string | null; purpose: string }) {
   if (row.hppKey) return row.hppKey;
@@ -154,16 +190,16 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
         </form>
       </div>
       {data.items.length ? <div className="flex min-h-112 flex-1 flex-col">
-        <Table className="min-w-[197rem] table-fixed" containerClassName="min-h-0 flex-1 overflow-auto">
+        <Table className={`${PROJECT_TABLE_VARS} table-fixed`} style={{ width: PROJECT_TABLE_WIDTH }} containerClassName="min-h-0 flex-1 overflow-auto">
           <colgroup>
             {PROJECT_COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
           </colgroup>
-          <TableHeader className="sticky top-0 bg-muted">
+          <TableHeader className="sticky top-0 z-20 bg-muted">
             <TableRow className="hover:bg-muted">
-              <TableHead>Tanggal</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Nama order</TableHead>
-              <TableHead>Jenis busana</TableHead>
+              <TableHead className={PROJECT_STICKY_HEAD[0]} style={{ left: PROJECT_STICKY_LEFT[0] }}>Tanggal</TableHead>
+              <TableHead className={PROJECT_STICKY_HEAD[1]} style={{ left: PROJECT_STICKY_LEFT[1] }}>Customer</TableHead>
+              <TableHead className={PROJECT_STICKY_HEAD[2]} style={{ left: PROJECT_STICKY_LEFT[2] }}>Nama order</TableHead>
+              <TableHead className={PROJECT_STICKY_HEAD[3]} style={{ left: PROJECT_STICKY_LEFT[3] }}>Jenis order</TableHead>
               <TableHead className="text-right">Qty</TableHead>
               {["Kain", "Zipper", "Jahit", "Pres", "DTF/Plastisol", "Bordir", "Lain-lain"].map((label) => <TableHead key={label} className="text-right">{label}</TableHead>)}
               <TableHead>Deskripsi</TableHead>
@@ -187,11 +223,11 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
                 const showDate = customerIndex === 0 && orderIndex === 0 && productIndex === 0;
                 const showCustomer = orderIndex === 0 && productIndex === 0;
                 const showOrder = productIndex === 0;
-                return <TableRow key={`${item.id}:${product.key}:${productIndex}`}>
-                  {showDate ? <TableCell rowSpan={dateGroup.rowCount} className="align-middle whitespace-nowrap">{dateGroup.paidAt ? formatDate(dateGroup.paidAt) : "-"}</TableCell> : null}
-                  {showCustomer ? <TableCell rowSpan={customerGroup.rowCount} className="align-middle whitespace-normal break-words">{customerGroup.customer}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle whitespace-normal break-words">{item.orderName}</TableCell> : null}
-                  <TableCell className="align-middle whitespace-normal break-words">
+                return <TableRow key={`${item.id}:${product.key}:${productIndex}`} className="group/row">
+                  {showDate ? <TableCell rowSpan={dateGroup.rowCount} className={`${PROJECT_STICKY_CELL[0]} align-middle whitespace-nowrap`} style={{ left: PROJECT_STICKY_LEFT[0] }}>{dateGroup.paidAt ? formatDate(dateGroup.paidAt) : "-"}</TableCell> : null}
+                  {showCustomer ? <TableCell rowSpan={customerGroup.rowCount} className={`${PROJECT_STICKY_CELL[1]} align-middle whitespace-normal break-words`} style={{ left: PROJECT_STICKY_LEFT[1] }}>{customerGroup.customer}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={`${PROJECT_STICKY_CELL[2]} align-middle whitespace-normal break-words`} style={{ left: PROJECT_STICKY_LEFT[2] }}>{item.orderName}</TableCell> : null}
+                  <TableCell className={`${PROJECT_STICKY_CELL[3]} align-middle whitespace-normal break-words`} style={{ left: PROJECT_STICKY_LEFT[3] }}>
                     <div className="font-medium">{product.label}</div>
                     {product.label !== product.productName ? <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{product.productName}</div> : null}
                   </TableCell>
@@ -218,7 +254,10 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
                   {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell> : null}
                   {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.costVersion !== null ? <HppCompleteSwitch salesOrderId={item.id} version={item.costVersion} checked={item.hppComplete} /> : <span className="text-muted-foreground">-</span>}</TableCell> : null}
                   <TableCell className="align-middle text-right">
-                    {product.costId && product.costVersion !== null ? <SalesOrderCostForm item={{ id: item.id, productCostId: product.costId, productName: product.productName, costVersion: product.costVersion, kain: product.kain, zipper: product.zipper, jahit: product.jahit, pres: product.pres, dtfPlastisol: product.dtfPlastisol, bordir: product.bordir, lainnya: product.lainnya }} methods={methods} projectExpenses={productPrefill.get(product.costId)} /> : <span className="text-muted-foreground">-</span>}
+                    {/* Semua produk bisa Edit HPP. Kalau baris HPP per produk
+                        belum ada (data impor lama), aksi simpan yang membuatnya
+                        berdasarkan (salesOrderId, productName). */}
+                    <SalesOrderCostForm item={{ id: item.id, productCostId: product.costId, productName: product.productName, costVersion: product.costVersion, kain: product.kain, zipper: product.zipper, jahit: product.jahit, pres: product.pres, dtfPlastisol: product.dtfPlastisol, bordir: product.bordir, lainnya: product.lainnya }} methods={methods} projectExpenses={product.costId ? productPrefill.get(product.costId) : undefined} />
                   </TableCell>
                 </TableRow>;
               });

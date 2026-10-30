@@ -63,7 +63,7 @@ export function buildProjectProducts({
   fallbackProductName: string;
   fallbackGarmentType: string;
 }): ProjectProduct[] {
-  const fallbackName = fallbackProductName.trim() || "Produk";
+  const fallbackName = productCostProductName(null, fallbackProductName);
   const fallbackLabel = fallbackGarmentType.trim() || fallbackName;
   const poByKey = new Map<string, PurchaseOrderProductInput>();
   for (const item of purchaseOrderItems) {
@@ -78,7 +78,7 @@ export function buildProjectProducts({
 
   const grouped = new Map<string, { productName: string; quantity: number; position: number }>();
   for (const item of invoiceItems) {
-    const productName = item.productName?.trim() || fallbackName;
+    const productName = productCostProductName(item.productName, fallbackName);
     const key = normalizeProductKey(productName);
     const current = grouped.get(key);
     if (current) {
@@ -120,14 +120,29 @@ export function buildProjectProducts({
     });
 }
 
-export function productCostSeeds(items: Array<{ position: number; productName: string | null }>) {
+/**
+ * Nama produk untuk baris HPP harus sama dengan nama yang dipakai tabel Project
+ * (`buildProjectProducts`): nama item invoice → nama produk PO → "Produk".
+ * Kalau berbeda, pencocokan berbasis nama gagal dan Edit HPP hilang.
+ */
+export function productCostProductName(value: string | null | undefined, fallbackProductName?: string | null) {
+  return value?.trim() || fallbackProductName?.trim() || "Produk";
+}
+
+export function productCostSeeds(
+  items: Array<{ position: number; productName: string | null }>,
+  fallbackProductName?: string | null,
+) {
   const rows = new Map<string, { productName: string; position: number }>();
   for (const item of items) {
-    const productName = item.productName?.trim() || "Produk";
+    const productName = productCostProductName(item.productName, fallbackProductName);
     const key = normalizeProductKey(productName);
     if (!rows.has(key)) rows.set(key, { productName, position: item.position });
   }
   // Invoice tanpa item tetap perlu satu baris HPP agar Edit HPP tidak hilang.
-  if (!rows.size) rows.set("produk", { productName: "Produk", position: 0 });
+  if (!rows.size) {
+    const productName = productCostProductName(null, fallbackProductName);
+    rows.set(normalizeProductKey(productName), { productName, position: 0 });
+  }
   return [...rows.values()];
 }

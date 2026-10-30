@@ -1,37 +1,19 @@
 "use client";
 
-import type { AppRole } from "@prisma/client";
-import { TriangleAlert } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/components/ui/toast";
-import { WHATSAPP_ACCOUNT_MANAGER_ROLES, hasRole } from "@/lib/auth/permissions";
-import { classifyWhatsAppHealthBanner, whatsappHealthChanged, type WhatsAppHealthState } from "@/lib/whatsapp/health";
 
 type Health = {
-  state: WhatsAppHealthState;
-  account: { label: string; status: string; heartbeatAt: string | null; lastError: string | null } | null;
   ownJobs: { id: string; status: string; updatedAt: string; error: string | null }[];
-  failedCount: number;
 };
 
-const stateCopy: Record<Exclude<WhatsAppHealthState, "HEALTHY">, string> = {
-  NOT_CONFIGURED: "Belum ada nomor WhatsApp aktif.",
-  WORKER_OFFLINE: "Worker WhatsApp tidak memberi heartbeat.",
-  DISCONNECTED: "Nomor WhatsApp terputus.",
-  LOGGED_OUT: "Nomor WhatsApp telah logout dan perlu dipasangkan ulang.",
-  ERROR: "Integrasi WhatsApp mengalami kendala.",
-};
-
-export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
-  const pathname = usePathname();
-  const [health, setHealth] = useState<Health | null>(null);
-  const stableRef = useRef<{ state: WhatsAppHealthState | null; count: number }>({ state: null, count: 0 });
-  const manager = hasRole(role, WHATSAPP_ACCOUNT_MANAGER_ROLES);
-
+/**
+ * Memberi tahu hasil pengiriman manual milik pengguna yang sedang login.
+ * Status koneksi nomor tidak lagi tampil di sini; status itu hidup di judul
+ * menu WhatsApp pada navigasi.
+ */
+export function WhatsAppHealthMonitor() {
   useEffect(() => {
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -44,19 +26,6 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
         const response = await fetch("/api/whatsapp/health", { cache: "no-store", signal: controller.signal });
         if (!response.ok) return;
         const next = await response.json() as Health;
-        const previousState = sessionStorage.getItem("whatsapp-health-state") as WhatsAppHealthState | null;
-        if (whatsappHealthChanged(previousState, next.state)) {
-          const s = stableRef.current;
-          s.count = s.state === next.state ? s.count + 1 : 1;
-          s.state = next.state;
-          // ponytail: toast hanya bila status sama 3x poll beruntun (~30 dtk);
-          // flap sesaat tidak bunyi. Naikkan angka bila masih berisik.
-          if (s.count === 3) {
-            const healthy = next.state === "HEALTHY";
-            toast.add({ title: healthy ? "WhatsApp kembali aktif" : "Koneksi WhatsApp berubah", description: healthy ? "Koneksi dan worker kembali normal." : stateCopy[next.state as Exclude<WhatsAppHealthState, "HEALTHY">], type: healthy ? "success" : "error" });
-          }
-        }
-        sessionStorage.setItem("whatsapp-health-state", next.state);
         for (const job of next.ownJobs) {
           const key = `whatsapp-job-${job.id}`;
           const previous = sessionStorage.getItem(key);
@@ -67,9 +36,8 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
           }
           sessionStorage.setItem(key, job.status);
         }
-        setHealth(next);
       } catch (error) {
-        if (!(error instanceof DOMException && error.name === "AbortError")) console.error("WhatsApp health poll failed");
+        if (!(error instanceof DOMException && error.name === "AbortError")) console.error("WhatsApp delivery poll failed");
       }
     }
 
@@ -93,20 +61,5 @@ export function WhatsAppHealthMonitor({ role }: { role: AppRole }) {
     };
   }, []);
 
-  const banner = health ? classifyWhatsAppHealthBanner(health.state, health.failedCount) : null;
-  if (pathname === "/dashboard" || pathname?.startsWith("/dashboard?") || !health || !banner) return null;
-  const description = health.state !== "HEALTHY"
-    ? stateCopy[health.state]
-    : `${health.failedCount} job WhatsApp gagal dan masih memerlukan tindakan.`;
-
-  return (
-    <Alert variant="destructive">
-      <TriangleAlert aria-hidden="true" />
-      <AlertTitle>WhatsApp perlu perhatian</AlertTitle>
-      <AlertDescription>
-        {description}{manager && health.account?.lastError ? ` ${health.account.lastError}` : ""}{" "}
-        {manager ? <Link href={banner === "FAILED_JOBS" ? "/whatsapp/jobs?status=FAILED" : "/master-data/whatsapp/accounts"}>{banner === "FAILED_JOBS" ? "Cek status pengiriman" : "Buka Akun & Koneksi"}</Link> : "Hubungi admin untuk pemeriksaan."}
-      </AlertDescription>
-    </Alert>
-  );
+  return null;
 }
