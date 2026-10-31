@@ -11,6 +11,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { getAuditEventPage, getAuditLogFilterOptions } from "@/lib/audit/data";
 import { auditActionLabel, auditEntityLabel } from "@/lib/audit/labels";
 import { ROLE_LABEL } from "@/lib/crm/constants";
@@ -69,7 +70,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Sea
           </form>
         </div>
         {data.items.length ? (
-          <div className="flex min-h-112 flex-1 flex-col">
+          <TableViewport className="min-h-0 flex-1">
             <Table className="min-w-6xl" containerClassName="min-h-0 flex-1 overflow-auto">
               <TableHeader className="sticky top-0 bg-muted">
                 <TableRow className="hover:bg-muted">
@@ -98,7 +99,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Sea
               </TableBody>
             </Table>
             <DataPagination pathname="/log-aktivitas" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
-          </div>
+          </TableViewport>
         ) : (
           <Empty className="p-12">
             <EmptyHeader>

@@ -2231,102 +2231,6 @@
     "description": "Kumpulan hasil produksi seragam dan apparel custom untuk perusahaan, instansi, komunitas, dan brand yang telah memercayakan kebutuhannya kepada Askonveksi.",
     "items": [
       {
-        "name": "BRI",
-        "logo": {
-          "src": "/client/bri.webp",
-          "alt": "Logo BRI"
-        },
-        "visible": true
-      },
-      {
-        "name": "PT Aegis Jaya Metalindo",
-        "logo": {
-          "src": "/client/aegis.webp",
-          "alt": "Logo PT Aegis Jaya Metalindo"
-        },
-        "visible": true
-      },
-      {
-        "name": "OIKN Nusantara",
-        "logo": {
-          "src": "/client/oikn.webp",
-          "alt": "Logo OIKN Nusantara"
-        },
-        "visible": true
-      },
-      {
-        "name": "Orado",
-        "logo": {
-          "src": "/client/orado.webp",
-          "alt": "Logo Orado"
-        },
-        "visible": true
-      },
-      {
-        "name": "Gekraf",
-        "logo": {
-          "src": "/client/gekraf.webp",
-          "alt": "Logo Gekraf"
-        },
-        "visible": true
-      },
-      {
-        "name": "KOV",
-        "logo": {
-          "src": "/client/kov.webp",
-          "alt": "Logo KOV"
-        },
-        "visible": true
-      },
-      {
-        "name": "AKPOL",
-        "logo": {
-          "src": "/client/akpol.webp",
-          "alt": "Logo AKPOL"
-        },
-        "visible": true
-      },
-      {
-        "name": "KHAF",
-        "logo": {
-          "src": "/client/kahf.webp",
-          "alt": "Logo KHAF"
-        },
-        "visible": true
-      },
-      {
-        "name": "BUCG HK",
-        "logo": {
-          "src": "/client/BUCGHK.webp",
-          "alt": "Logo BUCG HK"
-        },
-        "visible": true
-      },
-      {
-        "name": "PNM",
-        "logo": {
-          "src": "/client/pnm.webp",
-          "alt": "Logo PNM"
-        },
-        "visible": true
-      },
-      {
-        "name": "Bareskrim Polri",
-        "logo": {
-          "src": "/client/bareskim.webp",
-          "alt": "Logo Bareskrim Polri"
-        },
-        "visible": true
-      },
-      {
-        "name": "Dishub Kota Semarang",
-        "logo": {
-          "src": "/client/dishub-semarang.webp",
-          "alt": "Logo Dishub Kota Semarang"
-        },
-        "visible": true
-      },
-      {
         "name": "Pertamina",
         "logo": {
           "src": "/client/pertamina.webp",
@@ -2335,34 +2239,10 @@
         "visible": true
       },
       {
-        "name": "U-Winfly",
+        "name": "BRI",
         "logo": {
-          "src": "/client/uwinfly.webp",
-          "alt": "Logo U-Winfly"
-        },
-        "visible": true
-      },
-      {
-        "name": "Polantas",
-        "logo": {
-          "src": "/client/polantas.webp",
-          "alt": "Logo Polantas"
-        },
-        "visible": true
-      },
-      {
-        "name": "Polres Bojonegoro",
-        "logo": {
-          "src": "/client/polres-bojonegoro.webp",
-          "alt": "Logo Polres Bojonegoro"
-        },
-        "visible": true
-      },
-      {
-        "name": "Bank Jateng",
-        "logo": {
-          "src": "/client/bankjateng.webp",
-          "alt": "Logo Bank Jateng"
+          "src": "/client/bri.webp",
+          "alt": "Logo BRI"
         },
         "visible": true
       },
@@ -2375,18 +2255,42 @@
         "visible": true
       },
       {
-        "name": "BPN Kab Semarang",
+        "name": "Bank Jateng",
         "logo": {
-          "src": "/client/bpn.webp",
-          "alt": "Logo BPN Kab Semarang"
+          "src": "/client/bankjateng.webp",
+          "alt": "Logo Bank Jateng"
         },
         "visible": true
       },
       {
-        "name": "Virgin Bakery",
+        "name": "PNM",
         "logo": {
-          "src": "/client/virgin.webp",
-          "alt": "Logo Virgin Bakery"
+          "src": "/client/pnm.webp",
+          "alt": "Logo PNM"
+        },
+        "visible": true
+      },
+      {
+        "name": "KHAF",
+        "logo": {
+          "src": "/client/kahf.webp",
+          "alt": "Logo KHAF"
+        },
+        "visible": true
+      },
+      {
+        "name": "Bareskrim Polri",
+        "logo": {
+          "src": "/client/bareskim.webp",
+          "alt": "Logo Bareskrim Polri"
+        },
+        "visible": true
+      },
+      {
+        "name": "AKPOL",
+        "logo": {
+          "src": "/client/akpol.webp",
+          "alt": "Logo AKPOL"
         },
         "visible": true
       },
@@ -2399,10 +2303,34 @@
         "visible": true
       },
       {
+        "name": "OIKN Nusantara",
+        "logo": {
+          "src": "/client/oikn.webp",
+          "alt": "Logo OIKN Nusantara"
+        },
+        "visible": true
+      },
+      {
         "name": "UNNES",
         "logo": {
           "src": "/client/unnes.webp",
           "alt": "Logo UNNES"
+        },
+        "visible": true
+      },
+      {
+        "name": "Unika",
+        "logo": {
+          "src": "/client/unika.webp",
+          "alt": "Logo Unika"
+        },
+        "visible": true
+      },
+      {
+        "name": "Udinus",
+        "logo": {
+          "src": "/client/udinus.webp",
+          "alt": "Logo Udinus"
         },
         "visible": true
       },
@@ -2423,18 +2351,66 @@
         "visible": true
       },
       {
-        "name": "Udinus",
+        "name": "Polantas",
         "logo": {
-          "src": "/client/udinus.webp",
-          "alt": "Logo Udinus"
+          "src": "/client/polantas.webp",
+          "alt": "Logo Polantas"
         },
         "visible": true
       },
       {
-        "name": "Unika",
+        "name": "Dishub Kota Semarang",
         "logo": {
-          "src": "/client/unika.webp",
-          "alt": "Logo Unika"
+          "src": "/client/dishub-semarang.webp",
+          "alt": "Logo Dishub Kota Semarang"
+        },
+        "visible": true
+      },
+      {
+        "name": "BPN Kab Semarang",
+        "logo": {
+          "src": "/client/bpn.webp",
+          "alt": "Logo BPN Kab Semarang"
+        },
+        "visible": true
+      },
+      {
+        "name": "Polres Bojonegoro",
+        "logo": {
+          "src": "/client/polres-bojonegoro.webp",
+          "alt": "Logo Polres Bojonegoro"
+        },
+        "visible": true
+      },
+      {
+        "name": "Yayasan Badan Wakaf Sultan Agung",
+        "logo": {
+          "src": "/client/ybwsa.webp",
+          "alt": "Logo Yayasan Badan Wakaf Sultan Agung"
+        },
+        "visible": true
+      },
+      {
+        "name": "Gekraf",
+        "logo": {
+          "src": "/client/gekraf.webp",
+          "alt": "Logo Gekraf"
+        },
+        "visible": true
+      },
+      {
+        "name": "MES Jawa Tengah",
+        "logo": {
+          "src": "/client/mes-jateng.webp",
+          "alt": "Logo MES Jawa Tengah"
+        },
+        "visible": true
+      },
+      {
+        "name": "KOV",
+        "logo": {
+          "src": "/client/kov.webp",
+          "alt": "Logo KOV"
         },
         "visible": true
       },
@@ -2447,18 +2423,18 @@
         "visible": true
       },
       {
-        "name": "Semesta School Semarang",
+        "name": "Virgin Bakery",
         "logo": {
-          "src": "/client/semesta.webp",
-          "alt": "Logo Semesta School Semarang"
+          "src": "/client/virgin.webp",
+          "alt": "Logo Virgin Bakery"
         },
         "visible": true
       },
       {
-        "name": "PT Sipa Indonesia Service Center",
+        "name": "Semesta School Semarang",
         "logo": {
-          "src": "/client/sipa.webp",
-          "alt": "Logo PT Sipa Indonesia Service Center"
+          "src": "/client/semesta.webp",
+          "alt": "Logo Semesta School Semarang"
         },
         "visible": true
       },
@@ -2487,14 +2463,6 @@
         "visible": true
       },
       {
-        "name": "PT Abadi Ogan Cemerlang",
-        "logo": {
-          "src": "/client/abadi-ogan-cemerlang.webp",
-          "alt": "Logo PT Abadi Ogan Cemerlang"
-        },
-        "visible": true
-      },
-      {
         "name": "TIS Petroleum",
         "logo": {
           "src": "/client/tis.webp",
@@ -2503,10 +2471,42 @@
         "visible": true
       },
       {
-        "name": "Yayasan Badan Wakaf Sultan Agung",
+        "name": "BUCG HK",
         "logo": {
-          "src": "/client/ybwsa.webp",
-          "alt": "Logo Yayasan Badan Wakaf Sultan Agung"
+          "src": "/client/BUCGHK.webp",
+          "alt": "Logo BUCG HK"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Aegis Jaya Metalindo",
+        "logo": {
+          "src": "/client/aegis.webp",
+          "alt": "Logo PT Aegis Jaya Metalindo"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Abadi Ogan Cemerlang",
+        "logo": {
+          "src": "/client/abadi-ogan-cemerlang.webp",
+          "alt": "Logo PT Abadi Ogan Cemerlang"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT KMU Konstruksi Indonesia",
+        "logo": {
+          "src": "/client/kmu.webp",
+          "alt": "Logo PT KMU Konstruksi Indonesia"
+        },
+        "visible": true
+      },
+      {
+        "name": "PT Sipa Indonesia Service Center",
+        "logo": {
+          "src": "/client/sipa.webp",
+          "alt": "Logo PT Sipa Indonesia Service Center"
         },
         "visible": true
       },
@@ -2527,18 +2527,18 @@
         "visible": true
       },
       {
-        "name": "PT KMU Konstruksi Indonesia",
+        "name": "Orado",
         "logo": {
-          "src": "/client/kmu.webp",
-          "alt": "Logo PT KMU Konstruksi Indonesia"
+          "src": "/client/orado.webp",
+          "alt": "Logo Orado"
         },
         "visible": true
       },
       {
-        "name": "MES Jawa Tengah",
+        "name": "U-Winfly",
         "logo": {
-          "src": "/client/mes-jateng.webp",
-          "alt": "Logo MES Jawa Tengah"
+          "src": "/client/uwinfly.webp",
+          "alt": "Logo U-Winfly"
         },
         "visible": true
       }

@@ -23,10 +23,12 @@ export default async function SettingsPage() {
     : [null, null];
 
   return (
-    <main className="flex max-w-3xl flex-col gap-6">
+    <main className="flex max-w-6xl flex-col gap-6">
       <PageHeader title="Pengaturan" description="Atur pengingat otomatis dan preferensi operasional." />
       <PageMessage />
 
+      {/* Isi pengaturan sedikit; dua kolom supaya tidak menyisakan ruang kosong. */}
+      <div className="grid items-start gap-6 lg:grid-cols-2">
       {canManageAttendance && attendanceSettings ? (
         <>
           <Card id="absensi" className="scroll-mt-24">
@@ -100,6 +102,7 @@ export default async function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+      </div>
     </main>
   );
 }

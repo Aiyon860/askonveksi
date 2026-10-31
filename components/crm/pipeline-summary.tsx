@@ -26,8 +26,8 @@ export function PipelineSummary({
       className={cn("flex min-h-9 min-w-0 items-center gap-4 overflow-x-auto py-1 text-sm", className)}
     >
       <div className="flex shrink-0 items-baseline gap-2">
-        <span className="text-muted-foreground">Total peluang</span>
-        <span className="font-mono text-lg font-semibold tabular-nums text-primary">{total}</span>
+        <span className="text-muted-foreground">Total</span>
+        <span className="font-mono text-lg font-semibold tabular-nums text-foreground">{total}</span>
         {grandTotal !== undefined && grandTotal > total ? (
           <span className="text-xs text-muted-foreground">dari {grandTotal}</span>
         ) : null}

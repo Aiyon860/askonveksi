@@ -16,7 +16,9 @@ function Table({
   return (
     <div
       data-slot="table-container"
-      className={cn("relative w-full min-w-0 overflow-x-auto", containerClassName)}
+      // `max-height` bawaan menjaga tabel panjang tetap dapat digulir sendiri
+      // (header beku) bahkan di halaman detail tanpa pembungkus viewport.
+      className={cn("relative max-h-[calc(100svh-8rem)] w-full min-w-0 overflow-auto", containerClassName)}
       {...containerProps}
     >
       <table
@@ -32,7 +34,9 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("bg-muted/70 [&_th]:text-muted-foreground [&_tr]:border-b", className)}
+      // Header selalu beku di puncak area scroll tabel; latar solid agar baris
+      // yang bergeser tidak tembus di belakang nama kolom.
+      className={cn("sticky top-0 z-20 bg-muted [&_th]:bg-muted [&_th]:text-muted-foreground [&_tr]:border-b", className)}
       {...props}
     />
   )
@@ -53,7 +57,8 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        // Footer angka/total ikut beku di dasar area scroll.
+        "sticky bottom-0 z-20 border-t bg-muted font-medium [&>tr]:last:border-b-0",
         className
       )}
       {...props}

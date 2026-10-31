@@ -13,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { canOpenOpportunityDetail, OPEN_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 
 type Detail = Awaited<ReturnType<typeof customerDetailAction>>;
@@ -154,7 +155,7 @@ export function CustomerDetail({
                           <TableCell className="font-mono">{order.salesOrderNo}</TableCell>
                           <TableCell><SalesOrderStatusBadge status={order.status} /></TableCell>
                           <TableCell>{formatDate(order.acceptedAt)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatCurrency(order.total)}</TableCell>
+                          <TableCell className={numericCellClass(order.total, "text-right tabular-nums")}>{formatCurrency(order.total)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

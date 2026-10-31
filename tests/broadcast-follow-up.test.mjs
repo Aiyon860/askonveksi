@@ -38,7 +38,7 @@ test("kartu Follow Up Hari Ini memuat filter ala dialog Pilih Customer dan pesan
   assert.match(workspace, /<CardTitle>Follow Up Hari Ini<\/CardTitle>/);
   assert.match(workspace, /name="customerIds"/);
   assert.match(workspace, /name="message"/);
-  assert.match(workspace, /maxLength=\{4000\}/);
+  assert.match(workspace, /BroadcastMessageEditor/);
   assert.match(workspace, /Kirim Pesan/);
   assert.match(workspace, /Hapus semua pilihan/);
   assert.match(workspace, /getBroadcastRecipientsAction/);
@@ -53,8 +53,11 @@ test("kartu Follow Up Hari Ini memuat filter ala dialog Pilih Customer dan pesan
   assert.doesNotMatch(table, /name="customerIds"/);
 });
 
-test("textarea broadcast mempertahankan template terakhir setelah pesan dikirim", async () => {
-  const workspace = await read("components/crm/broadcast-workspace.tsx");
+test("editor pesan broadcast mempertahankan draf dan variabel berbentuk pil", async () => {
+  const [workspace, editor] = await Promise.all([
+    read("components/crm/broadcast-workspace.tsx"),
+    read("components/crm/broadcast-message-editor.tsx"),
+  ]);
 
   // React me-reset field tak terkontrol setelah server action selesai, jadi isi pesan harus
   // dikendalikan state sekaligus disimpan sebagai draf agar tidak kembali ke template bawaan.
@@ -62,8 +65,15 @@ test("textarea broadcast mempertahankan template terakhir setelah pesan dikirim"
   assert.match(workspace, /window\.localStorage\.setItem\(MESSAGE_DRAFT_KEY, next\)/);
   assert.match(workspace, /window\.localStorage\.getItem\(MESSAGE_DRAFT_KEY\)/);
   assert.match(workspace, /value=\{message\}/);
-  assert.match(workspace, /onChange=\{\(event\) => updateMessage\(event\.target\.value\)\}/);
+  assert.match(workspace, /onChange=\{updateMessage\}/);
   assert.doesNotMatch(workspace, /defaultValue=\{defaultMessage\}/);
+
+  // Variabel tetap dikirim sebagai teks {{variabel}} agar server action lama tidak berubah.
+  assert.match(editor, /type="hidden" name=\{name\} value=\{value\}/);
+  assert.match(editor, /messageFromEditor/);
+  assert.match(editor, /Sisipkan variabel/);
+  assert.match(editor, /onClick=\{\(\) => deleteNode\(\)\}/);
+  assert.match(editor, /messageVariable/);
 });
 
 test("komponen follow-up lama sudah tidak ada lagi", async () => {

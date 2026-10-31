@@ -9,7 +9,9 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { EXPENSE_CATEGORY_LABEL } from "@/lib/finance/expense-categories";
 import { getDeletedExpenses } from "@/lib/finance/expense";
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
@@ -40,7 +42,7 @@ export default async function DeletedExpensesPage({ searchParams }: { searchPara
       />
       <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
         {data.items.length ? (
-          <div className="flex min-h-112 flex-1 flex-col">
+          <TableViewport className="min-h-0 flex-1">
             <Table className="min-w-6xl" containerClassName="min-h-0 flex-1 overflow-auto">
               <TableHeader className="sticky top-0 bg-muted">
                 <TableRow className="hover:bg-muted">
@@ -63,7 +65,7 @@ export default async function DeletedExpensesPage({ searchParams }: { searchPara
                     <TableCell>{item.customerName ?? "-"}</TableCell>
                     <TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell>
                     <TableCell>{formatDate(item.spentAt)}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell>
+                    <TableCell className={numericCellClass(item.amount, "text-right font-mono tabular-nums")}>{formatCurrency(item.amount)}</TableCell>
                     <TableCell>{item.createdBy.name}</TableCell>
                     <TableCell>{item.deletedBy?.name ?? "-"}</TableCell>
                     <TableCell>{item.deletedAt ? formatDate(item.deletedAt, true) : "-"}</TableCell>
@@ -89,7 +91,7 @@ export default async function DeletedExpensesPage({ searchParams }: { searchPara
               </TableBody>
             </Table>
             <DataPagination pathname="/keuangan/pengeluaran/riwayat" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} params={persistent} className="border-t px-4 py-3" />
-          </div>
+          </TableViewport>
         ) : (
           <Empty className="p-12">
             <EmptyHeader>

@@ -26,6 +26,7 @@ import { getCurrentActor } from "@/lib/auth/session";
 import { getOpportunityDetail, getOpportunityDocumentHistory, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
 
@@ -553,7 +554,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
                 ) : (
                 <Table containerClassName="rounded-lg border">
                   <TableHeader><TableRow><TableHead>Model</TableHead>{itemSizeNames.map((size) => <TableHead key={size} className="text-center">{size}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
-                  <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = itemSizes.filter((row) => row.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{itemSizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((row) => row.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className="text-right font-mono">{rows.reduce((sum, row) => sum + row.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
+                  <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = itemSizes.filter((row) => row.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{itemSizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((row) => row.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className={numericCellClass(rows.reduce((sum, row) => sum + row.quantity, 0), "text-right font-mono")}>{rows.reduce((sum, row) => sum + row.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
                 </Table>
                 )}
               </div>
@@ -567,7 +568,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
       ) : (
       <Table containerClassName="rounded-lg border">
         <TableHeader><TableRow><TableHead>Model</TableHead>{sizeNames.map((size) => <TableHead key={size} className="text-center">{size}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
-        <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = purchaseOrder.sizes.filter((item) => item.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{sizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((item) => item.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className="text-right font-mono">{rows.reduce((sum, item) => sum + item.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
+        <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = purchaseOrder.sizes.filter((item) => item.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{sizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((item) => item.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className={numericCellClass(rows.reduce((sum, item) => sum + item.quantity, 0), "text-right font-mono")}>{rows.reduce((sum, item) => sum + item.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
       </Table>
       )}
       {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead>{purchaseOrder.items.length > 1 ? <TableHead>Produk</TableHead> : null}<TableHead>Ukuran</TableHead><TableHead>Lengan</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell>{purchaseOrder.items.length > 1 ? <TableCell>{purchaseOrder.items.find((poItem) => poItem.id === entry.itemId)?.name ?? "-"}</TableCell> : null}<TableCell>{entry.size}</TableCell><TableCell>{entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
@@ -611,7 +612,7 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
         <TableBody>
           {invoice.items.map((item) => {
             const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount.toString()) * addon.qty, 0);
-            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className="text-right font-mono">{item.quantity}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
+            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-right font-mono")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-right font-mono")}>{formatCurrency(item.unitPrice)}</TableCell><TableCell className={numericCellClass(item.discountAmount, "text-right font-mono")}>{formatCurrency(item.discountAmount)}</TableCell><TableCell className={numericCellClass(Number(item.subtotal.toString()) - legacyAddonTotal, "text-right font-mono")}>{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
           })}
           {addons.length ? <>
             <TableRow className="bg-info-surface hover:bg-info-surface">
@@ -622,7 +623,7 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
                 </div>
               </TableCell>
             </TableRow>
-            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono">{addon.qty}</TableCell><TableCell className="text-right font-mono">{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right font-mono">-</TableCell><TableCell className="text-right font-mono">{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
+            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className={numericCellClass(addon.qty, "text-right font-mono")}>{addon.qty}</TableCell><TableCell className={numericCellClass(addon.unitAmount, "text-right font-mono")}>{formatCurrency(addon.unitAmount)}</TableCell><TableCell className={numericCellClass(null, "text-right font-mono")}>-</TableCell><TableCell className={numericCellClass(Number(addon.unitAmount.toString()) * addon.qty, "text-right font-mono")}>{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
           </> : null}
         </TableBody>
       </Table>

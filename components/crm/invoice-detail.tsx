@@ -23,6 +23,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatInvoiceCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 
 type Detail = Awaited<ReturnType<typeof invoiceDetailAction>>;
 type Payment = NonNullable<NonNullable<Detail>["salesOrder"]>;
@@ -99,7 +100,7 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
             <TableBody>
               {detail.items.map((item) => {
                 const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount) * addon.qty, 0);
-                return <TableRow key={item.id}><TableCell className="whitespace-normal font-medium">{item.productName ?? "-"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(item.unitPrice)}</TableCell><TableCell className="text-right tabular-nums">{discountCellText(item)}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(Number(item.subtotal) - legacyAddonTotal)}</TableCell></TableRow>;
+                return <TableRow key={item.id}><TableCell className="whitespace-normal font-medium">{item.productName ?? "-"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-right font-mono tabular-nums")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-right tabular-nums")}>{formatInvoiceCurrency(item.unitPrice)}</TableCell><TableCell className={numericCellClass(discountCellText(item), "text-right tabular-nums")}>{discountCellText(item)}</TableCell><TableCell className={numericCellClass(Number(item.subtotal) - legacyAddonTotal, "text-right tabular-nums")}>{formatInvoiceCurrency(Number(item.subtotal) - legacyAddonTotal)}</TableCell></TableRow>;
               })}
               {addons.length ? <>
                 <TableRow className="bg-info-surface hover:bg-info-surface">
@@ -110,7 +111,7 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
                     </div>
                   </TableCell>
                 </TableRow>
-                {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal font-medium">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className="text-right font-mono tabular-nums">{addon.qty}</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(addon.unitAmount)}</TableCell><TableCell className="text-right tabular-nums">-</TableCell><TableCell className="text-right tabular-nums">{formatInvoiceCurrency(Number(addon.unitAmount) * addon.qty)}</TableCell></TableRow>)}
+                {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal font-medium">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className={numericCellClass(addon.qty, "text-right font-mono tabular-nums")}>{addon.qty}</TableCell><TableCell className={numericCellClass(addon.unitAmount, "text-right tabular-nums")}>{formatInvoiceCurrency(addon.unitAmount)}</TableCell><TableCell className={numericCellClass(null, "text-right tabular-nums")}>-</TableCell><TableCell className={numericCellClass(Number(addon.unitAmount) * addon.qty, "text-right tabular-nums")}>{formatInvoiceCurrency(Number(addon.unitAmount) * addon.qty)}</TableCell></TableRow>)}
               </> : null}
             </TableBody>
           </Table>

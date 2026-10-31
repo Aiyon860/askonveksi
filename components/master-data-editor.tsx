@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { groupProductCategories } from "@/lib/crm/constants";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, pageSizeLabel, pageWindow, paginate } from "@/lib/pagination";
 
@@ -410,7 +411,7 @@ export function MasterDataEditor({
           </div>
         </div>
 
-        <div className="flex min-h-112 min-w-0 flex-1 flex-col">
+        <TableViewport className="min-w-0 flex-1">
           {visibleItems.length ? (
             <DndContext
               sensors={sensors}
@@ -466,8 +467,6 @@ export function MasterDataEditor({
               </EmptyHeader>
             </Empty>
           )}
-        </div>
-
         <MasterDataPagination
           page={page}
           pageCount={pageCount}
@@ -477,6 +476,7 @@ export function MasterDataEditor({
           onPageChange={setPage}
           onPageSizeChange={changePageSize}
         />
+        </TableViewport>
     </section>
   );
 }
