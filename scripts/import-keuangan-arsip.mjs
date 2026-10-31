@@ -405,7 +405,7 @@ async function nextInvoiceNo(tx, date) {
 
 async function nextSalesOrderNo(tx, date) {
   const year = date.getUTCFullYear();
-  return `SALES-ORDER-${year}-${String(await nextValue(tx, `sales-order:${year}`)).padStart(5, "0")}`;
+  return `SO-${year}-${String(await nextValue(tx, `sales-order:${year}`)).padStart(5, "0")}`;
 }
 
 async function nextWorkOrderNo(tx, date) {

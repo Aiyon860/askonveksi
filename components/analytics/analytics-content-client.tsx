@@ -1085,7 +1085,7 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-slate-200/60 dark:border-white/5">
-              <table className="w-full text-left text-base">
+              <table className="w-full border-separate border-spacing-0 text-left text-base [&_th]:border-r [&_td]:border-r [&_th]:border-b [&_td]:border-b [&_th]:border-slate-200/60 [&_td]:border-slate-200/60 dark:[&_th]:border-white/5 dark:[&_td]:border-white/5">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 uppercase text-sm tracking-wider font-bold border-b border-slate-200/60 dark:border-white/5">
                   <tr>
                     <th className="py-4 px-4.5">Nama Produk & Kategori</th>
@@ -1166,7 +1166,7 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
               Efektivitas Lead & Rasio Closing Per Saluran Pemasaran
             </span>
             <div className="overflow-x-auto rounded-xl border border-slate-200/60 dark:border-white/5">
-              <table className="w-full text-left text-base">
+              <table className="w-full border-separate border-spacing-0 text-left text-base [&_th]:border-r [&_td]:border-r [&_th]:border-b [&_td]:border-b [&_th]:border-slate-200/60 [&_td]:border-slate-200/60 dark:[&_th]:border-white/5 dark:[&_td]:border-white/5">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 uppercase text-sm font-bold">
                   <tr>
                     <th className="py-3.5 px-4">Saluran Promosi</th>
@@ -1237,7 +1237,7 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
               Leaderboard Kinerja Tim Sales & PIC Closing
             </span>
             <div className="overflow-x-auto rounded-xl border border-slate-200/60 dark:border-white/5">
-              <table className="w-full text-left text-base">
+              <table className="w-full border-separate border-spacing-0 text-left text-base [&_th]:border-r [&_td]:border-r [&_th]:border-b [&_td]:border-b [&_th]:border-slate-200/60 [&_td]:border-slate-200/60 dark:[&_th]:border-white/5 dark:[&_td]:border-white/5">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 uppercase text-sm font-bold">
                   <tr>
                     <th className="py-3.5 px-4">Nama PIC</th>
@@ -1326,7 +1326,7 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
 
             {/* VIP Customers Table */}
             <div className="overflow-x-auto rounded-xl border border-slate-200/60 dark:border-white/5">
-              <table className="w-full text-left text-base">
+              <table className="w-full border-separate border-spacing-0 text-left text-base [&_th]:border-r [&_td]:border-r [&_th]:border-b [&_td]:border-b [&_th]:border-slate-200/60 [&_td]:border-slate-200/60 dark:[&_th]:border-white/5 dark:[&_td]:border-white/5">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 uppercase text-sm font-bold">
                   <tr>
                     <th className="py-3.5 px-4">Customer & Instansi</th>

@@ -16,13 +16,17 @@ import { cn } from "@/lib/utils";
 export function TableViewport({
   children,
   className,
-  minHeight = 352,
-  bottomGap = 24,
+  minHeight = 0,
+  bottomGap = 32,
   style,
 }: {
   children: ReactNode;
   className?: string;
-  /** Batas bawah tinggi supaya tabel tetap terpakai di layar pendek. */
+  /**
+   * Batas bawah tinggi. Bawaannya 0: area tabel harus boleh menyusut agar
+   * seluruh kartu (header + tabel + pagination) tetap muat di layar tanpa
+   * memaksa halaman ikut tergulir.
+   */
   minHeight?: number;
   /** Jarak aman di bawah kartu (px). */
   bottomGap?: number;
@@ -49,7 +53,10 @@ export function TableViewport({
     measure();
     window.addEventListener("resize", measure);
     const observer = new ResizeObserver(measure);
+    // Pantau body dan induk langsung: tinggi bagian di atas tabel (mis. banner
+    // atau flash message) bisa berubah setelah render dan menggeser tabel.
     observer.observe(document.body);
+    if (element.parentElement) observer.observe(element.parentElement);
 
     return () => {
       window.cancelAnimationFrame(frame);
@@ -61,8 +68,11 @@ export function TableViewport({
   return (
     <div
       ref={ref}
-      className={cn("flex min-h-[22rem] min-w-0 flex-col", className)}
-      style={{ ...(height ? { height } : null), ...style }}
+      className={cn("flex min-h-0 min-w-0 flex-col", className)}
+      // `flex: 0 0 auto` mengunci tinggi terukur. Tanpa ini, `flex-1` dari
+      // pemanggil menimpa tinggi tersebut dan kartu tabel kembali memanjang,
+      // sehingga footer ikut tergulir bersama halaman.
+      style={{ ...(height ? { height, flex: "0 0 auto" } : null), ...style }}
     >
       {children}
     </div>

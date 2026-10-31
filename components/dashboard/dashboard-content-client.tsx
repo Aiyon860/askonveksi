@@ -1917,7 +1917,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[540px] text-left text-base">
+            <table className="w-full min-w-[540px] border-separate border-spacing-0 text-left text-base [&_th]:border-r [&_td]:border-r [&_th]:border-b [&_td]:border-b [&_th]:border-slate-200/70 [&_td]:border-slate-200/70 dark:[&_th]:border-white/10 dark:[&_td]:border-white/10">
               <thead>
                 <tr className="border-b border-slate-200/80 text-base font-bold text-slate-700 dark:border-white/10 dark:text-slate-200">
                   <th className="py-3.5 pr-4 pl-1">Customer</th>
@@ -2077,7 +2077,7 @@ export function DashboardContentClient({ initialData }: { initialData: FullDashb
           </div>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[540px] text-left text-base">
+            <table className="w-full min-w-[540px] border-separate border-spacing-0 text-left text-base [&_th]:border-r [&_td]:border-r [&_th]:border-b [&_td]:border-b [&_th]:border-slate-200/70 [&_td]:border-slate-200/70 dark:[&_th]:border-white/10 dark:[&_td]:border-white/10">
               <thead>
                 <tr className="border-b border-slate-200/80 text-base font-bold text-slate-700 dark:border-white/10 dark:text-slate-200">
                   <th className="py-3.5 pr-4 pl-1">Sales PIC</th>

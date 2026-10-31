@@ -347,7 +347,7 @@ async function nextInvoiceNo(tx, date) {
 
 async function nextSalesOrderNo(tx, date) {
   const year = date.getUTCFullYear();
-  return `SALES-ORDER-${year}-${String(await nextValue(tx, `sales-order:${year}`)).padStart(5, "0")}`;
+  return `SO-${year}-${String(await nextValue(tx, `sales-order:${year}`)).padStart(5, "0")}`;
 }
 
 async function nextWorkOrderNo(tx, date) {
@@ -587,7 +587,7 @@ async function main() {
       const start = (counterByKey.get(key) ?? 0) + 1;
       return `${prefix}${String(start).padStart(pad, "0")}..${prefix}${String(start + count - 1).padStart(pad, "0")}`;
     };
-    console.log(`Nomor dokumen: ${previewRange("invoice:2026", 23, "INV-2026-", 5)} | ${previewRange("opportunity", 23, "OPP-", 6)} | ${previewRange("sales-order:2026", 21, "SALES-ORDER-2026-", 5)} | ${previewRange("work-order:2026", 25, "WO-2026-", 5)}`);
+    console.log(`Nomor dokumen: ${previewRange("invoice:2026", 23, "INV-2026-", 5)} | ${previewRange("opportunity", 23, "OPP-", 6)} | ${previewRange("sales-order:2026", 21, "SO-2026-", 5)} | ${previewRange("work-order:2026", 25, "WO-2026-", 5)}`);
 
     report(checks);
     if (!checks.every((item) => item.ok)) fail("Ada penjaga yang gagal.");
