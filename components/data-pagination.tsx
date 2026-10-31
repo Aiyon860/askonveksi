@@ -65,7 +65,7 @@ export function DataPagination({
       className={cn(
         // Footer tabel menempel di dasar kartu/tabel dan tidak ikut tergulir
         // bersama baris data.
-        "sticky bottom-0 z-20 flex shrink-0 flex-col gap-4 bg-card sm:flex-row sm:items-center sm:justify-between",
+        "sticky bottom-0 z-30 flex shrink-0 flex-col gap-4 bg-card sm:flex-row sm:items-center sm:justify-between",
         className,
       )}
     >

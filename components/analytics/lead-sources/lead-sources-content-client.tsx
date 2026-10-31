@@ -1187,7 +1187,7 @@ export function LeadSourcesContentClient({
 
         {/* Data Table */}
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[900px]">
+          <table className="w-full min-w-[900px] border-separate border-spacing-0 text-left [&_th]:border-r [&_td]:border-r [&_th]:border-b [&_td]:border-b [&_th]:border-slate-200/70 [&_td]:border-slate-200/70 dark:[&_th]:border-white/10 dark:[&_td]:border-white/10">
             <thead>
               <tr className="border-b border-slate-200/80 dark:border-white/10 text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <th className="py-3 px-4">Sumber Lead (Kanal)</th>
