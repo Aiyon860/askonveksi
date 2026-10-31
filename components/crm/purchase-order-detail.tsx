@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { decorationMethodsLabel } from "@/lib/crm/constants";
 
 type Detail = Awaited<ReturnType<typeof purchaseOrderDetailAction>>;
@@ -110,7 +111,7 @@ export function PurchaseOrderDetail({
                       {itemIsAccessory ? null : (
                       <Table>
                         <TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
-                        <TableBody>{itemSizes.map((row) => <TableRow key={row.id}><TableCell>{row.size}</TableCell><TableCell className="text-right font-mono tabular-nums">{row.quantity}</TableCell></TableRow>)}</TableBody>
+                        <TableBody>{itemSizes.map((row) => <TableRow key={row.id}><TableCell>{row.size}</TableCell><TableCell className={numericCellClass(row.quantity, "text-right font-mono tabular-nums")}>{row.quantity}</TableCell></TableRow>)}</TableBody>
                       </Table>
                       )}
                     </div>
@@ -122,7 +123,7 @@ export function PurchaseOrderDetail({
                 <h3 className="mb-2 text-sm font-medium">Ukuran dan jumlah</h3>
                 <Table>
                   <TableHeader><TableRow><TableHead>Ukuran</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
-                  <TableBody>{detail.sizes.map((item) => <TableRow key={item.id}><TableCell>{item.size}</TableCell><TableCell className="text-right font-mono tabular-nums">{item.quantity}</TableCell></TableRow>)}</TableBody>
+                  <TableBody>{detail.sizes.map((item) => <TableRow key={item.id}><TableCell>{item.size}</TableCell><TableCell className={numericCellClass(item.quantity, "text-right font-mono tabular-nums")}>{item.quantity}</TableCell></TableRow>)}</TableBody>
                 </Table>
               </div>
               )}

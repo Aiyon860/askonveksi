@@ -10,6 +10,7 @@ import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { SortableTableHead } from "@/components/sortable-table-head";
+import { TableViewport } from "@/components/table-viewport";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,7 @@ export default async function DetailDesainPage({ searchParams }: { searchParams:
         <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center"><DebouncedSearchInput key={query} initialValue={query} pathname="/detail-desain" params={persistentParams} placeholder="Cari nomor, customer, atau produk..." ariaLabel="Cari Detail Desain" className="sm:max-w-md" /><DropdownMenu><DropdownMenuTrigger render={<Button variant="outline" />}><ListFilter data-icon="inline-start" aria-hidden="true" />{status === "pending" ? "Belum dikirim" : status === "sent" ? "Masuk Produksi" : "Semua desain"}<ChevronDown data-icon="inline-end" aria-hidden="true" /></DropdownMenuTrigger><DropdownMenuContent align="start" className="w-48"><DropdownMenuGroup><DropdownMenuLabel>Status desain</DropdownMenuLabel>{(["all", "pending", "sent"] as const).map((item) => <DropdownMenuItem key={item} render={<Link href={tableHref(state, { status: item, page: 1 })} />}><Check className={cn(status !== item && "opacity-0")} aria-hidden="true" />{item === "pending" ? "Belum dikirim" : item === "sent" ? "Masuk Produksi" : "Semua desain"}</DropdownMenuItem>)}</DropdownMenuGroup></DropdownMenuContent></DropdownMenu></div>
         <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end"><p className="text-xs text-muted-foreground"><strong className="font-medium text-foreground">{total}</strong> Work Order tersedia</p></div>
       </div>
-      {workOrders.length ? <div className="flex min-h-112 flex-1 flex-col">
+      {workOrders.length ? <TableViewport className="min-h-0 flex-1">
       <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
         <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-16 text-center">No</TableHead><SortableTableHead label="Work Order" href={sortHref(state, "workOrderNo")} active={sort === "workOrderNo"} direction={direction} /><SortableTableHead label="PO" href={sortHref(state, "purchaseOrderNo")} active={sort === "purchaseOrderNo"} direction={direction} /><SortableTableHead label="Sales Order" href={sortHref(state, "salesOrderNo")} active={sort === "salesOrderNo"} direction={direction} /><SortableTableHead label="Customer" href={sortHref(state, "customer")} active={sort === "customer"} direction={direction} className="min-w-48" /><SortableTableHead label="Produk" href={sortHref(state, "productName")} active={sort === "productName"} direction={direction} className="min-w-48" /><SortableTableHead label="Jalur" href={sortHref(state, "route")} active={sort === "route"} direction={direction} /><SortableTableHead label="Deadline" href={sortHref(state, "deadline")} active={sort === "deadline"} direction={direction} /><SortableTableHead label="Status desain" href={sortHref(state, "designStatus")} active={sort === "designStatus"} direction={direction} /><TableHead className="w-32">Aksi</TableHead></TableRow></TableHeader>
         <TableBody>{workOrders.map((workOrder, index) => <TableRow key={workOrder.id}>
@@ -86,7 +87,7 @@ export default async function DetailDesainPage({ searchParams }: { searchParams:
         </TableRow>)}</TableBody>
       </Table>
       <DataPagination pathname="/detail-desain" page={page} pageCount={pageCount} total={total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistentParams} className="border-t px-4 py-3" />
-      </div>
+      </TableViewport>
       : <Empty><EmptyHeader><EmptyTitle>{query ? "Work Order tidak ditemukan" : status === "all" ? "Belum ada Work Order" : "Tidak ada Work Order dengan status ini"}</EmptyTitle><EmptyDescription>{query ? "Coba kata kunci lain atau hapus filter pencarian." : "Work Order dari pembayaran pertama akan muncul di sini untuk diberi keterangan desain."}</EmptyDescription></EmptyHeader></Empty>}
     </section>
   </>;

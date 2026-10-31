@@ -16,6 +16,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { ATTENDANCE_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import {
@@ -272,11 +273,11 @@ export default async function AttendanceReportPage({ searchParams }: { searchPar
         </form>
 
         {report.rows.length > 0 ? (
-          <div className="flex min-w-0 flex-col">
+          <TableViewport className="min-w-0">
             <Table
               aria-label="Daftar absensi pegawai"
               className="min-w-[76rem] table-fixed"
-              containerClassName="max-h-[68svh] overflow-auto"
+              containerClassName="min-h-0 flex-1 overflow-auto"
             >
               <TableHeader className="sticky top-0 z-10 bg-muted">
                 <TableRow className="hover:bg-muted">
@@ -402,7 +403,7 @@ export default async function AttendanceReportPage({ searchParams }: { searchPar
               params={persistent}
               className="border-t px-4 py-3"
             />
-          </div>
+          </TableViewport>
         ) : (
           <Empty className="p-12">
             <EmptyHeader>

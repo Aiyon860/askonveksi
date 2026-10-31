@@ -18,7 +18,9 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, EXPENSE_TYPE_LABEL, type ExpenseTypeFilter } from "@/lib/finance/expense-categories";
 import { getExpenses } from "@/lib/finance/expense";
 import { getActivePaymentMethods } from "@/lib/master-data";
@@ -80,7 +82,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
           <Button variant="secondary" render={<Link href="/keuangan/pengeluaran" />} nativeButton={false}>Reset</Button>
         </form>
       </div>
-      {data.groups.length ? <div className="flex min-h-112 flex-1 flex-col">
+      {data.groups.length ? <TableViewport className="min-h-0 flex-1">
         <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
           <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted">
             <SortableTableHead label="Tanggal" href={dateSortHref(persistent, order)} active direction={order} />
@@ -98,7 +100,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
               rowIndex += 1;
               return <TableRow key={item.id}>
                 {showDate ? <TableCell rowSpan={totalRows}>{formatDate(group.spentAt)}</TableCell> : null}
-                <TableCell>{item.purpose}</TableCell><TableCell>{item.customerName ?? "-"}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{item.paymentMethod.name}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell><TableCell className="text-right font-mono tabular-nums">{formatCurrency(item.amount)}</TableCell><TableCell>{item.description || "-"}</TableCell>
+                <TableCell>{item.purpose}</TableCell><TableCell>{item.customerName ?? "-"}</TableCell><TableCell>{EXPENSE_CATEGORY_LABEL[item.category]}</TableCell><TableCell>{item.paymentMethod.name}</TableCell><TableCell><PaymentProofPreview href={item.proofPath ? `/api/keuangan/pengeluaran/${item.id}/bukti` : null} mimeType={item.proofMimeType} label={`Bukti ${item.purpose}`} /></TableCell><TableCell>{item.createdBy.name}</TableCell><TableCell className={numericCellClass(item.amount, "text-right font-mono tabular-nums")}>{formatCurrency(item.amount)}</TableCell><TableCell>{item.description || "-"}</TableCell>
                 <TableCell>{reimbursable ? item.reimbursedAt ? <span className="text-success">Diganti {formatDate(item.reimbursedAt, true)}</span> : "Belum diganti" : "-"}</TableCell>
                 <TableCell className="text-right">{canManage && !item.reimbursedAt ? <div className="flex justify-end gap-2">
                   {reimbursable ? <form action={reimburseExpenseAction}><input type="hidden" name="id" value={item.id} /><ConfirmSubmitButton size="sm" variant="success" pendingLabel="Memproses..." confirmTitle="Tandai uang sudah diganti?" confirmDescription="Pengeluaran ini tidak dapat diedit atau dihapus setelah ditandai." confirmLabel="Ya, sudah diganti"><Check data-icon="inline-start" aria-hidden="true" />Reimburse</ConfirmSubmitButton></form> : null}
@@ -114,17 +116,17 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
               nodes.push(<TableRow key={`project-${group.spentAt.getTime()}-${project.key}`} className="bg-muted/60 hover:bg-muted/70">
                 {showDate ? <TableCell rowSpan={totalRows}>{formatDate(group.spentAt)}</TableCell> : null}
                 <TableCell colSpan={6} className="font-semibold">Project: {project.label}</TableCell>
-                <TableCell className="text-right font-mono font-semibold tabular-nums">{formatCurrency(project.subtotal)}</TableCell>
+                <TableCell className={numericCellClass(project.subtotal, "text-right font-mono font-semibold tabular-nums")}>{formatCurrency(project.subtotal)}</TableCell>
                 <TableCell colSpan={3} />
               </TableRow>);
               project.items.forEach((item) => nodes.push(renderItem(item)));
             });
             return nodes;
           })}</TableBody>
-          <TableFooter><TableRow><TableCell colSpan={7} className="font-semibold">Total (sesuai filter)</TableCell><TableCell className="text-right font-mono font-semibold tabular-nums">{formatCurrency(data.totalAmount)}</TableCell><TableCell colSpan={3} /></TableRow></TableFooter>
+          <TableFooter><TableRow><TableCell colSpan={7} className="font-semibold">Total (sesuai filter)</TableCell><TableCell className={numericCellClass(data.totalAmount, "text-right font-mono font-semibold tabular-nums")}>{formatCurrency(data.totalAmount)}</TableCell><TableCell colSpan={3} /></TableRow></TableFooter>
         </Table>
         <DataPagination pathname="/keuangan/pengeluaran" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={{ ...persistent, order: order === "desc" ? undefined : order }} className="border-t px-4 py-3" />
-      </div> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada pengeluaran</EmptyTitle><EmptyDescription>Tambahkan catatan biaya melalui tombol Pengeluaran.</EmptyDescription></EmptyHeader></Empty>}
+      </TableViewport> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada pengeluaran</EmptyTitle><EmptyDescription>Tambahkan catatan biaya melalui tombol Pengeluaran.</EmptyDescription></EmptyHeader></Empty>}
     </section>
   </>;
 }

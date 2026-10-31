@@ -61,7 +61,14 @@ export function DataPagination({
   );
 
   return (
-    <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between", className)}>
+    <div
+      className={cn(
+        // Footer tabel menempel di dasar kartu/tabel dan tidak ikut tergulir
+        // bersama baris data.
+        "sticky bottom-0 z-20 flex shrink-0 flex-col gap-4 bg-card sm:flex-row sm:items-center sm:justify-between",
+        className,
+      )}
+    >
       <p className="text-xs text-muted-foreground">
         Menampilkan <strong className="font-medium text-foreground">{first}</strong> hingga <strong className="font-medium text-foreground">{last}</strong> dari <strong className="font-medium text-foreground">{total}</strong> data
       </p>

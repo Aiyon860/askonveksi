@@ -13,7 +13,7 @@ import { OpportunityStatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -179,7 +179,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       entering={recentMove?.id === opportunity.id && recentMove.stage === stage}
                       previewing={previewMove?.opportunity.id === opportunity.id}
                     >
-                      {(drag) => <Card size="sm" className={cn("cursor-default border shadow-xs transition-colors", canOpenDetail ? "hover:border-primary/40" : "border-muted-foreground/25 bg-muted/60")}>
+                      {(drag) => <Card size="sm" className={cn("border shadow-xs transition-colors", drag.draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", canOpenDetail ? "hover:border-primary/40" : "border-muted-foreground/25 bg-muted/60")}>
                       <CardHeader className="gap-1">
                         <CardTitle className="font-bold text-base leading-tight">
                           {canOpenDetail ? (
@@ -191,11 +191,6 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                           )}
                         </CardTitle>
                         <CardDescription className="font-semibold text-foreground/70">{opportunity.title}{opportunity.customer.companyName ? ` · ${opportunity.customer.companyName}` : ""}</CardDescription>
-                        {canOperate ? <CardAction>
-                          <Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${opportunity.customer.name}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}>
-                            <GripVertical aria-hidden="true" />
-                          </Button>
-                        </CardAction> : null}
                       </CardHeader>
                       <CardContent>
                         <div className="flex flex-wrap items-center gap-2">
@@ -235,6 +230,20 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                           </Button>
                         ) : null}
                         {canOperate && opportunity.stage !== "DEAL" ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => requestMove(opportunity, DEFAULT_DESTINATION[opportunity.stage])}>Ubah status</Button> : null}
+                        {drag.draggable ? (
+                          // Area geser selebar kartu (sekitar seperempat tinggi kartu)
+                          // supaya tidak perlu membidik ikon kecil di ujung kanan.
+                          <div
+                            ref={drag.setActivatorNodeRef}
+                            {...drag.attributes}
+                            {...drag.listeners}
+                            aria-label={`Geser kartu ${opportunity.customer.name}`}
+                            className="mt-1 flex min-h-14 touch-none cursor-grab select-none items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/50 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted active:cursor-grabbing"
+                          >
+                            <GripVertical aria-hidden="true" className="size-4" />
+                            Geser kartu
+                          </div>
+                        ) : null}
                       </CardContent>
                     </Card>}</DraggablePipelineCard>
                     );

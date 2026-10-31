@@ -22,6 +22,7 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { NewTemplateDialog, TemplateRowWithDialog } from "@/components/whatsapp/template-dialogs";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
@@ -224,7 +225,7 @@ async function TemplatesTableSection({ searchParams }: { searchParams: TemplateS
       </div>
 
       {templates.length ? (
-        <div className="flex min-h-112 flex-1 flex-col">
+        <TableViewport className="min-h-0 flex-1">
           <Table className="min-w-6xl" containerClassName="min-h-0 flex-1 overflow-auto">
             <TableHeader className="sticky top-0 bg-muted">
               <TableRow className="hover:bg-muted">
@@ -257,7 +258,7 @@ async function TemplatesTableSection({ searchParams }: { searchParams: TemplateS
             params={persistentParams}
             className="border-t px-4 py-3"
           />
-        </div>
+        </TableViewport>
       ) : (
         <Empty>
           <EmptyHeader>

@@ -42,6 +42,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, MASTER_DATA_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import {
@@ -52,6 +53,7 @@ import {
 } from "@/lib/crm/data";
 import { getCustomerFormOptions } from "@/lib/master-data";
 import { formatDate } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import {
   DATA_PAGE_SIZE,
@@ -294,7 +296,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
         </div>
 
         {customers.length ? (
-          <div className="flex min-h-112 flex-1 flex-col">
+          <TableViewport className="min-h-0 flex-1">
             <Table
               className={showActions ? "min-w-5xl" : "min-w-232"}
               containerClassName="min-h-0 flex-1 overflow-auto"
@@ -357,7 +359,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                         <p className="text-sm">{contacts[0] ?? "-"}</p>
                         {contacts[1] ? <p className="mt-1 text-xs text-muted-foreground">{contacts[1]}</p> : null}
                       </TableCell>
-                      <TableCell className="font-mono tabular-nums">{customer._count.opportunities}</TableCell>
+                      <TableCell className={numericCellClass(customer._count.opportunities, "font-mono tabular-nums")}>{customer._count.opportunities}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatDate(customer.opportunities[0]?.updatedAt ?? customer.updatedAt)}
                       </TableCell>
@@ -412,7 +414,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
               params={persistentParams}
               className="border-t px-4 py-3"
             />
-          </div>
+          </TableViewport>
         ) : (
           <Empty>
             <EmptyHeader>

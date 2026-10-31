@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { getCurrentActor } from "@/lib/auth/session";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 import {
@@ -277,7 +278,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
           </div>
 
           {users.length ? (
-            <div className="flex min-h-112 flex-1 flex-col">
+            <TableViewport className="min-h-0 flex-1">
               <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
                 <TableHeader className="sticky top-0 bg-muted">
                   <TableRow className="hover:bg-muted">
@@ -314,7 +315,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                 params={persistentParams}
                 className="border-t px-4 py-3"
               />
-            </div>
+            </TableViewport>
           ) : (
             <Empty>
               <EmptyHeader>

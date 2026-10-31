@@ -12,6 +12,7 @@ import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { SortableTableHead } from "@/components/sortable-table-head";
+import { TableViewport } from "@/components/table-viewport";
 import { InvoiceStatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -20,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getInvoices, type InvoiceListSort, type InvoiceListStatus, type InvoicePaymentStatus, type SortDirection } from "@/lib/crm/data";
 import { parseDocumentDateRange } from "@/lib/crm/document-list-filters";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -161,15 +163,15 @@ async function InvoicesTableSection({ searchParams }: { searchParams: SearchPara
         </div>
       </div>
     </div>
-    {items.length ? <div className="flex min-h-112 flex-1 flex-col">
+    {items.length ? <TableViewport className="min-h-0 flex-1">
       <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto">
         <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-16 text-center">No</TableHead><SortableTableHead label="No. Invoice" href={sortHref(state, "invoiceNo")} active={sort === "invoiceNo"} direction={direction} /><SortableTableHead label="Customer" href={sortHref(state, "customer")} active={sort === "customer"} direction={direction} /><SortableTableHead label="No. PO" href={sortHref(state, "purchaseOrderNo")} active={sort === "purchaseOrderNo"} direction={direction} /><SortableTableHead label="Status" href={sortHref(state, "status")} active={sort === "status"} direction={direction} /><TableHead className="min-w-32">Pembayaran</TableHead><SortableTableHead label="Total" href={sortHref(state, "total")} active={sort === "total"} direction={direction} className="text-right" /><SortableTableHead label="Tanggal dibuat" href={sortHref(state, "createdAt")} active={sort === "createdAt"} direction={direction} /><TableHead className="w-24 text-center"><span className="sr-only">Aksi</span></TableHead></TableRow></TableHeader>
         <TableBody>{items.map((item, index) => <InvoiceDetail key={item.id} id={item.id}>
-          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono">{item.invoiceNo}</TableCell><TableCell>{item.snapshotCompanyName ?? item.snapshotCustomerName}</TableCell><TableCell className="font-mono">{item.purchaseOrder.purchaseOrderNo}</TableCell><TableCell><InvoiceStatusBadge status={item.status} /></TableCell><TableCell><InvoicePaymentBadge status={item.paymentStatus} /></TableCell><TableCell className="text-right tabular-nums">{formatCurrency(item.total)}</TableCell><TableCell>{formatDate(item.createdAt)}</TableCell><TableCell className="text-center"><div className="flex items-center justify-center"><DocumentPrintButton href={`/api/crm/invoice/${item.id}/pdf`} label={`Print ${item.invoiceNo}`} />{item.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={item.id} invoiceNo={item.invoiceNo} compact /> : null}</div></TableCell>
+          <TableCell className="text-center font-mono text-muted-foreground tabular-nums">{(page - 1) * pageSize + index + 1}</TableCell><TableCell className="font-mono">{item.invoiceNo}</TableCell><TableCell>{item.snapshotCompanyName ?? item.snapshotCustomerName}</TableCell><TableCell className="font-mono">{item.purchaseOrder.purchaseOrderNo}</TableCell><TableCell><InvoiceStatusBadge status={item.status} /></TableCell><TableCell><InvoicePaymentBadge status={item.paymentStatus} /></TableCell><TableCell className={numericCellClass(item.total, "text-right tabular-nums")}>{formatCurrency(item.total)}</TableCell><TableCell>{formatDate(item.createdAt)}</TableCell><TableCell className="text-center"><div className="flex items-center justify-center"><DocumentPrintButton href={`/api/crm/invoice/${item.id}/pdf`} label={`Print ${item.invoiceNo}`} />{item.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={item.id} invoiceNo={item.invoiceNo} compact /> : null}</div></TableCell>
         </InvoiceDetail>)}</TableBody>
       </Table>
       <DataPagination pathname="/crm/invoices" page={page} pageCount={pageCount} total={total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
-    </div> : <Empty><EmptyHeader><EmptyMedia variant="icon"><Receipt aria-hidden="true" /></EmptyMedia><EmptyTitle>{hasFilters ? "Invoice tidak ditemukan" : "Belum ada invoice"}</EmptyTitle><EmptyDescription>{hasFilters ? "Coba ubah kata kunci atau filter yang digunakan." : "Invoice yang dibuat dari purchase order akan muncul di sini."}</EmptyDescription></EmptyHeader></Empty>}
+    </TableViewport> : <Empty><EmptyHeader><EmptyMedia variant="icon"><Receipt aria-hidden="true" /></EmptyMedia><EmptyTitle>{hasFilters ? "Invoice tidak ditemukan" : "Belum ada invoice"}</EmptyTitle><EmptyDescription>{hasFilters ? "Coba ubah kata kunci atau filter yang digunakan." : "Invoice yang dibuat dari purchase order akan muncul di sini."}</EmptyDescription></EmptyHeader></Empty>}
   </section>;
 }
 

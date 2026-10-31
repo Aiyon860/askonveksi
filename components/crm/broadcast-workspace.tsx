@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileSpreadsheet, Search, Send, Upload } from "lucide-react";
 
 import { getBroadcastRecipientsAction, importBroadcastDatesAction, sendTodayFollowUpBroadcastAction } from "@/app/actions/broadcast";
+import { BroadcastMessageEditor, type MessageVariable } from "@/components/crm/broadcast-message-editor";
 import { BroadcastTable } from "@/components/crm/broadcast-table";
 import { RecipientPagination } from "@/components/recipient-pagination";
 import { SubmitButton } from "@/components/submit-button";
@@ -14,7 +15,6 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { ImagePicker } from "@/components/ui/image-picker";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Textarea } from "@/components/ui/textarea";
 import { paginate, RECIPIENT_PAGE_SIZE } from "@/lib/pagination";
 import type { CampaignRecipientOption } from "@/lib/whatsapp/campaigns";
 
@@ -27,6 +27,14 @@ type RecipientFilters = {
 };
 
 const EMPTY_FILTERS: RecipientFilters = { query: "", from: "", to: "", customerTypeId: "", productCategoryId: "" };
+
+// Variabel yang dikenal server untuk pesan Follow Up broadcast.
+const BROADCAST_VARIABLES: MessageVariable[] = [
+  { name: "customer_name", label: "Nama customer" },
+  { name: "company_name", label: "Nama perusahaan" },
+  { name: "business_name", label: "Nama bisnis" },
+  { name: "sales_pic_name", label: "Nama sales" },
+];
 
 // Formulir server action di-reset React setelah dikirim; simpan draf agar template terakhir tidak hilang.
 const MESSAGE_DRAFT_KEY = "askonveksi:follow-up-broadcast-message";
@@ -334,28 +342,20 @@ export function BroadcastWorkspace({ initial, defaultMessage }: { initial: Recip
 
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="broadcast-message">Pesan</FieldLabel>
-                <Textarea
+                <BroadcastMessageEditor
                   id="broadcast-message"
                   name="message"
                   value={message}
-                  onChange={(event) => updateMessage(event.target.value)}
-                  rows={8}
-                  maxLength={4000}
+                  onChange={updateMessage}
+                  variables={BROADCAST_VARIABLES}
                   placeholder="Kosongkan untuk memakai template Follow Up bawaan."
                 />
-                <FieldDescription>
-                  Variabel yang tersedia: {"{{customer_name}}"}, {"{{company_name}}"}, {"{{business_name}}"}, dan{" "}
-                  {"{{sales_pic_name}}"}. Template terakhir yang Anda tulis disimpan di perangkat ini.
-                </FieldDescription>
               </Field>
 
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="broadcast-image">Gambar pamflet/poster (opsional)</FieldLabel>
                 <ImagePicker id="broadcast-image" name="image" emptyLabel="Tanpa gambar" />
-                <FieldDescription>
-                  JPG, PNG, atau WebP maksimal 10 MB. Gambar dipakai untuk pengiriman ini lalu dihapus dari sistem,
-                  sehingga riwayat Kotak Masuk hanya menyimpan nama file.
-                </FieldDescription>
+                <FieldDescription>Max 10 MB.</FieldDescription>
               </Field>
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">

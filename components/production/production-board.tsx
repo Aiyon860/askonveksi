@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { AlertTriangle, CalendarClock, Clock, GripVertical, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clock, GripVertical, UserRound } from "lucide-react";
 import type { ProductionStage } from "@prisma/client";
 
 import { moveProductionOptimisticAction, updateProductionObstacleAction } from "@/app/actions/production";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -162,6 +162,11 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
   const [isMoving, startMoving] = useTransition();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
+  // Petunjuk gulir horizontal pada kanban: panah muncul hanya saat masih ada
+  // kolom di arah tersebut.
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const reducedMotion = useReducedMotion();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -176,6 +181,30 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
     const timeout = window.setTimeout(() => setRecentMove(null), 240);
     return () => window.clearTimeout(timeout);
   }, [recentMove]);
+
+  useEffect(() => {
+    const element = boardRef.current;
+    if (!element) return;
+    const update = () => {
+      const maxScroll = element.scrollWidth - element.clientWidth;
+      setCanScrollLeft(element.scrollLeft > 4);
+      setCanScrollRight(element.scrollLeft < maxScroll - 4);
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, []);
+
+  function scrollBoard(direction: -1 | 1) {
+    const element = boardRef.current;
+    if (!element) return;
+    element.scrollBy({ left: direction * Math.max(320, element.clientWidth * 0.8), behavior: "smooth" });
+  }
 
   function runMove(item: BoardItem, move: PendingMove, note?: string) {
     const formData = new FormData();
@@ -305,7 +334,7 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
         >
         {/* Saat drag, scroll-snap dimatikan: snap selalu menarik posisi scroll kembali
             dan melawan auto-scroll dnd-kit, sehingga board tidak maju dan tampak berkedip. */}
-        <div className={cn("grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3", !activeItem && "snap-x snap-proximity")} aria-label={`Kanban produksi ${PRODUCTION_BOARD_GROUP_LABEL[group]}`}>
+        <div ref={boardRef} className={cn("grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3", !activeItem && "snap-x snap-proximity")} aria-label={`Kanban produksi ${PRODUCTION_BOARD_GROUP_LABEL[group]}`}>
           {columns.map((stage) => {
             const isReturColumn = stage === RETUR_COLUMN;
             // Kolom Retur adalah rumah kartu Retur sampai Admin menyeretnya keluar;
@@ -343,7 +372,26 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
                         previewing={previewMove?.item.id === item.id}
                         savingLocked={savingMove?.id === item.id}
                       >
-                        {(drag) => <ProductionCardView item={item} overdue={overdue} canManage={canManage} action={canManage ? <Button ref={drag.setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="cursor-grab touch-none active:cursor-grabbing" aria-label={`Geser ${item.workOrderNo}`} disabled={!drag.draggable} {...drag.attributes} {...drag.listeners}><GripVertical aria-hidden="true" /></Button> : null} />}</DraggableProductionCard>
+                        {(drag) => <ProductionCardView
+                          item={item}
+                          overdue={overdue}
+                          canManage={canManage}
+                          draggable={drag.draggable}
+                          dragHandle={drag.draggable ? (
+                            // Area geser selebar kartu; tinggi sekitar seperempat
+                            // kartu agar jauh lebih mudah dibidik daripada ikon kecil.
+                            <div
+                              ref={drag.setActivatorNodeRef}
+                              {...drag.attributes}
+                              {...drag.listeners}
+                              aria-label={`Geser kartu ${item.workOrderNo}`}
+                              className="mt-1 flex min-h-14 touch-none cursor-grab select-none items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/50 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted active:cursor-grabbing"
+                            >
+                              <GripVertical aria-hidden="true" className="size-4" />
+                              Geser kartu
+                            </div>
+                          ) : null}
+                        />}</DraggableProductionCard>
                     );
                   }) : isReturColumn ? (
                     <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">Belum ada retur</EmptyTitle><EmptyDescription>Seret kartu ke sini untuk masuk Retur. Semua Work Order retur berkumpul di kolom ini sampai dipindahkan.</EmptyDescription></EmptyHeader></Empty>
@@ -356,6 +404,34 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
             );
           })}
         </div>
+        {canScrollLeft || canScrollRight ? (
+          <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-between">
+            {canScrollLeft ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Geser kanban ke kiri"
+                onClick={() => scrollBoard(-1)}
+                className="pointer-events-auto -ml-2 rounded-full border bg-background/60 opacity-80 shadow-md backdrop-blur-sm hover:bg-background/90 hover:opacity-100"
+              >
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+            ) : <span aria-hidden="true" />}
+            {canScrollRight ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Geser kanban ke kanan"
+                onClick={() => scrollBoard(1)}
+                className="pointer-events-auto -mr-2 rounded-full border bg-background/60 opacity-80 shadow-md backdrop-blur-sm hover:bg-background/90 hover:opacity-100"
+              >
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            ) : <span aria-hidden="true" />}
+          </div>
+        ) : null}
         <DragOverlay dropAnimation={reducedMotion ? null : DROP_ANIMATION}>{activeItem ? <ProductionDragPreview item={activeItem} /> : null}</DragOverlay>
         </DndContext>
       </div>
@@ -445,17 +521,16 @@ function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: 
   return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border p-2", !dragging && "snap-start", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }
 
-function ProductionCardView({ item, overdue, canManage, action }: { item: BoardItem; overdue: boolean; canManage: boolean; action?: React.ReactNode }) {
+function ProductionCardView({ item, overdue, canManage, draggable, dragHandle }: { item: BoardItem; overdue: boolean; canManage: boolean; draggable: boolean; dragHandle?: React.ReactNode }) {
   // Badge Retur menempel permanen di kartu; warna merah hanya sampai kartu masuk Selesai.
   const retur = Boolean(item.repairReason);
   const hot = retur && item.currentStage !== "SELESAI";
   // Peringatan Wajib QC: berdiri sendiri dari Retur; merah sampai kartu masuk QC lagi.
   const qcWarn = Boolean(item.qcReverted);
-  return <Card size="sm" className={cn("cursor-default", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}>
+  return <Card size="sm" className={cn(draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}>
     <CardHeader>
       <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
       <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
-      {action ? <CardAction>{action}</CardAction> : null}
     </CardHeader>
     <CardContent>
       <div className="flex flex-wrap gap-2">
@@ -483,6 +558,7 @@ function ProductionCardView({ item, overdue, canManage, action }: { item: BoardI
         </div>
       </dl>
       <ProductionObstacle item={item} canManage={canManage} />
+      {dragHandle}
     </CardContent>
   </Card>;
 }

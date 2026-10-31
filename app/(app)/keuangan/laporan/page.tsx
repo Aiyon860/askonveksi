@@ -32,7 +32,7 @@ export default async function FinanceReportPage({ searchParams }: { searchParams
       <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between"><h2 className="text-base font-medium">Detail Laporan</h2><form action="/keuangan/laporan" className="flex flex-wrap items-end gap-2 lg:justify-end"><Field className="w-full sm:w-40"><FieldLabel htmlFor="report-from">Dari tanggal</FieldLabel><Input id="report-from" name="from" type="date" defaultValue={range.from} /></Field><Field className="w-full sm:w-40"><FieldLabel htmlFor="report-to">Sampai tanggal</FieldLabel><Input id="report-to" name="to" type="date" defaultValue={range.to} /></Field><Button type="submit" variant="outline">Terapkan</Button><Button variant="secondary" render={<Link href="/keuangan/laporan" />} nativeButton={false}>Reset</Button></form></div>
       {report.groups.length ? (
         <div className="flex min-h-112 flex-1 flex-col">
-          <Table className="min-w-5xl" containerClassName="min-h-0 flex-1 overflow-auto px-4 py-3">
+          <Table className="min-w-5xl" containerClassName="min-h-0 max-h-[70svh] flex-1 overflow-auto px-4 py-3">
             <TableHeader className="sticky top-0 bg-muted">
               <TableRow className="hover:bg-muted">
                 <TableHead>Tanggal</TableHead>

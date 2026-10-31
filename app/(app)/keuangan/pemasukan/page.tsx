@@ -13,7 +13,9 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableViewport } from "@/components/table-viewport";
 import { formatCurrency, formatDate, formatPercentage } from "@/lib/crm/format";
+import { numericCellClass } from "@/lib/table-alignment";
 import { hppProjectDescription, getIncome, getProjectExpensesBySalesOrders, type ProjectExpensePrefill } from "@/lib/finance/expense";
 import { parseOptionalFinanceDateRange } from "@/lib/finance/date-range";
 import { groupProjectRows } from "@/lib/finance/project-groups";
@@ -189,7 +191,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
           <p className="self-center text-xs text-muted-foreground"><strong className="font-medium text-foreground">{data.total}</strong> invoice berbayar</p>
         </form>
       </div>
-      {data.items.length ? <div className="flex min-h-112 flex-1 flex-col">
+      {data.items.length ? <TableViewport className="min-h-0 flex-1">
         <Table className={`${PROJECT_TABLE_VARS} table-fixed`} style={{ width: PROJECT_TABLE_WIDTH }} containerClassName="min-h-0 flex-1 overflow-auto">
           <colgroup>
             {PROJECT_COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
@@ -231,12 +233,12 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
                     <div className="font-medium">{product.label}</div>
                     {product.label !== product.productName ? <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{product.productName}</div> : null}
                   </TableCell>
-                  <TableCell className="align-middle text-right font-mono tabular-nums">{product.quantity}</TableCell>
-                  {[product.kain, product.zipper, product.jahit, product.pres, product.dtfPlastisol, product.bordir, product.lainnya].map((value, index) => <TableCell key={index} className="align-middle text-right font-mono tabular-nums">{value === null || Number(value) === 0 ? "-" : formatCurrency(value)}</TableCell>)}
+                  <TableCell className={numericCellClass(product.quantity, "align-middle text-right font-mono tabular-nums")}>{product.quantity}</TableCell>
+                  {["kain", "zipper", "jahit", "pres", "dtfPlastisol", "bordir", "lainnya"].map((key) => { const value = product[key as keyof typeof product] as string | null; return <TableCell key={key} className={numericCellClass(value, "align-middle text-right font-mono tabular-nums")}>{value === null || Number(value) === 0 ? "-" : formatCurrency(value)}</TableCell>; })}
                   <TableCell className="align-middle whitespace-pre-line break-words text-xs leading-relaxed">{product.costId ? productDescription.get(product.costId) || "-" : "-"}</TableCell>
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.hpp === null || Number(item.hpp) === 0 ? "-" : formatCurrency(item.hpp)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.originalPrice)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums" title="Diskon total (termasuk pembulatan) = diskon produk + diskon order">
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.hpp, "align-middle text-right font-mono tabular-nums")}>{item.hpp === null || Number(item.hpp) === 0 ? "-" : formatCurrency(item.hpp)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.originalPrice, "align-middle text-right font-mono tabular-nums")}>{formatCurrency(item.originalPrice)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.discount, "align-middle text-right font-mono tabular-nums")} title="Diskon total (termasuk pembulatan) = diskon produk + diskon order">
                     <div>{formatCurrency(item.discount)}</div>
                     {itemDiscountValue > 0 || orderDiscountValue > 0 ? <div className="mt-1 whitespace-normal font-sans text-[11px] leading-tight text-muted-foreground">
                       {itemDiscountValue > 0 ? <div>Produk {formatCurrency(item.itemDiscount)}</div> : null}
@@ -244,13 +246,13 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
                       {hasRoundingDiscount ? <div>Pembulatan {formatCurrency(roundingDiscount)}</div> : null}
                     </div> : null}
                   </TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.tax)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{formatCurrency(item.totalInvoice)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.netProfit === null ? "-" : formatCurrency(item.netProfit)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.deposit ? formatCurrency(item.deposit) : "-"}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.dp ? formatCurrency(item.dp) : "-"}</TableCell> : null}
-                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle text-right font-mono tabular-nums">{item.settled ? formatCurrency(item.settled) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.tax, "align-middle text-right font-mono tabular-nums")}>{formatCurrency(item.tax)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.totalInvoice, "align-middle text-right font-mono tabular-nums")}>{formatCurrency(item.totalInvoice)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.netProfit, "align-middle text-right font-mono tabular-nums")}>{item.netProfit === null ? "-" : formatCurrency(item.netProfit)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.margin, "align-middle text-right font-mono tabular-nums")}>{item.margin === null ? "-" : formatPercentage(item.margin)}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.deposit, "align-middle text-right font-mono tabular-nums")}>{item.deposit ? formatCurrency(item.deposit) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.dp, "align-middle text-right font-mono tabular-nums")}>{item.dp ? formatCurrency(item.dp) : "-"}</TableCell> : null}
+                  {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className={numericCellClass(item.settled, "align-middle text-right font-mono tabular-nums")}>{item.settled ? formatCurrency(item.settled) : "-"}</TableCell> : null}
                   {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.remaining === "0" ? "Lunas" : `Sisa ${formatCurrency(item.remaining)}`}</TableCell> : null}
                   {showOrder ? <TableCell rowSpan={orderGroup.rowCount} className="align-middle">{item.costVersion !== null ? <HppCompleteSwitch salesOrderId={item.id} version={item.costVersion} checked={item.hppComplete} /> : <span className="text-muted-foreground">-</span>}</TableCell> : null}
                   <TableCell className="align-middle text-right">
@@ -266,14 +268,14 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
           <TableFooter>
             <TableRow className="border-t bg-muted hover:bg-muted">
               <TableCell colSpan={4} className="font-medium">Total</TableCell>
-              <TableCell className="text-right font-mono font-medium tabular-nums">{totalQuantity}</TableCell>
-              {numericTotals.slice(0, 7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
+              <TableCell className={numericCellClass(totalQuantity, "text-right font-mono font-medium tabular-nums")}>{totalQuantity}</TableCell>
+              {numericTotals.slice(0, 7).map((value, index) => <TableCell key={index} className={numericCellClass(value, "text-right font-mono font-medium tabular-nums")}>{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
               <TableCell />
-              {numericTotals.slice(7).map((value, index) => <TableCell key={index} className="text-right font-mono font-medium tabular-nums">{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
-              <TableCell className="text-right font-mono font-medium tabular-nums">{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell>
-              <TableCell className="text-right font-mono font-medium tabular-nums">{totalDeposit === 0 ? "-" : formatCurrency(totalDeposit)}</TableCell>
-              <TableCell className="text-right font-mono font-medium tabular-nums">{totalDp === 0 ? "-" : formatCurrency(totalDp)}</TableCell>
-              <TableCell className="text-right font-mono font-medium tabular-nums">{totalSettled === 0 ? "-" : formatCurrency(totalSettled)}</TableCell>
+              {numericTotals.slice(7).map((value, index) => <TableCell key={index} className={numericCellClass(value, "text-right font-mono font-medium tabular-nums")}>{value === 0 ? "-" : formatCurrency(value)}</TableCell>)}
+              <TableCell className={numericCellClass(totalMargin, "text-right font-mono font-medium tabular-nums")}>{totalMargin === null ? "-" : formatPercentage(totalMargin)}</TableCell>
+              <TableCell className={numericCellClass(totalDeposit, "text-right font-mono font-medium tabular-nums")}>{totalDeposit === 0 ? "-" : formatCurrency(totalDeposit)}</TableCell>
+              <TableCell className={numericCellClass(totalDp, "text-right font-mono font-medium tabular-nums")}>{totalDp === 0 ? "-" : formatCurrency(totalDp)}</TableCell>
+              <TableCell className={numericCellClass(totalSettled, "text-right font-mono font-medium tabular-nums")}>{totalSettled === 0 ? "-" : formatCurrency(totalSettled)}</TableCell>
               <TableCell />
               <TableCell />
               <TableCell />
@@ -281,7 +283,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Searc
           </TableFooter>
         </Table>
         <DataPagination pathname="/keuangan/pemasukan" page={page} pageCount={data.pageCount} total={data.total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
-      </div> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada project</EmptyTitle><EmptyDescription>Invoice dengan pembayaran aktif akan tampil di sini.</EmptyDescription></EmptyHeader></Empty>}
+      </TableViewport> : <Empty className="p-12"><EmptyHeader><EmptyMedia variant="icon"><ReceiptText aria-hidden="true" /></EmptyMedia><EmptyTitle>Belum ada project</EmptyTitle><EmptyDescription>Invoice dengan pembayaran aktif akan tampil di sini.</EmptyDescription></EmptyHeader></Empty>}
     </section>
   </>;
 }

@@ -111,7 +111,11 @@ test("G2: kanban Produksi menyembunyikan aksi saat hanya lihat", () => {
   assert.match(board, /const draggable = canManage && !isMoving/);
   assert.match(board, /if \(!canManage\) return;/);
   assert.match(board, /if \(!event\.over\) return/);
-  assert.match(board, /action=\{canManage \? <Button/);
+  // Area geser kini selebar kartu, bukan ikon kecil di ujung kanan, dan hanya
+  // muncul saat kartu memang boleh dipindahkan.
+  assert.match(board, /dragHandle=\{drag\.draggable \?/);
+  assert.match(board, /Geser kartu/);
+  assert.match(board, /min-h-14/);
   assert.match(board, /<ProductionObstacle item=\{item\} canManage=\{canManage\} \/>/);
   assert.match(board, /Hanya dapat dilihat oleh tim Produksi\./);
 });

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { numericCellClass } from "@/lib/table-alignment";
 import { Textarea } from "@/components/ui/textarea";
 import { DECORATION_METHOD_LABEL, DECORATION_METHODS, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
 import { CUSTOM_PRODUCTION_DEADLINE_VALUE, isProductionDeadlinePreset, productionDeadlineOptions } from "@/lib/crm/production-deadline";
@@ -545,7 +546,7 @@ export function PurchaseOrderForm({
                             const key = `${sleeveLength}:${size.id}`;
                             return <TableCell key={size.id} className="p-2"><input type="hidden" name={`${prefix}sizeId`} value={size.id} /><input type="hidden" name={`${prefix}sleeveLength`} value={sleeveLength} /><Input name={`${prefix}sizeQuantity`} type="number" min={0} max={10_000_000} step={1} inputMode="numeric" required value={item.matrix[key] ?? 0} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }} onChange={(event) => updateMatrixValue(item, key, event.currentTarget.value)} aria-label={`${sleeveLength === "PENDEK" ? "Pendek" : "Panjang"} ukuran ${size.name} produk ${index + 1}`} className="w-full min-w-0 text-center font-mono tabular-nums" /></TableCell>;
                           })}
-                          <TableCell className="text-right font-mono font-medium tabular-nums">{rowTotal(item, sleeveLength)}</TableCell>
+                          <TableCell className={numericCellClass(rowTotal(item, sleeveLength), "text-right font-mono font-medium tabular-nums")}>{rowTotal(item, sleeveLength)}</TableCell>
                         </TableRow>
                       ))}</TableBody>
                     </Table>

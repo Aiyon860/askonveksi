@@ -83,7 +83,7 @@ export async function nextPurchaseOrderNo(tx: TransactionClient, customer: { id:
 export async function nextSalesOrderNo(tx: TransactionClient, date = new Date()) {
   const year = date.getUTCFullYear();
   const value = await nextValue(tx, `sales-order:${year}`);
-  return `SALES-ORDER-${year}-${String(value).padStart(5, "0")}`;
+  return `SO-${year}-${String(value).padStart(5, "0")}`;
 }
 
 export async function nextWorkOrderNo(tx: TransactionClient, date = new Date()) {

@@ -13,6 +13,7 @@ import { ExportButton } from "@/components/export/export-button";
 import { PageHeader } from "@/components/page-header";
 import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { SortableTableHead } from "@/components/sortable-table-head";
+import { TableViewport } from "@/components/table-viewport";
 import { PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -128,7 +129,7 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
         </div>
       </div>
     </div>
-    {items.length ? <div className="flex min-h-112 flex-1 flex-col">
+    {items.length ? <TableViewport className="min-h-0 flex-1">
       <Table className="min-w-7xl" containerClassName="min-h-0 flex-1 overflow-auto">
         <TableHeader className="sticky top-0 bg-muted"><TableRow className="hover:bg-muted"><TableHead className="w-16 text-center">No</TableHead><SortableTableHead label="No. PO" href={sortHref(state, "purchaseOrderNo")} active={sort === "purchaseOrderNo"} direction={direction} /><SortableTableHead label="Jenis pakaian" href={sortHref(state, "productName")} active={sort === "productName"} direction={direction} /><SortableTableHead label="Customer" href={sortHref(state, "customer")} active={sort === "customer"} direction={direction} /><SortableTableHead label="Status" href={sortHref(state, "status")} active={sort === "status"} direction={direction} /><TableHead>Deposit</TableHead><TableHead>Desain</TableHead><TableHead>Tanggal Deposit</TableHead><SortableTableHead label="Tanggal dibuat" href={sortHref(state, "createdAt")} active={sort === "createdAt"} direction={direction} /><SortableTableHead label="Deadline produksi" href={sortHref(state, "deadline")} active={sort === "deadline"} direction={direction} /><TableHead className="w-14 text-center"><span className="sr-only">Print</span></TableHead></TableRow></TableHeader>
         <TableBody>{items.map((item, index) => <PurchaseOrderDetail key={item.id} id={item.id}>
@@ -136,7 +137,7 @@ async function PurchaseOrdersTableSection({ searchParams }: { searchParams: Sear
         </PurchaseOrderDetail>)}</TableBody>
       </Table>
       <DataPagination pathname="/crm/purchase-orders" page={page} pageCount={pageCount} total={total} pageSize={pageSize} pageSizeOptions={DATA_PAGE_SIZES} params={persistent} className="border-t px-4 py-3" />
-    </div> : <Empty><EmptyHeader><EmptyMedia variant="icon"><FileText aria-hidden="true" /></EmptyMedia><EmptyTitle>{hasFilters ? "Purchase order tidak ditemukan" : "Belum ada purchase order"}</EmptyTitle><EmptyDescription>{hasFilters ? "Coba ubah kata kunci atau filter yang digunakan." : "Purchase order yang dibuat dari CRM akan muncul di sini."}</EmptyDescription></EmptyHeader></Empty>}
+    </TableViewport> : <Empty><EmptyHeader><EmptyMedia variant="icon"><FileText aria-hidden="true" /></EmptyMedia><EmptyTitle>{hasFilters ? "Purchase order tidak ditemukan" : "Belum ada purchase order"}</EmptyTitle><EmptyDescription>{hasFilters ? "Coba ubah kata kunci atau filter yang digunakan." : "Purchase order yang dibuat dari CRM akan muncul di sini."}</EmptyDescription></EmptyHeader></Empty>}
   </section>;
 }
 
