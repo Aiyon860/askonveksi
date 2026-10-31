@@ -91,6 +91,49 @@ function getLeadSourceIcon(sourceName: string) {
   return <Tag className="size-5 text-slate-400 shrink-0" />;
 }
 
+type TrendMetricKey = "revenue" | "profit" | "pcs" | "orders" | "leads";
+
+type TrendMetric = {
+  key: TrendMetricKey;
+  label: string;
+  color: string;
+  axis: "currency" | "count";
+};
+
+// Setiap metrik punya warna tetap supaya pembandingan antar metrik konsisten
+// di line chart, legenda filter, dan tooltip.
+const TREND_METRICS: TrendMetric[] = [
+  { key: "revenue", label: "Omzet", color: "#10b981", axis: "currency" },
+  { key: "profit", label: "Laba Kotor", color: "#3b82f6", axis: "currency" },
+  { key: "pcs", label: "Volume (pcs)", color: "#9333ea", axis: "count" },
+  { key: "orders", label: "Order", color: "#f59e0b", axis: "count" },
+  { key: "leads", label: "Leads", color: "#06b6d4", axis: "count" },
+];
+
+const ALL_TREND_METRICS = TREND_METRICS.map((metric) => metric.key);
+
+const TREND_METRIC_GRADIENTS: Record<TrendMetricKey, string> = {
+  revenue: "url(#colorRevenue)",
+  profit: "url(#colorProfit)",
+  pcs: "url(#colorPcs)",
+  orders: "url(#colorOrders)",
+  leads: "url(#colorLeads)",
+};
+
+function formatCompactRupiah(value: number) {
+  if (value >= 1_000_000_000) return `Rp ${(value / 1_000_000_000).toFixed(1)}M`;
+  if (value >= 1_000_000) return `Rp ${(value / 1_000_000).toFixed(0)}jt`;
+  if (value >= 1_000) return `Rp ${(value / 1_000).toFixed(0)}rb`;
+  return `Rp ${value}`;
+}
+
+function formatTrendMetricValue(key: TrendMetricKey, value: number) {
+  if (key === "revenue" || key === "profit") return formatCurrency(value);
+  if (key === "pcs") return `${value} pcs`;
+  if (key === "orders") return `${value} order`;
+  return `${value} lead`;
+}
+
 const PRESET_OPTIONS = [
   { id: "today", label: "Hari Ini" },
   { id: "yesterday", label: "Kemarin" },
@@ -113,7 +156,9 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
 
   const [customFrom, setCustomFrom] = useState(initialData.period.from || "");
   const [customTo, setCustomTo] = useState(initialData.period.to || "");
-  const [chartMetric, setChartMetric] = useState<"revenue" | "profit" | "orders" | "pcs" | "leads">("revenue");
+  // Default: semua metrik tampil bersamaan agar Owner langsung melihat
+  // perbandingan; klik lencana untuk mengisolasi satu metrik.
+  const [selectedTrendMetrics, setSelectedTrendMetrics] = useState<TrendMetricKey[]>(ALL_TREND_METRICS);
   const [productSearch, setProductSearch] = useState("");
   const [showInsightsDetail, setShowInsightsDetail] = useState(false);
   const [activeTab, setActiveTab] = useState<"products" | "channels" | "sales" | "customers" | "operations">("products");
@@ -192,6 +237,29 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
   }, [activeData.products, productSearch]);
 
   const hasActiveFilters = Boolean(activeData.filters.sourceId || activeData.filters.categoryId);
+
+  const selectedTrendMetricSet = useMemo(
+    () => new Set<TrendMetricKey>(selectedTrendMetrics),
+    [selectedTrendMetrics],
+  );
+  const visibleTrendMetrics = TREND_METRICS.filter((metric) => selectedTrendMetricSet.has(metric.key));
+  const showCurrencyAxis = visibleTrendMetrics.some((metric) => metric.axis === "currency");
+  const showCountAxis = visibleTrendMetrics.some((metric) => metric.axis === "count");
+  const isSingleTrendMetric = visibleTrendMetrics.length === 1;
+
+  function toggleTrendMetric(key: TrendMetricKey) {
+    setSelectedTrendMetrics((prev) => {
+      // Saat semua metrik aktif, klik satu metrik = isolasi metrik tersebut.
+      if (prev.length === TREND_METRICS.length) return [key];
+      if (prev.includes(key)) {
+        // Minimal satu metrik harus tetap tampil.
+        return prev.length === 1 ? prev : prev.filter((item) => item !== key);
+      }
+      return TREND_METRICS.filter(
+        (metric) => prev.includes(metric.key) || metric.key === key,
+      ).map((metric) => metric.key);
+    });
+  }
 
   // Split funnel into Phase 1 (Top 4 stages) and Phase 2 (Bottom 4 stages)
   const funnelPhase1 = activeData.funnel.slice(0, 4);
@@ -747,73 +815,63 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-xl neu-inset p-1.5 shrink-0 overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-1.5 rounded-xl neu-inset p-1.5 shrink-0">
             <button
               type="button"
-              onClick={() => setChartMetric("revenue")}
+              onClick={() => setSelectedTrendMetrics(ALL_TREND_METRICS)}
+              aria-pressed={visibleTrendMetrics.length === TREND_METRICS.length}
               className={cn(
                 "rounded-lg px-3.5 py-1.5 text-base font-semibold transition",
-                chartMetric === "revenue"
+                visibleTrendMetrics.length === TREND_METRICS.length
                   ? "neu-button-primary text-white shadow-xs"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               )}
             >
-              Omzet
+              Semua
             </button>
-            <button
-              type="button"
-              onClick={() => setChartMetric("profit")}
-              className={cn(
-                "rounded-lg px-3.5 py-1.5 text-base font-semibold transition",
-                chartMetric === "profit"
-                  ? "neu-button-primary text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              Laba Kotor
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartMetric("pcs")}
-              className={cn(
-                "rounded-lg px-3.5 py-1.5 text-base font-semibold transition",
-                chartMetric === "pcs"
-                  ? "neu-button-primary text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              Pcs
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartMetric("orders")}
-              className={cn(
-                "rounded-lg px-3.5 py-1.5 text-base font-semibold transition",
-                chartMetric === "orders"
-                  ? "neu-button-primary text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              Order
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartMetric("leads")}
-              className={cn(
-                "rounded-lg px-3.5 py-1.5 text-base font-semibold transition",
-                chartMetric === "leads"
-                  ? "neu-button-primary text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              Leads
-            </button>
+            {TREND_METRICS.map((metric) => {
+              const isActive = selectedTrendMetricSet.has(metric.key);
+              return (
+                <button
+                  key={metric.key}
+                  type="button"
+                  onClick={() => toggleTrendMetric(metric.key)}
+                  aria-pressed={isActive}
+                  title={
+                    isActive
+                      ? `Sembunyikan ${metric.label}`
+                      : `Tampilkan ${metric.label}`
+                  }
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-3 py-1.5 text-base font-semibold transition",
+                    isActive
+                      ? "bg-white shadow-xs dark:bg-slate-800"
+                      : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                  )}
+                  style={
+                    isActive
+                      ? { color: metric.color, boxShadow: `inset 0 0 0 1px ${metric.color}55` }
+                      : undefined
+                  }
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: metric.color, opacity: isActive ? 1 : 0.35 }}
+                  />
+                  {metric.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="mt-6 h-88 sm:h-96 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={activeData.trendData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+            <AreaChart
+              data={activeData.trendData}
+              margin={{ top: 10, right: showCountAxis ? 0 : 10, left: 10, bottom: 0 }}
+            >
               <defs>
                 <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
@@ -838,21 +896,29 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" strokeOpacity={0.4} vertical={false} />
               <XAxis dataKey="date" stroke="#94a3b8" fontSize={14} tickLine={false} axisLine={false} />
-              <YAxis
-                stroke="#94a3b8"
-                fontSize={14}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(val) => {
-                  if (chartMetric === "revenue" || chartMetric === "profit") {
-                    if (val >= 1_000_000_000) return `Rp ${(val / 1_000_000_000).toFixed(1)}M`;
-                    if (val >= 1_000_000) return `Rp ${(val / 1_000_000).toFixed(0)}jt`;
-                    if (val >= 1_000) return `Rp ${(val / 1_000).toFixed(0)}rb`;
-                    return `Rp ${val}`;
-                  }
-                  return `${val}`;
-                }}
-              />
+              {showCurrencyAxis && (
+                <YAxis
+                  yAxisId="currency"
+                  stroke="#94a3b8"
+                  fontSize={14}
+                  tickLine={false}
+                  axisLine={false}
+                  width={70}
+                  tickFormatter={formatCompactRupiah}
+                />
+              )}
+              {showCountAxis && (
+                <YAxis
+                  yAxisId="count"
+                  orientation="right"
+                  stroke="#94a3b8"
+                  fontSize={14}
+                  tickLine={false}
+                  axisLine={false}
+                  width={44}
+                  allowDecimals={false}
+                />
+              )}
               <Tooltip
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
@@ -862,26 +928,18 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
                         <div className="font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200/60 dark:border-white/5 pb-2">
                           {row.fullDate} ({row.date})
                         </div>
-                        <div className="flex justify-between gap-6 text-emerald-600 dark:text-emerald-400 font-bold">
-                          <span>Omzet:</span>
-                          <span className="font-mono">{formatCurrency(row.revenue)}</span>
-                        </div>
-                        <div className="flex justify-between gap-6 text-blue-600 dark:text-blue-400 font-bold">
-                          <span>Gross Profit:</span>
-                          <span className="font-mono">{formatCurrency(row.profit)}</span>
-                        </div>
-                        <div className="flex justify-between gap-6 text-purple-600 dark:text-purple-400 font-medium">
-                          <span>Volume:</span>
-                          <span className="font-mono font-bold">{row.pcs} pcs</span>
-                        </div>
-                        <div className="flex justify-between gap-6 text-amber-600 dark:text-amber-400 font-medium">
-                          <span>Sales Order:</span>
-                          <span className="font-mono font-bold">{row.orders} SO</span>
-                        </div>
-                        <div className="flex justify-between gap-6 text-cyan-600 dark:text-cyan-400 font-medium">
-                          <span>Leads Masuk:</span>
-                          <span className="font-mono font-bold">{row.leads} Leads</span>
-                        </div>
+                        {visibleTrendMetrics.map((metric) => (
+                          <div
+                            key={metric.key}
+                            className="flex justify-between gap-6 font-semibold"
+                            style={{ color: metric.color }}
+                          >
+                            <span>{metric.label}:</span>
+                            <span className="font-mono font-bold">
+                              {formatTrendMetricValue(metric.key, row[metric.key])}
+                            </span>
+                          </div>
+                        ))}
                       </div>
                     );
                   }
@@ -889,24 +947,34 @@ export function AnalyticsContentClient({ initialData }: { initialData: Executive
                 }}
               />
 
-              {chartMetric === "revenue" && (
-                <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
-              )}
-              {chartMetric === "profit" && (
-                <Area type="monotone" dataKey="profit" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorProfit)" />
-              )}
-              {chartMetric === "pcs" && (
-                <Area type="monotone" dataKey="pcs" stroke="#9333ea" strokeWidth={3} fillOpacity={1} fill="url(#colorPcs)" />
-              )}
-              {chartMetric === "orders" && (
-                <Area type="monotone" dataKey="orders" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorOrders)" />
-              )}
-              {chartMetric === "leads" && (
-                <Area type="monotone" dataKey="leads" stroke="#06b6d4" strokeWidth={3} fillOpacity={1} fill="url(#colorLeads)" />
-              )}
+              {visibleTrendMetrics.map((metric) => (
+                <Area
+                  key={metric.key}
+                  yAxisId={metric.axis}
+                  type="monotone"
+                  dataKey={metric.key}
+                  name={metric.label}
+                  stroke={metric.color}
+                  strokeWidth={isSingleTrendMetric ? 3 : 2}
+                  fill={isSingleTrendMetric ? TREND_METRIC_GRADIENTS[metric.key] : metric.color}
+                  fillOpacity={isSingleTrendMetric ? 1 : 0}
+                  dot={
+                    isSingleTrendMetric
+                      ? { r: 3, stroke: metric.color, strokeWidth: 2, fill: "#fff" }
+                      : false
+                  }
+                  activeDot={{ r: 5 }}
+                  isAnimationActive={false}
+                />
+              ))}
             </AreaChart>
           </ResponsiveContainer>
         </div>
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          Sumbu kiri: nilai rupiah (omzet &amp; laba) · sumbu kanan: jumlah (pcs, order,
+          lead). Klik lencana metrik untuk mengisolasi satu garis, atau
+          &quot;Semua&quot; untuk menampilkan seluruh perbandingan.
+        </p>
       </div>
 
       {/* =========================================================================
