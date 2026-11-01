@@ -6,7 +6,10 @@ import { readFile } from "node:fs/promises";
 const root = new URL("..", import.meta.url);
 
 test("tabel Project membekukan Tanggal, Customer, Nama order, dan Jenis order", async () => {
-  const page = await readFile(new URL("app/(app)/keuangan/pemasukan/page.tsx", root), "utf8");
+  const [page, table] = await Promise.all([
+    readFile(new URL("app/(app)/keuangan/pemasukan/page.tsx", root), "utf8"),
+    readFile(new URL("components/ui/table.tsx", root), "utf8"),
+  ]);
 
   // Empat kolom identitas memakai lebar berbasis CSS variable agar offset sticky
   // selalu sama dengan lebar kolom di depannya.
@@ -20,7 +23,13 @@ test("tabel Project membekukan Tanggal, Customer, Nama order, dan Jenis order", 
 
   // Header dan sel beku harus punya latar solid supaya isi yang bergeser tidak tembus.
   assert.match(page, /const PROJECT_STICKY_HEAD = \[\s*"sticky left-0 z-20 bg-muted"/);
-  assert.match(page, /const PROJECT_STICKY_CELL = \[\s*"sticky left-0 z-10 bg-card shadow-\[inset_0_-1px_0_var\(--border\)\] group-hover\/row:bg-highlight-surface"/);
+  assert.match(page, /const PROJECT_STICKY_CELL = \[\s*"sticky left-0 z-10 bg-card group-hover\/row:bg-highlight-surface"/);
+
+  // Garis grid kolom beku datang dari border tiap sel, bukan inset shadow:
+  // `border-separate` + border sel membuat garis ikut bergeser bersama selnya.
+  assert.match(table, /border-separate border-spacing-0/);
+  assert.match(table, /"h-10 border-b border-r border-border/);
+  assert.match(table, /"border-b border-r border-border/);
 
   // Lebar tabel = 163rem kolom biasa + empat kolom beku; bukan min-w tetap lagi.
   assert.match(page, /const PROJECT_TABLE_WIDTH = "calc\(163rem \+ var\(--project-date\) \+ var\(--project-customer\) \+ var\(--project-order\) \+ var\(--project-type\)\)"/);
@@ -38,18 +47,23 @@ test("tabel Project membekukan Tanggal, Customer, Nama order, dan Jenis order", 
 });
 
 test("di HP hanya Tanggal + Customer yang beku, di layar lebar keempatnya", async () => {
-  const page = await readFile(new URL("app/(app)/keuangan/pemasukan/page.tsx", root), "utf8");
+  const [page, table] = await Promise.all([
+    readFile(new URL("app/(app)/keuangan/pemasukan/page.tsx", root), "utf8"),
+    readFile(new URL("components/ui/table.tsx", root), "utf8"),
+  ]);
 
   // Lebar ringkas untuk layar kecil; kolom 3 dan 4 baru ikut beku mulai `lg`.
   assert.match(page, /\[--project-date:5\.5rem\] \[--project-customer:6\.5rem\]/);
   assert.match(page, /xl:\[--project-date:7rem\] xl:\[--project-customer:8rem\] xl:\[--project-order:10rem\] xl:\[--project-type:8\.5rem\]/);
   assert.match(page, /"lg:sticky lg:z-20 lg:bg-muted"/);
-  assert.match(page, /"lg:sticky lg:z-10 lg:bg-card lg:shadow-\[inset_0_-1px_0_var\(--border\)\] lg:group-hover\/row:bg-highlight-surface"/);
+  assert.match(page, /"lg:sticky lg:z-10 lg:bg-card lg:group-hover\/row:bg-highlight-surface"/);
 
   // Garis batas beku pindah dari Customer (mobile) ke Jenis order (desktop).
-  // Garis antar-baris tetap digambar di sel beku pada semua ukuran layar.
-  assert.match(page, /shadow-\[inset_-1px_0_0_var\(--border\),inset_0_-1px_0_var\(--border\)\] group-hover\/row:bg-highlight-surface lg:shadow-\[inset_0_-1px_0_var\(--border\)\]/);
-  assert.match(page, /lg:shadow-\[inset_-1px_0_0_var\(--border\),inset_0_-1px_0_var\(--border\)\] lg:group-hover\/row:bg-highlight-surface/);
+  // Garis antar-baris dan antar-kolom tetap digambar di sel beku pada semua
+  // ukuran layar lewat border sel, bukan inset shadow terpisah.
+  assert.match(table, /border-b border-r border-border/);
+  assert.doesNotMatch(page, /shadow-\[inset_-1px_0_0_var\(--border\)/);
+  assert.doesNotMatch(page, /shadow-\[inset_0_-1px_0_var\(--border\)/);
 });
 
 test("kolom Jenis busana berganti nama menjadi Jenis order di tabel dan export", async () => {
