@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Toaster } from "@/components/ui/toast";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+import { SIDEBAR_COLLAPSED, SIDEBAR_STORAGE_KEY, THEME_DARK, THEME_STORAGE_KEY } from "@/lib/ui-preferences";
 import "./globals.css";
 
 // Self-hosted agar build tidak bergantung pada jaringan ke Google Fonts
@@ -30,13 +31,19 @@ export const metadata: Metadata = {
   },
 };
 
+// Preferensi tampilan diterapkan sebelum paint supaya tidak ada kedipan tema
+// terang atau sidebar yang melebar lalu menciut. Kunci penyimpanannya sama
+// dengan yang dipakai komponen toggle (lib/ui-preferences.ts).
+const PRE_PAINT_PREFERENCES = `(function(){try{var root=document.documentElement;if(localStorage.getItem("${THEME_STORAGE_KEY}")==="${THEME_DARK}"){root.classList.add("${THEME_DARK}");}if(localStorage.getItem("${SIDEBAR_STORAGE_KEY}")==="${SIDEBAR_COLLAPSED}"){root.dataset.sidebar="${SIDEBAR_COLLAPSED}";}}catch(e){}})();`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="id" className={`h-full antialiased ${inter.variable}`}>
+    <html lang="id" className={`h-full antialiased ${inter.variable}`} suppressHydrationWarning>
       <head>
         {process.env.NEXT_PUBLIC_SUPABASE_URL ? (
           <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
         ) : null}
+        <script dangerouslySetInnerHTML={{ __html: PRE_PAINT_PREFERENCES }} />
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <span
