@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { ANALYTICS_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { resolveRequestBrand } from "@/lib/brand/request-brand";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatCurrency, formatPercentage } from "@/lib/crm/format";
 
@@ -328,6 +329,9 @@ const STAGE_LABELS: Record<string, string> = {
 export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {}): Promise<ExecutiveAnalyticsData> {
   const actor = await requireActor(ANALYTICS_ROLES);
   const prisma = getPrismaClient();
+  const brand = await resolveRequestBrand();
+  const opportunityBrand = Prisma.sql`AND o."brand" = ${brand}::"Brand"`;
+  const salesOrderBrand = Prisma.sql`AND so."brand" = ${brand}::"Brand"`;
 
   const period = parsePeriodBounds(params);
   const selectedSourceId = typeof params.sourceId === "string" ? params.sourceId : "";
@@ -434,6 +438,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       ${orderDateCondition}
       ${sourceCondition}
       ${categoryCondition}
+      ${salesOrderBrand}
     `),
     // Prev period revenue & order aggregate
     prisma.$queryRaw<Array<{
@@ -468,6 +473,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       ${prevOrderDateCondition}
       ${sourceCondition}
       ${categoryCondition}
+      ${salesOrderBrand}
     `),
     // Funnel Stage 1: Lead Baru
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -476,6 +482,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       WHERE 1=1
       ${leadDateCondition}
       ${sourceCondition}
+      ${opportunityBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Funnel Stage 2: Chat / Kontak
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -485,6 +492,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       WHERE ca.kind = 'COMMUNICATION'
       ${period.start && period.end ? Prisma.sql`AND ca."occurredAt" >= ${period.start} AND ca."occurredAt" < ${period.end}` : Prisma.empty}
       ${sourceCondition}
+      ${opportunityBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Funnel Stage 3: Follow Up
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -493,6 +501,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       WHERE o.stage IN ('FOLLOW_UP', 'NEGOSIASI', 'DEAL')
       ${leadDateCondition}
       ${sourceCondition}
+      ${opportunityBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Funnel Stage 4: Quotation / PO Draft
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -503,6 +512,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       ${period.start && period.end ? Prisma.sql`AND po."createdAt" >= ${period.start} AND po."createdAt" < ${period.end}` : Prisma.empty}
       ${sourceCondition}
       ${categoryCondition}
+      ${opportunityBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Funnel Stage 5: Negosiasi
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -511,6 +521,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       WHERE o.stage IN ('NEGOSIASI', 'DEAL')
       ${leadDateCondition}
       ${sourceCondition}
+      ${opportunityBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Funnel Stage 6: DP / Deposit
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -523,6 +534,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       ${period.start && period.end ? Prisma.sql`AND dp."paidAt" >= ${period.start} AND dp."paidAt" < ${period.end}` : Prisma.empty}
       ${sourceCondition}
       ${categoryCondition}
+      ${salesOrderBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Funnel Stage 7: Sales Order
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -534,6 +546,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       ${orderDateCondition}
       ${sourceCondition}
       ${categoryCondition}
+      ${salesOrderBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Funnel Stage 8: Lunas
     prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
@@ -546,6 +559,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       ${orderDateCondition}
       ${sourceCondition}
       ${categoryCondition}
+      ${salesOrderBrand}
     `).then((rows) => rows[0]?.count ?? 0),
     // Products with deep profitability breakdown
     prisma.$queryRaw<Array<{
@@ -589,6 +603,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       ${orderDateCondition}
       ${sourceCondition}
       ${categoryCondition}
+      ${salesOrderBrand}
       GROUP BY po."productName", cat.name
       ORDER BY COALESCE(SUM(so.total), 0) DESC, quantity DESC
       LIMIT 15
@@ -615,6 +630,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       WHERE 1=1
       ${leadDateCondition}
       ${sourceCondition}
+      ${opportunityBrand}
       GROUP BY ls.id, ls.name
       ORDER BY COALESCE(SUM(so.total), 0) DESC, "leadCount" DESC
     `),
@@ -645,6 +661,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       WHERE u.role = 'ADMIN_CUSTOMER' AND u."isActive" = true
       ${leadDateCondition}
       ${sourceCondition}
+      ${opportunityBrand}
       GROUP BY u.id, u.name
       ORDER BY revenue DESC, "leadCount" DESC, "picName" ASC
     `),
@@ -660,6 +677,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
         WHERE so.status = 'ACTIVE'
         ${orderDateCondition}
         ${sourceCondition}
+        ${salesOrderBrand}
         GROUP BY o."customerId", so."opportunityId"
       )
       SELECT
@@ -695,6 +713,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
       WHERE so.status = 'ACTIVE'
       ${orderDateCondition}
       ${sourceCondition}
+      ${salesOrderBrand}
       GROUP BY c.id, c."customerNo", c.name, c."companyName", c.city, c.whatsapp
       ORDER BY COALESCE(SUM(so.total), 0) DESC, "orderCount" DESC
       LIMIT 8
@@ -721,7 +740,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
           WHERE "needsRepair" = true
         )::int AS "returCount"
       FROM "ProductionWorkOrder"
-      WHERE status = 'ACTIVE'
+      WHERE status = 'ACTIVE' AND "brand" = ${brand}::"Brand"
     `),
     // Production Stage Distribution
     prisma.$queryRaw<Array<{
@@ -730,7 +749,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
     }>>(Prisma.sql`
       SELECT "currentStage", COUNT(*)::int AS count
       FROM "ProductionWorkOrder"
-      WHERE status = 'ACTIVE'
+      WHERE status = 'ACTIVE' AND "brand" = ${brand}::"Brand"
       GROUP BY "currentStage"
       ORDER BY count DESC
     `),
@@ -743,7 +762,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
             AND "nextActionAt" < ${new Date(new Date().setHours(23, 59, 59, 999))}
         )::int AS "dueTodayCount"
       FROM "Opportunity"
-      WHERE stage IN ('LEAD_BARU', 'FOLLOW_UP', 'NEGOSIASI')
+      WHERE stage IN ('LEAD_BARU', 'FOLLOW_UP', 'NEGOSIASI') AND "brand" = ${brand}::"Brand"
     `).then(([counts]) => [counts?.overdueCount ?? 0, counts?.dueTodayCount ?? 0] as const),
     // Trend points grouped by day or month
     prisma.$queryRaw<Array<{
@@ -791,6 +810,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
         WHERE so.status = 'ACTIVE'
         ${orderDateCondition}
         ${sourceCondition}
+        ${salesOrderBrand}
         GROUP BY 1
       ),
       leads_agg AS (
@@ -801,6 +821,7 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
         WHERE 1=1
         ${leadDateCondition}
         ${sourceCondition}
+        ${opportunityBrand}
         GROUP BY 1
       )
       SELECT
@@ -826,20 +847,22 @@ export async function getExecutiveAnalyticsData(params: AnalyticsQueryParams = {
         (
           SELECT COALESCE(SUM(pt.amount), 0)::text
           FROM "PaymentTransaction" pt
-          WHERE pt.status = 'ACTIVE'
+          INNER JOIN "DealPayment" dp ON dp.id = pt."paymentId"
+          INNER JOIN "SalesOrder" so ON so.id = dp."salesOrderId"
+          WHERE pt.status = 'ACTIVE' ${salesOrderBrand}
           ${period.start && period.end ? Prisma.sql`AND pt."paidAt" >= ${period.start} AND pt."paidAt" < ${period.end}` : Prisma.empty}
         ) AS "cashInflow",
         (
           SELECT COALESCE(SUM(dp."outstandingAmount"), 0)::text
           FROM "DealPayment" dp
           INNER JOIN "SalesOrder" so ON so.id = dp."salesOrderId"
-          WHERE so.status = 'ACTIVE' AND dp."outstandingAmount" > 0
+          WHERE so.status = 'ACTIVE' AND dp."outstandingAmount" > 0 ${salesOrderBrand}
         ) AS "outstandingAr",
         (
           SELECT COUNT(DISTINCT so.id)::int
           FROM "DealPayment" dp
           INNER JOIN "SalesOrder" so ON so.id = dp."salesOrderId"
-          WHERE so.status = 'ACTIVE' AND dp."outstandingAmount" > 0
+          WHERE so.status = 'ACTIVE' AND dp."outstandingAmount" > 0 ${salesOrderBrand}
         ) AS "unpaidOrdersCount"
     `),
   ]);

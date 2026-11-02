@@ -12,6 +12,7 @@ import {
 import { ATTENDANCE_ADMIN_ROLES, isAttendanceEmployee } from "@/lib/auth/permissions";
 import { getCurrentActor, requireActor } from "@/lib/auth/session";
 import { ATTENDANCE_STATUS_LABEL } from "@/lib/attendance/constants";
+import { forBrand } from "@/lib/brand/prisma-extension";
 import { getAttendanceSettings } from "@/lib/attendance/data";
 import {
   AttendancePhotoError,
@@ -501,36 +502,45 @@ export async function updateAttendanceSettingsAction(formData: FormData) {
     if (!startDate) throw new UserFacingError("Tanggal mulai absensi tidak valid.");
 
     const workDays = [...parsed.data.workDays].sort((left, right) => left - right);
+    // Absensi adalah modul bersama: seluruh query diarahkan eksplisit ke profil
+    // ASKONVEKSI, bukan mengandalkan brand yang sedang aktif.
     await getPrismaClient().$transaction(async (tx) => {
-      const updated = await tx.businessProfile.updateMany({
-        where: { id: "default", version: parsed.data.version },
-        data: {
-          attendanceStartDate: startDate,
-          attendanceCheckInTime: parsed.data.checkInTime,
-          attendanceLateToleranceMin: parsed.data.lateToleranceMinutes,
-          attendanceWorkDays: workDays,
-          version: { increment: 1 },
-        },
-      });
+      const profile = await tx.businessProfile.findFirstOrThrow(
+        forBrand("ASKONVEKSI", { where: { brand: "ASKONVEKSI" }, select: { id: true } }),
+      );
+      const updated = await tx.businessProfile.updateMany(
+        forBrand("ASKONVEKSI", {
+          where: { id: profile.id, version: parsed.data.version },
+          data: {
+            attendanceStartDate: startDate,
+            attendanceCheckInTime: parsed.data.checkInTime,
+            attendanceLateToleranceMin: parsed.data.lateToleranceMinutes,
+            attendanceWorkDays: workDays,
+            version: { increment: 1 },
+          },
+        }),
+      );
       if (!updated.count) {
         throw new UserFacingError("Pengaturan sudah berubah. Muat ulang halaman.");
       }
 
-      await tx.auditEvent.create({
-        data: {
-          actorId: actor.id,
-          entityType: "AttendanceSetting",
-          entityId: "default",
-          action: "ATTENDANCE_SETTINGS_UPDATED",
-          changedFields: ["attendanceStartDate", "attendanceCheckInTime", "attendanceLateToleranceMin", "attendanceWorkDays"],
-          metadata: {
-            startDate: parsed.data.startDate,
-            checkInTime: parsed.data.checkInTime,
-            lateToleranceMinutes: parsed.data.lateToleranceMinutes,
-            workDays,
+      await tx.auditEvent.create(
+        forBrand("ASKONVEKSI", {
+          data: {
+            actorId: actor.id,
+            entityType: "AttendanceSetting",
+            entityId: profile.id,
+            action: "ATTENDANCE_SETTINGS_UPDATED",
+            changedFields: ["attendanceStartDate", "attendanceCheckInTime", "attendanceLateToleranceMin", "attendanceWorkDays"],
+            metadata: {
+              startDate: parsed.data.startDate,
+              checkInTime: parsed.data.checkInTime,
+              lateToleranceMinutes: parsed.data.lateToleranceMinutes,
+              workDays,
+            },
           },
-        },
-      });
+        }),
+      );
     }, ATTENDANCE_TRANSACTION_OPTIONS);
 
     revalidateAttendanceSettings();

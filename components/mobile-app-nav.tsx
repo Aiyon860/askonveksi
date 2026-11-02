@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { logoutAction } from "@/app/actions/auth";
 import { AppNav } from "@/components/app-nav";
+import { BrandSwitcher } from "@/components/brand-switcher";
 import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,10 +26,12 @@ import { ROLE_LABEL } from "@/lib/crm/constants";
 export function MobileAppNav({
   actor,
   logoSrc = "/new-logo.webp",
+  logoName = "Askonveksi",
   logoUnoptimized = false,
 }: {
   actor: Actor;
   logoSrc?: string;
+  logoName?: string;
   logoUnoptimized?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -37,7 +40,7 @@ export function MobileAppNav({
     <header className="nav-surface sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-nav-line px-4 text-nav-ink lg:hidden">
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex h-9 items-center rounded-lg bg-white px-2 py-1 ring-1 ring-nav-line">
-          <Image src={logoSrc} alt="ASKonveksi" width={1920} height={1080} className="h-7 w-auto object-contain" priority unoptimized={logoUnoptimized} />
+          <Image src={logoSrc} alt={logoName} width={1920} height={1080} className="h-7 w-auto object-contain" priority unoptimized={logoUnoptimized} />
         </span>
       </div>
 
@@ -58,7 +61,7 @@ export function MobileAppNav({
           <SheetHeader className="flex-row items-center justify-between gap-3 border-b border-nav-line p-4">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-9 items-center rounded-lg bg-white px-2 py-1 ring-1 ring-nav-line">
-                <Image src={logoSrc} alt="ASKonveksi" width={1920} height={1080} className="h-7 w-auto object-contain" unoptimized={logoUnoptimized} />
+                <Image src={logoSrc} alt={logoName} width={1920} height={1080} className="h-7 w-auto object-contain" unoptimized={logoUnoptimized} />
               </span>
               <div className="min-w-0">
                 <SheetTitle className="text-nav-ink">Menu utama</SheetTitle>
@@ -82,6 +85,7 @@ export function MobileAppNav({
             <AppNav role={actor.role} onNavigate={() => setOpen(false)} />
           </div>
           <SheetFooter className="border-t border-nav-line p-4">
+            {actor.canSwitchBrand ? <BrandSwitcher brand={actor.brand} className="mb-3" compact /> : null}
             <div className="flex min-w-0 items-center justify-between gap-3">
               <p className="truncate text-xs text-nav-ink-muted">{actor.email}</p>
               <Badge variant="outline" className="shrink-0 border-nav-line bg-transparent text-nav-ink">{ROLE_LABEL[actor.role]}</Badge>

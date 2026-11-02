@@ -29,7 +29,7 @@ async function loadInvoiceDelivery(tx: Prisma.TransactionClient, invoiceId: stri
         opportunity: { select: { opportunityNo: true, title: true, customerId: true, salesPicId: true, salesPic: { select: { name: true } }, customer: { select: { name: true, companyName: true, whatsapp: true, archivedAt: true } } } },
       },
     }),
-    tx.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
+    tx.businessProfile.findFirst({ where: {}, select: { name: true } }),
     tx.whatsAppTemplate.findFirst({ where: { triggerType: "INVOICE_ISSUED", isActive: true }, orderBy: { updatedAt: "desc" }, select: { id: true, body: true } }),
   ]);
   if (!invoice || invoice.status !== "ISSUED") throw new UserFacingError("Hanya invoice terbit yang dapat dikirim.");
@@ -221,7 +221,7 @@ export async function enqueueManualWhatsAppMessage({
     if (templateId) {
       const [template, business] = await Promise.all([
         tx.whatsAppTemplate.findFirst({ where: { id: templateId, isActive: true, triggerType: "MANUAL" }, select: { body: true } }),
-        tx.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
+        tx.businessProfile.findFirst({ where: {}, select: { name: true } }),
       ]);
       if (!template) throw new UserFacingError("Template WhatsApp tidak tersedia.");
       renderedText = text || renderWhatsAppTemplate(template.body, {

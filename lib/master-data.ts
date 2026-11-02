@@ -137,5 +137,5 @@ export async function getInvoiceSettingPoints() {
 
 export async function getBusinessProfile() {
   await requireActor(MASTER_DATA_ROLES);
-  return getPrismaClient().businessProfile.findUnique({ where: { id: "default" } });
+  return getPrismaClient().businessProfile.findFirst({ where: {} });
 }

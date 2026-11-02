@@ -16,6 +16,9 @@ import { readAuditDiff, type AuditDiffEntry } from "@/lib/audit/labels";
 import { OPEN_STAGES } from "@/lib/crm/constants";
 import type { CustomerExcelExportRow } from "@/lib/crm/customer-excel";
 import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "@/lib/crm/numbers";
+import { allBrands, brandScopedClient } from "@/lib/brand/prisma-extension";
+import type { Brand } from "@/lib/brand/config";
+import { resolveRequestBrand } from "@/lib/brand/request-brand";
 import { activityStatusFromSchedule, CUSTOMER_ACTIVITY_LABELS } from "@/lib/crm/reminder-types";
 import { pageCountFor, sliceArgs } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
@@ -120,8 +123,8 @@ const opportunitySummarySelect = {
 } satisfies Prisma.OpportunitySelect;
 
 const getCachedPipelineData = unstable_cache(
-  async (actorRole: AppRole) => {
-    const prisma = getPrismaClient();
+  async (actorRole: AppRole, brand: Brand) => {
+    const prisma = brandScopedClient(getPrismaClient(), brand);
     const where = { customer: { archivedAt: null } } satisfies Prisma.OpportunityWhereInput;
     const [rows, total] = await Promise.all([
       prisma.opportunity.findMany({
@@ -171,31 +174,31 @@ const getCachedPipelineData = unstable_cache(
 
   return { opportunities, total, truncated: total > rows.length, actorRole };
   },
-  ["pipeline-data", "product-category-v2"],
+  ["pipeline-data", "product-category-v2", "branded"],
   { tags: ["pipeline-data"], revalidate: 30 },
 );
 
 export async function getPipelineData() {
   const actor = await requireActor(CRM_VIEW_ROLES);
-  return getCachedPipelineData(actor.role);
+  return getCachedPipelineData(actor.role, await resolveRequestBrand());
 }
 
 const getCachedCustomerOptions = unstable_cache(
-  async () => {
-    return getPrismaClient().customer.findMany({
+  async (brand: Brand) => {
+    return brandScopedClient(getPrismaClient(), brand).customer.findMany({
       where: { archivedAt: null, lifecycle: "CUSTOMER" },
       select: { id: true, customerNo: true, name: true, companyName: true, whatsapp: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 500,
     });
   },
-  ["customer-options"],
+  ["customer-options", "branded"],
   { tags: ["customer-options"], revalidate: 60 },
 );
 
 export async function getCustomerOptions() {
   await requireActor(CRM_VIEW_ROLES);
-  return getCachedCustomerOptions();
+  return getCachedCustomerOptions(await resolveRequestBrand());
 }
 
 export type CustomerSort = "customerNo" | "name" | "opportunities" | "updatedAt";
@@ -830,15 +833,16 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
 
 export async function getPurchaseOrderNoPreview(customer: { id: string; name: string; poCustomerCode: string | null }) {
   const prisma = getPrismaClient();
+  const brand = await resolveRequestBrand();
   const base = customer.poCustomerCode ?? purchaseOrderCustomerCodeBase(customer.name);
   let code = base;
   for (let suffix = 0; ; suffix += 1) {
-    const used = await prisma.customer.findUnique({ where: { poCustomerCode: code }, select: { id: true } });
+    const used = await prisma.customer.findUnique(allBrands({ where: { poCustomerCode: code }, select: { id: true } }));
     if (!used || used.id === customer.id) break;
     code = `${base}${suffix + 1}`;
   }
   const ordinal = await prisma.purchaseOrder.count({ where: { opportunity: { customerId: customer.id }, revision: 1 } }) + 1;
-  return formatPurchaseOrderNo(code, ordinal);
+  return formatPurchaseOrderNo(code, ordinal, new Date(), brand);
 }
 
 export const COMMUNICATION_PAGE_SIZE = 25;
@@ -1030,9 +1034,9 @@ function jakartaDayBounds(reference = new Date()) {
   return { start, tomorrow, dayAfterTomorrow };
 }
 
-async function countFollowUpBadge(actorId: string, actorRole: string) {
+async function countFollowUpBadge(actorId: string, actorRole: string, brand: Brand) {
   const { tomorrow } = jakartaDayBounds();
-  return getPrismaClient().opportunity.count({
+  return brandScopedClient(getPrismaClient(), brand).opportunity.count({
     where: {
       stage: { in: ["LEAD_BARU", "FOLLOW_UP", "NEGOSIASI"] },
       nextActionAt: { lt: tomorrow },
@@ -1044,9 +1048,10 @@ async function countFollowUpBadge(actorId: string, actorRole: string) {
 
 export async function getFollowUpBadgeCount() {
   const actor = await requireActor(CRM_VIEW_ROLES);
+  const brand = await resolveRequestBrand();
   const cached = unstable_cache(
-    () => countFollowUpBadge(actor.id, actor.role),
-    ["follow-up-badge", actor.id, actor.role],
+    () => countFollowUpBadge(actor.id, actor.role, brand),
+    ["follow-up-badge", actor.id, actor.role, brand],
     { tags: ["badge-counts"], revalidate: 30 },
   );
   return cached();
@@ -1284,12 +1289,13 @@ export async function getLeadSourceRevenueData(params: AnalyticsReportParams) {
   await requireActor(ANALYTICS_ROLES);
   const report = parseAnalyticsReportParams(params);
   const prisma = getPrismaClient();
+  const brand = await resolveRequestBrand();
   const leadDateCondition = report.start && report.end
-    ? Prisma.sql`WHERE o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end}`
-    : Prisma.empty;
+    ? Prisma.sql`WHERE o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end} AND o."brand" = ${brand}::"Brand"`
+    : Prisma.sql`WHERE o."brand" = ${brand}::"Brand"`;
   const orderDateCondition = report.start && report.end
-    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end}`
-    : Prisma.empty;
+    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end} AND so."brand" = ${brand}::"Brand"`
+    : Prisma.sql`AND so."brand" = ${brand}::"Brand"`;
 
   const [rows, categoryRows, customerCategoryRows, topCustomers] = await Promise.all([
     prisma.$queryRaw<LeadSourceRevenueQueryRow[]>(Prisma.sql`
@@ -1422,12 +1428,13 @@ export async function getAnalyticsOverviewData(params: AnalyticsReportParams) {
   await requireActor(ANALYTICS_ROLES);
   const report = parseAnalyticsReportParams(params);
   const prisma = getPrismaClient();
+  const brand = await resolveRequestBrand();
   const opportunityWhere = report.start && report.end ? { createdAt: { gte: report.start, lt: report.end } } : {};
   const orderWhere = report.start && report.end ? { status: "ACTIVE" as const, acceptedAt: { gte: report.start, lt: report.end } } : { status: "ACTIVE" as const };
   const activityWhere = report.start && report.end ? { occurredAt: { gte: report.start, lt: report.end } } : {};
   const orderDateCondition = report.start && report.end
-    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end}`
-    : Prisma.empty;
+    ? Prisma.sql`AND so."acceptedAt" >= ${report.start} AND so."acceptedAt" < ${report.end} AND so."brand" = ${brand}::"Brand"`
+    : Prisma.sql`AND so."brand" = ${brand}::"Brand"`;
 
   const [leadCount, chatCount, followUpCount, negotiationCount, quotationCount, dpCount, orderCount, paidOrderCount, productRows, customerRows, picRows, overdueFollowUps, dueTodayFollowUps] = await Promise.all([
     prisma.opportunity.count({ where: opportunityWhere }),
@@ -1478,6 +1485,7 @@ export async function getAnalyticsOverviewData(params: AnalyticsReportParams) {
       LEFT JOIN "SalesOrder" so ON so."opportunityId" = o.id AND so.status = 'ACTIVE' ${orderDateCondition}
       WHERE u.role = 'ADMIN_CUSTOMER' AND u."isActive" = true
       ${report.start && report.end ? Prisma.sql`AND o."createdAt" >= ${report.start} AND o."createdAt" < ${report.end}` : Prisma.empty}
+      AND o."brand" = ${brand}::"Brand"
       GROUP BY u.id, u.name
       ORDER BY revenue DESC, "leadCount" DESC, "picName" ASC
     `),
@@ -1719,6 +1727,7 @@ const getCachedPurchaseOrders = unstable_cache(
     pageSize,
     sort,
     direction,
+    brand,
   }: {
     query: string;
     status: PurchaseOrderListStatus;
@@ -1728,6 +1737,7 @@ const getCachedPurchaseOrders = unstable_cache(
     pageSize: number;
     sort: PurchaseOrderListSort;
     direction: SortDirection;
+    brand: Brand;
   }) => {
     const normalizedQuery = query.trim().slice(0, 80);
     const where = {
@@ -1742,7 +1752,7 @@ const getCachedPurchaseOrders = unstable_cache(
         ],
       } : {}),
     } satisfies Prisma.PurchaseOrderWhereInput;
-    const prisma = getPrismaClient();
+    const prisma = brandScopedClient(getPrismaClient(), brand);
     const [items, total] = await Promise.all([
       prisma.purchaseOrder.findMany({
         where,
@@ -1788,7 +1798,7 @@ const getCachedPurchaseOrders = unstable_cache(
       pageCount: pageCountFor(total, pageSize),
     };
   },
-  ["purchase-orders"],
+  ["purchase-orders", "branded"],
   { tags: ["purchase-orders"], revalidate: 30 },
 );
 
@@ -1812,7 +1822,7 @@ export async function getPurchaseOrders({
   direction: SortDirection;
 }) {
   await requireActor(CRM_VIEW_ROLES);
-  return getCachedPurchaseOrders({ query, status, start, end, page, pageSize, sort, direction });
+  return getCachedPurchaseOrders({ query, status, start, end, page, pageSize, sort, direction, brand: await resolveRequestBrand() });
 }
 
 const getCachedInvoices = unstable_cache(
@@ -1826,6 +1836,7 @@ const getCachedInvoices = unstable_cache(
     pageSize,
     sort,
     direction,
+    brand,
   }: {
     query: string;
     status: InvoiceListStatus;
@@ -1836,6 +1847,7 @@ const getCachedInvoices = unstable_cache(
     pageSize: number;
     sort: InvoiceListSort;
     direction: SortDirection;
+    brand: Brand;
   }) => {
     const normalizedQuery = query.trim().slice(0, 80);
     const where = {
@@ -1851,7 +1863,7 @@ const getCachedInvoices = unstable_cache(
         ],
       } : {}),
     } satisfies Prisma.InvoiceWhereInput;
-    const prisma = getPrismaClient();
+    const prisma = brandScopedClient(getPrismaClient(), brand);
     const [items, total] = await Promise.all([
       prisma.invoice.findMany({
         where,
@@ -1895,7 +1907,7 @@ const getCachedInvoices = unstable_cache(
       pageCount: pageCountFor(total, pageSize),
     };
   },
-  ["invoices"],
+  ["invoices", "branded"],
   { tags: ["invoices"], revalidate: 30 },
 );
 
@@ -1921,12 +1933,12 @@ export async function getInvoices({
   direction: SortDirection;
 }) {
   await requireActor(CRM_VIEW_ROLES);
-  return getCachedInvoices({ query, status, paymentStatus, start, end, page, pageSize, sort, direction });
+  return getCachedInvoices({ query, status, paymentStatus, start, end, page, pageSize, sort, direction, brand: await resolveRequestBrand() });
 }
 
 const getCachedSalesOrders = unstable_cache(
-  async ({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction }: {
-    query: string; status: SalesOrderListStatus; invoicePayment: SalesOrderInvoicePaymentFilter; woStatus: SalesOrderWoFilter; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
+  async ({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction, brand }: {
+    query: string; status: SalesOrderListStatus; invoicePayment: SalesOrderInvoicePaymentFilter; woStatus: SalesOrderWoFilter; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection; brand: Brand;
   }) => {
     const normalizedQuery = query.trim().slice(0, 80);
     const where = {
@@ -1942,7 +1954,7 @@ const getCachedSalesOrders = unstable_cache(
         { snapshotCompanyName: { contains: normalizedQuery, mode: "insensitive" as const } },
       ] } : {}),
     } satisfies Prisma.SalesOrderWhereInput;
-    const prisma = getPrismaClient();
+    const prisma = brandScopedClient(getPrismaClient(), brand);
     const [items, total] = await Promise.all([
       prisma.salesOrder.findMany({ where, select: { id: true, salesOrderNo: true, purchaseOrderNo: true, invoiceNo: true, snapshotCustomerName: true, snapshotCompanyName: true, status: true, total: true, acceptedAt: true, payment: { select: { outstandingAmount: true } }, productionWorkOrders: { select: { status: true, currentStage: true } } }, orderBy: salesOrderOrderBy(sort, direction), ...sliceArgs(page, pageSize) }),
       prisma.salesOrder.count({ where }),
@@ -1968,7 +1980,7 @@ const getCachedSalesOrders = unstable_cache(
       pageCount: pageCountFor(total, pageSize),
     };
   },
-  ["sales-orders"],
+  ["sales-orders", "branded"],
   { tags: ["sales-orders"], revalidate: 30 },
 );
 
@@ -1976,7 +1988,7 @@ export async function getSalesOrders({ query, status, invoicePayment, woStatus, 
   query: string; status: SalesOrderListStatus; invoicePayment: SalesOrderInvoicePaymentFilter; woStatus: SalesOrderWoFilter; start: Date | null; end: Date | null; page: number; pageSize: number; sort: SalesOrderListSort; direction: SortDirection;
 }) {
   await requireActor(CRM_VIEW_ROLES);
-  return getCachedSalesOrders({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction });
+  return getCachedSalesOrders({ query, status, invoicePayment, woStatus, start, end, page, pageSize, sort, direction, brand: await resolveRequestBrand() });
 }
 
 export async function getSalesOrderDocumentDetail(salesOrderId: string) {
@@ -2182,6 +2194,7 @@ export async function getUsers({
         email: true,
         name: true,
         role: true,
+        brand: true,
         isActive: true,
         createdAt: true,
         updatedAt: true,
@@ -2238,10 +2251,10 @@ function normalizeTrendYear(value: unknown) {
   return year;
 }
 
-const getCachedBusinessTrendData = (year: number) =>
+const getCachedBusinessTrendData = (year: number, brand: Brand) =>
   unstable_cache(
     async (): Promise<BusinessTrendData> => {
-      const prisma = getPrismaClient();
+      const prisma = brandScopedClient(getPrismaClient(), brand);
       const [revenueRows, completedRows, yearRows] = await Promise.all([
         prisma.$queryRaw<BusinessTrendRevenueRow[]>(Prisma.sql`
           SELECT
@@ -2253,6 +2266,7 @@ const getCachedBusinessTrendData = (year: number) =>
           INNER JOIN "SalesOrder" so ON so.id = dp."salesOrderId"
           WHERE pt."status" = 'ACTIVE'
             AND so."status" = 'ACTIVE'
+            AND so."brand" = ${brand}::"Brand"
             AND EXTRACT(YEAR FROM pt."paidAt" AT TIME ZONE 'Asia/Jakarta') = ${year}
           GROUP BY 1
         `),
@@ -2265,6 +2279,7 @@ const getCachedBusinessTrendData = (year: number) =>
           INNER JOIN "ProductionWorkOrder" w ON w."salesOrderId" = so.id
           WHERE so."status" = 'ACTIVE'
             AND w."status" = 'COMPLETED'
+            AND so."brand" = ${brand}::"Brand"
             AND dp."outstandingAmount" <= 0
             AND EXTRACT(YEAR FROM COALESCE(w."completedAt", so."acceptedAt") AT TIME ZONE 'Asia/Jakarta') = ${year}
           GROUP BY 1
@@ -2272,15 +2287,18 @@ const getCachedBusinessTrendData = (year: number) =>
         prisma.$queryRaw<BusinessTrendYearRow[]>(Prisma.sql`
           SELECT DISTINCT y.year AS year FROM (
             SELECT EXTRACT(YEAR FROM pt."paidAt" AT TIME ZONE 'Asia/Jakarta')::int AS year
-            FROM "PaymentTransaction" pt WHERE pt."status" = 'ACTIVE'
+            FROM "PaymentTransaction" pt
+            INNER JOIN "DealPayment" dp ON dp.id = pt."paymentId"
+            INNER JOIN "SalesOrder" so ON so.id = dp."salesOrderId"
+            WHERE pt."status" = 'ACTIVE' AND so."brand" = ${brand}::"Brand"
             UNION
             SELECT EXTRACT(YEAR FROM COALESCE(w."completedAt", so."acceptedAt") AT TIME ZONE 'Asia/Jakarta')::int AS year
             FROM "SalesOrder" so
             INNER JOIN "ProductionWorkOrder" w ON w."salesOrderId" = so.id
-            WHERE so."status" = 'ACTIVE' AND w."status" = 'COMPLETED'
+            WHERE so."status" = 'ACTIVE' AND w."status" = 'COMPLETED' AND so."brand" = ${brand}::"Brand"
             UNION
             SELECT EXTRACT(YEAR FROM so."acceptedAt" AT TIME ZONE 'Asia/Jakarta')::int AS year
-            FROM "SalesOrder" so WHERE so."status" = 'ACTIVE'
+            FROM "SalesOrder" so WHERE so."status" = 'ACTIVE' AND so."brand" = ${brand}::"Brand"
           ) y WHERE y.year BETWEEN 2000 AND 2100 ORDER BY y.year DESC
         `),
       ]);
@@ -2306,7 +2324,7 @@ const getCachedBusinessTrendData = (year: number) =>
 
       return { year, months, availableYears, totalRevenue, totalTransactions, totalCompletedOrders };
     },
-    ["business-trend", String(year)],
+    ["business-trend", String(year), brand],
     { tags: ["dashboard-trends"], revalidate: 60 },
   )();
 
@@ -2315,5 +2333,5 @@ export async function getBusinessTrendData(yearInput: unknown) {
   if (!hasRole(actor.role, FINANCE_ROLES)) {
     throw new Error("UNAUTHORIZED");
   }
-  return getCachedBusinessTrendData(normalizeTrendYear(yearInput));
+  return getCachedBusinessTrendData(normalizeTrendYear(yearInput), await resolveRequestBrand());
 }

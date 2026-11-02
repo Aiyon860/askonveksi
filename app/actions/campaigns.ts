@@ -22,7 +22,7 @@ export async function sendCampaignTestAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Data test campaign tidak valid.");
 
     const prisma = getPrismaClient();
-    const business = await prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } });
+    const business = await prisma.businessProfile.findFirst({ where: {}, select: { name: true } });
     const text = renderCampaignMessage(parsed.data.body, {
       customer_name: "Customer Test",
       company_name: "Perusahaan Test",

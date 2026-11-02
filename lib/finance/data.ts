@@ -5,6 +5,9 @@ import { Prisma } from "@prisma/client";
 
 import { FINANCE_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import type { Brand } from "@/lib/brand/config";
+import { brandScopedClient } from "@/lib/brand/prisma-extension";
+import { resolveRequestBrand } from "@/lib/brand/request-brand";
 import { getPrismaClient } from "@/lib/prisma";
 import { parseFinanceDateRange, parseFinanceReportMode, type FinanceReportMode } from "@/lib/finance/date-range";
 
@@ -13,8 +16,8 @@ const FINANCE_TABLE_LIMIT = 50;
 export type FinanceOverviewData = Awaited<ReturnType<typeof getCachedFinanceOverviewData>>;
 
 const getCachedFinanceOverviewData = unstable_cache(
-  async ({ mode, from, to, start, end, label }: { mode: FinanceReportMode; from: string; to: string; start: Date | null; end: Date | null; label: string }) => {
-    const prisma = getPrismaClient();
+  async ({ mode, from, to, start, end, label, brand }: { mode: FinanceReportMode; from: string; to: string; start: Date | null; end: Date | null; label: string; brand: Brand }) => {
+    const prisma = brandScopedClient(getPrismaClient(), brand);
     const paymentWhere = {
       status: "ACTIVE",
       payment: { salesOrder: { status: "ACTIVE" } },
@@ -137,7 +140,7 @@ const getCachedFinanceOverviewData = unstable_cache(
       },
     };
   },
-  ["finance-overview"],
+  ["finance-overview", "branded"],
   { tags: ["finance-overview"], revalidate: 30 },
 );
 
@@ -157,5 +160,6 @@ export async function getFinanceOverviewData(params: {
     start: mode === "range" ? range.start : null,
     end: mode === "range" ? range.end : null,
     label: range.label,
+    brand: await resolveRequestBrand(),
   });
 }

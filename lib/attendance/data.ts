@@ -1,5 +1,6 @@
 import { ATTENDANCE_ADMIN_ROLES, hasRole, isAttendanceEmployee } from "@/lib/auth/permissions";
 import { getCurrentActor, requireActor } from "@/lib/auth/session";
+import { forBrand } from "@/lib/brand/prisma-extension";
 import { getPrismaClient } from "@/lib/prisma";
 import { ALL_PAGE_SIZE, paginate, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 
@@ -29,16 +30,20 @@ function parseStatusFilter(value: string | string[] | undefined): AttendanceStat
 }
 
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {
-  const profile = await getPrismaClient().businessProfile.findUniqueOrThrow({
-    where: { id: "default" },
-    select: {
-      attendanceStartDate: true,
-      attendanceCheckInTime: true,
-      attendanceLateToleranceMin: true,
-      attendanceWorkDays: true,
-      version: true,
-    },
-  });
+  // Absensi adalah modul bersama; konfigurasinya memakai profil ASKONVEKSI
+  // sebagai sumber tunggal, bukan profil brand yang sedang aktif.
+  const profile = await getPrismaClient().businessProfile.findFirstOrThrow(
+    forBrand("ASKONVEKSI", {
+      where: { brand: "ASKONVEKSI" },
+      select: {
+        attendanceStartDate: true,
+        attendanceCheckInTime: true,
+        attendanceLateToleranceMin: true,
+        attendanceWorkDays: true,
+        version: true,
+      },
+    }),
+  );
 
   return {
     startDate: utcDateToDateKey(profile.attendanceStartDate),

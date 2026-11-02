@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client";
 
 import { nextCustomerNo, nextOpportunityNo } from "@/lib/crm/numbers";
 import { publicLeadSchema } from "@/lib/crm/validation";
+import { mergeCustomerAcrossBrands } from "@/lib/crm/customer-scope";
+import { brandScopedClient } from "@/lib/brand/prisma-extension";
 import { getPrismaClient } from "@/lib/prisma";
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -60,6 +62,13 @@ async function consumeRateLimit(key: string) {
 }
 
 export async function POST(request: Request) {
+  // Formulir publik adalah milik website ASKONVEKSI. Brand dikunci eksplisit
+  // pada client & penomoran agar tidak bergantung pada cookie yang bisa saja
+  // masih tersisa di browser pengunjung.
+  return handleLead(request);
+}
+
+async function handleLead(request: Request) {
   const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim();
   if (contentType !== "application/json") return json("Format permintaan tidak didukung.", 415);
 
@@ -86,7 +95,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return json("Periksa kembali data formulir.", 422);
   if (parsed.data.website) return json("Terima kasih. Tim Askonveksi akan menghubungi Anda.");
 
-  const prisma = getPrismaClient();
+  const prisma = brandScopedClient(getPrismaClient(), "ASKONVEKSI");
   const existing = await prisma.opportunity.findUnique({
     where: { publicSubmissionKey: parsed.data.submissionKey },
     select: { id: true },
@@ -103,19 +112,22 @@ export async function POST(request: Request) {
 
       const customer = await tx.customer.create({
         data: {
-          customerNo: await nextCustomerNo(tx),
+          customerNo: await nextCustomerNo(tx, "ASKONVEKSI"),
           name: parsed.data.name,
           whatsapp: parsed.data.whatsapp,
           city: parsed.data.city,
           customerTypeId: customerType.id,
           leadSourceId: leadSource.id,
           lifecycle: "PROSPEK",
+          ...(await mergeCustomerAcrossBrands(tx, { whatsapp: parsed.data.whatsapp }, "ASKONVEKSI") === "BOTH"
+            ? { brandScope: "BOTH" as const }
+            : {}),
         },
         select: { id: true },
       });
       await tx.opportunity.create({
         data: {
-          opportunityNo: await nextOpportunityNo(tx),
+          opportunityNo: await nextOpportunityNo(tx, "ASKONVEKSI"),
           customerId: customer.id,
           leadSourceId: leadSource.id,
           publicSubmissionKey: parsed.data.submissionKey,

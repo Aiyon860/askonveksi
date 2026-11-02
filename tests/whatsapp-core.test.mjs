@@ -45,7 +45,7 @@ test("worker memproyeksikan hanya field akun dan job yang dipakai saat memproses
   for (const field of ["id", "label", "phoneNumber", "status", "sendEnabled", "connectRequestedAt", "disconnectRequestedAt", "deleteRequestedAt", "pairingCode", "pairingCodeExpiresAt", "connectedAt", "disconnectedAt", "heartbeatAt", "lastError"]) {
     assert.match(accountData, new RegExp(`\\b${field}: true`));
   }
-  assert.match(workerSource, /whatsAppTemplate\.findMany\(\{\s*where: \{ isActive: true \},\s*select: \{ id: true, triggerType: true, body: true \}/);
+  assert.match(workerSource, /whatsAppTemplate\.findMany\(\{\s*where: \{ isActive: true \},\s*select: \{ id: true, brand: true, triggerType: true, body: true \}/);
   assert.match(workerSource, /whatsAppCampaign\.findMany\(\{[\s\S]*?select: \{[\s\S]*?recipientCursor: true[\s\S]*?imageSizeBytes: true/);
   assert.match(workerSource, /whatsAppAutomationJob\.groupBy\(\{[\s\S]*?campaignId: \{ in: running\.map\(\(campaign\) => campaign\.id\) \}/);
   assert.match(workerSource, /whatsAppCampaignRecipient\.findFirst\(\{\s*where: \{ campaignId: campaign\.id \},\s*select: \{ id: true \}/);
@@ -60,7 +60,7 @@ test("worker memproyeksikan hanya field akun dan job yang dipakai saat memproses
   }
   assert.match(processOneJob, /whatsAppAutomationJob\.findUnique\(\{\s*where: \{ id \},\s*select:/);
   assert.match(processOneJob, /whatsAppAccount\.findUnique\(\{ where: \{ id: job\.accountId \}, select:/);
-  assert.match(processOneJob, /whatsAppAccount\.findFirst\(\{ where: \{ sendEnabled: true, status: "CONNECTED" \}, select:/);
+  assert.match(processOneJob, /whatsAppAccount\.findFirst\(\{ where: \{ brand: job\.brand, sendEnabled: true, status: "CONNECTED" \}, select:/);
   assert.match(processOneJob, /whatsAppConversation\.upsert\([\s\S]*?select: \{ id: true \}/);
   assert.match(processOneJob, /whatsAppMessage\.update\(\{ where: \{ id: job\.message\.id \}, data: \{[\s\S]*?select: \{ id: true, sentById: true \}/);
   assert.match(processOneJob, /const message = await tx\.whatsAppMessage\.update\([\s\S]*?select: \{ sentById: true \}/);

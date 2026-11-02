@@ -62,7 +62,7 @@ import {
   REVERSE_DEAL_ROLES,
   hasRole,
 } from "../lib/auth/permissions.ts";
-import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCustomerCodeBase } from "../lib/crm/numbers.ts";
+import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCustomerCodeBase } from "../lib/crm/document-numbers.ts";
 
 const userDataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
 const userActionsSource = await readFile(new URL("../app/actions/users.ts", import.meta.url), "utf8");
@@ -83,8 +83,9 @@ test("kode PO customer mengikuti nama dan format Jakarta", () => {
   assert.equal(purchaseOrderCustomerCodeBase("PT Abdul Khamid"), "ABK");
   assert.equal(purchaseOrderCustomerCodeBase("Berkah Jaya Mandiri"), "BJM");
   assert.equal(purchaseOrderCustomerCodeBase("Sumber Rejeki Makmur Abadi"), "SRM");
-  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z")), "PO-BJM130926-2");
-  assert.equal(formatPurchaseOrderRevisionNo("PO-BJM130926-1-R2", 3), "PO-BJM130926-1-R3");
+  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z"), "AS"), "PO-AS-BJM130926-2");
+  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z"), "SG"), "PO-SG-BJM130926-2");
+  assert.equal(formatPurchaseOrderRevisionNo("PO-AS-BJM130926-1-R2", 3), "PO-AS-BJM130926-1-R3");
 });
 
 test("opportunity hanya menerima field peluang yang masih digunakan", () => {
@@ -253,8 +254,8 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
 test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", async () => {
   assert.equal(strongPasswordSchema.safeParse("").success, false);
   assert.equal(strongPasswordSchema.safeParse("a").success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", password: "a" }).success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", temporaryPassword: "a" }).success, false);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", brand: "ASKONVEKSI", password: "a" }).success, true);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", brand: "ASKONVEKSI", temporaryPassword: "a" }).success, false);
 
   const invalidInvoice = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -830,6 +831,7 @@ test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", ()
     name: "Budi Santoso",
     email: "budi@example.com",
     role: "ADMIN_CUSTOMER",
+    brand: "ASKONVEKSI",
     password: "",
     confirmPassword: "",
   };

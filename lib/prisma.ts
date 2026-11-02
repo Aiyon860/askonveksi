@@ -1,12 +1,16 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
+import { brandScopeExtension } from "@/lib/brand/prisma-extension";
+
+type AppPrismaClient = PrismaClient;
+
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+  prisma: AppPrismaClient | undefined;
   prismaSchemaVersion: string | undefined;
 };
 
-const PRISMA_SCHEMA_VERSION = "sales-order-product-cost";
+const PRISMA_SCHEMA_VERSION = "multi-brand";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -30,10 +34,12 @@ function createPrismaClient() {
     idleTimeoutMillis: 60_000,
     connectionTimeoutMillis: 30_000,
   });
-  return new PrismaClient({ adapter });
+  // Extension berjalan di runtime; tipe klien tetap PrismaClient agar seluruh
+  // `Prisma.TransactionClient` di data layer/actions tidak perlu diubah.
+  return new PrismaClient({ adapter }).$extends(brandScopeExtension) as unknown as PrismaClient;
 }
 
-function hasCurrentModelDelegates(client: PrismaClient) {
+function hasCurrentModelDelegates(client: AppPrismaClient) {
   const delegates = client as unknown as Record<string, { findMany?: unknown } | undefined>;
   return ["garmentSize", "businessProfile", "paymentMethod", "paymentTransaction", "designTask", "designRevision", "whatsAppCampaign", "expense", "invoiceItemAddon", "invoiceAddon", "invoiceSettingPoint", "attendance", "attendanceHoliday", "salesOrderProductCost"].every(
     (model) => typeof delegates[model]?.findMany === "function",

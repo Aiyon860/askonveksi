@@ -1,3 +1,5 @@
+import { isBrand, DEFAULT_BRAND } from "@/lib/brand/config";
+import { forBrand } from "@/lib/brand/prisma-extension";
 import { getPrismaClient } from "@/lib/prisma";
 import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
 
@@ -20,12 +22,18 @@ function contentTypeFor(path: string): string | null {
   return null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const profile = await getPrismaClient().businessProfile.findUnique({
-      where: { id: "default" },
-      select: { logoPath: true },
-    });
+    const requested = new URL(request.url).searchParams.get("brand");
+    const brand = isBrand(requested) ? requested : DEFAULT_BRAND;
+    // Endpoint publik tidak punya sesi; brand dibaca dari query yang sudah
+    // divalidasi, bukan dari cookie yang bisa diubah bebas.
+    const profile = await getPrismaClient().businessProfile.findFirst(
+      forBrand(brand, {
+        where: { brand },
+        select: { logoPath: true },
+      }),
+    );
     const logoPath = profile?.logoPath;
     const contentType = logoPath ? contentTypeFor(logoPath) : null;
     if (!logoPath || !contentType || !LOGO_PATH_PATTERN.test(logoPath)) {

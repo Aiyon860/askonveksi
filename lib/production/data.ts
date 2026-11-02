@@ -5,6 +5,9 @@ import type { Prisma } from "@prisma/client";
 
 import { PRODUCTION_VIEW_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import type { Brand } from "@/lib/brand/config";
+import { brandScopedClient } from "@/lib/brand/prisma-extension";
+import { resolveRequestBrand } from "@/lib/brand/request-brand";
 import { getActiveProductCategories } from "@/lib/master-data";
 import {
   EMPTY_PRODUCTION_BOARD_FILTERS,
@@ -45,9 +48,11 @@ export async function getProductionPicOptions(input: {
   selectedPicId?: string | null;
 }) {
   const scope = { group: input.group, productCategoryId: input.productCategoryId ?? null };
+  const brand = await resolveRequestBrand();
   const options = await unstable_cache(
     async () => {
-      const steps = await getPrismaClient().productionStep.findMany({
+      const prisma = brandScopedClient(getPrismaClient(), brand);
+      const steps = await prisma.productionStep.findMany({
         where: { status: "ACTIVE", assigneeId: { not: null }, workOrder: productionBoardWhere(scope) },
         select: { assigneeId: true, assignee: { select: { id: true, name: true } } },
         distinct: ["assigneeId"],
@@ -58,7 +63,7 @@ export async function getProductionPicOptions(input: {
         .flatMap((step) => (step.assignee ? [step.assignee] : []))
         .sort((a, b) => a.name.localeCompare(b.name, "id-ID") || a.id.localeCompare(b.id));
     },
-    ["production-board-pic", scope.group, scope.productCategoryId ?? ""],
+    ["production-board-pic", scope.group, scope.productCategoryId ?? "", brand],
     { revalidate: 30, tags: ["production-board"] },
   )();
 
@@ -79,10 +84,10 @@ export async function getProductionPicOptions(input: {
 // Cache 30s per grup + kategori agar tiap render/SWR tak RTT Sydney. Actor diambil di luar cache agar tak bocor antar user.
 // Tanggal wajib diserialisasi DI DALAM callback: unstable_cache menyimpan hasil sebagai JSON,
 // sehingga cache hit mengembalikan string, bukan Date.
-const getCachedBoardRows = (filter: BoardWhere) =>
+const getCachedBoardRows = (filter: BoardWhere, brand: Brand) =>
   unstable_cache(
     async () => {
-      const prisma = getPrismaClient();
+      const prisma = brandScopedClient(getPrismaClient(), brand);
       const where = productionBoardWhere(filter);
       const [rows, total] = await Promise.all([
         prisma.productionWorkOrder.findMany({
@@ -134,7 +139,7 @@ const getCachedBoardRows = (filter: BoardWhere) =>
         })),
       };
     },
-    productionBoardCacheKey(filter),
+    [...productionBoardCacheKey(filter), brand],
     { revalidate: 30, tags: ["production-board"] },
   )();
 
@@ -145,7 +150,7 @@ export async function getProductionBoard(input: ProductionBoardFilter) {
     filters: input.filters ?? EMPTY_PRODUCTION_BOARD_FILTERS,
   };
   const actor = await requireActor(PRODUCTION_VIEW_ROLES);
-  const { rows, total } = await getCachedBoardRows(filter);
+  const { rows, total } = await getCachedBoardRows(filter, await resolveRequestBrand());
 
   return {
     items: rows,

@@ -14,7 +14,21 @@ function nextWithPathname(request: NextRequest) {
   return NextResponse.next({ request: { headers } });
 }
 
+/**
+ * Path dan auth user id diteruskan ke Server Component lewat header.
+ * `x-user-id` dipakai mesin scoping brand: cookie brand hanya dipercaya bila
+ * terikat ke user yang sedang login.
+ */
+function nextWithRequestContext(request: NextRequest, userId: string | null) {
+  const headers = new Headers(request.headers);
+  headers.set("x-pathname", request.nextUrl.pathname);
+  if (userId) headers.set("x-user-id", userId);
+  else headers.delete("x-user-id");
+  return NextResponse.next({ request: { headers } });
+}
+
 export default async function middleware(request: NextRequest) {
+  let responseUserId: string | null = null;
   let response = nextWithPathname(request);
   const { url, publishableKey } = getSupabasePublicConfig();
 
@@ -30,7 +44,7 @@ export default async function middleware(request: NextRequest) {
 
         // Header `x-pathname` disusun ulang dari request terbaru agar cookie
         // hasil refresh sesi tidak hilang saat response diganti.
-        response = nextWithPathname(request);
+        response = nextWithRequestContext(request, responseUserId);
 
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
@@ -39,8 +53,10 @@ export default async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getClaims();
-
+  const { data } = await supabase.auth.getClaims();
+  const claimsUserId = data?.claims?.sub;
+  responseUserId = typeof claimsUserId === "string" ? claimsUserId : null;
+  response = nextWithRequestContext(request, responseUserId);
   return response;
 }
 

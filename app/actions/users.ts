@@ -43,6 +43,7 @@ export async function createUserAction(formData: FormData) {
       name: formData.get("name"),
       email: formData.get("email"),
       role: formData.get("role"),
+      brand: formData.get("brand"),
       password: formData.get("password"),
     });
 
@@ -70,6 +71,7 @@ export async function createUserAction(formData: FormData) {
             email,
             name: parsed.data.name,
             role: parsed.data.role,
+            brand: parsed.data.brand,
             isActive: true,
           },
           select: { id: true },
@@ -81,8 +83,8 @@ export async function createUserAction(formData: FormData) {
             entityType: "AppUser",
             entityId: created.id,
             action: "USER_CREATED",
-            changedFields: ["email", "name", "role", "isActive", "password"],
-            metadata: { role: parsed.data.role },
+            changedFields: ["email", "name", "role", "brand", "isActive", "password"],
+            metadata: { role: parsed.data.role, brand: parsed.data.brand },
           },
         });
       }, USERS_TRANSACTION_OPTIONS);
@@ -106,6 +108,7 @@ export async function updateUserAction(formData: FormData) {
       name: formData.get("name"),
       email: formData.get("email"),
       role: formData.get("role"),
+      brand: formData.get("brand"),
       password: formData.get("password"),
       confirmPassword: formData.get("confirmPassword"),
     });
@@ -121,6 +124,7 @@ export async function updateUserAction(formData: FormData) {
         email: true,
         name: true,
         role: true,
+        brand: true,
         isActive: true,
         updatedAt: true,
       },
@@ -137,6 +141,7 @@ export async function updateUserAction(formData: FormData) {
       ...(target.name !== parsed.data.name ? ["name"] : []),
       ...(target.email !== email ? ["email"] : []),
       ...(target.role !== parsed.data.role ? ["role"] : []),
+      ...(target.brand !== parsed.data.brand ? ["brand"] : []),
       ...(parsed.data.password ? ["password"] : []),
     ];
     if (!changedFields.length) return flashMessagePath(returnTo, "notice", "Tidak ada perubahan pengguna.");
@@ -147,6 +152,7 @@ export async function updateUserAction(formData: FormData) {
     }
 
     const roleWillChange = target.role !== parsed.data.role;
+    const brandWillChange = target.brand !== parsed.data.brand;
     const emailWillChange = target.email !== email;
     const passwordWillChange = Boolean(parsed.data.password);
     const admin = emailWillChange || passwordWillChange ? createAdminClient() : null;
@@ -169,7 +175,7 @@ export async function updateUserAction(formData: FormData) {
 
           const updated = await tx.appUser.updateMany({
             where: { id: target.id, updatedAt: target.updatedAt },
-            data: { name: parsed.data.name, email, role: parsed.data.role },
+            data: { name: parsed.data.name, email, role: parsed.data.role, brand: parsed.data.brand },
           });
           if (updated.count !== 1) throw new UserFacingError("Data pengguna sudah berubah. Muat ulang lalu coba lagi.");
 
@@ -180,7 +186,7 @@ export async function updateUserAction(formData: FormData) {
               entityId: target.id,
               action: "USER_UPDATED",
               changedFields,
-              ...(roleWillChange ? { metadata: { previousRole: target.role, role: parsed.data.role } } : {}),
+              ...(roleWillChange || brandWillChange ? { metadata: { ...(roleWillChange ? { previousRole: target.role, role: parsed.data.role } : {}), ...(brandWillChange ? { previousBrand: target.brand, brand: parsed.data.brand } : {}) } } : {}),
             },
           });
         },

@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { ANALYTICS_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { resolveRequestBrand } from "@/lib/brand/request-brand";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatCurrency, formatPercentage } from "@/lib/crm/format";
 
@@ -246,6 +247,9 @@ export async function getLeadSourceAnalyticsData(
 ): Promise<LeadSourceAnalyticsData> {
   const actor = await requireActor(ANALYTICS_ROLES);
   const prisma = getPrismaClient();
+  const brand = await resolveRequestBrand();
+  const opportunityBrand = Prisma.sql`AND o."brand" = ${brand}::"Brand"`;
+  const salesOrderBrand = Prisma.sql`AND so."brand" = ${brand}::"Brand"`;
   const period = parsePeriodBounds(params);
 
   // Date filters
@@ -298,6 +302,7 @@ export async function getLeadSourceAnalyticsData(
         FROM "Opportunity" o
         WHERE 1=1
         ${leadDateCondition}
+        ${opportunityBrand}
         GROUP BY o."leadSourceId"
       ),
       deal_metrics AS (
@@ -316,6 +321,7 @@ export async function getLeadSourceAnalyticsData(
         ) items ON items."salesOrderId" = so.id
         WHERE so.status = 'ACTIVE'
         ${orderDateCondition}
+        ${salesOrderBrand}
         GROUP BY o."leadSourceId"
       ),
       source_list AS (
@@ -352,6 +358,7 @@ export async function getLeadSourceAnalyticsData(
         FROM "Opportunity" o
         WHERE 1=1
         ${prevLeadDateCondition}
+        ${opportunityBrand}
       ),
       prev_deals AS (
         SELECT
@@ -366,6 +373,7 @@ export async function getLeadSourceAnalyticsData(
         ) items ON items."salesOrderId" = so.id
         WHERE so.status = 'ACTIVE'
         ${prevOrderDateCondition}
+        ${salesOrderBrand}
       )
       SELECT
         (SELECT "cnt" FROM prev_leads)::int AS "totalLeads",
@@ -387,6 +395,7 @@ export async function getLeadSourceAnalyticsData(
       WHERE so.status = 'ACTIVE'
         AND so."acceptedAt" >= o."createdAt"
         ${orderDateCondition}
+        ${salesOrderBrand}
       GROUP BY o."leadSourceId"
     `),
 
@@ -409,6 +418,7 @@ export async function getLeadSourceAnalyticsData(
       LEFT JOIN "LeadSource" ls ON ls.id = o."leadSourceId"
       WHERE so.status = 'ACTIVE'
       ${orderDateCondition}
+      ${salesOrderBrand}
       GROUP BY ct.name, ls.name
       ORDER BY COALESCE(SUM(so.total), 0) DESC, COUNT(DISTINCT so.id) DESC
     `),
@@ -442,6 +452,7 @@ export async function getLeadSourceAnalyticsData(
       ) items ON items."salesOrderId" = so.id
       WHERE so.status = 'ACTIVE'
       ${orderDateCondition}
+      ${salesOrderBrand}
       GROUP BY po."garmentType", o."productName", ls.name
       ORDER BY COALESCE(SUM(items.quantity), 0) DESC, COUNT(DISTINCT so.id) DESC
     `),
@@ -465,6 +476,7 @@ export async function getLeadSourceAnalyticsData(
         LEFT JOIN "LeadSource" ls ON ls.id = o."leadSourceId"
         WHERE 1=1
         ${leadDateCondition}
+        ${opportunityBrand}
         GROUP BY 1, 2
         UNION ALL
         SELECT
@@ -478,6 +490,7 @@ export async function getLeadSourceAnalyticsData(
         LEFT JOIN "LeadSource" ls ON ls.id = o."leadSourceId"
         WHERE so.status = 'ACTIVE'
         ${orderDateCondition}
+        ${salesOrderBrand}
         GROUP BY 1, 2
       )
       SELECT
@@ -506,6 +519,7 @@ export async function getLeadSourceAnalyticsData(
       LEFT JOIN "Customer" c ON c.id = o."customerId"
       WHERE 1=1
       ${leadDateCondition}
+      ${opportunityBrand}
       GROUP BY o."leadSourceId", c.city
       ORDER BY COUNT(*) DESC
     `),

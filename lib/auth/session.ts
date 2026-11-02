@@ -1,9 +1,13 @@
 import "server-only";
 
 import type { AppRole } from "@prisma/client";
+import { cookies } from "next/headers";
 import { forbidden } from "next/navigation";
 import { cache } from "react";
 
+import { BRAND_COOKIE, canSwitchBrand, type Brand } from "@/lib/brand/config";
+import { setBrandContext } from "@/lib/brand/context";
+import { parseBrandCookie } from "@/lib/brand/cookie";
 import { getPrismaClient } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 
@@ -15,6 +19,12 @@ export type Actor = {
   email: string;
   name: string;
   role: AppRole;
+  /** Brand asal akun. Role non-switcher selalu memakai brand ini. */
+  homeBrand: Brand;
+  /** Brand yang sedang aktif (cookie untuk Owner/Keuangan/Developer). */
+  brand: Brand;
+  /** True hanya untuk OWNER, KEUANGAN, dan DEVELOPER. */
+  canSwitchBrand: boolean;
 };
 
 /** Ditolak karena role, bukan karena sesi habis. Dipetakan ke 403, bukan 500. */
@@ -27,7 +37,7 @@ export class AccessDeniedError extends Error {
   }
 }
 
-export const getCurrentActor = cache(async (): Promise<Actor | null> => {
+const resolveCurrentActor = cache(async (): Promise<Actor | null> => {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
   const authUserId = data?.claims?.sub;
@@ -38,7 +48,7 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
 
   // Gangguan sesaat ke pooler (timeout/connect) tidak boleh merobohkan halaman:
   // kontrak fungsi ini Actor | null, jadi kegagalan baca = anggap belum masuk.
-  let actor: { id: string; authUserId: string; email: string; name: string; role: AppRole; isActive: boolean } | null;
+  let actor: { id: string; authUserId: string; email: string; name: string; role: AppRole; brand: Brand; isActive: boolean } | null;
   try {
     actor = await getPrismaClient().appUser.findUnique({
       where: { authUserId },
@@ -48,6 +58,7 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
         email: true,
         name: true,
         role: true,
+        brand: true,
         isActive: true,
       },
     });
@@ -59,14 +70,40 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
     return null;
   }
 
+  const switcher = canSwitchBrand(actor.role);
+  let rememberedBrand: Brand | null = null;
+  if (switcher) {
+    try {
+      const cookieStore = await cookies();
+      rememberedBrand = parseBrandCookie(cookieStore.get(BRAND_COOKIE)?.value, actor.authUserId);
+    } catch {
+      rememberedBrand = null;
+    }
+  }
+
   return {
     id: actor.id,
     authUserId: actor.authUserId,
     email: actor.email,
     name: actor.name,
     role: actor.role,
+    homeBrand: actor.brand,
+    brand: rememberedBrand ?? actor.brand,
+    canSwitchBrand: switcher,
   };
 });
+
+/**
+ * Actor + brand efektif. Brand hasil resolusi ini menjadi sumber kebenaran
+ * untuk semua query Prisma pada request, sehingga akun non-switcher tidak
+ * pernah membaca brand lain meski cookie lamanya masih ada (mis. setelah
+ * role-nya diubah).
+ */
+export const getCurrentActor = async (): Promise<Actor | null> => {
+  const actor = await resolveCurrentActor();
+  if (actor) setBrandContext(actor.brand);
+  return actor;
+};
 
 export async function requireActor(
   allowedRoles: readonly AppRole[] = CRM_ROLES,
@@ -77,6 +114,9 @@ export async function requireActor(
     throw new AccessDeniedError();
   }
 
+  // Pastikan konteks brand sudah terpasang untuk query berikutnya di fungsi
+  // pemanggil, termasuk saat actor berasal dari cache request.
+  setBrandContext(actor.brand);
   return actor;
 }
 

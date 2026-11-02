@@ -1,11 +1,14 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { flashMessagePath, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
 import { landingPathForRole } from "@/lib/auth/landing-path";
 import { APP_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { BRAND_COOKIE, canSwitchBrand } from "@/lib/brand/config";
+import { brandCookieOptions, parseBrandCookie, serializeBrandCookie } from "@/lib/brand/cookie";
 import { firstValidationMessage, loginSchema, updatePasswordSchema } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
@@ -31,13 +34,21 @@ export async function loginAction(formData: FormData) {
 
     const profile = await getPrismaClient().appUser.findUnique({
       where: { authUserId: data.user.id },
-      select: { isActive: true, role: true },
+      select: { isActive: true, role: true, brand: true },
     });
 
     if (!profile?.isActive) {
       await supabase.auth.signOut({ scope: "local" });
       throw new UserFacingError("Akun tidak aktif atau belum terdaftar di aplikasi.");
     }
+
+    // Brand terakhir yang dipakai dipertahankan untuk Owner/Keuangan/Developer.
+    // Akun non-switcher selalu dikembalikan ke brand asalnya.
+    const cookieStore = await cookies();
+    const remembered = canSwitchBrand(profile.role)
+      ? parseBrandCookie(cookieStore.get(BRAND_COOKIE)?.value, data.user.id)
+      : null;
+    cookieStore.set(BRAND_COOKIE, serializeBrandCookie(remembered ?? profile.brand, data.user.id), brandCookieOptions());
 
     return landingPathForRole(profile.role);
   });

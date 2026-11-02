@@ -10,7 +10,7 @@ export async function GET() {
   } catch {
     return new Response("Anda harus masuk.", { status: 401 });
   }
-  const profile = await getPrismaClient().businessProfile.findUnique({ where: { id: "default" }, select: { logoPath: true } });
+  const profile = await getPrismaClient().businessProfile.findFirst({ where: {}, select: { logoPath: true } });
   if (!profile?.logoPath) return new Response("Logo tidak ditemukan.", { status: 404 });
   const { data, error } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(profile.logoPath);
   if (error || !data) return new Response("Logo tidak ditemukan.", { status: 404 });

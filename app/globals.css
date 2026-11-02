@@ -1149,3 +1149,122 @@
     transition: none;
   }
 }
+
+/* ============================================================
+   TEMA SAGA
+   Satu aplikasi, dua identitas. Saat brand aktif SAGA, token inti
+   digeser ke hijau zaitun yang tenang; palet biru/indigo Tailwind
+   dipetakan ulang agar komponen lama ikut berubah tanpa duplikasi.
+   ============================================================ */
+
+[data-brand="saga"] {
+  --primary: oklch(0.47 0.12 150);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.57 0.12 150);
+  --highlight: oklch(0.47 0.12 150);
+  --highlight-surface: oklch(0.96 0.035 150);
+  --highlight-surface-foreground: oklch(0.32 0.08 150);
+  --info: oklch(0.45 0.09 180);
+  --info-surface: oklch(0.965 0.025 180);
+  --info-surface-foreground: oklch(0.32 0.06 180);
+  --chart-1: oklch(0.55 0.13 150);
+  --chart-2: oklch(0.58 0.12 195);
+  --chart-5: oklch(0.56 0.11 130);
+  --chart-orders: oklch(0.51 0.12 150);
+  --chart-revenue: oklch(0.5 0.11 165);
+  --app-canvas: oklch(0.965 0.008 150);
+  --accent-surface: oklch(0.47 0.12 150);
+  --accent-surface-line: oklch(0.58 0.11 150);
+  --accent-chip: oklch(0.58 0.12 150);
+  --accent-ink-muted: oklch(0.9 0.03 150);
+  --sidebar-primary: oklch(0.47 0.12 150);
+
+  /* Sidebar SAGA: hijau hutan dalam, bukan navy. */
+  --nav-surface: oklch(0.27 0.05 155);
+  --nav-line: oklch(0.37 0.045 155);
+  --nav-chip: oklch(0.35 0.05 155);
+  --nav-active-ink: oklch(0.26 0.05 155);
+  --nav-tone-finance: oklch(0.84 0.13 85);
+  --nav-tone-crm: oklch(0.79 0.12 155);
+  --nav-tone-whatsapp: oklch(0.82 0.15 150);
+  --nav-tone-production: oklch(0.8 0.13 55);
+  --nav-tone-website: oklch(0.82 0.11 190);
+  --nav-tone-analytics: oklch(0.8 0.11 285);
+  --nav-tone-master: oklch(0.8 0.02 150);
+  --nav-tone-attendance: oklch(0.82 0.12 170);
+
+  /* Pemetaan palet: biru aplikasi menjadi hijau SAGA. */
+  --color-blue-50: oklch(0.975 0.018 150);
+  --color-blue-100: oklch(0.945 0.04 150);
+  --color-blue-200: oklch(0.895 0.07 150);
+  --color-blue-300: oklch(0.82 0.1 150);
+  --color-blue-400: oklch(0.72 0.13 150);
+  --color-blue-500: oklch(0.63 0.14 150);
+  --color-blue-600: oklch(0.55 0.13 150);
+  --color-blue-700: oklch(0.47 0.12 150);
+  --color-blue-800: oklch(0.4 0.1 150);
+  --color-blue-900: oklch(0.34 0.08 150);
+  --color-blue-950: oklch(0.25 0.05 150);
+
+  --color-indigo-50: oklch(0.975 0.018 155);
+  --color-indigo-100: oklch(0.945 0.04 155);
+  --color-indigo-200: oklch(0.895 0.07 155);
+  --color-indigo-300: oklch(0.82 0.1 155);
+  --color-indigo-400: oklch(0.72 0.13 155);
+  --color-indigo-500: oklch(0.63 0.14 155);
+  --color-indigo-600: oklch(0.55 0.13 155);
+  --color-indigo-700: oklch(0.47 0.12 155);
+  --color-indigo-800: oklch(0.4 0.1 155);
+  --color-indigo-900: oklch(0.34 0.08 155);
+  --color-indigo-950: oklch(0.25 0.05 155);
+}
+
+.dark [data-brand="saga"],
+[data-brand="saga"].dark {
+  --primary: oklch(0.78 0.14 150);
+  --primary-foreground: oklch(0.17 0.03 155);
+  --ring: oklch(0.68 0.13 150);
+  --highlight: oklch(0.78 0.14 150);
+  --highlight-surface: oklch(0.24 0.035 150);
+  --highlight-surface-foreground: oklch(0.87 0.07 150);
+  --info: oklch(0.78 0.1 180);
+  --info-surface: oklch(0.24 0.025 180);
+  --info-surface-foreground: oklch(0.86 0.06 180);
+  --chart-1: oklch(0.72 0.13 150);
+  --chart-2: oklch(0.74 0.1 195);
+  --chart-5: oklch(0.72 0.1 130);
+  --chart-orders: oklch(0.73 0.12 150);
+  --chart-revenue: oklch(0.72 0.11 165);
+  --app-canvas: oklch(0.16 0.012 155);
+  --accent-surface: oklch(0.38 0.08 150);
+  --accent-surface-line: oklch(0.5 0.09 150);
+  --accent-chip: oklch(0.5 0.1 150);
+  --accent-ink-muted: oklch(0.86 0.04 150);
+  --sidebar-primary: oklch(0.78 0.14 150);
+  --nav-surface: oklch(0.18 0.028 155);
+  --nav-line: oklch(0.3 0.035 155);
+  --nav-chip: oklch(0.28 0.04 155);
+  --nav-active-ink: oklch(0.17 0.03 155);
+}
+
+/* Sorotan lembut khusus SAGA agar permukaan terasa satu keluarga. */
+[data-brand="saga"] .neu-card-blue,
+[data-brand="saga"] .neu-card-indigo {
+  background: linear-gradient(145deg, oklch(0.975 0.014 150), oklch(0.95 0.024 150));
+}
+
+.dark [data-brand="saga"] .neu-card-blue,
+.dark [data-brand="saga"] .neu-card-indigo,
+[data-brand="saga"].dark .neu-card-blue,
+[data-brand="saga"].dark .neu-card-indigo {
+  background: linear-gradient(145deg, oklch(0.23 0.03 150), oklch(0.19 0.02 155));
+}
+
+/* Fokus dan tautan aksen mengikuti hijau, bukan biru bawaan browser. */
+[data-brand="saga"] ::selection {
+  background: oklch(0.82 0.09 150 / 0.55);
+}
+
+html[data-sidebar="collapsed"] .app-brand-switcher {
+  display: none;
+}

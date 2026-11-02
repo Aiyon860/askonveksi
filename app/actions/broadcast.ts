@@ -8,6 +8,7 @@ import { WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { parseBroadcastDatesWorkbook } from "@/lib/crm/broadcast-date-excel";
 import { nextCustomerNo, nextInvoiceNo, nextOpportunityNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
+import { mergeCustomerAcrossBrands } from "@/lib/crm/customer-scope";
 import { getPrismaClient } from "@/lib/prisma";
 import { recipientFilterSchema } from "@/lib/whatsapp/campaigns";
 import { removeWhatsAppMedia, uploadWhatsAppImage } from "@/lib/whatsapp/attachment";
@@ -96,7 +97,7 @@ export async function sendTodayFollowUpBroadcastAction(formData: FormData) {
         orderBy: [{ name: "asc" }, { id: "asc" }],
       }),
       getFollowUpTemplateBody(),
-      prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
+      prisma.businessProfile.findFirst({ where: {}, select: { name: true } }),
     ]);
 
     const templateBody = message || followUpTemplateBody;
@@ -263,6 +264,7 @@ export async function importBroadcastDatesAction(formData: FormData) {
           });
 
           if (!customer) {
+            const brandScope = await mergeCustomerAcrossBrands(tx, { whatsapp: row.whatsapp });
             customer = await tx.customer.create({
               data: {
                 customerNo: await nextCustomerNo(tx),
@@ -272,6 +274,7 @@ export async function importBroadcastDatesAction(formData: FormData) {
                 customerTypeId: defaultCustomerType.id,
                 salesPicId,
                 lifecycle: "CUSTOMER",
+                ...(brandScope === "BOTH" ? { brandScope } : {}),
               },
               select: { id: true, name: true, poCustomerCode: true },
             });

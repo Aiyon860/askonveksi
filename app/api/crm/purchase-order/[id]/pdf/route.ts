@@ -41,7 +41,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         designTask: { select: { revisions: { orderBy: [{ revision: "desc" }, { createdAt: "desc" }], select: { itemId: true, attachments: { select: { path: true, kind: true, originalName: true, contentType: true }, orderBy: { createdAt: "asc" } } } } } },
       },
     }),
-    prisma.businessProfile.findUnique({ where: { id: "default" } }),
+    prisma.businessProfile.findFirst({ where: {} }),
   ]);
   if (!purchaseOrder) return new Response("PO tidak ditemukan.", { status: 404 });
   // Snapshot lebih dulu; PO lama yang snapshot logonya kosong jatuh ke logo profil terkini,

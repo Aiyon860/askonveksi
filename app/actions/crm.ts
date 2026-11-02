@@ -12,6 +12,7 @@ import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/sess
 import { DECORATION_METHOD_LABEL, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, OPEN_STAGES, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
+import { mergeCustomerAcrossBrands } from "@/lib/crm/customer-scope";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
 import { designImageContentType, designImageExtensionFor, designImageRejection, type DesignImageMime } from "@/lib/design/image";
 import { calculateInvoiceLines, roundInvoiceTotal, type InvoiceAddonInput, type InvoiceDiscountType, type InvoiceOrderDiscountInput, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
@@ -848,6 +849,10 @@ export async function createCustomerAction(formData: FormData) {
             leadSourceId: resolvedLeadSourceId,
             email: parsed.data.email?.toLowerCase(),
             customerNo: await nextCustomerNo(tx),
+            ...(await mergeCustomerAcrossBrands(tx, {
+              whatsapp: parsed.data.whatsapp,
+              email: parsed.data.email,
+            }) === "BOTH" ? { brandScope: "BOTH" as const } : {}),
           },
           select: { id: true },
         });
@@ -953,8 +958,9 @@ export async function importCustomersAction(formData: FormData) {
 
           if (!current) {
             const customerNo = await nextCustomerNo(tx);
+            const brandScope = await mergeCustomerAcrossBrands(tx, { whatsapp: data.whatsapp, email: data.email });
             const created = await tx.customer.create({
-              data: { ...data, customerNo },
+              data: { ...data, customerNo, ...(brandScope === "BOTH" ? { brandScope } : {}) },
               select: { id: true },
             });
             upsertImportCustomerIndex(customerIndexes, null, { id: created.id, customerNo, ...data });
@@ -1327,6 +1333,10 @@ export async function createProspectAction(formData: FormData) {
           lifecycle: "PROSPEK",
           email: customerParsed.data.email?.toLowerCase(),
           customerNo: await nextCustomerNo(tx),
+          ...(await mergeCustomerAcrossBrands(tx, {
+            whatsapp: customerParsed.data.whatsapp,
+            email: customerParsed.data.email,
+          }) === "BOTH" ? { brandScope: "BOTH" as const } : {}),
         },
         select: { id: true, name: true, leadSourceId: true },
       });
@@ -1939,7 +1949,7 @@ export async function agreePurchaseOrderAction(formData: FormData) {
       const agreedUploadedItemIds = new Set((purchaseOrder.designTask?.revisions ?? []).map((revision) => revision.itemId));
       const agreedDesignUploaded = purchaseOrder.items.length > 0 && purchaseOrder.items.every((item) => agreedUploadedItemIds.has(item.id));
       if (!agreedDesignUploaded && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) throw new UserFacingError("Unggah desain terlebih dahulu sebelum menyepakati PO.");
-      const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
+      const business = await tx.businessProfile.findFirst({ where: {} });
 
       const agreedAt = new Date();
       const updated = await tx.purchaseOrder.updateMany({
@@ -2536,7 +2546,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
         });
         if (!purchaseOrder) throw new UserFacingError("PO Disepakati tidak ditemukan.");
         const calculated = calculateInvoiceForPurchaseOrder(purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent, parsed.data.addons);
-        const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
+        const business = await tx.businessProfile.findFirst({ where: {} });
 
         const aggregate = await tx.invoice.aggregate({ where: { opportunityId: opportunity.id }, _max: { revision: true } });
         const created = await tx.invoice.create({
@@ -2722,7 +2732,7 @@ export async function issueInvoiceAction(formData: FormData) {
       if (!invoice.pendingPayment) throw new UserFacingError("Jadwal pembayaran belum diatur. Lengkapi jadwal DP/Lunas pada draft invoice terlebih dahulu.");
 
       const issuedAt = new Date();
-      const business = await tx.businessProfile.findUnique({ where: { id: "default" } });
+      const business = await tx.businessProfile.findFirst({ where: {} });
       const updated = await tx.invoice.updateMany({
         where: { id: parsed.data.invoiceId, status: "DRAFT", version: parsed.data.version },
         data: {
@@ -3822,7 +3832,7 @@ export async function forceSendRepeatOrderReminderAction(formData: FormData) {
         where: { id: parsedCustomerId.data },
         select: { id: true, name: true, companyName: true, archivedAt: true, salesPic: { select: { name: true } } },
       }),
-      prisma.businessProfile.findUnique({ where: { id: "default" }, select: { name: true } }),
+      prisma.businessProfile.findFirst({ where: {}, select: { name: true } }),
       prisma.whatsAppTemplate.findFirst({ where: { triggerType: "REACTIVATION", isActive: true }, orderBy: { updatedAt: "desc" }, select: { body: true } }),
     ]);
     if (!customer || customer.archivedAt) throw new UserFacingError("Customer tidak tersedia.");
