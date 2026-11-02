@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clock, GripVertical, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clock, UserRound } from "lucide-react";
 import type { ProductionStage } from "@prisma/client";
 
 import { moveProductionOptimisticAction, updateProductionObstacleAction } from "@/app/actions/production";
@@ -377,19 +377,16 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
                           overdue={overdue}
                           canManage={canManage}
                           draggable={drag.draggable}
-                          dragHandle={drag.draggable ? (
-                            // Area geser selebar kartu; tinggi sekitar seperempat
-                            // kartu agar jauh lebih mudah dibidik daripada ikon kecil.
+                          dragArea={drag.draggable ? (
+                            // Area geser transparan di 1/3 atas kartu: tidak menutupi isi
+                            // mana pun, tetapi seluruh bagian atas bisa dipakai menggeser.
                             <div
                               ref={drag.setActivatorNodeRef}
                               {...drag.attributes}
                               {...drag.listeners}
                               aria-label={`Geser kartu ${item.workOrderNo}`}
-                              className="mt-1 flex min-h-14 touch-none cursor-grab select-none items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/50 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted active:cursor-grabbing"
-                            >
-                              <GripVertical aria-hidden="true" className="size-4" />
-                              Geser kartu
-                            </div>
+                              className="absolute inset-x-0 top-0 z-10 h-1/3 touch-none cursor-grab select-none bg-transparent active:cursor-grabbing"
+                            />
                           ) : null}
                         />}</DraggableProductionCard>
                     );
@@ -521,15 +518,16 @@ function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: 
   return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border p-2", !dragging && "snap-start", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }
 
-function ProductionCardView({ item, overdue, canManage, draggable, dragHandle }: { item: BoardItem; overdue: boolean; canManage: boolean; draggable: boolean; dragHandle?: React.ReactNode }) {
+function ProductionCardView({ item, overdue, canManage, draggable, dragArea }: { item: BoardItem; overdue: boolean; canManage: boolean; draggable: boolean; dragArea?: React.ReactNode }) {
   // Badge Retur menempel permanen di kartu; warna merah hanya sampai kartu masuk Selesai.
   const retur = Boolean(item.repairReason);
   const hot = retur && item.currentStage !== "SELESAI";
   // Peringatan Wajib QC: berdiri sendiri dari Retur; merah sampai kartu masuk QC lagi.
   const qcWarn = Boolean(item.qcReverted);
-  return <Card size="sm" className={cn(draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}>
+  return <Card size="sm" className={cn("relative", draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}>
+    {dragArea}
     <CardHeader>
-      <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
+      <CardTitle><Link href={`/produksi/${item.id}`} className="relative z-20 text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
       <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
     </CardHeader>
     <CardContent>
@@ -558,7 +556,6 @@ function ProductionCardView({ item, overdue, canManage, draggable, dragHandle }:
         </div>
       </dl>
       <ProductionObstacle item={item} canManage={canManage} />
-      {dragHandle}
     </CardContent>
   </Card>;
 }

@@ -610,6 +610,19 @@ test("kartu Follow Up tidak bisa dibuka: hanya Negosiasi dan seterusnya", async 
   assert.doesNotMatch(tabsSource, /\["peluang", "Peluang"\]/);
 });
 
+test("kanban Pipeline memakai area geser transparan tanpa tombol Ubah status", async () => {
+  const boardSource = await readFile(new URL("../components/crm/pipeline-board.tsx", import.meta.url), "utf8");
+  // Tombol "Ubah status" dan handle "Geser kartu" di dasar kartu dihapus.
+  assert.doesNotMatch(boardSource, /Ubah status/);
+  assert.doesNotMatch(boardSource, /DEFAULT_DESTINATION/);
+  assert.doesNotMatch(boardSource, /GripVertical/);
+  assert.doesNotMatch(boardSource, /min-h-14/);
+  // Div transparan di 1/3 atas kartu menjadi satu-satunya area geser.
+  assert.match(boardSource, /className="absolute inset-x-0 top-0 z-10 h-1\/3/);
+  // Tautan judul dinaikkan di atas area geser supaya tetap bisa diklik.
+  assert.match(boardSource, /relative z-20/);
+});
+
 test("jalur lain ke detail peluang Follow Up juga terkunci", async () => {
   const [prospectsSource, timelineSource, historiesSource, customerDetailSource, dataSource] = await Promise.all([
     readFile(new URL("../app/(app)/crm/prospek/page.tsx", import.meta.url), "utf8"),
@@ -1448,8 +1461,14 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /const usedPages = new Set<PDFPage>\(\)/);
   assert.match(pdfSource, /usedPages\.add\(page\)/);
   assert.match(pdfSource, /document\.removePage\(document\.getPages\(\)\.indexOf\(candidate\)\)/);
-  // Paragraf tidak menyisakan label sendirian di dasar halaman (penyebab halaman kosong lama).
-  assert.match(pdfSource, /const blockHeight = 16 \+ lines\.length \* 16 \+ 6;\n\s*if \(y - blockHeight < margin\) addPage\(\);/);
+  // Revisi: halaman penuh "Catatan" dihapus. Catatan desain tetap tampil di baris
+  // NOTE size chart (non-aksesori) dan di bawah angka jumlah produk (aksesori).
+  assert.doesNotMatch(pdfSource, /drawParagraph\("Catatan"/);
+  assert.doesNotMatch(pdfSource, /data\.notes/);
+  assert.match(pdfSource, /function drawAccessoryTotal\(quantity: number, label: string \| null, note: string \| null\)/);
+  assert.match(pdfSource, /drawAccessoryTotal\(quantity, .*item\.designNotes\)/);
+  assert.match(pdfSource, /drawAccessoryTotal\(totalQuantity, null, data\.designNotes\)/);
+  assert.match(pdfSource, /Baris NOTE menempel langsung di bawah kotak jumlah produk/);
   assert.match(buttonSource, /PDF Customer/);
   assert.match(buttonSource, /PDF Penjahit/);
   // Sprint 11 R3 + revisi: deadline penjahit satu baris "Deadline" (null → "-"),

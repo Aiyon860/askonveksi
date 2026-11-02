@@ -171,24 +171,6 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     y -= HEADING_BAR_HEIGHT;
   }
 
-/**
-   * Paragraf "Label: nilai". Tinggi blok dihitung lebih dulu supaya label tidak pernah
-   * tertinggal sendirian di dasar halaman (penyebab halaman kosong berikutnya).
-   */
-  function drawParagraph(label: string, value: string) {
-    const lines = wrapPdfText(safe(value), regular, MIN_FONT_SIZE, CONTENT_WIDTH);
-    const blockHeight = 16 + lines.length * 16 + 6;
-    if (y - blockHeight < margin) addPage();
-    markUsed();
-    page.drawText(`${safe(label)}:`, { x: margin, y, size: MIN_FONT_SIZE, font: bold });
-    y -= 16;
-    for (const line of lines) {
-      page.drawText(line, { x: margin, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.28, 0.28, 0.28) });
-      y -= 16;
-    }
-    y -= 6;
-  }
-
   /** Isi satu sel tabel identitas menjadi baris-baris siap gambar (dipotong sesuai lebar kolom). */
   function cellLines(cell: HeaderCell, maxWidth: number): HeaderLine[] {
     if (!cell.extraLines?.length) {
@@ -477,14 +459,30 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     }
   }
 
-  function drawAccessoryTotal(quantity: number, label: string | null) {
-    if (y < margin + 90) addPage();
+  /**
+   * Lembar aksesori hanya memuat jumlah produk. Catatan desain dicetak sebagai baris
+   * NOTE tepat di bawah angka jumlah, mengikuti gaya baris NOTE pada size chart.
+   */
+  function drawAccessoryTotal(quantity: number, label: string | null, note: string | null) {
+    // Sisakan ruang untuk bar judul, kotak jumlah, dan baris NOTE agar tidak
+    // melewati dasar halaman.
+    if (y < margin + (note ? 130 : 90)) addPage();
     markUsed();
     drawHeadingBar(label ?? "JUMLAH PRODUK");
     y -= 12;
     page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.5, borderColor: GRID });
     page.drawText(String(quantity), { x: margin + 8, y: y - TABLE_ROW_HEIGHT + 8, size: MIN_FONT_SIZE, font: bold });
-    y -= TABLE_ROW_HEIGHT + 10;
+    y -= TABLE_ROW_HEIGHT;
+    if (note) {
+      // Baris NOTE menempel langsung di bawah kotak jumlah produk.
+      y -= 10;
+      page.drawRectangle({ x: margin, y: y - SIZE_CHART_NOTE_HEIGHT, width: CONTENT_WIDTH, height: SIZE_CHART_NOTE_HEIGHT, color: NOTE_BG, borderWidth: 0.8, borderColor: BORDER });
+      page.drawText("NOTE:", { x: margin + 8, y: cellBaseline(y, SIZE_CHART_NOTE_HEIGHT), size: MIN_FONT_SIZE, font: bold });
+      const noteText = clipPdfText(safe(note), regular, MIN_FONT_SIZE, CONTENT_WIDTH - 70);
+      page.drawText(noteText, { x: margin + 62, y: cellBaseline(y, SIZE_CHART_NOTE_HEIGHT), size: MIN_FONT_SIZE, font: regular, color: rgb(0.28, 0.28, 0.28) });
+      y -= SIZE_CHART_NOTE_HEIGHT;
+    }
+    y -= 10;
   }
 
   function drawProductSheet(item: PurchaseOrderPdfItem) {
@@ -494,7 +492,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
       // Aksesori tidak punya size chart, tapi desainnya tetap menempel di lembar produknya.
       // Desain penjahit sengaja dikecualikan: dicetak di halaman penuh tersendiri setelah lembar ini.
       drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== "PENJAHIT_DESIGN"), item.name);
-      drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`);
+      drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`, item.designNotes);
       return;
     }
     const rows = data.sizes.filter((row) => row.itemId === item.id);
@@ -601,7 +599,7 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
     drawSheetHeader(null, false);
     if (isAccessory) {
       drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null);
-      drawAccessoryTotal(totalQuantity, null);
+      drawAccessoryTotal(totalQuantity, null, data.designNotes);
     } else {
       const aggregated = new Map<string, { size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>();
       for (const row of data.sizes) {
@@ -616,7 +614,8 @@ export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoByt
       page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y: y - 4, size: MIN_FONT_SIZE, font: bold });
       y -= 22;
     }
-    drawParagraph("Catatan", data.notes ?? "-");
+    // Revisi: halaman Catatan penuh dihapus. Catatan desain non-aksesori sudah tampil
+    // di baris NOTE size chart, sedangkan aksesori tampil di bawah jumlah produk.
     // Revisi: lembar penuh desain penjahit untuk PO satu produk mengikuti setelah seluruh lembar produk.
     if (data.items.length === 1) drawPenjahitDesignSheet(data.items[0]);
   }
