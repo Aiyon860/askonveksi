@@ -62,7 +62,10 @@ export function ProductionBoardSectionClient({
     {
       fallbackData: initialData,
       revalidateOnMount: false,
-      revalidateOnFocus: false,
+      // Kartu diubah juga oleh user lain (dan dari tab/perangkat lain). Tanpa revalidasi
+      // saat tab kembali aktif, papan memakai snapshot SWR sampai polling 60 detik
+      // berikutnya — terasa seperti "harus reload paksa" untuk melihat kendala terbaru.
+      revalidateOnFocus: true,
       revalidateOnReconnect: true,
       refreshInterval: 60000,
       dedupingInterval: 10000,
@@ -74,6 +77,18 @@ export function ProductionBoardSectionClient({
   useEffect(() => {
     void mutate(initialData, { revalidate: false });
   }, [initialData, mutate]);
+
+  // Kendala yang baru disimpan langsung ditulis ke cache SWR: tanpa ini teks kartu
+  // menunggu data server (cache papan 30 detik) dan bisa tampak kembali ke isi lama.
+  function applySavedObstacle(id: string, obstacle: string | null, obstacleUpdatedAt: string | null) {
+    void mutate(
+      (current) =>
+        current
+          ? { ...current, items: current.items.map((item) => (item.id === id ? { ...item, obstacle, obstacleUpdatedAt } : item)) }
+          : current,
+      { revalidate: false },
+    );
+  }
 
   const board = data ?? initialData;
   const isFiltering = hasActiveProductionBoardFilters(filters);
@@ -160,7 +175,7 @@ export function ProductionBoardSectionClient({
           </EmptyContent>
         </Empty>
       ) : (
-        <ProductionBoard group={group} items={board.items} canManage={board.canManage !== false} onRefresh={() => mutate()} />
+        <ProductionBoard group={group} items={board.items} canManage={board.canManage !== false} onRefresh={() => mutate()} onObstacleSaved={applySavedObstacle} />
       )}
     </>
   );

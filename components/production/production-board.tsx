@@ -105,7 +105,7 @@ function moveTitle(move: PendingMove, group: ProductionBoardGroup) {
   return "Perbarui tahap produksi";
 }
 
-export function ProductionBoard({ group, items, canManage, onRefresh }: { group: ProductionBoardGroup; items: BoardItem[]; canManage: boolean; onRefresh?: () => Promise<unknown> }) {
+export function ProductionBoard({ group, items, canManage, onRefresh, onObstacleSaved }: { group: ProductionBoardGroup; items: BoardItem[]; canManage: boolean; onRefresh?: () => Promise<unknown>; onObstacleSaved?: (id: string, obstacle: string | null, obstacleUpdatedAt: string | null) => void }) {
   // Satu sumber kebenaran dari server: hanya tim Produksi (DEVELOPER/OWNER/ADMIN_PO) yang boleh
   // mengubah papan — memindahkan tahap, mengedit kendala, dan menarik kartu Selesai ke Retur.
   const canReturCompleted = canManage;
@@ -377,6 +377,7 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
                           overdue={overdue}
                           canManage={canManage}
                           draggable={drag.draggable}
+                          onObstacleSaved={onObstacleSaved}
                           dragArea={drag.draggable ? (
                             // Area geser transparan di 1/3 atas kartu: tidak menutupi isi
                             // mana pun, tetapi seluruh bagian atas bisa dipakai menggeser.
@@ -455,7 +456,7 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
   );
 }
 
-function ProductionObstacle({ item, canManage }: { item: BoardItem; canManage: boolean }) {
+function ProductionObstacle({ item, canManage, onSaved }: { item: BoardItem; canManage: boolean; onSaved?: (id: string, obstacle: string | null, obstacleUpdatedAt: string | null) => void }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const obstacleValue = item.obstacle ?? "";
@@ -482,6 +483,10 @@ function ProductionObstacle({ item, canManage }: { item: BoardItem; canManage: b
       }
       setIsEditing(false);
       toast.add({ title: "Kendala disimpan", description: `${item.workOrderNo} diperbarui.`, type: "success" });
+      // Tulis hasil save ke cache papan dulu supaya teks tidak kembali ke isi lama
+      // saat data server yang masih ter-cache menyusul.
+      const saved = value.trim().slice(0, 2000);
+      onSaved?.(item.id, saved || null, saved ? new Date().toISOString() : null);
       router.refresh();
     });
   }
@@ -518,7 +523,7 @@ function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: 
   return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border p-2", !dragging && "snap-start", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }
 
-function ProductionCardView({ item, overdue, canManage, draggable, dragArea }: { item: BoardItem; overdue: boolean; canManage: boolean; draggable: boolean; dragArea?: React.ReactNode }) {
+function ProductionCardView({ item, overdue, canManage, draggable, dragArea, onObstacleSaved }: { item: BoardItem; overdue: boolean; canManage: boolean; draggable: boolean; dragArea?: React.ReactNode; onObstacleSaved?: (id: string, obstacle: string | null, obstacleUpdatedAt: string | null) => void }) {
   // Badge Retur menempel permanen di kartu; warna merah hanya sampai kartu masuk Selesai.
   const retur = Boolean(item.repairReason);
   const hot = retur && item.currentStage !== "SELESAI";
@@ -555,7 +560,7 @@ function ProductionCardView({ item, overdue, canManage, draggable, dragArea }: {
           <dd className="flex items-center gap-2"><UserRound aria-hidden="true" className="size-3.5" />{item.assignee?.name ?? "Belum ditentukan"}</dd>
         </div>
       </dl>
-      <ProductionObstacle item={item} canManage={canManage} />
+      <ProductionObstacle item={item} canManage={canManage} onSaved={onObstacleSaved} />
     </CardContent>
   </Card>;
 }

@@ -90,17 +90,17 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
           <Table className="min-w-[42rem] table-fixed">
             <colgroup>
               <col className="w-[24%]" />
-              <col className="w-[30%]" />
-              <col className="w-[10%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
+              <col className="w-[28%]" />
+              <col className="w-[8%]" />
+              <col className="w-[13%]" />
+              <col className="w-[14%]" />
+              <col className="w-[13%]" />
             </colgroup>
             <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Subtotal</TableHead></TableRow></TableHeader>
             <TableBody>
               {detail.items.map((item) => {
                 const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount) * addon.qty, 0);
-                return <TableRow key={item.id}><TableCell className="whitespace-normal font-medium">{item.productName ?? "-"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-right font-mono tabular-nums")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-right tabular-nums")}>{formatInvoiceCurrency(item.unitPrice)}</TableCell><TableCell className={numericCellClass(discountCellText(item), "text-right tabular-nums")}>{discountCellText(item)}</TableCell><TableCell className={numericCellClass(Number(item.subtotal) - legacyAddonTotal, "text-right tabular-nums")}>{formatInvoiceCurrency(Number(item.subtotal) - legacyAddonTotal)}</TableCell></TableRow>;
+                return <TableRow key={item.id}><TableCell className="whitespace-normal font-medium">{item.productName ?? "-"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-right font-mono tabular-nums")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-right tabular-nums")}>{formatInvoiceCurrency(item.unitPrice)}</TableCell><TableCell className={numericCellClass(item.discountAmount, "text-right tabular-nums")}><DiscountCell item={item} /></TableCell><TableCell className={numericCellClass(Number(item.subtotal) - legacyAddonTotal, "text-right tabular-nums")}>{formatInvoiceCurrency(Number(item.subtotal) - legacyAddonTotal)}</TableCell></TableRow>;
               })}
               {addons.length ? <>
                 <TableRow className="bg-info-surface hover:bg-info-surface">
@@ -137,13 +137,25 @@ function isOverdue(dueAt: Date | string | null | undefined, unpaid: boolean) {
   return new Date(dueAt).getTime() < new Date(new Date().toDateString()).getTime();
 }
 
-/** Teks kolom diskon menyesuaikan tipe (R6): nominal ⇄ persen. */
-function discountCellText(item: { discountType?: string; discountPercent?: string | { toString(): string }; discountAmount?: string | { toString(): string } }) {
+type DiscountItem = { discountPercent?: string | { toString(): string }; discountAmount?: string | { toString(): string } };
+
+/** Nominal diskon baris (R6); persen ditampilkan terpisah supaya kolom sempit tidak meluber. */
+function discountCellText(item: DiscountItem) {
+  return Number(item.discountAmount ?? 0) > 0 ? formatInvoiceCurrency(item.discountAmount ?? "0") : "-";
+}
+
+/** Keterangan persen diskon baris, maks. dua desimal (mis. "6,67%"), kosong bila tanpa diskon. */
+function discountCellPercent(item: DiscountItem) {
   const pct = Number(item.discountPercent ?? 0);
-  const amount = Number(item.discountAmount ?? 0);
-  const nominal = formatInvoiceCurrency(item.discountAmount ?? "0");
-  if (item.discountType === "NOMINAL") return amount > 0 ? `${nominal} (${pct}%)` : "-";
-  return pct > 0 ? `${pct}% (${nominal})` : "-";
+  if (!(Number(item.discountAmount ?? 0) > 0) || !(pct > 0)) return null;
+  return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(pct)}%`;
+}
+
+/** Sel diskon dua baris: nominal di atas, persen kecil di bawah (muat di kolom 14%). */
+function DiscountCell({ item }: { item: DiscountItem }) {
+  const percent = discountCellPercent(item);
+  if (!percent) return <>{discountCellText(item)}</>;
+  return <span className="flex flex-col items-end leading-tight"><span>{discountCellText(item)}</span><span className="text-xs text-muted-foreground">{percent}</span></span>;
 }
 
 /** Baris termin/DP yang terlambat diwarnai merah utuh: border + latar + teks deadline. */

@@ -117,7 +117,8 @@ test("G2: kanban Produksi menyembunyikan aksi saat hanya lihat", () => {
   assert.match(board, /Geser kartu/);
   assert.match(board, /className="absolute inset-x-0 top-0 z-10 h-1\/3/);
   assert.doesNotMatch(board, /min-h-14/);
-  assert.match(board, /<ProductionObstacle item=\{item\} canManage=\{canManage\} \/>/);
+  // Kartu kendala ikut menerima hasil save (`onSaved`) agar cache papan langsung diperbarui.
+  assert.match(board, /<ProductionObstacle item=\{item\} canManage=\{canManage\} onSaved=\{onObstacleSaved\} \/>/);
   assert.match(board, /Hanya dapat dilihat oleh tim Produksi\./);
 });
 

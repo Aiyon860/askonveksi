@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { Brand } from "./config";
 import { customerScopeFor, isBrand } from "./config";
 import { resolveRequestBrandOrAll } from "./request-brand";
+import { brandScopeArgs, brandScopedWhere, withBrandField } from "./scoped-args";
 
 /**
  * Kunci penanda scope yang dititipkan pada argumen query.
@@ -77,10 +78,9 @@ export function brandScopedClient<T extends object>(client: T, scope: Brand | "A
             const operation = Reflect.get(modelTarget, method, modelReceiver);
             if (typeof operation !== "function") return operation;
             return (args?: unknown) => {
-              const nextArgs =
-                args && typeof args === "object"
-                  ? withBrandScope(args as object, scope)
-                  : args;
+              // Argumen kosong (mis. `findMany()`) tetap harus membawa penanda;
+              // tanpa itu query jatuh ke brand default request (ASKONVEKSI).
+              const nextArgs = withBrandScope(brandScopeArgs(args), scope);
               return (operation as (input?: unknown) => unknown).call(modelTarget, nextArgs);
             };
           },
@@ -149,19 +149,6 @@ const RELATION_BRAND_SCOPES: Record<string, (brand: Brand) => Record<string, unk
   WhatsAppCampaignRecipient: (brand) => ({ campaign: { brand } }),
 };
 
-const READ_OPERATIONS = new Set([
-  "findMany",
-  "findFirst",
-  "findFirstOrThrow",
-  "findUnique",
-  "findUniqueOrThrow",
-  "count",
-  "aggregate",
-  "groupBy",
-]);
-
-const WRITE_FILTER_OPERATIONS = new Set(["update", "updateMany", "delete", "deleteMany"]);
-
 function scopeFor(model: string, brand: Brand): Record<string, unknown> | null {
   if (model === "Customer") return { brandScope: { in: customerScopeFor(brand) } };
   if (DIRECT_BRAND_MODELS.has(model)) return { brand };
@@ -173,18 +160,6 @@ function omitBrandScopeKey(args: Record<string, unknown>) {
   const rest = { ...args };
   delete rest[BRAND_SCOPE_KEY];
   return rest;
-}
-
-function scopedWhere(where: unknown, scope: Record<string, unknown>) {
-  if (!where || typeof where !== "object" || Object.keys(where as object).length === 0) return scope;
-  return { AND: [where, scope] };
-}
-
-function withBrand<T extends Record<string, unknown>>(data: T, brand: Brand, field: "brand" | "brandScope"): T {
-  // Customer boleh ditandai BOTH secara eksplisit (auto-merge lintas brand),
-  // tetapi brand lain tetap dipaksa mengikuti brand aktif.
-  if (field === "brandScope" && data.brandScope === "BOTH") return data;
-  return { ...data, [field]: brand } as T;
 }
 
 /**
@@ -201,7 +176,7 @@ export const brandScopeExtension = Prisma.defineExtension({
         // Cast ke string agar TypeScript tidak mempersempit tipe union `model`
         // (dan `query`) menjadi never setelah pengecekan berikut.
         const modelName = model as string | undefined;
-        const rawArgs = (args ?? {}) as Record<string, unknown>;
+        const rawArgs = brandScopeArgs(args);
         const override = rawArgs[BRAND_SCOPE_KEY];
         const hasOverride = override === "ALL" || isBrand(override);
         // Buang penanda sebelum query diteruskan ke Prisma.
@@ -227,13 +202,12 @@ export const brandScopeExtension = Prisma.defineExtension({
 
         const nextArgs = { ...cleanArgs };
 
-        if (READ_OPERATIONS.has(operation) || WRITE_FILTER_OPERATIONS.has(operation)) {
-          nextArgs.where = scopedWhere(nextArgs.where, scope);
-        }
+        const scopedWhere = brandScopedWhere(operation, nextArgs.where, scope);
+        if (scopedWhere !== undefined) nextArgs.where = scopedWhere;
 
         if (operation === "create") {
           if (modelName === "Customer" || DIRECT_BRAND_MODELS.has(modelName!)) {
-            nextArgs.data = withBrand((nextArgs.data ?? {}) as Record<string, unknown>, brand, brandField);
+            nextArgs.data = withBrandField((nextArgs.data ?? {}) as Record<string, unknown>, brand, brandField);
           }
         }
 
@@ -241,14 +215,14 @@ export const brandScopeExtension = Prisma.defineExtension({
           if (modelName === "Customer" || DIRECT_BRAND_MODELS.has(modelName!)) {
             const data = nextArgs.data;
             nextArgs.data = Array.isArray(data)
-              ? data.map((item) => withBrand(item as Record<string, unknown>, brand, brandField))
-              : withBrand((data ?? {}) as Record<string, unknown>, brand, brandField);
+              ? data.map((item) => withBrandField(item as Record<string, unknown>, brand, brandField))
+              : withBrandField((data ?? {}) as Record<string, unknown>, brand, brandField);
           }
         }
 
         if (operation === "upsert") {
           if (modelName === "Customer" || DIRECT_BRAND_MODELS.has(modelName!)) {
-            nextArgs.create = withBrand((nextArgs.create ?? {}) as Record<string, unknown>, brand, brandField);
+            nextArgs.create = withBrandField((nextArgs.create ?? {}) as Record<string, unknown>, brand, brandField);
           }
         }
 

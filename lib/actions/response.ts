@@ -28,7 +28,9 @@ export function messageForError(error: unknown) {
     if (error.code === "P2034") return "Data berubah bersamaan saat Deal disimpan. Muat ulang lalu coba lagi.";
   }
   if (error instanceof Prisma.PrismaClientValidationError) {
-    return "Jadwal pembayaran belum dapat diproses. Pastikan pembaruan database sudah diterapkan, lalu muat ulang halaman.";
+    // Jangan menyebut penyebab internal (migrasi/tipe query): pesan ini muncul
+    // untuk semua aksi, bukan hanya jadwal pembayaran.
+    return "Data yang dikirim belum dapat diproses. Muat ulang halaman lalu coba lagi.";
   }
   return "Terjadi kendala saat menyimpan data. Silakan coba lagi.";
 }
