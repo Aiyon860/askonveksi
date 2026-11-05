@@ -7,6 +7,7 @@ import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/a
 import { CRM_OPERATOR_ROLES, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { nextCustomerNo } from "@/lib/crm/numbers";
+import { mergeCustomerAcrossBrands } from "@/lib/crm/customer-scope";
 import { createCustomerSchema, entityIdSchema, firstValidationMessage } from "@/lib/crm/validation";
 import { getPrismaClient } from "@/lib/prisma";
 import { erpStorage, WHATSAPP_MEDIA_BUCKET } from "@/lib/storage/erp-storage";
@@ -317,7 +318,15 @@ export async function createWhatsAppCustomerAction(formData: FormData) {
       if (parsed.data.salesPicId && !salesPic) throw new UserFacingError("Sales/PIC tidak aktif atau tidak ditemukan.");
 
       const customer = await tx.customer.create({
-        data: { ...parsed.data, email: parsed.data.email?.toLowerCase(), customerNo: await nextCustomerNo(tx) },
+        data: {
+          ...parsed.data,
+          email: parsed.data.email?.toLowerCase(),
+          customerNo: await nextCustomerNo(tx),
+          ...(await mergeCustomerAcrossBrands(tx, {
+            whatsapp: parsed.data.whatsapp,
+            email: parsed.data.email,
+          }) === "BOTH" ? { brandScope: "BOTH" as const } : {}),
+        },
         select: { id: true },
       });
       const linked = await tx.whatsAppConversation.updateMany({ where: { id: conversationId, customerId: null }, data: { customerId: customer.id } });

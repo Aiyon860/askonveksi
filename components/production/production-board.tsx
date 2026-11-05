@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clock, GripVertical, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Clock, UserRound } from "lucide-react";
 import type { ProductionStage } from "@prisma/client";
 
 import { moveProductionOptimisticAction, updateProductionObstacleAction } from "@/app/actions/production";
@@ -33,7 +33,9 @@ import { cn } from "@/lib/utils";
 
 type BoardItem = Awaited<ReturnType<typeof getProductionBoard>>["items"][number];
 type PendingMove = { item: BoardItem; targetStage: ProductionStage; decision: "ADVANCE" | "SKIP" | "SAMPLE_REJECT" | "TO_RETUR" | "RELEASE_RETUR" | "REVERT" };
-type RecentMove = { id: string; stage: ProductionBoardColumn };
+// Kunci kolom + warna merah selama save: data basi (optimistic rollback / SWR /
+// RSC) tidak boleh membuat kartu berkedip putih sebelum hasil save menetap.
+type RecentMove = { id: string; stage: ProductionBoardColumn; repairReason?: string | null; qcReverted?: boolean };
 
 const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
 // Dipakai ulang tiap render kartu dan tiap polling 60 detik.
@@ -98,6 +100,16 @@ function itemColumn(item: BoardItem, preview: PendingMove | null, saving: Recent
   return isReturParked(item) ? RETUR_COLUMN : item.currentStage;
 }
 
+/** Pertahankan badge/warna merah yang diharapkan selama kunci save aktif. */
+function withSavingHighlight(item: BoardItem, saving: RecentMove | null): BoardItem {
+  if (!saving || saving.id !== item.id) return item;
+  return {
+    ...item,
+    ...(saving.repairReason !== undefined ? { repairReason: saving.repairReason } : {}),
+    ...(saving.qcReverted !== undefined ? { qcReverted: saving.qcReverted } : {}),
+  };
+}
+
 function moveTitle(move: PendingMove, group: ProductionBoardGroup) {
   if (move.decision === "TO_RETUR") return "Masuk Retur";
   if (move.decision === "REVERT") return `Mundur ke ${stageLabelForGroup(move.targetStage, group)}`;
@@ -105,7 +117,7 @@ function moveTitle(move: PendingMove, group: ProductionBoardGroup) {
   return "Perbarui tahap produksi";
 }
 
-export function ProductionBoard({ group, items, canManage, onRefresh }: { group: ProductionBoardGroup; items: BoardItem[]; canManage: boolean; onRefresh?: () => Promise<unknown> }) {
+export function ProductionBoard({ group, items, canManage, onRefresh, onObstacleSaved }: { group: ProductionBoardGroup; items: BoardItem[]; canManage: boolean; onRefresh?: () => Promise<unknown>; onObstacleSaved?: (id: string, obstacle: string | null, obstacleUpdatedAt: string | null) => void }) {
   // Satu sumber kebenaran dari server: hanya tim Produksi (DEVELOPER/OWNER/ADMIN_PO) yang boleh
   // mengubah papan — memindahkan tahap, mengedit kendala, dan menarik kartu Selesai ke Retur.
   const canReturCompleted = canManage;
@@ -132,9 +144,15 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
     if (!savingMove) return true;
     const current = items.find((item) => item.id === savingMove.id);
     if (!current) return true;
-    return savingMove.stage === RETUR_COLUMN
+    const stageOk = savingMove.stage === RETUR_COLUMN
       ? current.needsRepair === true
       : current.needsRepair === false && current.currentStage === savingMove.stage;
+    if (!stageOk) return false;
+    // Tunggu juga flag merah (Wajib QC / Retur) supaya kunci warna tidak lepas
+    // lebih dulu dari data yang masih basi.
+    if (savingMove.qcReverted !== undefined && current.qcReverted !== savingMove.qcReverted) return false;
+    if (savingMove.repairReason !== undefined && Boolean(current.repairReason) !== Boolean(savingMove.repairReason)) return false;
+    return true;
   })();
   const activeSavingMove = savingSettled ? null : savingMove;
   useEffect(() => {
@@ -144,26 +162,12 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
     const timeout = window.setTimeout(() => setSavingMove(null), 30000);
     return () => window.clearTimeout(timeout);
   }, [savingMove]);
-  // DEBUG sementara: lacak kunci kolom vs data yang masuk saat saving.
-  useEffect(() => {
-    if (!savingMove) return;
-    const current = items.find((item) => item.id === savingMove.id);
-    console.log("[board-save] data masuk saat kunci aktif", {
-      t: Date.now(),
-      id: savingMove.id.slice(0, 8),
-      serverNeedsRepair: current?.needsRepair ?? null,
-      serverStage: current?.currentStage ?? null,
-      lockStage: savingMove.stage,
-      settled: savingSettled,
-      shownColumn: current ? itemColumn(current, previewMove, activeSavingMove) : null,
-    });
-  }, [items, savingMove, savingSettled, activeSavingMove, previewMove]);
   // Drop ke kolom Retur pasti masuk Retur: dialog langsung isi alasan.
   const [isMoving, startMoving] = useTransition();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
-  // Petunjuk gulir horizontal pada kanban: panah muncul hanya saat masih ada
-  // kolom di arah tersebut.
+  // Scrollbar native (Helium/Chrome/Edge overlay) sering tidak tampil sama sekali.
+  // Bilah HTML kustom + tombol panah selalu terlihat untuk user PC tanpa trackpad.
   const boardRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -185,20 +189,29 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
   useEffect(() => {
     const element = boardRef.current;
     if (!element) return;
+    let raf = 0;
     const update = () => {
       const maxScroll = element.scrollWidth - element.clientWidth;
-      setCanScrollLeft(element.scrollLeft > 4);
-      setCanScrollRight(element.scrollLeft < maxScroll - 4);
+      const left = element.scrollLeft > 4;
+      const right = element.scrollLeft < maxScroll - 4;
+      // Hanya setState saat boolean berubah — setState tiap pixel bikin board patah.
+      setCanScrollLeft((prev) => (prev === left ? prev : left));
+      setCanScrollRight((prev) => (prev === right ? prev : right));
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
     };
     update();
-    element.addEventListener("scroll", update, { passive: true });
-    const observer = new ResizeObserver(update);
+    element.addEventListener("scroll", onScroll, { passive: true });
+    const observer = new ResizeObserver(onScroll);
     observer.observe(element);
     return () => {
-      element.removeEventListener("scroll", update);
+      cancelAnimationFrame(raf);
+      element.removeEventListener("scroll", onScroll);
       observer.disconnect();
     };
-  }, []);
+  }, [columns.length]);
 
   function scrollBoard(direction: -1 | 1) {
     const element = boardRef.current;
@@ -218,9 +231,14 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
     // ter-commit (terlihat di log: lockStage macet di nilai save sebelumnya),
     // sehingga kartu jatuh ke kolom awal selama saving.
     const lockStage = move.decision === "TO_RETUR" ? RETUR_COLUMN : move.targetStage;
-    console.log("[board-save] mulai", { t: Date.now(), id: item.id.slice(0, 8), decision: move.decision, targetStage: move.targetStage });
+    const optimisticRepairReason = move.decision === "TO_RETUR" ? note?.trim() : undefined;
+    const optimisticQcReverted = move.targetStage === "QC" ? false : move.decision === "REVERT" && item.currentStage === "QC" ? true : undefined;
+    // Kunci warna: nilai akhir yang diharapkan (bukan hanya delta optimistic),
+    // supaya RELEASE_RETUR tetap merah via repairReason yang sudah ada.
+    const lockRepairReason = move.decision === "TO_RETUR" ? note?.trim() ?? null : item.repairReason;
+    const lockQcReverted = optimisticQcReverted !== undefined ? optimisticQcReverted : item.qcReverted;
     setRecentMove({ id: item.id, stage: lockStage });
-    setSavingMove({ id: item.id, stage: lockStage });
+    setSavingMove({ id: item.id, stage: lockStage, repairReason: lockRepairReason, qcReverted: lockQcReverted });
     startMoving(async () => {
       moveOptimistically({
         id: item.id,
@@ -228,16 +246,15 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
         // Masuk Retur langsung parkir di kolom Retur; keluar Retur/melewati
         // proses melepas kartu dari kolom Retur. Badge Retur tetap menempel.
         needsRepair: move.decision === "TO_RETUR" ? true : item.needsRepair ? false : undefined,
-        repairReason: move.decision === "TO_RETUR" ? note?.trim() : undefined,
+        repairReason: optimisticRepairReason,
         // Peringatan Wajib QC: menyala saat REVERT dari kolom QC, lepas saat mendarat di QC.
-        qcReverted: move.targetStage === "QC" ? false : move.decision === "REVERT" && item.currentStage === "QC" ? true : undefined,
+        qcReverted: optimisticQcReverted,
         // Alasan Mundur langsung menimpa Text Area Kendala kartu (tanggal jejak ikut terisi).
         obstacle: move.decision === "REVERT" ? note?.trim().slice(0, 2000) ?? null : undefined,
         obstacleUpdatedAt: move.decision === "REVERT" ? new Date().toISOString() : undefined,
       });
       setPreviewMove(null);
       const result = await moveProductionOptimisticAction(formData);
-      console.log("[board-save] aksi selesai", { t: Date.now(), id: item.id.slice(0, 8), ok: result.ok });
       if (!result.ok) {
         setRecentMove(null);
         setSavingMove(null);
@@ -254,10 +271,9 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
       toast.add({ title: "Progres disimpan", description, type: "success" });
       // Tunggu data server terbaru dulu supaya kartu tidak kembali ke kolom lama
       // sebelum refresh selesai (transisi tetap pending selama menunggu).
-      // Kunci kolom TIDAK dilepas di sini: dilepas oleh effect saat data yang
-      // masuk sudah mencerminkan hasil save (aman dari data basi ter-dedupe).
+      // Kunci kolom/warna TIDAK dilepas di sini: dilepas saat data yang masuk
+      // sudah mencerminkan hasil save (aman dari data basi ter-dedupe).
       await onRefresh?.();
-      console.log("[board-save] revalidasi SWR selesai", { t: Date.now(), id: item.id.slice(0, 8) });
       router.refresh();
     });
   }
@@ -323,7 +339,7 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
 
   return (
     <>
-      <div className="relative">
+      <div className="flex flex-col gap-2">
         {isMoving ? <div className="fixed right-4 top-4 z-50 flex w-[calc(100%-2rem)] max-w-sm animate-in fade-in-0 slide-in-from-top-2 items-center gap-3 rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg" role="status"><Spinner /> Menyimpan progres...</div> : null}
         <DndContext
           sensors={sensors}
@@ -332,9 +348,17 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
           onDragEnd={handleDragEnd}
           accessibility={{ screenReaderInstructions: { draggable: "Tekan spasi untuk mengambil kartu. Gunakan tombol panah untuk memilih tahap tujuan, lalu tekan spasi lagi untuk meletakkan." } }}
         >
+        <div className="relative">
         {/* Saat drag, scroll-snap dimatikan: snap selalu menarik posisi scroll kembali
             dan melawan auto-scroll dnd-kit, sehingga board tidak maju dan tampak berkedip. */}
-        <div ref={boardRef} className={cn("grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3", !activeItem && "snap-x snap-proximity")} aria-label={`Kanban produksi ${PRODUCTION_BOARD_GROUP_LABEL[group]}`}>
+        <div
+          ref={boardRef}
+          className={cn(
+            "grid auto-cols-[20rem] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+            !activeItem && "snap-x snap-proximity",
+          )}
+          aria-label={`Kanban produksi ${PRODUCTION_BOARD_GROUP_LABEL[group]}`}
+        >
           {columns.map((stage) => {
             const isReturColumn = stage === RETUR_COLUMN;
             // Kolom Retur adalah rumah kartu Retur sampai Admin menyeretnya keluar;
@@ -343,7 +367,12 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
             // memegang pil Retur); kolom tahap: kartu merah (Retur/Wajib QC) di atas
             // kartu polos, urutan asli di dalam kelompok dijaga oleh sort stabil.
             const stageItems = boardItems.filter((item) => itemColumn(item, previewMove, activeSavingMove) === stage);
-            if (!isReturColumn) stageItems.sort((a, b) => Number(isHighlightedCard(b)) - Number(isHighlightedCard(a)));
+            if (!isReturColumn) {
+              stageItems.sort((a, b) =>
+                Number(isHighlightedCard(withSavingHighlight(b, activeSavingMove))) -
+                Number(isHighlightedCard(withSavingHighlight(a, activeSavingMove))),
+              );
+            }
             return (
               <ProductionStageColumn
                 key={stage}
@@ -357,9 +386,10 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
                   <h2 id={`production-stage-${stage}`} className={cn("text-sm font-semibold", STAGE_TEXT_CLASS[stage])}>{boardColumnLabel(stage, group)}</h2>
                   <span key={stageItems.length} className="animate-in fade-in-0 duration-150 font-mono text-xs tabular-nums text-muted-foreground">{stageItems.length}</span>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+                <ProductionColumnBody>
                   <div className="flex flex-col gap-2">
                   {stageItems.length ? stageItems.map((item) => {
+                    const viewItem = withSavingHighlight(item, activeSavingMove);
                     const options = stageOptions(item, canReturCompleted);
                     const draggable = canManage && !isMoving && !previewMove && (item.status === "ACTIVE" || (item.status === "COMPLETED" && canReturCompleted)) && options.length > 0;
                     const overdue = item.status === "ACTIVE" && new Date(item.deadline).getTime() < new Date().setHours(0, 0, 0, 0);
@@ -373,23 +403,21 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
                         savingLocked={savingMove?.id === item.id}
                       >
                         {(drag) => <ProductionCardView
-                          item={item}
+                          item={viewItem}
                           overdue={overdue}
                           canManage={canManage}
                           draggable={drag.draggable}
-                          dragHandle={drag.draggable ? (
-                            // Area geser selebar kartu; tinggi sekitar seperempat
-                            // kartu agar jauh lebih mudah dibidik daripada ikon kecil.
+                          onObstacleSaved={onObstacleSaved}
+                          dragArea={drag.draggable ? (
+                            // Area geser transparan di 1/3 atas kartu: tidak menutupi isi
+                            // mana pun, tetapi seluruh bagian atas bisa dipakai menggeser.
                             <div
                               ref={drag.setActivatorNodeRef}
                               {...drag.attributes}
                               {...drag.listeners}
                               aria-label={`Geser kartu ${item.workOrderNo}`}
-                              className="mt-1 flex min-h-14 touch-none cursor-grab select-none items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/50 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted active:cursor-grabbing"
-                            >
-                              <GripVertical aria-hidden="true" className="size-4" />
-                              Geser kartu
-                            </div>
+                              className="absolute inset-x-0 top-0 z-10 h-1/3 touch-none cursor-grab select-none bg-transparent active:cursor-grabbing"
+                            />
                           ) : null}
                         />}</DraggableProductionCard>
                     );
@@ -399,7 +427,7 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
                     <Empty className="min-h-32 p-4"><EmptyHeader><EmptyTitle className="text-sm">Belum ada pekerjaan</EmptyTitle><EmptyDescription>Work Order pada tahap ini akan muncul di sini.</EmptyDescription></EmptyHeader></Empty>
                   )}
                   </div>
-                </div>
+                </ProductionColumnBody>
               </ProductionStageColumn>
             );
           })}
@@ -432,6 +460,8 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
             ) : <span aria-hidden="true" />}
           </div>
         ) : null}
+        </div>
+        <AlwaysOnScrollbar targetRef={boardRef} orientation="horizontal" ariaLabel="Gulir kolom kanban" />
         <DragOverlay dropAnimation={reducedMotion ? null : DROP_ANIMATION}>{activeItem ? <ProductionDragPreview item={activeItem} /> : null}</DragOverlay>
         </DndContext>
       </div>
@@ -458,7 +488,7 @@ export function ProductionBoard({ group, items, canManage, onRefresh }: { group:
   );
 }
 
-function ProductionObstacle({ item, canManage }: { item: BoardItem; canManage: boolean }) {
+function ProductionObstacle({ item, canManage, onSaved }: { item: BoardItem; canManage: boolean; onSaved?: (id: string, obstacle: string | null, obstacleUpdatedAt: string | null) => void }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const obstacleValue = item.obstacle ?? "";
@@ -485,6 +515,10 @@ function ProductionObstacle({ item, canManage }: { item: BoardItem; canManage: b
       }
       setIsEditing(false);
       toast.add({ title: "Kendala disimpan", description: `${item.workOrderNo} diperbarui.`, type: "success" });
+      // Tulis hasil save ke cache papan dulu supaya teks tidak kembali ke isi lama
+      // saat data server yang masih ter-cache menyusul.
+      const saved = value.trim().slice(0, 2000);
+      onSaved?.(item.id, saved || null, saved ? new Date().toISOString() : null);
       router.refresh();
     });
   }
@@ -521,15 +555,204 @@ function ProductionStageColumn({ stage, dragging, canDrop, children }: { stage: 
   return <section ref={setNodeRef} aria-labelledby={`production-stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-14rem),44rem)] flex-col overflow-hidden rounded-lg border p-2", !dragging && "snap-start", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
 }
 
-function ProductionCardView({ item, overdue, canManage, draggable, dragHandle }: { item: BoardItem; overdue: boolean; canManage: boolean; draggable: boolean; dragHandle?: React.ReactNode }) {
+function ProductionColumnBody({ children }: { children: React.ReactNode }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  return (
+    <div className="flex min-h-0 flex-1 gap-1.5">
+      <div
+        ref={viewportRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {children}
+      </div>
+      {/* Vertikal: tampil hanya bila isi kolom benar-benar overflow. */}
+      <AlwaysOnScrollbar targetRef={viewportRef} orientation="vertical" ariaLabel="Gulir kartu kolom" onlyWhenOverflow />
+    </div>
+  );
+}
+
+/** Bilah gulir HTML — thumb di-update via DOM/rAF, tanpa setState tiap pixel. */
+function AlwaysOnScrollbar({
+  targetRef,
+  orientation,
+  ariaLabel,
+  className,
+  onlyWhenOverflow = false,
+}: {
+  targetRef: React.RefObject<HTMLElement | null>;
+  orientation: "horizontal" | "vertical";
+  ariaLabel: string;
+  className?: string;
+  /** Vertikal kolom: sembunyikan bila tidak ada yang digulir. Horizontal tetap always-on. */
+  onlyWhenOverflow?: boolean;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  const metricsRef = useRef({ pos: 0, max: 0, size: 1 });
+  const [overflowing, setOverflowing] = useState(false);
+  const isX = orientation === "horizontal";
+
+  useEffect(() => {
+    const element = targetRef.current;
+    if (!element) return;
+    let raf = 0;
+
+    const paint = () => {
+      const metrics = metricsRef.current;
+      const thumb = thumbRef.current;
+      const track = trackRef.current;
+      if (!thumb || !track) return;
+      const thumbRatio = metrics.max === 0 ? 1 : Math.min(1, Math.max(0.18, metrics.size / (metrics.size + metrics.max)));
+      const travel = Math.max(0, 1 - thumbRatio);
+      const thumbOffset = metrics.max === 0 || travel === 0 ? 0 : (metrics.pos / metrics.max) * travel;
+      if (isX) {
+        thumb.style.left = `${thumbOffset * 100}%`;
+        thumb.style.width = `${thumbRatio * 100}%`;
+      } else {
+        thumb.style.top = `${thumbOffset * 100}%`;
+        thumb.style.height = `${thumbRatio * 100}%`;
+      }
+      track.setAttribute("aria-valuenow", String(Math.round(metrics.pos)));
+      track.setAttribute("aria-valuemax", String(Math.round(metrics.max)));
+    };
+
+    const read = () => {
+      const max = isX
+        ? Math.max(0, element.scrollWidth - element.clientWidth)
+        : Math.max(0, element.scrollHeight - element.clientHeight);
+      metricsRef.current = {
+        pos: isX ? element.scrollLeft : element.scrollTop,
+        max,
+        size: isX ? element.clientWidth : element.clientHeight,
+      };
+      setOverflowing((prev) => {
+        const next = max > 0;
+        return prev === next ? prev : next;
+      });
+      paint();
+    };
+
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(read);
+    };
+
+    read();
+    element.addEventListener("scroll", onScroll, { passive: true });
+    const observer = new ResizeObserver(onScroll);
+    observer.observe(element);
+    if (element.firstElementChild instanceof HTMLElement) observer.observe(element.firstElementChild);
+    return () => {
+      cancelAnimationFrame(raf);
+      element.removeEventListener("scroll", onScroll);
+      observer.disconnect();
+    };
+  }, [targetRef, isX]);
+
+  function applyScroll(next: number) {
+    const element = targetRef.current;
+    if (!element) return;
+    const value = Math.min(Math.max(next, 0), metricsRef.current.max);
+    if (isX) element.scrollLeft = value;
+    else element.scrollTop = value;
+  }
+
+  function clientToScroll(client: number) {
+    const track = trackRef.current;
+    const { max, size } = metricsRef.current;
+    if (!track || max === 0) return 0;
+    const rect = track.getBoundingClientRect();
+    const trackSize = isX ? rect.width : rect.height;
+    const thumbRatio = Math.min(1, Math.max(0.18, size / (size + max)));
+    const thumbSize = thumbRatio * trackSize;
+    const movable = Math.max(1, trackSize - thumbSize);
+    const offset = (isX ? client - rect.left : client - rect.top) - thumbSize / 2;
+    return (Math.min(Math.max(offset, 0), movable) / movable) * max;
+  }
+
+  function onTrackPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).dataset.thumb != null) return;
+    const element = targetRef.current;
+    const previousSnap = element?.style.scrollSnapType ?? "";
+    if (element) element.style.scrollSnapType = "none";
+    applyScroll(clientToScroll(isX ? event.clientX : event.clientY));
+    if (element) element.style.scrollSnapType = previousSnap;
+  }
+
+  function onThumbPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const element = targetRef.current;
+    const track = trackRef.current;
+    const { max, size } = metricsRef.current;
+    if (!element || !track || max === 0) return;
+    const startClient = isX ? event.clientX : event.clientY;
+    const startPos = isX ? element.scrollLeft : element.scrollTop;
+    const trackSize = isX ? track.clientWidth : track.clientHeight;
+    const thumbRatio = Math.min(1, Math.max(0.18, size / (size + max)));
+    const movable = Math.max(1, trackSize - thumbRatio * trackSize);
+    const thumb = event.currentTarget;
+    thumb.setPointerCapture(event.pointerId);
+    const previousSnap = element.style.scrollSnapType;
+    // Snap kolom melawan drag thumb → patah-patah; matikan selama gesture.
+    element.style.scrollSnapType = "none";
+
+    function onMove(ev: PointerEvent) {
+      const delta = (isX ? ev.clientX : ev.clientY) - startClient;
+      const next = Math.min(Math.max(startPos + (delta / movable) * max, 0), max);
+      if (isX) element.scrollLeft = next;
+      else element.scrollTop = next;
+    }
+    function onUp(ev: PointerEvent) {
+      thumb.releasePointerCapture(ev.pointerId);
+      element.style.scrollSnapType = previousSnap;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  return (
+    <div
+      ref={trackRef}
+      role="scrollbar"
+      aria-label={ariaLabel}
+      aria-orientation={orientation}
+      aria-valuemin={0}
+      aria-valuemax={0}
+      aria-valuenow={0}
+      className={cn(
+        "relative shrink-0 rounded-full border border-border bg-muted",
+        isX ? "h-4 w-full cursor-pointer" : "h-full w-4 cursor-pointer",
+        onlyWhenOverflow && !overflowing && "hidden",
+        className,
+      )}
+      onPointerDown={onTrackPointerDown}
+    >
+      <div
+        ref={thumbRef}
+        data-thumb=""
+        className={cn(
+          "absolute rounded-full bg-foreground/50 hover:bg-foreground/70 active:bg-foreground/80",
+          isX ? "top-0.5 bottom-0.5 min-w-12" : "left-0.5 right-0.5 min-h-12",
+        )}
+        onPointerDown={onThumbPointerDown}
+      />
+    </div>
+  );
+}
+
+function ProductionCardView({ item, overdue, canManage, draggable, dragArea, onObstacleSaved }: { item: BoardItem; overdue: boolean; canManage: boolean; draggable: boolean; dragArea?: React.ReactNode; onObstacleSaved?: (id: string, obstacle: string | null, obstacleUpdatedAt: string | null) => void }) {
   // Badge Retur menempel permanen di kartu; warna merah hanya sampai kartu masuk Selesai.
   const retur = Boolean(item.repairReason);
   const hot = retur && item.currentStage !== "SELESAI";
   // Peringatan Wajib QC: berdiri sendiri dari Retur; merah sampai kartu masuk QC lagi.
   const qcWarn = Boolean(item.qcReverted);
-  return <Card size="sm" className={cn(draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}>
+  return <Card size="sm" className={cn("relative", draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", (hot || qcWarn) && "border-destructive/70 bg-destructive/10")}>
+    {dragArea}
     <CardHeader>
-      <CardTitle><Link href={`/produksi/${item.id}`} className="text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
+      <CardTitle><Link href={`/produksi/${item.id}`} className="relative z-20 text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">{item.productName}</Link></CardTitle>
       <CardDescription>{item.salesOrder.snapshotCustomerName}</CardDescription>
     </CardHeader>
     <CardContent>
@@ -557,15 +780,13 @@ function ProductionCardView({ item, overdue, canManage, draggable, dragHandle }:
           <dd className="flex items-center gap-2"><UserRound aria-hidden="true" className="size-3.5" />{item.assignee?.name ?? "Belum ditentukan"}</dd>
         </div>
       </dl>
-      <ProductionObstacle item={item} canManage={canManage} />
-      {dragHandle}
+      <ProductionObstacle item={item} canManage={canManage} onSaved={onObstacleSaved} />
     </CardContent>
   </Card>;
 }
 
 function DraggableProductionCard({ item, draggable, entering, previewing, savingLocked, children }: { item: BoardItem; draggable: boolean; entering: boolean; previewing: boolean; savingLocked?: boolean; children: (drag: Pick<ReturnType<typeof useDraggable>, "attributes" | "listeners" | "setActivatorNodeRef"> & { draggable: boolean }) => React.ReactNode }) {
   const { attributes, isDragging, listeners, setActivatorNodeRef, setNodeRef } = useDraggable({ id: item.id, disabled: !draggable });
-  // DEBUG sementara: ring biru = kartu sedang dikunci di kolom tujuan selama saving.
   return <div ref={setNodeRef} className={cn(isDragging && "opacity-35", previewing && "opacity-50", entering && "animate-in fade-in-0 slide-in-from-left-2 duration-200", savingLocked && "rounded-xl ring-2 ring-blue-500")}>{children({ attributes, listeners, setActivatorNodeRef, draggable })}</div>;
 }
 

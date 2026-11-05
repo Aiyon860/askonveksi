@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { RepeatOrderPatternForm } from "@/components/settings/repeat-order-pattern-form";
 import { SubmitButton } from "@/components/submit-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,18 @@ export default async function SettingsPage() {
 
       {/* Isi pengaturan sedikit; dua kolom supaya tidak menyisakan ruang kosong. */}
       <div className="grid items-start gap-6 lg:grid-cols-2">
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>Tampilan</CardTitle>
+          <CardDescription>
+            Pilih tema terang atau gelap. Preferensi berlaku di browser ini dan langsung diterapkan ke seluruh aplikasi.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemeToggle />
+        </CardContent>
+      </Card>
+
       {canManageAttendance && attendanceSettings ? (
         <>
           <Card id="absensi" className="scroll-mt-24">

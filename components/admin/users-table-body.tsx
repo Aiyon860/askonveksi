@@ -1,6 +1,6 @@
 "use client";
 
-import type { AppRole } from "@prisma/client";
+import type { AppRole, Brand } from "@prisma/client";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -14,6 +14,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { PasswordInput } from "@/components/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { brandLabel } from "@/lib/brand/config";
 import { ROLE_LABEL } from "@/lib/crm/constants";
 
 const USER_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER", "ADMIN_SAGA"] as const satisfies readonly AppRole[];
@@ -23,6 +24,7 @@ export type EditableUserRow = {
   email: string;
   name: string;
   role: AppRole;
+  brand: Brand;
   isActive: boolean;
   updatedAt: string;
 };
@@ -128,6 +130,27 @@ export function UsersTableBody({
                 </Field>
               ) : (
                 <Badge variant="outline">{ROLE_LABEL[user.role]}</Badge>
+              )}
+            </TableCell>
+            <TableCell>
+              {isEditing ? (
+                <Field>
+                  <FieldLabel htmlFor={`${editFormId}-brand`} className="sr-only">Brand pengguna</FieldLabel>
+                  <NativeSelect
+                    id={`${editFormId}-brand`}
+                    form={editFormId}
+                    name="brand"
+                    defaultValue={user.brand}
+                    className="w-full min-w-32"
+                  >
+                    <NativeSelectOption value="ASKONVEKSI">Askonveksi</NativeSelectOption>
+                    <NativeSelectOption value="SAGA">SAGA</NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+              ) : (
+                <Badge variant="outline" className={user.brand === "SAGA" ? "border-emerald-600/30 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300" : undefined}>
+                  {brandLabel(user.brand)}
+                </Badge>
               )}
             </TableCell>
             <TableCell>

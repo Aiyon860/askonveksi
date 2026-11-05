@@ -32,8 +32,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }),
     // Kop mengikuti snapshot invoice; kolom yang masih kosong (invoice lama, dibuat sebelum
     // profil perusahaan diisi) diambil dari profil terkini supaya kopnya tidak polos.
-    prisma.businessProfile.findUnique({
-      where: { id: "default" },
+    prisma.businessProfile.findFirst({
+      where: {},
       select: { name: true, address: true, phone: true, email: true, logoPath: true, signatureName: true, signatureTitle: true, signaturePath: true },
     }),
   ]);

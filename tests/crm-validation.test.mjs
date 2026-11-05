@@ -62,7 +62,7 @@ import {
   REVERSE_DEAL_ROLES,
   hasRole,
 } from "../lib/auth/permissions.ts";
-import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCustomerCodeBase } from "../lib/crm/numbers.ts";
+import { formatPurchaseOrderNo, formatPurchaseOrderRevisionNo, purchaseOrderCustomerCodeBase } from "../lib/crm/document-numbers.ts";
 
 const userDataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
 const userActionsSource = await readFile(new URL("../app/actions/users.ts", import.meta.url), "utf8");
@@ -83,8 +83,9 @@ test("kode PO customer mengikuti nama dan format Jakarta", () => {
   assert.equal(purchaseOrderCustomerCodeBase("PT Abdul Khamid"), "ABK");
   assert.equal(purchaseOrderCustomerCodeBase("Berkah Jaya Mandiri"), "BJM");
   assert.equal(purchaseOrderCustomerCodeBase("Sumber Rejeki Makmur Abadi"), "SRM");
-  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z")), "PO-BJM130926-2");
-  assert.equal(formatPurchaseOrderRevisionNo("PO-BJM130926-1-R2", 3), "PO-BJM130926-1-R3");
+  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z"), "AS"), "PO-AS-BJM130926-2");
+  assert.equal(formatPurchaseOrderNo("BJM", 2, new Date("2026-09-13T02:00:00.000Z"), "SG"), "PO-SG-BJM130926-2");
+  assert.equal(formatPurchaseOrderRevisionNo("PO-AS-BJM130926-1-R2", 3), "PO-AS-BJM130926-1-R3");
 });
 
 test("opportunity hanya menerima field peluang yang masih digunakan", () => {
@@ -253,8 +254,8 @@ test("field penugasan opportunity tidak tertukar dengan profil customer", async 
 test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boundary", async () => {
   assert.equal(strongPasswordSchema.safeParse("").success, false);
   assert.equal(strongPasswordSchema.safeParse("a").success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", password: "a" }).success, true);
-  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", temporaryPassword: "a" }).success, false);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", brand: "ASKONVEKSI", password: "a" }).success, true);
+  assert.equal(createUserSchema.safeParse({ name: "Budi", email: "budi@example.com", role: "ADMIN_CUSTOMER", brand: "ASKONVEKSI", temporaryPassword: "a" }).success, false);
 
   const invalidInvoice = invoiceDraftSchema.safeParse({
     opportunityId: "cm123456789012",
@@ -610,6 +611,19 @@ test("kartu Follow Up tidak bisa dibuka: hanya Negosiasi dan seterusnya", async 
   assert.doesNotMatch(tabsSource, /\["peluang", "Peluang"\]/);
 });
 
+test("kanban Pipeline memakai area geser transparan tanpa tombol Ubah status", async () => {
+  const boardSource = await readFile(new URL("../components/crm/pipeline-board.tsx", import.meta.url), "utf8");
+  // Tombol "Ubah status" dan handle "Geser kartu" di dasar kartu dihapus.
+  assert.doesNotMatch(boardSource, /Ubah status/);
+  assert.doesNotMatch(boardSource, /DEFAULT_DESTINATION/);
+  assert.doesNotMatch(boardSource, /GripVertical/);
+  assert.doesNotMatch(boardSource, /min-h-14/);
+  // Div transparan di 1/3 atas kartu menjadi satu-satunya area geser.
+  assert.match(boardSource, /className="absolute inset-x-0 top-0 z-10 h-1\/3/);
+  // Tautan judul dinaikkan di atas area geser supaya tetap bisa diklik.
+  assert.match(boardSource, /relative z-20/);
+});
+
 test("jalur lain ke detail peluang Follow Up juga terkunci", async () => {
   const [prospectsSource, timelineSource, historiesSource, customerDetailSource, dataSource] = await Promise.all([
     readFile(new URL("../app/(app)/crm/prospek/page.tsx", import.meta.url), "utf8"),
@@ -817,6 +831,7 @@ test("edit pengguna memvalidasi identitas, waktu perubahan, email, dan role", ()
     name: "Budi Santoso",
     email: "budi@example.com",
     role: "ADMIN_CUSTOMER",
+    brand: "ASKONVEKSI",
     password: "",
     confirmPassword: "",
   };
@@ -1448,8 +1463,14 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /const usedPages = new Set<PDFPage>\(\)/);
   assert.match(pdfSource, /usedPages\.add\(page\)/);
   assert.match(pdfSource, /document\.removePage\(document\.getPages\(\)\.indexOf\(candidate\)\)/);
-  // Paragraf tidak menyisakan label sendirian di dasar halaman (penyebab halaman kosong lama).
-  assert.match(pdfSource, /const blockHeight = 16 \+ lines\.length \* 16 \+ 6;\n\s*if \(y - blockHeight < margin\) addPage\(\);/);
+  // Revisi: halaman penuh "Catatan" dihapus. Catatan desain tetap tampil di baris
+  // NOTE size chart (non-aksesori) dan di bawah angka jumlah produk (aksesori).
+  assert.doesNotMatch(pdfSource, /drawParagraph\("Catatan"/);
+  assert.doesNotMatch(pdfSource, /data\.notes/);
+  assert.match(pdfSource, /function drawAccessoryTotal\(quantity: number, label: string \| null, note: string \| null\)/);
+  assert.match(pdfSource, /drawAccessoryTotal\(quantity, .*item\.designNotes\)/);
+  assert.match(pdfSource, /drawAccessoryTotal\(totalQuantity, null, data\.designNotes\)/);
+  assert.match(pdfSource, /Baris NOTE menempel langsung di bawah kotak jumlah produk/);
   assert.match(buttonSource, /PDF Customer/);
   assert.match(buttonSource, /PDF Penjahit/);
   // Sprint 11 R3 + revisi: deadline penjahit satu baris "Deadline" (null → "-"),

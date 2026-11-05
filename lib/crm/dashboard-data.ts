@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { DASHBOARD_ROLES, FINANCE_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { resolveRequestBrand } from "@/lib/brand/request-brand";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 
@@ -389,6 +390,10 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
   const canViewFinancialData = hasRole(actor.role, FINANCE_ROLES);
   const dashboardScope = resolveDashboardScope(actor.role);
   const prisma = getPrismaClient();
+  const brand = await resolveRequestBrand();
+  // Query mentah tidak melewati ekstensi Prisma, jadi filter brand ditulis eksplisit.
+  const opportunityBrand = Prisma.sql`AND o."brand" = ${brand}::"Brand"`;
+  const salesOrderBrand = Prisma.sql`AND so."brand" = ${brand}::"Brand"`;
 
   const period = parsePeriodBounds(params);
   const selectedSourceId = typeof params.sourceId === "string" ? params.sourceId : "";
@@ -435,21 +440,21 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
       totalPcs: number;
     }>>(Prisma.sql`
       SELECT
-        (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o."customerId" IS NOT NULL ${leadDateCondition} ${sourceFilterCondition}) AS "totalLead",
-        (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o.stage = 'DEAL' ${leadDateCondition} ${sourceFilterCondition}) AS "totalDeal",
+        (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o."customerId" IS NOT NULL ${leadDateCondition} ${sourceFilterCondition} ${opportunityBrand}) AS "totalLead",
+        (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o.stage = 'DEAL' ${leadDateCondition} ${sourceFilterCondition} ${opportunityBrand}) AS "totalDeal",
         (SELECT COUNT(DISTINCT so.id)::int FROM "SalesOrder" so
            INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
            INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
-           WHERE so.status = 'ACTIVE' ${orderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition}) AS "totalOrder",
+           WHERE so.status = 'ACTIVE' ${orderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition} ${salesOrderBrand}) AS "totalOrder",
         (SELECT COALESCE(SUM(so.total), 0)::text FROM "SalesOrder" so
            INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
            INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
-           WHERE so.status = 'ACTIVE' ${orderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition}) AS "totalOmzet",
+           WHERE so.status = 'ACTIVE' ${orderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition} ${salesOrderBrand}) AS "totalOmzet",
         (SELECT COALESCE(SUM(soi.quantity), 0)::int FROM "SalesOrderItem" soi
            INNER JOIN "SalesOrder" so ON so.id = soi."salesOrderId"
            INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
            INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
-           WHERE so.status = 'ACTIVE' ${orderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition}) AS "totalPcs"
+           WHERE so.status = 'ACTIVE' ${orderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition} ${salesOrderBrand}) AS "totalPcs"
     `),
     period.prevStart && period.prevEnd
       ? prisma.$queryRaw<Array<{
@@ -460,21 +465,21 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
           totalPcs: number;
         }>>(Prisma.sql`
           SELECT
-            (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o."customerId" IS NOT NULL ${prevLeadDateCondition} ${sourceFilterCondition}) AS "totalLead",
-            (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o.stage = 'DEAL' ${prevLeadDateCondition} ${sourceFilterCondition}) AS "totalDeal",
+            (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o."customerId" IS NOT NULL ${prevLeadDateCondition} ${sourceFilterCondition} ${opportunityBrand}) AS "totalLead",
+            (SELECT COUNT(*)::int FROM "Opportunity" o WHERE o.stage = 'DEAL' ${prevLeadDateCondition} ${sourceFilterCondition} ${opportunityBrand}) AS "totalDeal",
             (SELECT COUNT(DISTINCT so.id)::int FROM "SalesOrder" so
                INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
                INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
-               WHERE so.status = 'ACTIVE' ${prevOrderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition}) AS "totalOrder",
+               WHERE so.status = 'ACTIVE' ${prevOrderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition} ${salesOrderBrand}) AS "totalOrder",
             (SELECT COALESCE(SUM(so.total), 0)::text FROM "SalesOrder" so
                INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
                INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
-               WHERE so.status = 'ACTIVE' ${prevOrderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition}) AS "totalOmzet",
+               WHERE so.status = 'ACTIVE' ${prevOrderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition} ${salesOrderBrand}) AS "totalOmzet",
             (SELECT COALESCE(SUM(soi.quantity), 0)::int FROM "SalesOrderItem" soi
                INNER JOIN "SalesOrder" so ON so.id = soi."salesOrderId"
                INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
                INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
-               WHERE so.status = 'ACTIVE' ${prevOrderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition}) AS "totalPcs"
+               WHERE so.status = 'ACTIVE' ${prevOrderDateCondition} ${sourceFilterCondition} ${categoryFilterCondition} ${salesOrderBrand}) AS "totalPcs"
         `)
       : Promise.resolve([{ totalLead: 0, totalDeal: 0, totalOrder: 0, totalOmzet: "0", totalPcs: 0 }]),
   ]);
@@ -550,7 +555,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
         COALESCE(SUM(soi.quantity), 0)::int AS "totalPcs"
       FROM "SalesOrder" so
       LEFT JOIN "SalesOrderItem" soi ON soi."salesOrderId" = so.id
-      WHERE so.status = 'ACTIVE' AND so."acceptedAt" >= ${trendStart} AND so."acceptedAt" < ${trendEnd}
+      WHERE so.status = 'ACTIVE' AND so."acceptedAt" >= ${trendStart} AND so."acceptedAt" < ${trendEnd} ${salesOrderBrand}
       GROUP BY "dayKey"
     `),
     prisma.$queryRaw<Array<{ dayKey: string; leadCount: number }>>(Prisma.sql`
@@ -558,7 +563,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
         TO_CHAR(o."createdAt" AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "dayKey",
         COUNT(o.id)::int AS "leadCount"
       FROM "Opportunity" o
-      WHERE o."createdAt" >= ${trendStart} AND o."createdAt" < ${trendEnd}
+      WHERE o."createdAt" >= ${trendStart} AND o."createdAt" < ${trendEnd} ${opportunityBrand}
       GROUP BY "dayKey"
     `),
     prisma.$queryRaw<Array<{
@@ -575,7 +580,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
           COUNT(*)::int AS "leadCount",
           COUNT(CASE WHEN o.stage = 'DEAL' THEN 1 END)::int AS "dealCount"
         FROM "Opportunity" o
-        WHERE 1=1 ${leadDateCondition}
+        WHERE 1=1 ${leadDateCondition} ${opportunityBrand}
         GROUP BY o."leadSourceId"
       ),
       order_counts AS (
@@ -585,7 +590,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
           COALESCE(SUM(so.total), 0)::text AS revenue
         FROM "SalesOrder" so
         INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
-        WHERE so.status = 'ACTIVE' ${orderDateCondition}
+        WHERE so.status = 'ACTIVE' ${orderDateCondition} ${salesOrderBrand}
         GROUP BY o."leadSourceId"
       )
       SELECT
@@ -615,7 +620,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
       INNER JOIN "PurchaseOrder" po ON po.id = so."purchaseOrderId"
       LEFT JOIN "ProductCategory" pc ON pc.id = po."productCategoryId"
       LEFT JOIN "SalesOrderItem" soi ON soi."salesOrderId" = so.id
-      WHERE so.status = 'ACTIVE' ${orderDateCondition}
+      WHERE so.status = 'ACTIVE' ${orderDateCondition} ${salesOrderBrand}
       GROUP BY COALESCE(pc.name, po."productName", 'Lainnya')
       ORDER BY COALESCE(SUM(so.total), 0) DESC, "orderCount" DESC
     `),
@@ -825,7 +830,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
       INNER JOIN "Opportunity" o ON o.id = so."opportunityId"
       INNER JOIN "Customer" c ON c.id = o."customerId"
       LEFT JOIN "CustomerType" ct ON ct.id = c."customerTypeId"
-      WHERE so.status = 'ACTIVE' ${orderDateCondition}
+      WHERE so.status = 'ACTIVE' ${orderDateCondition} ${salesOrderBrand}
       GROUP BY COALESCE(ct.name, 'Umum / Retail')
       ORDER BY COALESCE(SUM(so.total), 0) DESC
     `),
@@ -850,7 +855,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
         MAX(so."acceptedAt") AS "lastOrderDate"
       FROM "Customer" c
       INNER JOIN "Opportunity" o ON o."customerId" = c.id
-      INNER JOIN "SalesOrder" so ON so."opportunityId" = o.id AND so.status = 'ACTIVE'
+      INNER JOIN "SalesOrder" so ON so."opportunityId" = o.id AND so.status = 'ACTIVE' ${salesOrderBrand}
       LEFT JOIN "CustomerType" ct ON ct.id = c."customerTypeId"
       GROUP BY c.id, c.name, c."companyName", c.whatsapp, ct.name
       ORDER BY COALESCE(SUM(so.total), 0) DESC
@@ -870,8 +875,8 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
         COUNT(DISTINCT CASE WHEN o.stage = 'DEAL' THEN o.id END)::int AS "dealCount",
         COALESCE(SUM(so.total), 0)::text AS revenue
       FROM "AppUser" u
-      INNER JOIN "Opportunity" o ON o."salesPicId" = u.id ${leadDateCondition}
-      LEFT JOIN "SalesOrder" so ON so."opportunityId" = o.id AND so.status = 'ACTIVE' ${orderDateCondition}
+      INNER JOIN "Opportunity" o ON o."salesPicId" = u.id ${leadDateCondition} ${opportunityBrand}
+      LEFT JOIN "SalesOrder" so ON so."opportunityId" = o.id AND so.status = 'ACTIVE' ${orderDateCondition} ${salesOrderBrand}
       WHERE u.role IN ('ADMIN_CUSTOMER', 'SALES', 'OWNER') AND u."isActive" = true
       GROUP BY u.id, u.name
       ORDER BY COALESCE(SUM(so.total), 0) DESC, "leadCount" DESC
@@ -886,7 +891,7 @@ export async function getDashboardFullAnalyticsData(params: DashboardQueryParams
         COUNT(CASE WHEN deadline < CURRENT_DATE THEN 1 END)::int AS "overdueCount",
         COUNT(CASE WHEN deadline >= CURRENT_DATE AND deadline <= CURRENT_DATE + INTERVAL '3 days' THEN 1 END)::int AS "approachingCount"
       FROM "ProductionWorkOrder"
-      WHERE status = 'ACTIVE' AND deadline IS NOT NULL
+      WHERE status = 'ACTIVE' AND deadline IS NOT NULL AND "brand" = ${brand}::"Brand"
     `),
     Promise.all([
       prisma.paymentTransaction.aggregate({

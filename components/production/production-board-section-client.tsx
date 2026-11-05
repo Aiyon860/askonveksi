@@ -62,18 +62,49 @@ export function ProductionBoardSectionClient({
     {
       fallbackData: initialData,
       revalidateOnMount: false,
-      revalidateOnFocus: false,
+      // Kartu diubah juga oleh user lain (dan dari tab/perangkat lain). Tanpa revalidasi
+      // saat tab kembali aktif, papan memakai snapshot SWR sampai polling 60 detik
+      // berikutnya — terasa seperti "harus reload paksa" untuk melihat kendala terbaru.
+      revalidateOnFocus: true,
       revalidateOnReconnect: true,
       refreshInterval: 60000,
       dedupingInterval: 10000,
     },
   );
 
-  // Data server (RSC) selalu paling baru setelah aksi + `router.refresh()`. Tanpa ini, cache SWR
-  // menahan snapshot lama (mis. Kendala yang baru disimpan hilang saat kartu dipindah antar kolom).
+  // Data server (RSC) biasanya paling baru setelah aksi + `router.refresh()`. Jangan
+  // timpa item SWR yang sudah punya `version` lebih tinggi — cache RSC basi bisa
+  // mengembalikan snapshot lama dan membuat warna kartu berkedip putih.
   useEffect(() => {
-    void mutate(initialData, { revalidate: false });
+    void mutate((current) => {
+      if (!current) return initialData;
+      const fresher = new Map(
+        current.items
+          .filter((item) => {
+            const incoming = initialData.items.find((row) => row.id === item.id);
+            return Boolean(incoming && item.version > incoming.version);
+          })
+          .map((item) => [item.id, item]),
+      );
+      if (fresher.size === 0) return initialData;
+      return {
+        ...initialData,
+        items: initialData.items.map((item) => fresher.get(item.id) ?? item),
+      };
+    }, { revalidate: false });
   }, [initialData, mutate]);
+
+  // Kendala yang baru disimpan langsung ditulis ke cache SWR: tanpa ini teks kartu
+  // menunggu data server (cache papan 30 detik) dan bisa tampak kembali ke isi lama.
+  function applySavedObstacle(id: string, obstacle: string | null, obstacleUpdatedAt: string | null) {
+    void mutate(
+      (current) =>
+        current
+          ? { ...current, items: current.items.map((item) => (item.id === id ? { ...item, obstacle, obstacleUpdatedAt } : item)) }
+          : current,
+      { revalidate: false },
+    );
+  }
 
   const board = data ?? initialData;
   const isFiltering = hasActiveProductionBoardFilters(filters);
@@ -160,7 +191,7 @@ export function ProductionBoardSectionClient({
           </EmptyContent>
         </Empty>
       ) : (
-        <ProductionBoard group={group} items={board.items} canManage={board.canManage !== false} onRefresh={() => mutate()} />
+        <ProductionBoard group={group} items={board.items} canManage={board.canManage !== false} onRefresh={() => mutate()} onObstacleSaved={applySavedObstacle} />
       )}
     </>
   );

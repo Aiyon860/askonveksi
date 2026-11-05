@@ -286,6 +286,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     <SortableHead label="Pengguna" value="name" state={state} className="min-w-48" />
                     <SortableHead label="Email" value="email" state={state} className="min-w-56" />
                     <SortableHead label="Role" value="role" state={state} />
+                    <TableHead className="min-w-28">Brand</TableHead>
                     <SortableHead label="Status" value="isActive" state={state} />
                     <TableHead className="min-w-72">Aksi</TableHead>
                   </TableRow>
@@ -296,6 +297,7 @@ async function UsersTableSection({ searchParams }: { searchParams: UserSearchPar
                     email: user.email,
                     name: user.name,
                     role: user.role,
+                    brand: user.brand,
                     isActive: user.isActive,
                     updatedAt: user.updatedAt.toISOString(),
                   }))}
@@ -363,6 +365,14 @@ function NewUserCard({ canManageDevelopers }: { canManageDevelopers: boolean }) 
                       <NativeSelectOption key={role} value={role}>{ROLE_LABEL[role]}</NativeSelectOption>
                     ))}
                   </NativeSelect>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="brand" required>Brand</FieldLabel>
+                  <NativeSelect id="brand" name="brand" required defaultValue="ASKONVEKSI" className="w-full">
+                    <NativeSelectOption value="ASKONVEKSI">Askonveksi</NativeSelectOption>
+                    <NativeSelectOption value="SAGA">SAGA</NativeSelectOption>
+                  </NativeSelect>
+                  <FieldDescription>Menentukan data brand yang dilihat pengguna.</FieldDescription>
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="password" required>Password awal</FieldLabel>

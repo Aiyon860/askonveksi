@@ -1,0 +1,45 @@
+RINGKASAN REVISI
+
+Berikut daftar revisi yang akan diterapkan beserta hasil yang diharapkan.
+
+1. Akses Admin Saga dan Desainer
+Role Admin Saga dan Desainer dibatasi ke fitur absensi. Menu lain tidak perlu ditampilkan untuk role tersebut.
+
+2. Gambar Broadcast dan Campaign Promo
+Bagian Broadcast dan Campaign Promo akan dilengkapi dengan gambar atau ilustrasi.
+
+3. Satu Customer, Satu PO
+PO tetap digabung berdasarkan nama customer. Perbedaan warna tidak membuat satu PO terpecah menjadi beberapa dokumen.
+
+4. Kategori Lainnya di Produksi
+Kategori Lainnya akan tersedia dan mengikuti alur produksi standar, mulai dari cutting, jahit, hingga tahap berikutnya.
+
+5. PDF Penjahit
+Pada PDF penjahit, gambar desain dapat diunggah lebih dari satu gambar.
+
+6. Admin PO dan Master Size
+Admin PO dapat menambahkan size baru ke master size, tidak hanya memilih size yang sudah tersedia.
+
+7. Posisi Roster
+Roster ditempatkan tepat di bawah halaman produk yang bersangkutan agar tidak tercampur dengan produk lain.
+
+8. Judul Revisi di PDF PO
+Label Revisi pada PDF PO dihilangkan. Dokumen hanya menampilkan nomor PO tanpa tambahan "- Revisi".
+
+9. Add On dan Total Invoice
+Add On dihitung sebagai keseluruhan. Invoice langsung menampilkan total per produk tanpa merinci ukuran.
+Contoh: Kemeja M Qty 1 + Kemeja S Qty 1 ditampilkan sebagai Kemeja Qty 2.
+
+10. Posisi Add On di Form Invoice
+Di form Invoice, Add On ditempatkan di bawah seluruh produk dan berdiri sendiri, tidak menempel pada salah satu produk.
+
+11. Penggabungan Baris Invoice
+Baris invoice untuk produk yang sama akan digabung.
+Contoh: Jersey M Qty 1 + Jersey S Qty 1 menjadi Jersey Qty 2 dengan harga total. Aturan yang sama berlaku untuk varian panjang dan pendek.
+
+12. Revisi Invoice
+Invoice yang sudah terbit tetap dapat direvisi dan diterbitkan ulang.
+
+13. Excel Pemasukan dan Pengeluaran
+Pada Excel pemasukan dan pengeluaran, ditambahkan Saldo Akhir. Pemasukan tetap dirinci, sedangkan pengeluaran langsung ditampilkan sebagai total.
+Contoh: Listrik 200.000 + Air 100.000 ditampilkan sebagai Pengeluaran hari ini 300.000.

@@ -30,8 +30,9 @@ export async function updateFollowUpSettingsAction(formData: FormData) {
     const offsets = [...parsed.data.offsets].sort((a, b) => a - b);
 
     await getPrismaClient().$transaction(async (tx) => {
+      const profile = await tx.businessProfile.findFirstOrThrow({ where: {}, select: { id: true } });
       const updated = await tx.businessProfile.updateMany({
-        where: { id: "default", version: parsed.data.version },
+        where: { id: profile.id, version: parsed.data.version },
         data: { invoiceReminderOffsets: offsets, version: { increment: 1 } },
       });
       if (!updated.count) throw new UserFacingError("Pengaturan sudah berubah. Muat ulang halaman.");
@@ -45,7 +46,7 @@ export async function updateFollowUpSettingsAction(formData: FormData) {
         await tx.whatsAppMessage.updateMany({ where: { automationJobId: { in: ids }, status: { in: ["QUEUED", "SENDING"] } }, data: { status: "CANCELLED", errorMessage: "Jadwal pengingat pembayaran diperbarui." } });
       }
       await tx.auditEvent.create({
-        data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "INVOICE_REMINDER_SETTINGS_UPDATED", changedFields: ["invoiceReminderOffsets"], metadata: { offsets } },
+        data: { actorId: actor.id, entityType: "BusinessProfile", entityId: profile.id, action: "INVOICE_REMINDER_SETTINGS_UPDATED", changedFields: ["invoiceReminderOffsets"], metadata: { offsets } },
       });
     }, SETTINGS_TRANSACTION_OPTIONS);
 
@@ -69,8 +70,9 @@ export async function updateRepeatOrderSettingsAction(formData: FormData) {
     if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
 
     await getPrismaClient().$transaction(async (tx) => {
+      const profile = await tx.businessProfile.findFirstOrThrow({ where: {}, select: { id: true } });
       const updated = await tx.businessProfile.updateMany({
-        where: { id: "default", version: parsed.data.version },
+        where: { id: profile.id, version: parsed.data.version },
         data: { repeatOrderIntervals: parsed.data.intervals, version: { increment: 1 } },
       });
       if (!updated.count) throw new UserFacingError("Pengaturan sudah berubah. Muat ulang halaman.");
@@ -100,7 +102,7 @@ export async function updateRepeatOrderSettingsAction(formData: FormData) {
         await tx.whatsAppMessage.updateMany({ where: { automationJobId: { in: ids }, status: { in: ["QUEUED", "SENDING"] } }, data: { status: "CANCELLED", errorMessage: "Pola reminder order diperbarui." } });
       }
       await tx.auditEvent.create({
-        data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "REPEAT_ORDER_SETTINGS_UPDATED", changedFields: ["repeatOrderIntervals"], metadata: { intervals: parsed.data.intervals } },
+        data: { actorId: actor.id, entityType: "BusinessProfile", entityId: profile.id, action: "REPEAT_ORDER_SETTINGS_UPDATED", changedFields: ["repeatOrderIntervals"], metadata: { intervals: parsed.data.intervals } },
       });
     }, SETTINGS_TRANSACTION_OPTIONS);
 

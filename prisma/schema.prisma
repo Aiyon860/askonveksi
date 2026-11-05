@@ -21,6 +21,20 @@ enum AppRole {
   ADMIN_SAGA
 }
 
+/// Brand operasional. Satu instalasi, dua wajah: ASKONVEKSI dan SAGA.
+/// Semua data transaksional dimiliki tepat satu brand; customer boleh dua.
+enum Brand {
+  ASKONVEKSI
+  SAGA
+}
+
+/// Cakupan customer. `BOTH` = customer pernah bertransaksi di kedua brand.
+enum BrandScope {
+  ASKONVEKSI
+  SAGA
+  BOTH
+}
+
 enum AttendanceStatus {
   HADIR
   TERLAMBAT
@@ -184,6 +198,7 @@ enum ExpenseCategory {
   LEMBUR
   LOKER
   DLL
+  LAINNYA
   PROJECT
 }
 
@@ -300,6 +315,9 @@ model AppUser {
   email                     String                    @unique @db.VarChar(320)
   name                      String                    @db.VarChar(120)
   role                      AppRole
+  /// Brand asal akun. OWNER/KEUANGAN/DEVELOPER boleh berpindah brand;
+  /// role lain terkunci ke brand ini.
+  brand                     Brand                     @default(ASKONVEKSI)
   isActive                  Boolean                   @default(true)
   communicationActivities   CommunicationActivity[]
   customerReminderReceipts  CustomerReminderReceipt[]
@@ -334,10 +352,12 @@ model AppUser {
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
   @@index([role, isActive])
+  @@index([brand, role, isActive])
 }
 
 model Expense {
   id                      String                 @id @default(cuid())
+  brand                   Brand                  @default(ASKONVEKSI)
   purpose                 String                 @db.VarChar(500)
   description             String?                @db.VarChar(240)
   spentAt                 DateTime               @db.Date
@@ -374,6 +394,8 @@ model Expense {
   @@index([salesOrderProductCostId, hppKey])
   @@index([customerName])
   @@index([salesOrderId, hppKey])
+  @@index([brand, spentAt])
+  @@index([brand, deletedAt, spentAt])
 }
 
 model CustomerType {
@@ -435,7 +457,8 @@ model PaymentMethod {
 
 model ProductCategory {
   id                 String              @id @default(cuid())
-  name               String              @unique @db.VarChar(80)
+  brand              Brand               @default(ASKONVEKSI)
+  name               String              @db.VarChar(80)
   garmentType        GarmentType
   position           Int                 @default(0)
   isActive           Boolean             @default(true)
@@ -446,10 +469,12 @@ model ProductCategory {
   updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
 
   @@index([isActive, position, name])
+  @@unique([brand, name])
 }
 
 model BusinessProfile {
   id                         String   @id @default("default") @db.VarChar(32)
+  brand                      Brand    @unique @default(ASKONVEKSI)
   name                       String   @db.VarChar(160)
   phone                      String?  @db.VarChar(32)
   email                      String?  @db.VarChar(320)
@@ -510,6 +535,7 @@ model AttendanceHoliday {
 
 model Customer {
   id                      String                      @id @default(cuid())
+  brandScope              BrandScope                  @default(ASKONVEKSI)
   customerNo              String                      @unique @db.VarChar(24)
   poCustomerCode          String?                     @unique @db.VarChar(20)
   name                    String                      @db.VarChar(160)
@@ -552,10 +578,12 @@ model Customer {
   @@index([salesPicId])
   @@index([city])
   @@index([lifecycle, archivedAt, updatedAt])
+  @@index([brandScope, archivedAt, updatedAt])
 }
 
 model Opportunity {
   id                      String                  @id @default(cuid())
+  brand                   Brand                   @default(ASKONVEKSI)
   opportunityNo           String                  @unique @db.VarChar(24)
   customerId              String
   title                   String                  @db.VarChar(180)
@@ -594,6 +622,7 @@ model Opportunity {
   @@index([leadSourceId, createdAt])
   @@index([nextActionAt])
   @@index([productCategoryId])
+  @@index([brand, stage, updatedAt])
 }
 
 model PublicRateLimitBucket {
@@ -607,6 +636,7 @@ model PublicRateLimitBucket {
 
 model CommunicationActivity {
   id                 String                    @id @default(cuid())
+  brand              Brand                     @default(ASKONVEKSI)
   customerId         String
   opportunityId      String?
   authorId           String
@@ -629,10 +659,12 @@ model CommunicationActivity {
   @@index([customerId, occurredAt, id])
   @@index([opportunityId, occurredAt, id])
   @@index([authorId, occurredAt])
+  @@index([brand, customerId, occurredAt, id])
 }
 
 model PurchaseOrder {
   id                       String                     @id @default(cuid())
+  brand                    Brand                      @default(ASKONVEKSI)
   purchaseOrderNo          String                     @unique @db.VarChar(28)
   customerReference        String?                    @db.VarChar(120)
   opportunityId            String
@@ -688,6 +720,7 @@ model PurchaseOrder {
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
   @@index([productCategoryId])
+  @@index([brand, status, updatedAt])
 }
 
 model PurchaseOrderDeposit {
@@ -871,6 +904,7 @@ model PurchaseOrderAttachment {
 
 model Invoice {
   id                        String                  @id @default(cuid())
+  brand                     Brand                   @default(ASKONVEKSI)
   invoiceNo                 String                  @unique @db.VarChar(28)
   opportunityId             String
   purchaseOrderId           String
@@ -922,6 +956,7 @@ model Invoice {
   @@index([opportunityId, status])
   @@index([purchaseOrderId, status])
   @@index([createdById, createdAt])
+  @@index([brand, status, updatedAt])
 }
 
 model InvoiceItem {
@@ -988,6 +1023,7 @@ model InvoiceAddon {
 
 model SalesOrder {
   id                   String                  @id @default(cuid())
+  brand                Brand                   @default(ASKONVEKSI)
   salesOrderNo         String                  @unique @db.VarChar(28)
   opportunityId        String
   purchaseOrderId      String                  @unique
@@ -1031,6 +1067,7 @@ model SalesOrder {
   @@index([opportunityId, status])
   @@index([createdById, createdAt])
   @@index([status, createdAt])
+  @@index([brand, status, acceptedAt])
 }
 
 model SalesOrderCost {
@@ -1080,6 +1117,7 @@ model SalesOrderProductCost {
 
 model ProductionWorkOrder {
   id                  String                    @id @default(cuid())
+  brand               Brand                     @default(ASKONVEKSI)
   workOrderNo         String                    @unique @db.VarChar(28)
   salesOrderId        String
   purchaseOrderItemId String?
@@ -1118,6 +1156,7 @@ model ProductionWorkOrder {
   @@index([route, status, updatedAt])
   @@index([currentStage, status, updatedAt])
   @@index([deadline, status])
+  @@index([brand, status, updatedAt])
 }
 
 model ProductionStep {
@@ -1286,6 +1325,7 @@ model SalesOrderItem {
 
 model CustomerReminder {
   id                 String                    @id @default(cuid())
+  brand              Brand                     @default(ASKONVEKSI)
   customerId         String
   sourceSalesOrderId String
   type               CustomerReminderType
@@ -1304,6 +1344,7 @@ model CustomerReminder {
   @@index([resolvedAt, dueAt])
   @@index([customerId, resolvedAt, dueAt])
   @@index([type, resolvedAt, dueAt])
+  @@index([brand, resolvedAt, dueAt])
 }
 
 model CustomerReminderReceipt {
@@ -1320,6 +1361,7 @@ model CustomerReminderReceipt {
 
 model AuditEvent {
   id                    String                 @id @default(cuid())
+  brand                 Brand                  @default(ASKONVEKSI)
   actorId               String
   entityType            String                 @db.VarChar(64)
   entityId              String
@@ -1333,10 +1375,12 @@ model AuditEvent {
   @@index([entityType, entityId, createdAt])
   @@index([actorId, createdAt])
   @@index([createdAt])
+  @@index([brand, createdAt])
 }
 
 model WhatsAppAccount {
   id                    String                  @id @default(cuid())
+  brand                 Brand                   @default(ASKONVEKSI)
   label                 String                  @db.VarChar(80)
   phoneNumber           String                  @unique @db.VarChar(20)
   status                WhatsAppAccountStatus   @default(DISCONNECTED)
@@ -1358,11 +1402,13 @@ model WhatsAppAccount {
 
   @@index([sendEnabled, status])
   @@index([heartbeatAt])
+  @@index([brand, sendEnabled, status])
 }
 
 model WhatsAppTemplate {
   id          String                  @id @default(cuid())
-  name        String                  @unique @db.VarChar(80)
+  brand       Brand                   @default(ASKONVEKSI)
+  name        String                  @db.VarChar(80)
   triggerType WhatsAppJobType
   body        String                  @db.Text
   isActive    Boolean                 @default(true)
@@ -1376,10 +1422,12 @@ model WhatsAppTemplate {
   updatedAt   DateTime                @updatedAt @db.Timestamptz(3)
 
   @@index([triggerType, isActive])
+  @@unique([brand, name])
 }
 
 model WhatsAppConversation {
   id                 String            @id @default(cuid())
+  brand              Brand             @default(ASKONVEKSI)
   accountId          String
   remoteJid          String            @db.VarChar(80)
   customerId         String?
@@ -1397,6 +1445,7 @@ model WhatsAppConversation {
   @@index([customerId, lastMessageAt])
   @@index([lastMessageAt])
   @@index([isResolved, unreadCount, lastMessageAt])
+  @@index([brand, lastMessageAt])
 }
 
 model WhatsAppMessage {
@@ -1436,6 +1485,7 @@ model WhatsAppMessage {
 
 model WhatsAppCampaign {
   id                  String                      @id @default(cuid())
+  brand               Brand                       @default(ASKONVEKSI)
   name                String                      @db.VarChar(120)
   body                String                      @db.Text
   scheduledAt         DateTime                    @db.Timestamptz(3)
@@ -1464,6 +1514,7 @@ model WhatsAppCampaign {
   @@index([status, scheduledAt])
   @@index([createdById, createdAt])
   @@index([updatedById, updatedAt])
+  @@index([brand, status, scheduledAt])
 }
 
 // Media sementara pengiriman broadcast. Gambar tidak disimpan di sistem:
@@ -1485,6 +1536,7 @@ model WhatsAppTempMedia {
 
 model WhatsAppAutomationJob {
   id             String            @id @default(cuid())
+  brand          Brand             @default(ASKONVEKSI)
   idempotencyKey String            @unique @db.VarChar(240)
   type           WhatsAppJobType
   status         WhatsAppJobStatus @default(QUEUED)
@@ -1521,6 +1573,7 @@ model WhatsAppAutomationJob {
   @@index([invoiceId, type, scheduledAt])
   @@index([opportunityId, type, scheduledAt])
   @@index([campaignId, status, scheduledAt])
+  @@index([brand, status, scheduledAt])
 }
 
 model WhatsAppCampaignRecipient {
@@ -1546,6 +1599,7 @@ model SequenceCounter {
 // HTML ringan (strong, em, u, br) untuk tebal/miring/garis bawah.
 model InvoiceSettingPoint {
   id        String                @id @default(cuid())
+  brand     Brand                 @default(ASKONVEKSI)
   section   InvoiceSettingSection
   text      String                @db.Text
   position  Int                   @default(0)
@@ -1553,4 +1607,5 @@ model InvoiceSettingPoint {
   updatedAt DateTime              @updatedAt @db.Timestamptz(3)
 
   @@index([section, position])
+  @@index([brand, section, position])
 }

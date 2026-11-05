@@ -10,7 +10,7 @@ export async function GET() {
   } catch {
     return new Response("Anda harus masuk.", { status: 401 });
   }
-  const profile = await getPrismaClient().businessProfile.findUnique({ where: { id: "default" }, select: { signaturePath: true } });
+  const profile = await getPrismaClient().businessProfile.findFirst({ where: {}, select: { signaturePath: true } });
   if (!profile?.signaturePath) return new Response("Gambar tanda tangan tidak ditemukan.", { status: 404 });
   const { data, error } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(profile.signaturePath);
   if (error || !data) return new Response("Gambar tanda tangan tidak ditemukan.", { status: 404 });

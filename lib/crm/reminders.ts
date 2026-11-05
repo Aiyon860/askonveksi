@@ -47,7 +47,7 @@ export async function scheduleCustomerReminders(
   tx: Prisma.TransactionClient,
   data: { customerId: string; sourceSalesOrderId: string; acceptedAt: Date },
 ) {
-  const settings = await tx.businessProfile.findUnique({ where: { id: "default" }, select: { repeatOrderIntervals: true } });
+  const settings = await tx.businessProfile.findFirst({ where: {}, select: { repeatOrderIntervals: true } });
   const intervals = settings?.repeatOrderIntervals ?? [...DEFAULT_REPEAT_ORDER_INTERVALS];
   const resolvedAt = new Date();
   await tx.customerReminder.updateMany({
@@ -66,7 +66,7 @@ export async function restoreCustomerRemindersAfterCancellation(
   tx: Prisma.TransactionClient,
   customerId: string,
 ) {
-  const settings = await tx.businessProfile.findUnique({ where: { id: "default" }, select: { repeatOrderIntervals: true } });
+  const settings = await tx.businessProfile.findFirst({ where: {}, select: { repeatOrderIntervals: true } });
   const intervals = settings?.repeatOrderIntervals ?? [...DEFAULT_REPEAT_ORDER_INTERVALS];
   const resolvedAt = new Date();
   await tx.customerReminder.updateMany({

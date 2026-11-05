@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { CalendarClock, FilePlus2, GripVertical, NotebookText } from "lucide-react";
+import { CalendarClock, FilePlus2, NotebookText } from "lucide-react";
 import type { AppRole, OpportunityStage } from "@prisma/client";
 
 import { moveOpportunityStageOptimisticAction } from "@/app/actions/crm";
@@ -31,14 +31,6 @@ type PendingMove = { opportunity: PipelineOpportunity; stage: OpportunityStage }
 type RecentMove = { id: string; stage: OpportunityStage };
 
 const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
-
-const DEFAULT_DESTINATION: Record<OpportunityStage, OpportunityStage> = {
-  LEAD_BARU: "NEGOSIASI",
-  FOLLOW_UP: "NEGOSIASI",
-  NEGOSIASI: "DEAL",
-  DEAL: "DEAL",
-  LOST: "FOLLOW_UP",
-};
 
 const STAGE_ORDER: Record<OpportunityStage, number> = {
   LEAD_BARU: 0,
@@ -179,11 +171,22 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                       entering={recentMove?.id === opportunity.id && recentMove.stage === stage}
                       previewing={previewMove?.opportunity.id === opportunity.id}
                     >
-                      {(drag) => <Card size="sm" className={cn("border shadow-xs transition-colors", drag.draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", canOpenDetail ? "hover:border-primary/40" : "border-muted-foreground/25 bg-muted/60")}>
+                      {(drag) => <Card size="sm" className={cn("relative border shadow-xs transition-colors", drag.draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", canOpenDetail ? "hover:border-primary/40" : "border-muted-foreground/25 bg-muted/60")}>
+                      {drag.draggable ? (
+                        // Area geser transparan di 1/3 atas kartu: tidak menutupi isi
+                        // mana pun, tetapi seluruh bagian atas bisa dipakai menggeser.
+                        <div
+                          ref={drag.setActivatorNodeRef}
+                          {...drag.attributes}
+                          {...drag.listeners}
+                          aria-label={`Geser kartu ${opportunity.customer.name}`}
+                          className="absolute inset-x-0 top-0 z-10 h-1/3 touch-none cursor-grab select-none bg-transparent active:cursor-grabbing"
+                        />
+                      ) : null}
                       <CardHeader className="gap-1">
                         <CardTitle className="font-bold text-base leading-tight">
                           {canOpenDetail ? (
-                            <Link href={`/crm/peluang/${opportunity.id}`} className="font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                            <Link href={`/crm/peluang/${opportunity.id}`} className="relative z-20 font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
                               {opportunity.customer.name}
                             </Link>
                           ) : (
@@ -229,21 +232,6 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                             <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah invoice
                           </Button>
                         ) : null}
-                        {canOperate && opportunity.stage !== "DEAL" ? <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => requestMove(opportunity, DEFAULT_DESTINATION[opportunity.stage])}>Ubah status</Button> : null}
-                        {drag.draggable ? (
-                          // Area geser selebar kartu (sekitar seperempat tinggi kartu)
-                          // supaya tidak perlu membidik ikon kecil di ujung kanan.
-                          <div
-                            ref={drag.setActivatorNodeRef}
-                            {...drag.attributes}
-                            {...drag.listeners}
-                            aria-label={`Geser kartu ${opportunity.customer.name}`}
-                            className="mt-1 flex min-h-14 touch-none cursor-grab select-none items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/50 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted active:cursor-grabbing"
-                          >
-                            <GripVertical aria-hidden="true" className="size-4" />
-                            Geser kartu
-                          </div>
-                        ) : null}
                       </CardContent>
                     </Card>}</DraggablePipelineCard>
                     );
@@ -251,7 +239,7 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
                     <Empty className="min-h-32 p-4">
                       <EmptyHeader>
                         <EmptyTitle className="text-sm">Belum ada peluang</EmptyTitle>
-                        <EmptyDescription>Tarik kartu ke kolom ini atau gunakan menu status.</EmptyDescription>
+                        <EmptyDescription>Tarik kartu ke kolom ini untuk memindahkan status.</EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   )}

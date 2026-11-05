@@ -24,6 +24,11 @@ export type ProductionBoardFilters = {
   q: string;
   /** ID user PIC, `none` untuk kartu tanpa PIC, atau kosong untuk semua. */
   pic: string;
+  /**
+   * Bulan kalender Jakarta (`YYYY-MM`) untuk `stageEnteredAt`.
+   * String kosong = semua bulan (default / `bulan=all`).
+   */
+  month: string;
   deadline: ProductionDeadlinePreset | "";
   status: ProductionBoardStatus | "";
   /** Penanda kartu; beberapa nilai berarti "salah satu" (union). */
@@ -88,10 +93,46 @@ export function matchingProductionCategoryScopes(
 export const EMPTY_PRODUCTION_BOARD_FILTERS: ProductionBoardFilters = {
   q: "",
   pic: "",
+  month: "",
   deadline: "",
   status: "",
   penanda: [],
 };
+
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+/** Sentinel URL: tampilkan semua bulan (bukan default bulan ini). */
+export const ALL_PRODUCTION_MONTHS = "all";
+
+export function isProductionMonth(value: string) {
+  return MONTH_PATTERN.test(value);
+}
+
+/** Bulan kalender Jakarta saat ini (`YYYY-MM`). */
+export function jakartaCurrentMonth(reference: Date = new Date()) {
+  return jakartaDateKey(reference).slice(0, 7);
+}
+
+/** Label bulan untuk ringkasan filter, mis. `2026-08` → "Agustus 2026". */
+export function formatProductionMonth(month: string) {
+  if (!isProductionMonth(month)) return "";
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, monthNumber - 1, 1)),
+  );
+}
+
+/**
+ * Rentang `stageEnteredAt` untuk satu bulan kalender Jakarta
+ * (awal bulan WIB inklusif → awal bulan berikutnya eksklusif).
+ */
+export function stageEnteredMonthRange(month: string): Prisma.DateTimeFilter | null {
+  if (!isProductionMonth(month)) return null;
+  const [year, monthNumber] = month.split("-").map(Number);
+  return {
+    gte: new Date(Date.UTC(year, monthNumber - 1, 1) - JAKARTA_OFFSET_MS),
+    lt: new Date(Date.UTC(year, monthNumber, 1) - JAKARTA_OFFSET_MS),
+  };
+}
 
 export const DEADLINE_PRESETS: ReadonlyArray<{ value: ProductionDeadlinePreset; label: string }> = [
   { value: "overdue", label: "Terlambat" },
@@ -168,7 +209,10 @@ function firstValue(value: string | string[] | undefined) {
 }
 
 /** Whitelist nilai URL: parameter rusak/tak dikenal diabaikan, bukan error. */
-export function parseProductionBoardFilters(input: ProductionBoardFilterInput): ProductionBoardFilters {
+export function parseProductionBoardFilters(
+  input: ProductionBoardFilterInput,
+  reference: Date = new Date(),
+): ProductionBoardFilters {
   const q = firstValue(input.q).trim().slice(0, QUERY_MAX);
   const rawPic = firstValue(input.pic).trim();
   const pic = rawPic === NO_PIC || ID_PATTERN.test(rawPic) ? rawPic : "";
@@ -181,7 +225,16 @@ export function parseProductionBoardFilters(input: ProductionBoardFilterInput): 
   const requestedPenanda = firstValue(input.penanda).toLowerCase().split(",").map((value) => value.trim());
   const penanda = PENANDA_OPTIONS.map((option) => option.value).filter((value) => requestedPenanda.includes(value));
 
-  return { q, pic, deadline, status, penanda };
+  // Bulan Masuk: kosong/`all`/tanpa param → semua bulan; `YYYY-MM` → bulan itu.
+  // Default semua supaya arsip (bulan lama) tetap terlihat; user bisa ketatkan sendiri.
+  const rawMonth = firstValue(input.bulan).trim();
+  const month = rawMonth === ALL_PRODUCTION_MONTHS || !rawMonth
+    ? ""
+    : isProductionMonth(rawMonth)
+      ? rawMonth
+      : "";
+
+  return { q, pic, month, deadline, status, penanda };
 }
 
 /** Parameter URL siap pakai (hanya nilai aktif) untuk tautan dan export. */
@@ -189,14 +242,17 @@ export function productionBoardFilterParams(filters: ProductionBoardFilters) {
   const params: Record<string, string> = {};
   if (filters.q) params.q = filters.q;
   if (filters.pic) params.pic = filters.pic;
+  // Selalu tulis bulan: kosong → `all` supaya parse tidak kembali ke default bulan ini.
+  params.bulan = filters.month || ALL_PRODUCTION_MONTHS;
   if (filters.deadline) params.deadline = filters.deadline;
   if (filters.status) params.status = filters.status;
   if (filters.penanda.length) params.penanda = filters.penanda.join(",");
   return params;
 }
 
+/** Filter aktif bila ada kriteria selain baseline "semua bulan". */
 export function hasActiveProductionBoardFilters(filters: ProductionBoardFilters) {
-  return Boolean(filters.q || filters.pic || filters.deadline || filters.status || filters.penanda.length);
+  return Boolean(filters.q || filters.pic || filters.month || filters.deadline || filters.status || filters.penanda.length);
 }
 
 /** Label filter aktif untuk empty state, mis. ["Terlambat", "Retur", "Budi"]. */
@@ -208,6 +264,7 @@ export function activeProductionBoardFilterLabels(
   if (filters.q) labels.push(`"${filters.q}"`);
   if (filters.pic === NO_PIC) labels.push("Belum ada PIC");
   else if (filters.pic) labels.push(picName?.trim() || "PIC terpilih");
+  if (filters.month) labels.push(formatProductionMonth(filters.month));
   if (filters.deadline) {
     const preset = DEADLINE_PRESETS.find((option) => option.value === filters.deadline);
     if (preset) labels.push(preset.label);
@@ -262,6 +319,11 @@ export function productionBoardFilterConditions(
   }
 
   if (filters.status) conditions.push({ status: filters.status });
+
+  if (filters.month) {
+    const range = stageEnteredMonthRange(filters.month);
+    if (range) conditions.push({ stageEnteredAt: range });
+  }
 
   if (filters.penanda.length) {
     const penandaConditions: Prisma.ProductionWorkOrderWhereInput[] = [];
@@ -352,6 +414,7 @@ export function productionBoardCacheKey({
     productCategoryId ?? "",
     filters.q.toLocaleLowerCase("id"),
     filters.pic,
+    filters.month || ALL_PRODUCTION_MONTHS,
     filters.deadline,
     filters.status,
     filters.penanda.join(","),

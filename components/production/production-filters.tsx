@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { DebouncedSearchInput } from "@/components/debounced-search-input";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { RotateCcw } from "lucide-react";
 
@@ -45,11 +47,13 @@ export function ProductionFiltersBar({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [monthFocused, setMonthFocused] = useState(false);
   // Parameter halaman yang harus selalu ikut: jalur + kategori aktif.
   const baseParams = { jalur: group, ...(categoryParam ? { kategori: categoryParam } : {}) };
   const groupLabel = PRODUCTION_BOARD_GROUP_LABEL[group];
   const scopeLabel = categoryName && categoryName !== groupLabel ? `${groupLabel} · ${categoryName}` : groupLabel;
   const active = hasActiveProductionBoardFilters(filters);
+  const showMonthPlaceholder = !filters.month && !monthFocused;
 
   function navigate(next: ProductionBoardFilters) {
     const params = new URLSearchParams({ ...baseParams, ...productionBoardFilterParams(next) });
@@ -84,6 +88,28 @@ export function ProductionFiltersBar({
           placeholder="Nomor WO, produk, SO, customer di tab ini"
           ariaLabel={`Cari Work Order, produk, Sales Order, atau customer di ${scopeLabel}`}
         />
+      </Field>
+
+      <Field className="gap-1.5 sm:w-44">
+        <FieldLabel htmlFor="production-filter-month">Bulan masuk</FieldLabel>
+        <div className="relative">
+          <Input
+            id="production-filter-month"
+            type="month"
+            lang="id-ID"
+            value={filters.month}
+            onChange={(event) => patch({ month: event.target.value })}
+            onFocus={() => setMonthFocused(true)}
+            onBlur={() => setMonthFocused(false)}
+            aria-label="Filter bulan masuk tahap, kosong berarti semua bulan"
+            className={cn(showMonthPlaceholder && "text-transparent")}
+          />
+          {showMonthPlaceholder ? (
+            <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-sm text-muted-foreground">
+              Semua bulan
+            </span>
+          ) : null}
+        </div>
       </Field>
 
       <Field className="gap-1.5 sm:w-56">

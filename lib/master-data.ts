@@ -96,7 +96,16 @@ export async function getActiveProductCategories() {
     select: { id: true, name: true, garmentType: true, position: true },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
-  return sortProductCategoryRows(items, (item) => item.garmentType);
+  // Satu nama per jenis: cegah chip dobel (mis. "Lainnya" dua kali) bila
+  // dua baris brand bocor ke query yang sama.
+  const seen = new Set<string>();
+  const unique = items.filter((item) => {
+    const key = `${item.garmentType}:${item.name.toLocaleLowerCase("id")}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return sortProductCategoryRows(unique, (item) => item.garmentType);
 }
 
 export async function getPaymentMethods() {
@@ -137,5 +146,5 @@ export async function getInvoiceSettingPoints() {
 
 export async function getBusinessProfile() {
   await requireActor(MASTER_DATA_ROLES);
-  return getPrismaClient().businessProfile.findUnique({ where: { id: "default" } });
+  return getPrismaClient().businessProfile.findFirst({ where: {} });
 }

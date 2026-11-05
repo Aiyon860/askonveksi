@@ -999,10 +999,10 @@ export async function updateBusinessProfileAction(formData: FormData) {
 
     try {
       await getPrismaClient().$transaction(async (tx) => {
-        const current = await tx.businessProfile.findUnique({ where: { id: "default" }, select: { id: true } });
+        const current = await tx.businessProfile.findFirst({ where: {}, select: { id: true } });
         if (!current) throw new UserFacingError("Profil perusahaan belum tersedia. Jalankan migrasi terbaru.");
         const updated = await tx.businessProfile.updateMany({
-          where: { id: "default", version: parsed.data.version },
+          where: { id: current.id, version: parsed.data.version },
           data: {
             name: parsed.data.name,
             phone: parsed.data.phone,
@@ -1019,7 +1019,7 @@ export async function updateBusinessProfileAction(formData: FormData) {
         });
         if (updated.count !== 1) throw new UserFacingError("Profil perusahaan sudah berubah. Muat ulang halaman.");
         await tx.auditEvent.create({
-          data: { actorId: actor.id, entityType: "BusinessProfile", entityId: "default", action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedLogoPath ? ["logoPath"] : []), ...(uploadedSignaturePath || removeSignature ? ["signaturePath"] : [])] },
+          data: { actorId: actor.id, entityType: "BusinessProfile", entityId: current.id, action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedLogoPath ? ["logoPath"] : []), ...(uploadedSignaturePath || removeSignature ? ["signaturePath"] : [])] },
         });
       }, MASTER_DATA_TRANSACTION_OPTIONS);
     } catch (error) {
