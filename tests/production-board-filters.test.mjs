@@ -5,11 +5,13 @@ import { readFile } from "node:fs/promises";
 
 import {
   ALL_PRODUCTION_CATEGORIES,
+  ALL_PRODUCTION_MONTHS,
   EMPTY_PRODUCTION_BOARD_FILTERS,
   NO_PIC,
   activeProductionBoardFilterLabels,
   deadlineRange,
   hasActiveProductionBoardFilters,
+  jakartaCurrentMonth,
   jakartaToday,
   matchingProductionCategoryScopes,
   parseProductionBoardFilters,
@@ -18,6 +20,7 @@ import {
   productionBoardFilterParams,
   productionBoardWhere,
   resolveProductionCategorySelection,
+  stageEnteredMonthRange,
 } from "../lib/production/board-filters.ts";
 
 const root = new URL("..", import.meta.url);
@@ -63,25 +66,55 @@ test("parse filter menerima array parameter dan membatasi panjang pencarian", ()
   assert.equal(parseProductionBoardFilters({ q: "x".repeat(200) }).q.length, 80);
 });
 
-test("filter tanpa nilai menghasilkan parameter URL kosong dan tidak dianggap aktif", () => {
+test("tanpa param bulan berarti semua bulan dan tidak dianggap aktif", () => {
   assert.equal(ALL_PRODUCTION_CATEGORIES, "all");
-  const filters = parseProductionBoardFilters({});
-  assert.deepEqual(filters, EMPTY_PRODUCTION_BOARD_FILTERS);
+  assert.equal(ALL_PRODUCTION_MONTHS, "all");
+  const filters = parseProductionBoardFilters({}, NOW);
+  assert.equal(filters.month, "");
   assert.equal(hasActiveProductionBoardFilters(filters), false);
-  assert.deepEqual(productionBoardFilterParams(filters), {});
+  assert.deepEqual(productionBoardFilterParams(filters), { bulan: ALL_PRODUCTION_MONTHS });
+});
+
+test("bulan=YYYY-MM memfilter stageEnteredAt dan dianggap aktif", () => {
+  const filters = parseProductionBoardFilters({ bulan: "2026-08" }, NOW);
+  assert.equal(filters.month, "2026-08");
+  assert.equal(hasActiveProductionBoardFilters(filters), true);
+  assert.deepEqual(productionBoardFilterParams(filters), { bulan: "2026-08" });
+  assert.deepEqual(activeProductionBoardFilterLabels(filters, null), ["Agustus 2026"]);
 });
 
 test("parameter URL bolak-balik tetap sama (dipakai tautan tab dan export)", () => {
-  const filters = { q: "seragam", pic: NO_PIC, deadline: "overdue", status: "ACTIVE", penanda: ["retur", "sampel"] };
+  const filters = {
+    q: "seragam",
+    pic: NO_PIC,
+    month: "2026-08",
+    deadline: "overdue",
+    status: "ACTIVE",
+    penanda: ["retur", "sampel"],
+  };
   const params = productionBoardFilterParams(filters);
   assert.deepEqual(params, {
     q: "seragam",
     pic: NO_PIC,
+    bulan: "2026-08",
     deadline: "overdue",
     status: "ACTIVE",
     penanda: "retur,sampel",
   });
-  assert.deepEqual(parseProductionBoardFilters(params), filters);
+  assert.deepEqual(parseProductionBoardFilters(params, NOW), filters);
+});
+
+test("filter bulan membatasi stageEnteredAt ke rentang kalender Jakarta", () => {
+  assert.deepEqual(stageEnteredMonthRange("2026-10"), {
+    gte: new Date("2026-09-30T17:00:00.000Z"),
+    lt: new Date("2026-10-31T17:00:00.000Z"),
+  });
+  const conditions = productionBoardFilterConditions(
+    { ...EMPTY_PRODUCTION_BOARD_FILTERS, month: "2026-10" },
+    NOW,
+  );
+  assert.deepEqual(conditions, [{ stageEnteredAt: stageEnteredMonthRange("2026-10") }]);
+  assert.deepEqual(productionBoardFilterConditions(EMPTY_PRODUCTION_BOARD_FILTERS, NOW), []);
 });
 
 test("batas tanggal deadline memakai kalender Jakarta, bukan jam browser", () => {
@@ -264,11 +297,22 @@ test("tanpa filter, where papan sama seperti sebelumnya untuk setiap jalur", () 
 });
 
 test("label filter aktif menyebut PIC dan penanda untuk empty state", () => {
-  const filters = { ...EMPTY_PRODUCTION_BOARD_FILTERS, q: "seragam", pic: "user-9", deadline: "d3", status: "ACTIVE", penanda: ["retur"] };
+  const filters = {
+    ...EMPTY_PRODUCTION_BOARD_FILTERS,
+    q: "seragam",
+    pic: "user-9",
+    deadline: "d3",
+    status: "ACTIVE",
+    penanda: ["retur"],
+  };
   assert.deepEqual(activeProductionBoardFilterLabels(filters, "Budi"), ['"seragam"', "Budi", "Deadline ≤ 3 hari", "Aktif", "Retur"]);
   assert.deepEqual(
     activeProductionBoardFilterLabels({ ...EMPTY_PRODUCTION_BOARD_FILTERS, pic: NO_PIC }, null),
     ["Belum ada PIC"],
+  );
+  assert.deepEqual(
+    activeProductionBoardFilterLabels({ ...EMPTY_PRODUCTION_BOARD_FILTERS, month: "2026-08" }, null),
+    ["Agustus 2026"],
   );
 });
 
@@ -277,14 +321,14 @@ test("cache papan memuat setiap filter agar hasil filter lain tidak bocor", () =
   const key = productionBoardCacheKey({
     group: "JERSEY",
     productCategoryId: "cat-1",
-    filters: { q: "Seragam", pic: "user-1", deadline: "d7", status: "ACTIVE", penanda: ["retur", "qc"] },
+    filters: { q: "Seragam", pic: "user-1", month: "2026-10", deadline: "d7", status: "ACTIVE", penanda: ["retur", "qc"] },
   });
 
-  assert.deepEqual(base, ["production-board", "JERSEY", "cat-1", "", "", "", "", ""]);
+  assert.deepEqual(base, ["production-board", "JERSEY", "cat-1", "", "", ALL_PRODUCTION_MONTHS, "", "", ""]);
   assert.equal(key.length, base.length, "panjang key tetap, hanya nilai yang berubah");
   // Pencarian tidak peka huruf besar/kecil supaya cache tidak dobel.
   assert.equal(key[3], "seragam");
-  assert.deepEqual(key.slice(4), ["user-1", "d7", "ACTIVE", "retur,qc"]);
+  assert.deepEqual(key.slice(4), ["user-1", "2026-10", "d7", "ACTIVE", "retur,qc"]);
   assert.notDeepEqual(key, base);
 });
 
@@ -322,6 +366,10 @@ test("halaman, API polling, dan export memakai builder filter yang sama", async 
   assert.match(sectionClient, /Ditemukan juga di papan lain/);
   assert.match(filtersBar, /Cari di \{scopeLabel\}/);
   assert.match(filtersBar, /categoryParam/);
+  assert.match(filtersBar, /production-filter-month/);
+  assert.match(filtersBar, /type="month"/);
+  assert.match(filtersBar, /Bulan masuk/);
+  assert.match(filtersBar, /productionBoardFilterParams/);
 
   assert.match(route, /parseProductionBoardFilters\(Object\.fromEntries\(params\.entries\(\)\)\)/);
   assert.match(route, /getProductionBoard\(\{ group, productCategoryId, filters \}\)/);

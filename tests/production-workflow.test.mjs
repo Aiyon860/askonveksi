@@ -90,9 +90,9 @@ test("board produksi auto-refresh setelah kartu dipindah", () => {
   // Transisi menunggu revalidate SWR agar kartu tidak sempat balik ke kolom lama.
   assert.match(board, /await onRefresh\?\.\(\)/);
   assert.match(sectionClient, /onRefresh=\{\(\) => mutate\(\)\}/);
-  // Kunci kolom dipasang urgent sebelum startTransition: update di dalam callback
-  // async terbukti bisa tidak ter-commit (log: lockStage macet di save sebelumnya).
-  assert.match(board, /setSavingMove\(\{ id: item\.id, stage: lockStage \}\);\s+startMoving\(async \(\) => \{/);
+  // Kunci kolom (+ warna) dipasang urgent sebelum startTransition: update di dalam
+  // callback async terbukti bisa tidak ter-commit (log: lockStage macet di save sebelumnya).
+  assert.match(board, /setSavingMove\(\{ id: item\.id, stage: lockStage, repairReason: lockRepairReason, qcReverted: lockQcReverted \}\);\s+startMoving\(async \(\) => \{/);
 });
 
 test("Kendala kartu dihapus saat proses maju, tidak tersentuh saat masuk Retur", () => {
@@ -109,9 +109,10 @@ test("Kendala kartu dihapus saat proses maju, tidak tersentuh saat masuk Retur",
   // Setiap perpindahan tahap mencatat kapan kartu masuk kolom barunya.
   assert.match(move, /stageEnteredAt: now/);
   assert.match(service, /stageEnteredAt: new Date\(\)/);
-  // Cache SWR harus mengikuti data server terbaru setelah aksi + router.refresh(),
-  // supaya perubahan Kendala langsung tampak tanpa menunggu polling 60 detik.
-  assert.match(sectionClient, /void mutate\(initialData, \{ revalidate: false \}\)/);
+  // Cache SWR mengikuti RSC, tapi item dengan version lebih tinggi di SWR tidak
+  // ditimpa snapshot RSC basi (mencegah kedip warna kartu).
+  assert.match(sectionClient, /void mutate\(\(current\) => \{/);
+  assert.match(sectionClient, /item\.version > incoming\.version/);
   assert.match(sectionClient, /\}, \[initialData, mutate\]\)/);
 });
 
@@ -138,8 +139,9 @@ test("alasan Mundur langsung (REVERT) menimpa Text Area Kendala kartu beserta je
 test("kartu membawa pil Retur atau Wajib QC selalu di posisi paling atas kolom tahap; kolom Retur tetap terbaru di atas", () => {
   // Retur hanya "merah" (naik ke atas) sampai Selesai; Wajib QC selalu selama menempel.
   assert.match(board, /function isHighlightedCard\(item: BoardItem\) \{\s+return Boolean\(item\.qcReverted\) \|\| \(Boolean\(item\.repairReason\) && item\.currentStage !== "SELESAI"\);\s+\}/);
-  // Sort stabil di kolom tahap: kartu merah di atas, urutan asli dijaga di dalam kelompoknya.
-  assert.match(board, /if \(!isReturColumn\) stageItems\.sort\(\(a, b\) => Number\(isHighlightedCard\(b\)\) - Number\(isHighlightedCard\(a\)\)\);/);
+  // Sort stabil di kolom tahap: kartu merah di atas (ikut kunci warna saat save).
+  assert.match(board, /Number\(isHighlightedCard\(withSavingHighlight\(b, activeSavingMove\)\)\)/);
+  assert.match(board, /Number\(isHighlightedCard\(withSavingHighlight\(a, activeSavingMove\)\)\)/);
   // Kolom Retur tidak di-sort ulang: semua kartunya memegang pil Retur, terbaru di atas.
   assert.doesNotMatch(board, /if \(isReturColumn\) stageItems\.sort/);
 });
@@ -227,7 +229,8 @@ test("peringatan Wajib QC menempel saat kartu ditarik mundur dari QC dan dilepas
   // Client: papan menyaring tujuan melewati QC, optimistik, dan menampilkan kartu merah + badge.
   assert.match(board, /item\.qcReverted && qcIndex >= 0/);
   assert.match(board, /option\.targetStage\) <= qcIndex/);
-  assert.match(board, /qcReverted: move\.targetStage === "QC" \? false : move\.decision === "REVERT" && item\.currentStage === "QC" \? true : undefined/);
+  assert.match(board, /const optimisticQcReverted = move\.targetStage === "QC" \? false : move\.decision === "REVERT" && item\.currentStage === "QC" \? true : undefined/);
+  assert.match(board, /qcReverted: optimisticQcReverted/);
   assert.match(board, /qcWarn = Boolean\(item\.qcReverted\)/);
   assert.match(board, /\(hot \|\| qcWarn\) && "border-destructive\/70 bg-destructive\/10"/);
   assert.match(board, />Wajib QC<\/Badge>/);
@@ -303,9 +306,22 @@ test("kartu Retur berdiam di kolom Retur sampai dipindahkan, badge bertahan, mer
   assert.doesNotMatch(board, /!item\.needsRepair/);
   assert.doesNotMatch(board, /key=\{`\$\{item\.id\}-retur`\}/);
   assert.match(board, /itemColumn\(item, previewMove, activeSavingMove\) === stage/);
+  // Scrollbar HTML kustom: horizontal always-on; vertikal hanya saat overflow.
+  // Panah overlay kiri/kanan tetap ada (jangan diganti tombol di bilah bawah).
+  assert.match(board, /function AlwaysOnScrollbar/);
+  assert.match(board, /function ProductionColumnBody/);
+  assert.match(board, /AlwaysOnScrollbar targetRef=\{boardRef\} orientation="horizontal"/);
+  assert.match(board, /onlyWhenOverflow/);
+  assert.match(board, /Geser kanban ke kiri/);
+  assert.match(board, /Geser kanban ke kanan/);
+  assert.match(board, /canScrollLeft \|\| canScrollRight/);
   // Kunci kolom hanya dilepas saat data yang masuk sudah mencerminkan hasil save
   // (kebal dari data basi: polling atau revalidasi ter-dedupe di tengah save).
   assert.match(board, /const activeSavingMove = savingSettled \? null : savingMove;/);
+  // Kunci warna merah (Retur / Wajib QC) ikut disimpan selama save agar tidak kedip putih.
+  assert.match(board, /function withSavingHighlight/);
+  assert.match(board, /withSavingHighlight\(item, activeSavingMove\)/);
+  assert.match(sectionClient, /item\.version > incoming\.version/);
   assert.match(board, /Work Order retur/);
   assert.match(board, /Seret kartu ke sini untuk masuk Retur/);
   assert.match(board, /event\.over\.id === RETUR_COLUMN/);

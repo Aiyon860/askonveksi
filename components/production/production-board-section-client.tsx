@@ -72,10 +72,26 @@ export function ProductionBoardSectionClient({
     },
   );
 
-  // Data server (RSC) selalu paling baru setelah aksi + `router.refresh()`. Tanpa ini, cache SWR
-  // menahan snapshot lama (mis. Kendala yang baru disimpan hilang saat kartu dipindah antar kolom).
+  // Data server (RSC) biasanya paling baru setelah aksi + `router.refresh()`. Jangan
+  // timpa item SWR yang sudah punya `version` lebih tinggi — cache RSC basi bisa
+  // mengembalikan snapshot lama dan membuat warna kartu berkedip putih.
   useEffect(() => {
-    void mutate(initialData, { revalidate: false });
+    void mutate((current) => {
+      if (!current) return initialData;
+      const fresher = new Map(
+        current.items
+          .filter((item) => {
+            const incoming = initialData.items.find((row) => row.id === item.id);
+            return Boolean(incoming && item.version > incoming.version);
+          })
+          .map((item) => [item.id, item]),
+      );
+      if (fresher.size === 0) return initialData;
+      return {
+        ...initialData,
+        items: initialData.items.map((item) => fresher.get(item.id) ?? item),
+      };
+    }, { revalidate: false });
   }, [initialData, mutate]);
 
   // Kendala yang baru disimpan langsung ditulis ke cache SWR: tanpa ini teks kartu

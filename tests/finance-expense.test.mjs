@@ -24,7 +24,7 @@ test("finance keeps expense methods via master data, feedback, ownership guards,
   assert.doesNotMatch(schema, /enum ExpensePaymentMethod/);
   assert.match(expenseMethodMigration, /isReimbursable" = true WHERE "paymentMethod" = 'PRIBADI'/);
   assert.match(expenseMethodMigration, /Expense_paymentMethodId_fkey/);
-  for (const category of ["WIFI", "LINGKUNGAN", "ADS", "CICILAN_LAPTOP", "FREE_PICK", "ONGKIR_CUST", "ONGKIR_ADMIN_PRODUKSI", "LISTRIK_DEPAN", "LISTRIK_BELAKANG", "PERALATAN_KANTOR", "SAMPEL", "KONTEN", "MEETING", "EVENT_IFANA_SAGA", "GOSEND_MOBIL_PRODUKSI", "LEMBUR", "LOKER", "DLL"]) assert.match(schema, new RegExp(`\\b${category}\\b`));
+  for (const category of ["WIFI", "LINGKUNGAN", "ADS", "CICILAN_LAPTOP", "FREE_PICK", "ONGKIR_CUST", "ONGKIR_ADMIN_PRODUKSI", "LISTRIK_DEPAN", "LISTRIK_BELAKANG", "PERALATAN_KANTOR", "SAMPEL", "KONTEN", "MEETING", "EVENT_IFANA_SAGA", "GOSEND_MOBIL_PRODUKSI", "LEMBUR", "LOKER", "DLL", "LAINNYA"]) assert.match(schema, new RegExp(`\\b${category}\\b`));
   assert.match(actions, /current\.createdById !== actor\.id/);
   assert.match(actions, /!current\.isReimbursable/);
   assert.match(actions, /paymentMethodId: z\.string\(\)\.trim\(\)\.min\(1/);

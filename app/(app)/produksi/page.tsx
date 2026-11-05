@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getCurrentActor } from "@/lib/auth/session";
 import { getActiveProductCategories } from "@/lib/master-data";
 import {
   ALL_PRODUCTION_CATEGORIES,
@@ -34,6 +35,9 @@ export default async function ProductionPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  // Pasang konteks brand dulu supaya daftar kategori tidak mencampur ASKONVEKSI+SAGA
+  // (gejala: chip "Lainnya" muncul dua kali di Non-Jersey).
+  await getCurrentActor();
   const group = parseProductionBoardGroup(params.jalur);
   const stageRoute = stageRouteForGroup(group);
   // Filter papan hidup di URL (bukan state browser) agar ikut terbawa saat pindah
