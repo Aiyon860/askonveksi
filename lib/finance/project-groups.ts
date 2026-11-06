@@ -29,8 +29,9 @@ export type ProjectDateGroup<T extends ProjectGroupItem> = {
   customers: ProjectCustomerGroup<T>[];
 };
 
-function paidDateKey(item: ProjectGroupItem) {
-  return item.paidAt ? jakartaDateKey(new Date(item.paidAt)) : "0000-00-00";
+/** Tanggal kolom Project = tanggal masuk order (acceptedAt / DP pertama), bukan pelunasan. */
+function projectDateKey(item: ProjectGroupItem) {
+  return item.acceptedAt ? jakartaDateKey(new Date(item.acceptedAt)) : item.paidAt ? jakartaDateKey(new Date(item.paidAt)) : "0000-00-00";
 }
 
 /**
@@ -39,8 +40,8 @@ function paidDateKey(item: ProjectGroupItem) {
  */
 export function groupProjectRows<T extends ProjectGroupItem>(items: T[]): ProjectDateGroup<T>[] {
   const sorted = [...items].sort((a, b) => {
-    const dateA = paidDateKey(a);
-    const dateB = paidDateKey(b);
+    const dateA = projectDateKey(a);
+    const dateB = projectDateKey(b);
     if (dateA !== dateB) return dateB.localeCompare(dateA);
     const customer = a.customer.localeCompare(b.customer, "id-ID");
     if (customer) return customer;
@@ -51,10 +52,10 @@ export function groupProjectRows<T extends ProjectGroupItem>(items: T[]): Projec
 
   const dates = new Map<string, ProjectDateGroup<T> & { customerMap: Map<string, ProjectCustomerGroup<T>> }>();
   for (const item of sorted) {
-    const dateKey = paidDateKey(item);
+    const dateKey = projectDateKey(item);
     let date = dates.get(dateKey);
     if (!date) {
-      date = { key: dateKey, paidAt: item.paidAt, rowCount: 0, customers: [], customerMap: new Map() };
+      date = { key: dateKey, paidAt: item.acceptedAt || item.paidAt, rowCount: 0, customers: [], customerMap: new Map() };
       dates.set(dateKey, date);
     }
 
