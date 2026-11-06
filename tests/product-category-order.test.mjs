@@ -80,7 +80,9 @@ test("urutan kanonik kategori selalu Jersey, Non-jersey, Aksesoris", () => {
 test("pembacaan dan penyimpanan kategori produk memakai urutan paksa", () => {
   const active = masterData.slice(masterData.indexOf("export async function getActiveProductCategories"));
   assert.match(active, /position: true/);
-  assert.match(active, /sortProductCategoryRows\(items, \(item\) => item\.garmentType\)/);
+  // Dedup dulu (hindari chip dobel antar brand), baru urut paksa per garmentType.
+  assert.match(active, /const unique = items\.filter/);
+  assert.match(active, /sortProductCategoryRows\(unique, \(item\) => item\.garmentType\)/);
   assert.match(masterData, /export async function getProductCategories[\s\S]*?sortProductCategoryRows\(/);
   assert.match(masterDataActions, /groupProductCategories\(/);
   assert.match(masterDataActions, /orderedRows/);
