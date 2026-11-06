@@ -231,38 +231,33 @@ async function main() {
             outstandingAmount: outstanding,
           },
         });
+        // Tanggal order selalu ikut pembayaran pertama (DP), bukan pelunasan / tanggal 1 palsu.
         await tx.salesOrder.update({ where: { id: invoice.salesOrder.id }, data: { acceptedAt: atWib(earliest, 10) } });
         const orderDay = isoDay(invoice.purchaseOrder.orderDate);
-        if (orderDay.endsWith("-01") && earliest.startsWith(orderDay.slice(0, 7))) {
-          const delta = Math.round((Date.parse(earliest) - Date.parse(orderDay)) / 86_400_000);
-          const shift = (date) => (date ? addDays(date, delta) : date);
-          await tx.purchaseOrder.update({ where: { id: invoice.purchaseOrder.id }, data: { orderDate: dateOnly(earliest), deadline: shift(invoice.purchaseOrder.deadline) } });
-          await tx.invoice.update({
-            where: { id: invoice.id },
-            data: {
-              issuedAt: atWib(earliest, 9),
-              dueAt: shift(invoice.dueAt),
-              notes: (invoice.notes ?? "").replace("Pelunasan tidak ada di arsip. Dicatat lunas pada tanggal 1 bulan laporan supaya tidak masuk piutang berjalan.", "Tanggal uang masuk mengikuti sheet Saldo Akhir.").trim() || null,
-            },
+        const delta = Math.round((Date.parse(earliest) - Date.parse(orderDay)) / 86_400_000);
+        const shift = (date) => (date ? addDays(date, delta) : date);
+        await tx.purchaseOrder.update({ where: { id: invoice.purchaseOrder.id }, data: { orderDate: dateOnly(earliest), deadline: shift(invoice.purchaseOrder.deadline) } });
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            issuedAt: atWib(earliest, 9),
+            dueAt: shift(invoice.dueAt),
+            notes: (invoice.notes ?? "").replace("Pelunasan tidak ada di arsip. Dicatat lunas pada tanggal 1 bulan laporan supaya tidak masuk piutang berjalan.", "Tanggal uang masuk mengikuti sheet Saldo Akhir.").trim() || null,
+          },
+        });
+        await tx.opportunity.update({ where: { id: invoice.purchaseOrder.opportunityId }, data: { createdAt: atWib(earliest, 8) } });
+        for (const expense of invoice.salesOrder.expenses) {
+          const spent = isoDay(expense.spentAt);
+          if (spent.endsWith("-01") || spent === orderDay) await tx.expense.update({ where: { id: expense.id }, data: { spentAt: dateOnly(earliest) } });
+        }
+        for (const workOrder of invoice.salesOrder.productionWorkOrders) {
+          await tx.productionWorkOrder.update({
+            where: { id: workOrder.id },
+            data: { createdAt: shift(workOrder.createdAt), deadline: shift(workOrder.deadline), completedAt: shift(workOrder.completedAt), stageEnteredAt: shift(workOrder.stageEnteredAt), designCompletedAt: shift(workOrder.designCompletedAt) },
           });
-          await tx.opportunity.update({ where: { id: invoice.purchaseOrder.opportunityId }, data: { createdAt: atWib(earliest, 8) } });
-          for (const expense of invoice.salesOrder.expenses) {
-            if (isoDay(expense.spentAt).endsWith("-01")) await tx.expense.update({ where: { id: expense.id }, data: { spentAt: dateOnly(earliest) } });
+          for (const step of workOrder.steps) {
+            await tx.productionStep.update({ where: { id: step.id }, data: { startedAt: shift(step.startedAt), completedAt: shift(step.completedAt) } });
           }
-          for (const workOrder of invoice.salesOrder.productionWorkOrders) {
-            await tx.productionWorkOrder.update({
-              where: { id: workOrder.id },
-              data: { createdAt: shift(workOrder.createdAt), deadline: shift(workOrder.deadline), completedAt: shift(workOrder.completedAt), stageEnteredAt: shift(workOrder.stageEnteredAt), designCompletedAt: shift(workOrder.designCompletedAt) },
-            });
-            for (const step of workOrder.steps) {
-              await tx.productionStep.update({ where: { id: step.id }, data: { startedAt: shift(step.startedAt), completedAt: shift(step.completedAt) } });
-            }
-          }
-        } else if ((invoice.notes ?? "").includes("tanggal 1")) {
-          await tx.invoice.update({
-            where: { id: invoice.id },
-            data: { notes: invoice.notes.replace("Pelunasan tidak ada di arsip. Dicatat lunas pada tanggal 1 bulan laporan supaya tidak masuk piutang berjalan.", "Tanggal uang masuk mengikuti sheet Saldo Akhir.") },
-          });
         }
       }
     }, { timeout: 300_000, maxWait: 60_000 });

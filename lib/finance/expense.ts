@@ -147,11 +147,12 @@ export type IncomeListState = { query: string; from: Date | null; to: Date | nul
 
 function incomeWhere(state: Omit<IncomeListState, "page" | "pageSize">) {
   const query = state.query.trim().slice(0, 80);
-  const transactionWhere = { status: "ACTIVE" as const, ...(state.from && state.to ? { paidAt: { gte: state.from, lt: state.to } } : {}) };
+  // Filter tanggal Project ikut acceptedAt (DP/bayar pertama), bukan tanggal pelunasan.
   return {
     status: "ACTIVE" as const,
     invoice: { status: "ISSUED" as const },
-    payment: { is: { transactions: { some: transactionWhere }, ...(state.status === "all" ? {} : { kind: state.status }) } },
+    ...(state.from && state.to ? { acceptedAt: { gte: state.from, lt: state.to } } : {}),
+    payment: { is: { transactions: { some: { status: "ACTIVE" as const } }, ...(state.status === "all" ? {} : { kind: state.status }) } },
     ...(state.hppStatus === "all" ? {} : state.hppStatus === "COMPLETE" ? { cost: { is: { hppComplete: true } } } : { NOT: { cost: { is: { hppComplete: true } } } }),
     ...(query ? { OR: [
       { invoiceNo: { contains: query, mode: "insensitive" as const } },
