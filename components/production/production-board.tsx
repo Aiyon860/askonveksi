@@ -682,10 +682,11 @@ function AlwaysOnScrollbar({
   function onThumbPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
-    const element = targetRef.current;
+    const scrollTarget = targetRef.current;
     const track = trackRef.current;
     const { max, size } = metricsRef.current;
-    if (!element || !track || max === 0) return;
+    if (!scrollTarget || !track || max === 0) return;
+    const element = scrollTarget;
     const startClient = isX ? event.clientX : event.clientY;
     const startPos = isX ? element.scrollLeft : element.scrollTop;
     const trackSize = isX ? track.clientWidth : track.clientHeight;
