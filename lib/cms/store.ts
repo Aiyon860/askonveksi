@@ -42,8 +42,40 @@ function firstIssue(error: { issues: { message: string; path: readonly PropertyK
   return `${issue.message}${path}`;
 }
 
+/** Migrasi shape lama fabric.items → fabric.categories sebelum validasi schema. */
+function migrateFabricShape(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const root = raw as Record<string, unknown>;
+  const fabric = root.fabric;
+  if (!fabric || typeof fabric !== "object") return raw;
+  const fabricRecord = fabric as Record<string, unknown>;
+  if (Array.isArray(fabricRecord.categories)) {
+    delete fabricRecord.items;
+    return raw;
+  }
+
+  const items = Array.isArray(fabricRecord.items) ? fabricRecord.items : [];
+  if (items.length > 0) {
+    fabricRecord.categories = items.map((item) => {
+      const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const image = row.image && typeof row.image === "object" ? (row.image as Record<string, unknown>) : null;
+      return {
+        title: typeof row.name === "string" ? row.name : "Kain",
+        visible: row.visible !== false,
+        images: image && typeof image.src === "string" ? [{ src: image.src, alt: typeof image.alt === "string" ? image.alt : "" }] : [],
+      };
+    });
+  } else {
+    // Konten production lama (items kosong, tanpa categories): isi dari seed agar katalog tampil.
+    fabricRecord.categories = structuredClone((seedContent as { fabric: { categories: unknown } }).fabric.categories);
+    fabricRecord.comingSoon = false;
+  }
+  delete fabricRecord.items;
+  return raw;
+}
+
 function parseContent(raw: unknown): CmsSiteContent {
-  const parsed = siteContentSchemaWithRules.safeParse(sanitizeCmsContent(raw));
+  const parsed = siteContentSchemaWithRules.safeParse(sanitizeCmsContent(migrateFabricShape(raw)));
   if (!parsed.success) throw new CmsValidationError(firstIssue(parsed.error));
   return parsed.data as CmsSiteContent;
 }

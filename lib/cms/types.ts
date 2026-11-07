@@ -153,7 +153,7 @@ export type CmsFabric = {
   comingSoonImage: CmsImage;
   comingSoonButtonLabel: string;
   comingSoonHref: string;
-  items: { name: string; image: CmsImage; description: string; visible: boolean }[];
+  categories: { title: string; images: CmsImage[]; visible: boolean }[];
 };
 
 export type CmsContact = {

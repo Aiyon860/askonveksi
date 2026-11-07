@@ -258,16 +258,15 @@ export const siteContentSchema = z.object({
     comingSoonImage: cmsImageSchema,
     comingSoonButtonLabel: shortText,
     comingSoonHref: hrefSchema,
-    items: z
+    categories: z
       .array(
         z.object({
-          name: shortText,
-          image: cmsImageSchema,
-          description: z.string().max(1000),
+          title: shortText,
+          images: z.array(cmsImageSchema).max(40),
           visible: z.boolean(),
         }),
       )
-      .max(100),
+      .max(40),
   }),
 
   contact: z.object({

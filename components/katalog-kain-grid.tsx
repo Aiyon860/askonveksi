@@ -19,8 +19,36 @@ export function KatalogKainHeader({ fabric }: { fabric: CmsFabric }) {
   );
 }
 
+function FabricImageGrid({
+  images,
+  categoryTitle,
+  priorityCount = 0,
+}: {
+  images: CmsFabric["categories"][number]["images"];
+  categoryTitle: string;
+  priorityCount?: number;
+}) {
+  return (
+    <LandingStagger className="mt-5 grid grid-cols-1 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 lg:gap-4">
+      {images.map((image, index) => (
+        <figure key={`${image.src}-${index}`} className="relative aspect-[3/4] w-full overflow-hidden bg-[#e3eaf1]">
+          <Image
+            src={image.src}
+            alt={image.alt || `${categoryTitle} ${index + 1}`}
+            fill
+            sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 30vw"
+            className="object-cover"
+            priority={index < priorityCount}
+          />
+        </figure>
+      ))}
+    </LandingStagger>
+  );
+}
+
 export function KatalogKainGrid({ fabric, comingSoon }: { fabric: CmsFabric; comingSoon: CmsSiteContent["comingSoon"] }) {
-  const items = fabric.items.filter((item) => item.visible);
+  // Guard: cache CMS lama (pra-categories) bisa sempat ter-serve sebelum revalidate.
+  const categories = (fabric.categories ?? []).filter((category) => category.visible && category.images.length > 0);
 
   if (fabric.comingSoon) {
     return (
@@ -36,27 +64,29 @@ export function KatalogKainGrid({ fabric, comingSoon }: { fabric: CmsFabric; com
     );
   }
 
-  if (!items.length) {
+  if (!categories.length) {
     return (
       <p className="mt-10 rounded-landing-card border border-dashed border-[#c9d8e5] bg-[#f7fafc] p-10 text-center text-sm text-[#647789]">
-        Belum ada item kain. Silakan tambahkan dari CMS.
+        Belum ada kategori kain. Silakan tambahkan dari CMS.
       </p>
     );
   }
 
   return (
-    <LandingStagger className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:mt-12 lg:grid-cols-3 lg:gap-4">
-      {items.map((item, index) => (
-        <figure key={`${item.name}-${index}`} className="overflow-hidden rounded-landing-card border border-[#dde6ee] bg-white">
-          <div className="relative aspect-[3/4] bg-[#e3eaf1]">
-            <Image src={item.image.src} alt={item.image.alt || item.name} fill sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 30vw" className="object-cover" />
-          </div>
-          <figcaption className="p-4 text-center">
-            <p className="text-sm font-semibold text-[#17324d]">{item.name}</p>
-            <RichText html={item.description} className="mt-1 text-sm text-[#5d7082]" />
-          </figcaption>
-        </figure>
+    <div className="mt-10 flex flex-col gap-12 sm:mt-12 sm:gap-14 lg:gap-16">
+      {categories.map((category, categoryIndex) => (
+        <section key={`${category.title}-${categoryIndex}`} aria-labelledby={`fabric-category-${categoryIndex}`}>
+          <LandingReveal>
+            <h2
+              id={`fabric-category-${categoryIndex}`}
+              className="text-balance text-center text-2xl font-bold tracking-[-0.025em] text-[#1764b3] sm:text-3xl"
+            >
+              {category.title}
+            </h2>
+          </LandingReveal>
+          <FabricImageGrid images={category.images} categoryTitle={category.title} priorityCount={categoryIndex === 0 ? 3 : 0} />
+        </section>
       ))}
-    </LandingStagger>
+    </div>
   );
 }
