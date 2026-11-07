@@ -2695,7 +2695,7 @@
     ],
     "title": "Katalog Kain",
     "description": "Katalog pilihan kain Askonveksi untuk seragam dan apparel custom Anda.",
-    "comingSoon": true,
+    "comingSoon": false,
     "comingSoonTitle": "Segera Hadir",
     "comingSoonDescription": "Galeri foto {pageName} sedang kami siapkan. Silakan kembali lagi nanti atau hubungi kami untuk melihat hasil produksi terbaru.",
     "comingSoonImage": {
@@ -2704,7 +2704,116 @@
     },
     "comingSoonButtonLabel": "Kembali ke Beranda",
     "comingSoonHref": "/#beranda",
-    "items": []
+    "categories": [
+      {
+        "title": "COMBED",
+        "visible": true,
+        "images": [
+          {
+            "src": "/katalog-kain-asset/COMBED/cover-combed.jpg",
+            "alt": "Cover COMBED"
+          },
+          {
+            "src": "/katalog-kain-asset/COMBED/COMBED_page-0002.jpg",
+            "alt": "COMBED halaman 1"
+          },
+          {
+            "src": "/katalog-kain-asset/COMBED/COMBED_page-0003.jpg",
+            "alt": "COMBED halaman 2"
+          },
+          {
+            "src": "/katalog-kain-asset/COMBED/COMBED_page-0004.jpg",
+            "alt": "COMBED halaman 3"
+          },
+          {
+            "src": "/katalog-kain-asset/COMBED/COMBED_page-0005.jpg",
+            "alt": "COMBED halaman 4"
+          },
+          {
+            "src": "/katalog-kain-asset/COMBED/COMBED_page-0006.jpg",
+            "alt": "COMBED halaman 5"
+          }
+        ]
+      },
+      {
+        "title": "CVC Hexagon",
+        "visible": true,
+        "images": [
+          {
+            "src": "/katalog-kain-asset/CVhexagon/cover-hexagon.jpg",
+            "alt": "Cover CVC Hexagon"
+          },
+          {
+            "src": "/katalog-kain-asset/CVhexagon/cvc-hexagon_page-0002.jpg",
+            "alt": "CVC Hexagon halaman 1"
+          },
+          {
+            "src": "/katalog-kain-asset/CVhexagon/cvc-hexagon_page-0003.jpg",
+            "alt": "CVC Hexagon halaman 2"
+          }
+        ]
+      },
+      {
+        "title": "Poly Taslan - TamaTex",
+        "visible": true,
+        "images": [
+          {
+            "src": "/katalog-kain-asset/Poly-Taslan---TamaTex/cover-poly.jpg",
+            "alt": "Cover Poly Taslan TamaTex"
+          },
+          {
+            "src": "/katalog-kain-asset/Poly-Taslan---TamaTex/poly-taslan-tamatex_page-0002.jpg",
+            "alt": "Poly Taslan halaman 1"
+          },
+          {
+            "src": "/katalog-kain-asset/Poly-Taslan---TamaTex/poly-taslan-tamatex_page-0003.jpg",
+            "alt": "Poly Taslan halaman 2"
+          },
+          {
+            "src": "/katalog-kain-asset/Poly-Taslan---TamaTex/poly-taslan-tamatex_page-0004.jpg",
+            "alt": "Poly Taslan halaman 3"
+          },
+          {
+            "src": "/katalog-kain-asset/Poly-Taslan---TamaTex/poly-taslan-tamatex_page-0005.jpg",
+            "alt": "Poly Taslan halaman 4"
+          },
+          {
+            "src": "/katalog-kain-asset/Poly-Taslan---TamaTex/poly-taslan-tamatex_page-0006.jpg",
+            "alt": "Poly Taslan halaman 5"
+          }
+        ]
+      },
+      {
+        "title": "Taslan Milky - TamaTex",
+        "visible": true,
+        "images": [
+          {
+            "src": "/katalog-kain-asset/Taslan-Milky---TamaTex/cover-milky.jpg",
+            "alt": "Cover Taslan Milky TamaTex"
+          },
+          {
+            "src": "/katalog-kain-asset/Taslan-Milky---TamaTex/taslan-milky-tamatex_page-0002.jpg",
+            "alt": "Taslan Milky halaman 1"
+          },
+          {
+            "src": "/katalog-kain-asset/Taslan-Milky---TamaTex/taslan-milky-tamatex_page-0003.jpg",
+            "alt": "Taslan Milky halaman 2"
+          },
+          {
+            "src": "/katalog-kain-asset/Taslan-Milky---TamaTex/taslan-milky-tamatex_page-0004.jpg",
+            "alt": "Taslan Milky halaman 3"
+          },
+          {
+            "src": "/katalog-kain-asset/Taslan-Milky---TamaTex/taslan-milky-tamatex_page-0005.jpg",
+            "alt": "Taslan Milky halaman 4"
+          },
+          {
+            "src": "/katalog-kain-asset/Taslan-Milky---TamaTex/taslan-milky-tamatex_page-0006.jpg",
+            "alt": "Taslan Milky halaman 5"
+          }
+        ]
+      }
+    ]
   },
   "contact": {
     "seo": {

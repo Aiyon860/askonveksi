@@ -262,7 +262,7 @@ export const sizeChartEditor: CmsEditorPage = {
 export const fabricEditor: CmsEditorPage = {
   id: "katalog-kain",
   title: "Katalog Kain",
-  description: "Atur judul, mode segera hadir, dan daftar kain.",
+  description: "Atur judul, mode segera hadir, dan kategori kain beserta gambarnya.",
   preview: "fabric",
   fields: [
     {
@@ -282,11 +282,15 @@ export const fabricEditor: CmsEditorPage = {
       text("fabric.comingSoonHref", "Link tombol"),
     ]),
     list(
-      "fabric.items",
-      "Daftar kain",
-      "Kain",
-      [text("name", "Nama kain"), image("image", "Foto kain"), rich("description", "Deskripsi"), toggle("visible", "Tampilkan")],
-      { name: "Kain baru", image: { src: "/assets/pdh-kemeja/BUANA.webp", alt: "Kain baru" }, description: "", visible: true },
+      "fabric.categories",
+      "Kategori kain",
+      "Kategori",
+      [
+        text("title", "Judul kategori"),
+        { kind: "imageList", path: "images", label: "Gambar", help: "Cover dan halaman katalog dalam satu grid; urutan = urutan tampil." },
+        toggle("visible", "Tampilkan"),
+      ],
+      { title: "Kategori baru", images: [], visible: true },
     ),
     seo("fabric.seo"),
   ],
