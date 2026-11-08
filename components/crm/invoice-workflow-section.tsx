@@ -3,10 +3,11 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { CopyPlus, Eye, XCircle } from "lucide-react";
+import { CopyPlus, XCircle } from "lucide-react";
 
 import { cancelInvoiceAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
+import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { Button } from "@/components/ui/button";
@@ -110,18 +111,10 @@ export function InvoiceWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isCreatingRevision && showDeliveryActions ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
-          {!isCreatingRevision && !showDeliveryActions ? (
-            <Button
-              type="button"
-              className="w-full sm:w-auto"
-              render={<a href={`/api/crm/invoice/${invoiceId}/pdf?preview=1`} target="_blank" rel="noopener noreferrer" aria-label={`Lihat PDF ${title.split(" · ")[0]}`} />}
-              nativeButton={false}
-            >
-              <Eye data-icon="inline-start" aria-hidden="true" />
-              Lihat PDF
-            </Button>
+          {!isCreatingRevision ? (
+            <DocumentPrintButton href={`/api/crm/invoice/${invoiceId}/pdf`} label={`Print ${title.split(" · ")[0]}`} />
           ) : null}
+          {!isCreatingRevision && showDeliveryActions ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
           {showCreateRevision ? (
             <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
               <CopyPlus data-icon="inline-start" aria-hidden="true" />

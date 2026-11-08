@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { useSWRConfig } from "swr";
 
 import { switchBrandAction } from "@/app/actions/brand";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +24,7 @@ export function BrandSwitcher({
   compact?: boolean;
 }) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const isSaga = brand === "SAGA";
@@ -39,6 +41,9 @@ export function BrandSwitcher({
         setError(result.message);
         return;
       }
+      // Dashboard/analytics/pipeline di-cache SWR tanpa brand di key.
+      // Tanpa invalidate, angka brand lama tetap tampil sampai refresh manual.
+      await mutate(() => true, undefined, { revalidate: true });
       router.refresh();
     });
   }

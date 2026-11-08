@@ -11,6 +11,7 @@ import { FilePicker } from "@/components/file-picker";
 import { MoneyInput } from "@/components/money-input";
 import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { InvoiceStatusBadge } from "@/components/status-badge";
+import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -121,7 +122,7 @@ export function InvoiceDetail({ id, children, triggerClassName, triggerVariant }
           {!detail.salesOrder && !detail.pendingPayment ? <section className="rounded-lg border bg-muted/30 p-3 text-sm" aria-label="Status jadwal pembayaran"><Badge variant="secondary">Jadwal pembayaran belum diatur</Badge><p className="mt-2 text-muted-foreground">Atur jadwal pembayaran (DP/Lunas) dari tab Invoice sebelum invoice diterbitkan; tgl. jatuh tempo dan deadline diisi manual pada form draft.</p></section> : null}
           {detail.notes ? <Info label="Catatan" value={detail.notes} /> : null}
         </div> : null}
-        {detail ? <DialogFooter>{detail.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={detail.id} invoiceNo={detail.invoiceNo} receipts={receipts} /> : null}<Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=invoice`} />}>Kelola Invoice</Button></DialogFooter> : null}
+        {detail ? <DialogFooter><DocumentPrintButton href={`/api/crm/invoice/${detail.id}/pdf`} label={`Print ${detail.invoiceNo}`} />{detail.status === "ISSUED" ? <InvoiceDeliveryActions invoiceId={detail.id} invoiceNo={detail.invoiceNo} receipts={receipts} /> : null}<Button nativeButton={false} render={<Link href={`/crm/peluang/${detail.opportunity.id}?tab=invoice`} />}>Kelola Invoice</Button></DialogFooter> : null}
       </DialogContent>
     </Dialog>
   </>;

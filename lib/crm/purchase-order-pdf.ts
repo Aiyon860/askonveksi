@@ -3,6 +3,8 @@ import "server-only";
 import type { GarmentType } from "@prisma/client";
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 
+import type { Brand } from "@/lib/brand/config";
+import { DEFAULT_BRAND } from "@/lib/brand/config";
 import { decorationMethodsLabel, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
 import { MIN_FONT_SIZE, clipPdfText, wrapPdfText } from "@/lib/crm/pdf-typography";
 
@@ -83,8 +85,12 @@ function formatDate(value: Date | null) {
 const DEADLINE_RED = rgb(0.78, 0.12, 0.12);
 const BORDER = rgb(0.12, 0.12, 0.12);
 const GRID = rgb(0.72, 0.72, 0.72);
-const BAR_BG = rgb(0.12, 0.16, 0.2);
 const NOTE_BG = rgb(0.9, 0.9, 0.9);
+/** Askonveksi: navy gelap. SAGA: hijau army. */
+const BRAND_BAR_BG = {
+  ASKONVEKSI: rgb(0.12, 0.16, 0.2),
+  SAGA: rgb(0.22, 0.3, 0.18),
+} as const;
 
 /** Sel tabel identitas: satu baris "Label : nilai", atau label + beberapa baris tambahan. */
 type HeaderCell = {
@@ -96,13 +102,20 @@ type HeaderCell = {
 
 type HeaderLine = Array<{ text: string; bold: boolean }>;
 
-export async function createPurchaseOrderPdf(data: PurchaseOrderPdfData, logoBytes: Uint8Array, assets: PdfAsset[], variant: PurchaseOrderPdfVariant = "customer") {
+export async function createPurchaseOrderPdf(
+  data: PurchaseOrderPdfData,
+  logoBytes: Uint8Array,
+  assets: PdfAsset[],
+  variant: PurchaseOrderPdfVariant = "customer",
+  brand: Brand = DEFAULT_BRAND,
+) {
   /**
    * Nomor PO yang dicetak: tanpa akhiran revisi (`-R2`, `-R3`, ...). Revisi tetap
    * tercatat di sistem (riwayat dokumen, audit, judul UI) tetapi tidak dicetak
    * pada dokumen customer maupun penjahit.
    */
   const documentNo = data.purchaseOrderNo.replace(/-R\d+$/i, "");
+  const BAR_BG = BRAND_BAR_BG[brand];
   const poDecoration = data.decorationMethods.length
     ? data.decorationMethods
     : data.decorationMethod
