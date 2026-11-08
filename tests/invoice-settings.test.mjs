@@ -171,7 +171,9 @@ test("PDF invoice mencetak poin bergaya tebal/miring/garis bawah sebagai ganti b
   assert.match(invoicePdfSource, /if \(token\.underline\) \{[\s\S]*page\.drawLine\(\{ start: \{ x: cursorX/);
   assert.doesNotMatch(invoicePdfSource, /point\.isBold/);
   assert.doesNotMatch(invoicePdfSource, /invoice\.notes/, "blok Catatan lama tidak dicetak lagi");
-  assert.match(invoiceRouteSource, /invoiceSettingPoint\.findMany\(\{ orderBy: \[\{ section: "asc" \}, \{ position: "asc" \}\]/);
+  assert.match(invoiceRouteSource, /settingPointQuery/);
+  assert.match(invoiceRouteSource, /orderBy: \[\{ section: "asc" as const \}, \{ position: "asc" as const \}\]/);
+  assert.match(invoiceRouteSource, /invoiceSettingPoint\.findMany\(forBrand\(invoice\.brand, settingPointQuery\)\)/);
   assert.match(invoiceRouteSource, /select: \{ section: true, text: true \}/);
   assert.doesNotMatch(invoiceRouteSource, /isBold/);
 });
