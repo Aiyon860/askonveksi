@@ -75,8 +75,10 @@ test("snapshot invoice menyimpan gambar tanda tangan dan tidak lagi menulis reke
 test("PDF invoice mengikuti template: tanpa blok rekening, dengan gambar tanda tangan", () => {
   const route = invoiceRouteSource;
   assert.match(route, /snapshotSignaturePath: true/);
-  assert.match(route, /paymentMethod\.findMany\(\{\s*where: \{ isActive: true \}/s, "hanya metode pembayaran aktif");
-  assert.match(route, /\{ logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints \}/);
+  assert.match(route, /paymentMethodQuery/);
+  assert.match(route, /where: \{ isActive: true \}/, "hanya metode pembayaran aktif");
+  assert.match(route, /paymentMethod\.findMany\(forBrand\(invoice\.brand, paymentMethodQuery\)\)/);
+  assert.match(route, /brand: invoice\.brand, logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints/);
   assert.ok(!route.includes("profile?.bankName"), "tidak ada lagi fallback rekening dari profil");
 
   const pdf = invoicePdfSource;
@@ -91,7 +93,7 @@ test("PDF kwitansi menampilkan gambar tanda tangan dari snapshot invoice", () =>
   assert.match(receiptRouteSource, /snapshotSignaturePath/);
   assert.match(receiptRouteSource, /normalizePdfImage/);
   assert.match(receiptRouteSource, /readImage\(order\.invoice\.snapshotSignaturePath \?\? profile\?\.signaturePath/);
-  assert.match(receiptRouteSource, /\{ logo, signature \}/);
+  assert.match(receiptRouteSource, /\{ brand: order\.brand, logo, signature \}/);
   assert.match(receiptPdfSource, /createReceiptPdf\(data: ReceiptData, assets: ReceiptAssets = \{\}\)/);
   assert.match(receiptPdfSource, /page\.drawImage\(signature/);
 });
@@ -107,16 +109,12 @@ test("kop invoice & kwitansi jatuh ke profil terkini bila snapshot masih kosong"
   ]) {
     assert.ok(receiptRouteSource.includes(fallback), `route kwitansi harus menjatuhkan ${fallback}`);
   }
-  for (const fallback of [
-    "invoice.snapshotBusinessName ?? currentBusiness?.name",
-    "invoice.snapshotBusinessAddress ?? currentBusiness?.address",
-    "invoice.snapshotBusinessPhone ?? currentBusiness?.phone",
-    "invoice.snapshotBusinessEmail ?? currentBusiness?.email",
-    "invoice.snapshotBusinessLogoPath ?? currentBusiness?.logoPath",
-    "invoice.snapshotSignaturePath ?? currentBusiness?.signaturePath",
-  ]) {
-    assert.ok(invoiceRouteSource.includes(fallback), `route invoice PDF harus menjatuhkan ${fallback}`);
-  }
+  // Invoice PDF: profil brand dokumen diutamakan; snapshot brand asing diabaikan.
+  assert.match(invoiceRouteSource, /snapshotLooksForeign/);
+  assert.match(invoiceRouteSource, /currentBusiness\?\.name \?\? \(snapshotLooksForeign \? null : snapshotName\)/);
+  assert.match(invoiceRouteSource, /currentBusiness\?\.logoPath \?\? \(snapshotLooksForeign \? null : invoice\.snapshotBusinessLogoPath\)/);
+  assert.match(invoiceRouteSource, /invoice\.snapshotSignaturePath \?\? currentBusiness\?\.signaturePath/);
+  assert.match(invoiceRouteSource, /forBrand\(invoice\.brand/);
   // Blok Catatan lama diganti poin master "Pengaturan invoice" (live, tanpa snapshot).
   assert.match(invoiceRouteSource, /invoiceSettingPoint\.findMany/);
   assert.doesNotMatch(invoiceRouteSource, /notes: invoice\.notes \?\? profile\?\.invoiceNotes/);
