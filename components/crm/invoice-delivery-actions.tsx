@@ -12,8 +12,8 @@ import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 /**
- * Tombol aksi pengiriman invoice. `receipts` diisi bila dialog Detail invoice perlu
- * tombol Lihat Kwitansi per pembayaran yang sudah dibayar (diletakkan sebelum Lihat PDF).
+ * Aksi pengiriman invoice (WhatsApp / salin pesan / kwitansi).
+ * Print PDF memakai `DocumentPrintButton` di tempat lain — tidak digandakan di sini.
  */
 export function InvoiceDeliveryActions({ invoiceId, invoiceNo, compact = false, receipts = [] }: { invoiceId: string; invoiceNo: string; compact?: boolean; receipts?: Array<{ id: string; label: string }> }) {
   const [pending, startTransition] = useTransition();
@@ -57,9 +57,6 @@ export function InvoiceDeliveryActions({ invoiceId, invoiceNo, compact = false, 
           <Eye aria-hidden="true" />{compact ? null : receipt.label}
         </Button>
       ))}
-      <Button size={compact ? "icon" : "default"} variant={compact ? "ghost" : "outline"} render={<a href={`/api/crm/invoice/${invoiceId}/pdf?preview=1`} target="_blank" rel="noopener noreferrer" />} nativeButton={false} aria-label={`Lihat PDF ${invoiceNo}`} title="Lihat PDF" className={buttonClass}>
-        <Eye aria-hidden="true" />{compact ? null : "Lihat PDF"}
-      </Button>
       <Dialog open={fallbackOpen} onOpenChange={setFallbackOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Salin pesan invoice</DialogTitle><DialogDescription>Clipboard browser tidak tersedia. Pilih teks berikut lalu salin secara manual.</DialogDescription></DialogHeader>

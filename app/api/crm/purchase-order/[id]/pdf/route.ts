@@ -1,5 +1,6 @@
 import { requireActor } from "@/lib/auth/session";
 import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
+import { forBrand } from "@/lib/brand/prisma-extension";
 import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
 import { createPurchaseOrderPdf } from "@/lib/crm/purchase-order-pdf";
 import { normalizePdfImage } from "@/lib/crm/pdf-image";
@@ -27,31 +28,38 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const variant = new URL(request.url).searchParams.get("variant") === "penjahit" ? "penjahit" as const : "customer" as const;
 
   const prisma = getPrismaClient();
-  const [purchaseOrder, currentBusiness] = await Promise.all([
-    prisma.purchaseOrder.findUnique({
-      where: { id: parsed.data },
-      include: {
-        opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
-        productCategory: { select: { name: true } },
-        items: { select: { id: true, name: true, pola: true, baseColor: true, variationColor: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, penjahitDesignType: true, designs: { select: { path: true, originalName: true, contentType: true }, orderBy: { position: "asc" } }, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
-        sizes: { select: { itemId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-        rosterEntries: { select: { itemId: true, memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
-        attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
-        // Desain tanpa tahap persetujuan: versi terbaru setiap produk langsung dipakai di PDF.
-        designTask: { select: { revisions: { orderBy: [{ revision: "desc" }, { createdAt: "desc" }], select: { itemId: true, attachments: { select: { path: true, kind: true, originalName: true, contentType: true }, orderBy: { createdAt: "asc" } } } } } },
-      },
-    }),
-    prisma.businessProfile.findFirst({ where: {} }),
-  ]);
+  const purchaseOrder = await prisma.purchaseOrder.findUnique({
+    where: { id: parsed.data },
+    include: {
+      opportunity: { select: { customer: { select: { name: true, companyName: true } } } },
+      productCategory: { select: { name: true } },
+      items: { select: { id: true, name: true, pola: true, baseColor: true, variationColor: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, penjahitDesignType: true, designs: { select: { path: true, originalName: true, contentType: true }, orderBy: { position: "asc" } }, productCategory: { select: { name: true } } }, orderBy: { position: "asc" } },
+      sizes: { select: { itemId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
+      rosterEntries: { select: { itemId: true, memberId: true, name: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
+      attachments: { select: { path: true, kind: true, originalName: true, contentType: true, caption: true }, orderBy: { createdAt: "asc" } },
+      // Desain tanpa tahap persetujuan: versi terbaru setiap produk langsung dipakai di PDF.
+      designTask: { select: { revisions: { orderBy: [{ revision: "desc" }, { createdAt: "desc" }], select: { itemId: true, attachments: { select: { path: true, kind: true, originalName: true, contentType: true }, orderBy: { createdAt: "asc" } } } } } },
+    },
+  });
   if (!purchaseOrder) return new Response("PO tidak ditemukan.", { status: 404 });
-  // Snapshot lebih dulu; PO lama yang snapshot logonya kosong jatuh ke logo profil terkini,
-  // lalu ke logo brand terbaru supaya kop PO tidak pernah memakai ikon lama.
-  const logoPath = purchaseOrder.snapshotBusinessLogoPath ?? currentBusiness?.logoPath ?? null;
-  let logoBytes = await readDefaultBrandLogoPng();
+  const currentBusiness = await prisma.businessProfile.findFirst(forBrand(purchaseOrder.brand, { where: {} }));
+  // Profil brand dokumen diutamakan; snapshot nama/logo brand lain diabaikan.
+  const brandDefaultName = purchaseOrder.brand === "SAGA" ? "SAGA" : "AS Konveksi";
+  const snapshotName = purchaseOrder.snapshotBusinessName?.trim() || null;
+  const snapshotLooksForeign =
+    Boolean(snapshotName) &&
+    ((purchaseOrder.brand === "SAGA" && /askonveksi|as\s*konveksi/i.test(snapshotName!)) ||
+      (purchaseOrder.brand === "ASKONVEKSI" && /^saga$/i.test(snapshotName!)));
+  const businessName = currentBusiness?.name ?? (snapshotLooksForeign ? null : snapshotName) ?? brandDefaultName;
+  const businessPhone = currentBusiness?.phone ?? (snapshotLooksForeign ? null : purchaseOrder.snapshotBusinessPhone);
+  const businessEmail = currentBusiness?.email ?? (snapshotLooksForeign ? null : purchaseOrder.snapshotBusinessEmail);
+  const businessAddress = currentBusiness?.address ?? (snapshotLooksForeign ? null : purchaseOrder.snapshotBusinessAddress);
+  const logoPath = currentBusiness?.logoPath ?? (snapshotLooksForeign ? null : purchaseOrder.snapshotBusinessLogoPath) ?? null;
+  let logoBytes = await readDefaultBrandLogoPng(purchaseOrder.brand);
   if (logoPath) {
     const { data } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(logoPath);
     if (data) {
-      try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { /* Gunakan logo bawaan. */ }
+      try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { /* Gunakan logo bawaan brand. */ }
     }
   }
   const designRevisions = purchaseOrder.designTask?.revisions ?? [];
@@ -106,15 +114,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return { kind: item.kind, label, originalName: item.originalName, contentType: item.contentType, bytes: new Uint8Array(), itemId };
     }
   }))).filter((item): item is NonNullable<typeof item> => item !== null)];
-  const profile = purchaseOrder.status === "DRAFT" ? currentBusiness : null;
   const pdf = await createPurchaseOrderPdf({
     ...purchaseOrder,
     productCategory: purchaseOrder.productCategory?.name ?? null,
-    snapshotBusinessName: purchaseOrder.snapshotBusinessName ?? profile?.name ?? "AS Konveksi",
-    snapshotBusinessPhone: purchaseOrder.snapshotBusinessPhone ?? profile?.phone ?? null,
-    snapshotBusinessEmail: purchaseOrder.snapshotBusinessEmail ?? profile?.email ?? null,
-    snapshotBusinessAddress: purchaseOrder.snapshotBusinessAddress ?? profile?.address ?? null,
-  }, logoBytes, assets, variant);
+    snapshotBusinessName: businessName,
+    snapshotBusinessPhone: businessPhone ?? null,
+    snapshotBusinessEmail: businessEmail ?? null,
+    snapshotBusinessAddress: businessAddress ?? null,
+  }, logoBytes, assets, variant, purchaseOrder.brand);
   // Nama file juga tanpa akhiran revisi (-R2/-R3) supaya customer/penjahit tidak
   // melihat penanda revisi; revisi tetap tercatat di sistem.
   const documentNo = purchaseOrder.purchaseOrderNo.replace(/-R\d+$/i, "");

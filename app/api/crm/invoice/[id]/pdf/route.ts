@@ -1,12 +1,15 @@
-import { entityIdSchema } from "@/lib/crm/validation";
-import { createInvoicePdf } from "@/lib/crm/invoice-pdf";
-import { normalizePdfImage } from "@/lib/crm/pdf-image";
+import { timingSafeEqual } from "node:crypto";
+
 import { requireActor } from "@/lib/auth/session";
 import { CRM_VIEW_ROLES } from "@/lib/auth/permissions";
+import { forBrand } from "@/lib/brand/prisma-extension";
+import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
+import { createInvoicePdf } from "@/lib/crm/invoice-pdf";
+import { normalizePdfImage } from "@/lib/crm/pdf-image";
+import { entityIdSchema } from "@/lib/crm/validation";
+import { downloadFilename } from "@/lib/download-filename";
 import { getPrismaClient } from "@/lib/prisma";
 import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
-import { downloadFilename } from "@/lib/download-filename";
-import { timingSafeEqual } from "node:crypto";
 
 export const runtime = "nodejs";
 
@@ -31,9 +34,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!parsed.success) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
   const prisma = getPrismaClient();
-  const [invoice, currentBusiness, paymentMethods, settingPoints] = await Promise.all([prisma.invoice.findUnique({
+  const invoice = await prisma.invoice.findUnique({
     where: { id: parsed.data },
     select: {
+      brand: true,
       invoiceNo: true,
       revision: true,
       status: true,
@@ -77,19 +81,44 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } },
       salesOrder: { select: { payment: { select: { transactions: { select: { amount: true, status: true } } } } } },
     },
-  }), prisma.businessProfile.findFirst({ where: {} }), prisma.paymentMethod.findMany({ where: { isActive: true }, orderBy: { position: "asc" }, select: { name: true, description: true } }),
-    // Poin master "Pengaturan invoice" dibaca langsung (live), sama seperti daftar metode pembayaran.
-    prisma.invoiceSettingPoint.findMany({ orderBy: [{ section: "asc" }, { position: "asc" }], select: { section: true, text: true } })]);
+  });
   if (!invoice) return new Response("Invoice tidak ditemukan.", { status: 404 });
 
-  // Kop identitas memakai snapshot lebih dulu; kolom snapshot yang masih kosong (invoice lama,
-  // dibuat sebelum profil perusahaan diisi) jatuh ke profil terkini supaya kopnya tidak polos.
-  const logoPath = invoice.status === "DRAFT" ? currentBusiness?.logoPath : invoice.snapshotBusinessLogoPath ?? currentBusiness?.logoPath;
-  let logoBytes: Uint8Array | undefined;
+  // Profil & metode bayar mengikuti brand dokumen, bukan brand cookie aktif.
+  const paymentMethodQuery = {
+    where: { isActive: true },
+    orderBy: { position: "asc" as const },
+    select: { name: true, description: true },
+  };
+  const settingPointQuery = {
+    orderBy: [{ section: "asc" as const }, { position: "asc" as const }],
+    select: { section: true, text: true },
+  };
+  const [currentBusiness, paymentMethods, settingPoints] = await Promise.all([
+    prisma.businessProfile.findFirst(forBrand(invoice.brand, { where: {} })),
+    prisma.paymentMethod.findMany(forBrand(invoice.brand, paymentMethodQuery)),
+    prisma.invoiceSettingPoint.findMany(forBrand(invoice.brand, settingPointQuery)),
+  ]);
+
+  // Kop mengikuti profil brand dokumen. Snapshot logo/nama brand lain (mis. invoice
+  // SAGA yang dulu dibuat di Askonveksi) sengaja diabaikan supaya identitas tidak bocor.
+  const brandDefaultName = invoice.brand === "SAGA" ? "SAGA" : "AS Konveksi";
+  const snapshotName = invoice.snapshotBusinessName?.trim() || null;
+  const snapshotLooksForeign =
+    Boolean(snapshotName) &&
+    ((invoice.brand === "SAGA" && /askonveksi|as\s*konveksi/i.test(snapshotName!)) ||
+      (invoice.brand === "ASKONVEKSI" && /^saga$/i.test(snapshotName!)));
+  const businessName = currentBusiness?.name ?? (snapshotLooksForeign ? null : snapshotName) ?? brandDefaultName;
+  const businessPhone = currentBusiness?.phone ?? (snapshotLooksForeign ? null : invoice.snapshotBusinessPhone);
+  const businessEmail = currentBusiness?.email ?? (snapshotLooksForeign ? null : invoice.snapshotBusinessEmail);
+  const businessAddress = currentBusiness?.address ?? (snapshotLooksForeign ? null : invoice.snapshotBusinessAddress);
+
+  const logoPath = currentBusiness?.logoPath ?? (snapshotLooksForeign ? null : invoice.snapshotBusinessLogoPath);
+  let logoBytes = await readDefaultBrandLogoPng(invoice.brand);
   if (logoPath) {
     const { data } = await erpStorage(BUSINESS_ASSETS_BUCKET).download(logoPath);
     if (data) {
-      try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { logoBytes = undefined; }
+      try { logoBytes = await normalizePdfImage(new Uint8Array(await data.arrayBuffer())); } catch { /* fallback logo brand */ }
     }
   }
   const signaturePath = invoice.snapshotSignaturePath ?? currentBusiness?.signaturePath ?? null;
@@ -102,13 +131,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
   const pdf = await createInvoicePdf({
     ...invoice,
-    snapshotBusinessName: invoice.snapshotBusinessName ?? currentBusiness?.name ?? "AS Konveksi",
-    snapshotBusinessPhone: invoice.snapshotBusinessPhone ?? currentBusiness?.phone ?? null,
-    snapshotBusinessEmail: invoice.snapshotBusinessEmail ?? currentBusiness?.email ?? null,
-    snapshotBusinessAddress: invoice.snapshotBusinessAddress ?? currentBusiness?.address ?? null,
+    snapshotBusinessName: businessName,
+    snapshotBusinessPhone: businessPhone ?? null,
+    snapshotBusinessEmail: businessEmail ?? null,
+    snapshotBusinessAddress: businessAddress ?? null,
     snapshotSignatureName: invoice.snapshotSignatureName ?? currentBusiness?.signatureName ?? null,
     snapshotSignatureTitle: invoice.snapshotSignatureTitle ?? currentBusiness?.signatureTitle ?? null,
-  }, { logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints });
+  }, { brand: invoice.brand, logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints });
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",

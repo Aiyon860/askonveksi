@@ -2,6 +2,8 @@ import "server-only";
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
+import type { Brand } from "@/lib/brand/config";
+import { DEFAULT_BRAND } from "@/lib/brand/config";
 import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
 import { MIN_FONT_SIZE, clipPdfText, wrapPdfText } from "@/lib/crm/pdf-typography";
 
@@ -21,6 +23,7 @@ type ReceiptData = {
 };
 
 type ReceiptAssets = {
+  brand?: Brand;
   /** PNG hasil normalizePdfImage; kalau kosong memakai logo brand terbaru. */
   logo?: Uint8Array;
   /** PNG hasil normalizePdfImage dari snapshot invoice. */
@@ -72,7 +75,7 @@ export async function createReceiptPdf(data: ReceiptData, assets: ReceiptAssets 
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const logoBytes = assets.logo ?? await readDefaultBrandLogoPng();
+  const logoBytes = assets.logo ?? await readDefaultBrandLogoPng(assets.brand ?? DEFAULT_BRAND);
   const logo = await document.embedPng(logoBytes);
   let signature: Awaited<ReturnType<typeof document.embedPng>> | undefined;
   if (assets.signature) {

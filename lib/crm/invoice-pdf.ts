@@ -2,6 +2,8 @@ import "server-only";
 
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
+import type { Brand } from "@/lib/brand/config";
+import { DEFAULT_BRAND } from "@/lib/brand/config";
 import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
 import { MIN_FONT_SIZE, clipPdfText } from "@/lib/crm/pdf-typography";
 import { parseInvoicePointRuns, type InvoicePointRun } from "@/lib/crm/invoice-setting-html";
@@ -59,9 +61,17 @@ const A4 = { width: 595.28, height: 841.89 };
 const margin = 48;
 const CONTENT_WIDTH = A4.width - margin * 2;
 
-/** Biru judul dan nama pada template; navy untuk kepala tabel. */
-const TEMPLATE_BLUE = rgb(0.12, 0.32, 0.64);
-const TABLE_HEAD_BG = rgb(0.18, 0.24, 0.3);
+/** Askonveksi: navy. SAGA: hijau army. */
+const BRAND_PDF_THEME = {
+  ASKONVEKSI: {
+    accent: rgb(0.12, 0.32, 0.64),
+    tableHead: rgb(0.18, 0.24, 0.3),
+  },
+  SAGA: {
+    accent: rgb(0.29, 0.4, 0.24),
+    tableHead: rgb(0.22, 0.3, 0.18),
+  },
+} as const;
 const ZEBRA_BG = rgb(0.95, 0.96, 0.97);
 const GRID_LINE = rgb(0.84, 0.84, 0.84);
 const RULE_LINE = rgb(0.25, 0.25, 0.25);
@@ -162,6 +172,7 @@ function layoutPointLines(
 }
 
 type InvoiceAssets = {
+  brand?: Brand;
   logo?: Uint8Array;
   signature?: Uint8Array;
   /** Daftar metode pembayaran aktif dari master data; dicetak saat invoice tidak punya snapshot rekening lama. */
@@ -171,12 +182,16 @@ type InvoiceAssets = {
 };
 
 export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAssets = {}) {
+  const brand = assets.brand ?? DEFAULT_BRAND;
+  const theme = BRAND_PDF_THEME[brand];
+  const accent = theme.accent;
+  const tableHeadBg = theme.tableHead;
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
   const italic = await document.embedFont(StandardFonts.HelveticaOblique);
   const boldItalic = await document.embedFont(StandardFonts.HelveticaBoldOblique);
-  const logoBytes = assets.logo ?? await readDefaultBrandLogoPng();
+  const logoBytes = assets.logo ?? await readDefaultBrandLogoPng(brand);
   const logo = await document.embedPng(logoBytes);
   let signature: Awaited<ReturnType<typeof document.embedPng>> | undefined;
   if (assets.signature) {
@@ -263,7 +278,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   const headerTop = y;
   page.drawImage(logo, { x: margin, y: y - scaledLogo.height, width: scaledLogo.width, height: scaledLogo.height });
   const headerRight = A4.width - margin;
-  page.drawText("Invoice", { x: headerRight - bold.widthOfTextAtSize("Invoice", 20), y: y - 18, size: 20, font: bold, color: TEMPLATE_BLUE });
+  page.drawText("Invoice", { x: headerRight - bold.widthOfTextAtSize("Invoice", 20), y: y - 18, size: 20, font: bold, color: accent });
   y -= 34;
   const metaRows: Array<[string, string]> = [
     ["Referensi", safeText(invoice.invoiceNo)],
@@ -298,7 +313,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   leftY -= 6;
   page.drawLine({ start: { x: margin, y: leftY }, end: { x: margin + infoWidth, y: leftY }, thickness: 1, color: RULE_LINE });
   leftY -= 16;
-  page.drawText(clipPdfText(safeText(invoice.snapshotBusinessName ?? "AS Konveksi"), bold, MIN_FONT_SIZE, infoWidth), { x: margin, y: leftY, size: MIN_FONT_SIZE, font: bold, color: TEMPLATE_BLUE });
+  page.drawText(clipPdfText(safeText(invoice.snapshotBusinessName ?? "AS Konveksi"), bold, MIN_FONT_SIZE, infoWidth), { x: margin, y: leftY, size: MIN_FONT_SIZE, font: bold, color: accent });
   leftY -= 18;
   const businessLines = [
     ...wrap(invoice.snapshotBusinessAddress ?? "-", regular, MIN_FONT_SIZE, infoWidth),
@@ -311,7 +326,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   page.drawLine({ start: { x: customerX, y: rightY }, end: { x: customerX + infoWidth, y: rightY }, thickness: 1, color: RULE_LINE });
   rightY -= 16;
   const customerName = invoice.snapshotCompanyName ?? invoice.snapshotCustomerName;
-  page.drawText(clipPdfText(safeText(customerName), bold, MIN_FONT_SIZE, infoWidth), { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold, color: TEMPLATE_BLUE });
+  page.drawText(clipPdfText(safeText(customerName), bold, MIN_FONT_SIZE, infoWidth), { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold, color: accent });
   rightY -= 18;
   rightY = infoLines([`Telp: ${invoice.snapshotWhatsapp ?? "-"}`], customerX, rightY) - 4;
   void infoTop;
@@ -343,7 +358,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   }
   function drawTableHeader() {
     ensure(TABLE_HEADER_HEIGHT + 8);
-    page.drawRectangle({ x: margin, y: y - TABLE_HEADER_HEIGHT, width: CONTENT_WIDTH, height: TABLE_HEADER_HEIGHT, color: TABLE_HEAD_BG });
+    page.drawRectangle({ x: margin, y: y - TABLE_HEADER_HEIGHT, width: CONTENT_WIDTH, height: TABLE_HEADER_HEIGHT, color: tableHeadBg });
     tableColumns.forEach((column, index) => {
       const cellX = columnX(index);
       const label = clipPdfText(column.label, bold, MIN_FONT_SIZE, column.width - 8);
