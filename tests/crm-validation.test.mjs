@@ -1348,18 +1348,21 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   assert.match(invoiceDetail, /receipts={receipts}/);
   assert.match(invoiceDetail, /label: "Lihat Kwitansi"/);
   assert.match(invoiceDetail, /label: `Lihat Kwitansi Termin \$\{term\.position \+ 1\}`/);
-  // Kwitansi hanya ada di footer dialog (sebelum Lihat PDF, varian hijau); baris pembayaran hanya pratinjau bukti.
+  // Kwitansi hanya ada di footer dialog (varian hijau); baris pembayaran hanya pratinjau bukti.
+  // Print PDF memakai DocumentPrintButton terpisah (bukan digandakan di delivery actions).
   assert.equal(invoiceDetail.match(/label: "Lihat Kwitansi"/g)?.length, 1);
   assert.doesNotMatch(invoiceDetail, /payment-transactions\/\$\{transaction\.id\}\/kwitansi/);
   assert.match(deliveryActions, /api\/crm\/payment-transactions\/\$\{receipt\.id\}\/kwitansi/);
   assert.match(deliveryActions, /variant={compact \? "ghost" : "success"}/);
-  assert.match(deliveryActions, /Lihat PDF/);
+  assert.doesNotMatch(deliveryActions, /Lihat PDF/);
   assert.doesNotMatch(deliveryActions, /Unduh PDF/);
+  assert.match(invoiceDetail, /DocumentPrintButton/);
 
-  // Tab Invoice pada peluang memakai komponen yang sama: kwitansi tampil sebelah Lihat PDF.
+  // Tab Invoice pada peluang memakai komponen yang sama + tombol Print terpisah.
   const workflowSection = await readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8");
   const opportunityPage = await readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8");
   const dataSource = await readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8");
+  assert.match(workflowSection, /DocumentPrintButton/);
   assert.match(workflowSection, /receipts={receipts}/);
   assert.match(opportunityPage, /receipts={invoiceReceipts}/);
   assert.match(opportunityPage, /label: "Lihat Kwitansi"/);
