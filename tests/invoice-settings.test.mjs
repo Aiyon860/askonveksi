@@ -178,6 +178,14 @@ test("PDF invoice mencetak poin bergaya tebal/miring/garis bawah sebagai ganti b
   assert.doesNotMatch(invoiceRouteSource, /isBold/);
 });
 
+test("Keterangan dan Syarat & Ketentuan memakai font lebih kecil dan tidak pindah halaman", () => {
+  const drawPointList = invoicePdfSource.slice(invoicePdfSource.indexOf("function drawPointList"), invoicePdfSource.indexOf("const issueDate"));
+  assert.doesNotMatch(drawPointList, /ensure\(|addPage\(/);
+  assert.match(invoicePdfSource, /const pointSizes = \[10, 9\.5, 9/);
+  assert.match(invoicePdfSource, /pointListDrop\(keteranganPoints/);
+  assert.match(invoicePdfSource, /drawPointList\("Syarat & Ketentuan", syaratPoints/);
+});
+
 test("tiga dokumen cetak memakai ukuran font minimum 16 px (12 pt)", () => {
   assert.equal(PRINT_MIN_FONT_PX, 16);
   assert.equal(MIN_FONT_SIZE, 12);
