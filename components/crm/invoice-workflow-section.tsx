@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { CopyPlus, XCircle } from "lucide-react";
+import { CopyPlus, Save, XCircle } from "lucide-react";
 
 import { cancelInvoiceAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
@@ -11,6 +11,7 @@ import { DocumentPrintButton } from "@/components/crm/document-print-button";
 import { InvoiceForm } from "@/components/crm/invoice-form";
 import { InvoiceDeliveryActions } from "@/components/crm/invoice-delivery-actions";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 type PurchaseOrder = {
   id: string;
@@ -96,6 +97,19 @@ export function InvoiceWorkflowSection({
   children,
 }: InvoiceWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
+  // Tombol simpan berada di header (di luar <form>), jadi status siap-simpan dan proses
+  // simpan dilaporkan oleh InvoiceForm agar tombol tidak aktif sebelum jadwal valid.
+  const [isFormReady, setIsFormReady] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const revisionFormId = `invoice-revision-${invoiceId}`;
+  const stopRevision = () => {
+    setIsCreatingRevision(false);
+    setIsSaving(false);
+    setIsFormReady(false);
+  };
+  // Setelah revisi tersimpan, invoice sumber menjadi SUPERSEDED dan `version` bertambah;
+  // parent memberi key `${id}-${version}` sehingga section ini remount dan kembali ke
+  // kondisi awal tanpa perlu setState di dalam effect.
   // Draft dan invoice terbit tanpa Sales Order dapat direvisi. Invoice terbit lama tetap
   // aktif sampai revisinya diterbitkan, sehingga revisi baru tidak bercabang.
   const canReviseStatus = invoiceStatus === "DRAFT" || (invoiceStatus === "ISSUED" && !hasSalesOrder);
@@ -111,50 +125,62 @@ export function InvoiceWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isCreatingRevision ? (
-            <DocumentPrintButton href={`/api/crm/invoice/${invoiceId}/pdf`} label={`Print ${title.split(" · ")[0]}`} />
-          ) : null}
-          {!isCreatingRevision && showDeliveryActions ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
-          {showCreateRevision ? (
-            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
-              <CopyPlus data-icon="inline-start" aria-hidden="true" />
-              Buat versi revisi
-            </Button>
-          ) : null}
-          {canCancel && invoiceStatus === "DRAFT" ? (
-            <DocumentCancelButton
-              action={cancelInvoiceAction}
-              fields={{ invoiceId, version: invoiceVersion }}
-              title="Batalkan invoice draft?"
-              description="Invoice akan berstatus Dibatalkan dan tidak dapat diterbitkan lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
-            />
-          ) : null}
-          {!isCreatingRevision && salesOrderHref && salesOrderLabel ? (
-            <Button variant="outline" className="w-full sm:w-auto" render={<Link href={salesOrderHref} />} nativeButton={false}>
-              {salesOrderLabel}
-            </Button>
-          ) : null}
+          {isCreatingRevision ? (
+            <>
+              <Button
+                type="submit"
+                form={revisionFormId}
+                className="w-full sm:w-auto"
+                disabled={!isFormReady || isSaving}
+              >
+                {isSaving ? <Spinner data-icon="inline-start" /> : <Save data-icon="inline-start" aria-hidden="true" />}
+                {isSaving ? "Menyimpan..." : "Simpan perubahan"}
+              </Button>
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={stopRevision}>
+                <XCircle data-icon="inline-start" aria-hidden="true" />
+                Batalkan perubahan
+              </Button>
+            </>
+          ) : (
+            <>
+              <DocumentPrintButton href={`/api/crm/invoice/${invoiceId}/pdf`} label={`Print ${title.split(" · ")[0]}`} />
+              {showDeliveryActions ? <InvoiceDeliveryActions invoiceId={invoiceId} invoiceNo={title.split(" · ")[0]} receipts={receipts} /> : null}
+              {showCreateRevision ? (
+                <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
+                  <CopyPlus data-icon="inline-start" aria-hidden="true" />
+                  Buat revisi invoice
+                </Button>
+              ) : null}
+              {canCancel && invoiceStatus === "DRAFT" ? (
+                <DocumentCancelButton
+                  action={cancelInvoiceAction}
+                  fields={{ invoiceId, version: invoiceVersion }}
+                  triggerLabel="Batalkan invoice"
+                  confirmLabel="Ya, batalkan invoice"
+                  title="Batalkan invoice draft?"
+                  description="Invoice akan berstatus Dibatalkan dan tidak dapat diterbitkan lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
+                />
+              ) : null}
+              {salesOrderHref && salesOrderLabel ? (
+                <Button variant="outline" className="w-full sm:w-auto" render={<Link href={salesOrderHref} />} nativeButton={false}>
+                  {salesOrderLabel}
+                </Button>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
       {isCreatingRevision && purchaseOrder ? (
-        <>
-          <InvoiceForm
-            opportunityId={opportunityId}
-            purchaseOrder={purchaseOrder}
-            initialValues={draftValues}
-            sourceInvoiceId={invoiceId}
-            submitLabel="Buat versi revisi"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-2 w-full border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-            onClick={() => setIsCreatingRevision(false)}
-          >
-            <XCircle data-icon="inline-start" aria-hidden="true" />
-            Batalkan draft revisi
-          </Button>
-        </>
+        <InvoiceForm
+          opportunityId={opportunityId}
+          purchaseOrder={purchaseOrder}
+          initialValues={draftValues}
+          sourceInvoiceId={invoiceId}
+          formId={revisionFormId}
+          hideSubmit
+          onReadyChange={setIsFormReady}
+          onPendingChange={setIsSaving}
+        />
       ) : (
         children
       )}

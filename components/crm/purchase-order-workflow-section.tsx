@@ -24,7 +24,7 @@ export type PurchaseOrderItemDraftValues = {
   designNotes: string;
   matrix: Record<string, number>;
   rosterMode: "none" | "manual" | "excel";
-  roster: Array<{ key: string; memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" | "" }>;
+  roster: Array<{ key: string; memberId: string; name: string; jabatan: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" | "" }>;
   accessoryQuantity: string;
 };
 type PurchaseOrderDraftValues = {

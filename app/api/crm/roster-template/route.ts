@@ -19,6 +19,7 @@ export async function GET() {
   roster.columns = [
     { header: "ID", key: "id", width: 20 },
     { header: "Nama", key: "name", width: 32 },
+    { header: "Jabatan", key: "jabatan", width: 24 },
     { header: "Ukuran", key: "size", width: 18 },
     { header: "Panjang Lengan", key: "sleeveLength", width: 20 },
   ];
@@ -26,9 +27,9 @@ export async function GET() {
   roster.getColumn(1).numFmt = "@";
   roster.views = [{ state: "frozen", ySplit: 1 }];
   const example = workbook.addWorksheet("Contoh");
-  example.addRow(["ID", "Nama", "Ukuran", "Panjang Lengan"]);
-  example.addRow(["A-001", "Contoh Pemakai", sizes[0]?.name ?? "Isi ukuran aktif", "Pendek"]);
-  example.addRow(["A-002", "Contoh Pemakai 2", sizes[0]?.name ?? "Isi ukuran aktif", "Panjang"]);
+  example.addRow(["ID", "Nama", "Jabatan (opsional)", "Ukuran", "Panjang Lengan"]);
+  example.addRow(["A-001", "Contoh Pemakai", "Ketua", sizes[0]?.name ?? "Isi ukuran aktif", "Pendek"]);
+  example.addRow(["A-002", "Contoh Pemakai 2", "", sizes[0]?.name ?? "Isi ukuran aktif", "Panjang"]);
   example.getRow(1).font = { bold: true };
   const options = workbook.addWorksheet("Ukuran Aktif");
   options.addRow(["Ukuran yang dapat dipakai di sheet Roster"]);

@@ -5,7 +5,7 @@ import type ExcelJS from "exceljs";
 import { UserFacingError } from "@/lib/actions/response";
 import { PURCHASE_ORDER_ROSTER_MAX_BYTES, PURCHASE_ORDER_ROSTER_MAX_ROWS } from "@/lib/crm/validation";
 
-export type ImportedRosterRow = { memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" };
+export type ImportedRosterRow = { memberId: string; name: string; jabatan: string; size: string; sleeveLength: "PENDEK" | "PANJANG" };
 
 const XLSX_MAX_ENTRIES = 100;
 const XLSX_MAX_UNCOMPRESSED_BYTES = 12 * 1024 * 1024;
@@ -82,6 +82,8 @@ function rowsFromGrid(rows: string[][]) {
   const normalizedHeaders = rows[0].map((value) => value.trim().toLocaleLowerCase("id-ID"));
   const idIndex = normalizedHeaders.findIndex((value) => value === "id");
   const nameIndex = normalizedHeaders.findIndex((value) => value === "nama" || value === "name");
+  // Jabatan opsional: file lama tanpa kolom ini tetap diterima.
+  const jabatanIndex = normalizedHeaders.findIndex((value) => value === "jabatan");
   const sizeIndex = normalizedHeaders.findIndex((value) => value === "size" || value === "ukuran");
   const sleeveIndex = normalizedHeaders.findIndex((value) => value === "panjang lengan");
   if (idIndex < 0 || nameIndex < 0 || sizeIndex < 0 || sleeveIndex < 0) {
@@ -91,12 +93,13 @@ function rowsFromGrid(rows: string[][]) {
   const result = rows.slice(1).filter((row) => row.some((value) => value.trim())).map((row, index) => {
     const memberId = row[idIndex]?.trim() ?? "";
     const name = row[nameIndex]?.trim() ?? "";
+    const jabatan = jabatanIndex >= 0 ? row[jabatanIndex]?.trim() ?? "" : "";
     const size = row[sizeIndex]?.trim() ?? "";
     const sleeveLength = row[sleeveIndex]?.trim().toLocaleUpperCase("id-ID") ?? "";
     if (!memberId || !name || !size || !sleeveLength) throw new UserFacingError(`Baris roster ${index + 2} belum lengkap.`);
-    if (memberId.length > 80 || name.length > 160 || size.length > 40) throw new UserFacingError(`Baris roster ${index + 2} terlalu panjang.`);
+    if (memberId.length > 80 || name.length > 160 || jabatan.length > 80 || size.length > 40) throw new UserFacingError(`Baris roster ${index + 2} terlalu panjang.`);
     if (sleeveLength !== "PENDEK" && sleeveLength !== "PANJANG") throw new UserFacingError(`Panjang lengan pada baris roster ${index + 2} harus Pendek atau Panjang.`);
-    return { memberId, name, size, sleeveLength: sleeveLength as ImportedRosterRow["sleeveLength"] };
+    return { memberId, name, jabatan, size, sleeveLength: sleeveLength as ImportedRosterRow["sleeveLength"] };
   });
   if (result.length > PURCHASE_ORDER_ROSTER_MAX_ROWS) throw new UserFacingError(`Roster maksimal ${PURCHASE_ORDER_ROSTER_MAX_ROWS.toLocaleString("id-ID")} baris.`);
   return result;

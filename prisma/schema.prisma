@@ -875,6 +875,8 @@ model PurchaseOrderRosterEntry {
   itemId          String        @default("")
   memberId        String        @db.VarChar(80)
   name            String        @db.VarChar(160)
+  /** Jabatan pemakai (opsional); kosong berarti tidak dicetak di PO. */
+  jabatan         String?       @db.VarChar(80)
   sizeId          String?
   size            String        @db.VarChar(40)
   sleeveLength    SleeveLength

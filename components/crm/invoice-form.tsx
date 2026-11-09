@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, type KeyboardEvent } from "react";
+import { useActionState, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 
 import { createInvoiceDraftAction, createInvoiceRevisionAction } from "@/app/actions/crm";
@@ -160,15 +160,25 @@ export function InvoiceForm({
   initialValues,
   sourceInvoiceId,
   submitLabel,
+  formId,
+  hideSubmit = false,
+  onReadyChange,
+  onPendingChange,
 }: {
   opportunityId: string;
   purchaseOrder: PurchaseOrder;
   initialValues?: InvoiceFormValues;
   sourceInvoiceId?: string;
   submitLabel?: string;
+  /** Dipakai tombol simpan di header section revisi (di luar elemen form). */
+  formId?: string;
+  /** Section revisi menaruh tombol simpan di header, jadi tombol bawaan disembunyikan. */
+  hideSubmit?: boolean;
+  onReadyChange?: (ready: boolean) => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const serverAction = sourceInvoiceId ? createInvoiceRevisionAction : createInvoiceDraftAction;
-  const [formState, formAction] = useActionState(serverAction, initialFormActionState);
+  const [formState, formAction, isPending] = useActionState(serverAction, initialFormActionState);
   const values = initialValues;
   const fieldKey = sourceInvoiceId ?? "new";
   const groups = groupPurchaseOrderInvoiceItems(purchaseOrder);
@@ -292,6 +302,19 @@ export function InvoiceForm({
       : effectiveLunas || (Math.abs(scheduleDifference) < 0.005 && datesReady));
   const deadlineBaselineLabel = initialDueAt ? `deadline DP (${initialDueAt})` : dueAt ? `jatuh tempo (${dueAt})` : "jatuh tempo";
 
+  // Callback parent selalu setter stabil; ref diperbarui di effect supaya tidak menulis
+  // ref saat render (aturan React Compiler).
+  const readyChangeRef = useRef(onReadyChange);
+  const pendingChangeRef = useRef(onPendingChange);
+  useEffect(() => {
+    readyChangeRef.current = onReadyChange;
+    readyChangeRef.current?.(scheduleReady);
+  }, [onReadyChange, scheduleReady]);
+  useEffect(() => {
+    pendingChangeRef.current = onPendingChange;
+    pendingChangeRef.current?.(isPending);
+  }, [isPending, onPendingChange]);
+
   function updateRow(index: number, patch: Partial<RowPricing>) {
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
@@ -308,7 +331,7 @@ export function InvoiceForm({
   }
 
   return (
-    <form action={formAction}>
+    <form id={formId} action={formAction}>
       <input type="hidden" name="opportunityId" value={opportunityId} />
       <input type="hidden" name="purchaseOrderId" value={purchaseOrder.id} />
       {sourceInvoiceId ? <input type="hidden" name="sourceInvoiceId" value={sourceInvoiceId} /> : null}
@@ -611,7 +634,7 @@ export function InvoiceForm({
             <AlertDescription>{formState.message} Periksa harga dan diskon, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
-        <SubmitButton pendingLabel="Menyimpan draft..." disabled={!scheduleReady}>{submitLabel ?? "Buat draft invoice"}</SubmitButton>
+        {hideSubmit ? null : <SubmitButton pendingLabel="Menyimpan draft..." disabled={!scheduleReady}>{submitLabel ?? "Buat draft invoice"}</SubmitButton>}
       </FieldGroup>
     </form>
   );
