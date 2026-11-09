@@ -21,6 +21,17 @@ test("tujuan setelah login mengikuti role, bukan satu path untuk semua", () => {
   assert.equal(landingPathForRole("DEVELOPER"), "/dashboard");
 });
 
+test("Admin PO mengoperasikan CRM tanpa membuka WhatsApp", () => {
+  assert.equal(canAccessPath("ADMIN_PO", "/crm"), true);
+  assert.equal(canAccessPath("ADMIN_PO", "/crm/follow-up"), true);
+  assert.equal(canAccessPath("ADMIN_PO", "/customers"), true);
+  assert.equal(canAccessPath("ADMIN_PO", "/whatsapp"), false);
+  assert.equal(canAccessPath("ADMIN_PO", "/campaigns"), false);
+  assert.equal(canAccessPath("ADMIN_PO", "/master-data/whatsapp"), false);
+  assert.equal(canAccessPath("DEVELOPER", "/whatsapp"), true);
+  assert.equal(canAccessPath("DEVELOPER", "/campaigns"), true);
+});
+
 test("setiap role mendarat di halaman yang memang boleh dibukanya", () => {
   for (const role of APP_ROLES) {
     const landing = landingPathForRole(role);

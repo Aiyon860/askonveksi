@@ -10,7 +10,7 @@ import useSWR from "swr";
 
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { hasRole, CRM_OPERATOR_ROLES, CRM_VIEW_ROLES, GARMENT_SIZE_ROLES, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
+import { hasRole, CRM_OPERATOR_ROLES, CRM_ROLES, CRM_VIEW_ROLES, GARMENT_SIZE_ROLES, OWNER_ACTION_ROLES } from "@/lib/auth/permissions";
 import { fetcher } from "@/lib/fetcher";
 import { useSidebarCollapsed } from "@/lib/use-sidebar-collapsed";
 import { cn } from "@/lib/utils";
@@ -216,13 +216,12 @@ export const AppNav = memo(function AppNav({ role, onNavigate }: { role: AppRole
   // Owner, Developer, dan Keuangan memiliki akses area administratif yang sama.
   const isOwnerEquivalent = hasRole(role, OWNER_ACTION_ROLES);
   const canViewCrm = hasRole(role, CRM_VIEW_ROLES);
-  // Broadcast & WhatsApp butuh operator CRM (Admin Customer); Admin PO hanya
-  // membaca CRM/Produksi sehingga menu-menu ini tidak boleh tampil untuknya.
   const canOperateCrm = hasRole(role, CRM_OPERATOR_ROLES);
+  const canManageWhatsApp = hasRole(role, CRM_ROLES);
   const canViewWhatsAppInbox = hasRole(role, WHATSAPP_INBOX_ROLES);
   const crmVisibleItems = crmItems.filter((item) => item.href !== "/crm/follow-up" || canOperateCrm);
   const whatsAppVisibleItems = whatsAppItems.filter((item) =>
-    item.href === "/whatsapp" ? canViewWhatsAppInbox : canOperateCrm,
+    item.href === "/whatsapp" ? canViewWhatsAppInbox : canManageWhatsApp,
   );
 
   useEffect(() => {

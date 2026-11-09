@@ -10,7 +10,7 @@ import {
   type AnalyticsReportMode,
 } from "@/lib/analytics/report-period";
 import { calculateConversionRate } from "@/lib/analytics/conversion-rate";
-import { ANALYTICS_ROLES, CRM_VIEW_ROLES, DASHBOARD_ROLES, DEAL_ROLES, FINANCE_ROLES, MASTER_DATA_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ANALYTICS_ROLES, CRM_OPERATOR_ROLES, CRM_VIEW_ROLES, DASHBOARD_ROLES, DEAL_ROLES, FINANCE_ROLES, USER_ADMIN_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { readAuditDiff, type AuditDiffEntry } from "@/lib/audit/labels";
 import { OPEN_STAGES } from "@/lib/crm/constants";
@@ -340,7 +340,7 @@ export async function getCustomersForExport({
   offset = 0,
   limit = 5000,
 }: CustomerListQuery & { offset?: number; limit?: number }): Promise<{ rows: CustomerExcelExportRow[]; total: number | null }> {
-  const actor = await requireActor(MASTER_DATA_ROLES);
+  const actor = await requireActor(CRM_OPERATOR_ROLES);
   const where = customerWhere(actor, query, segment);
   const [items, total] = await Promise.all([getPrismaClient().customer.findMany({
     where,    select: {

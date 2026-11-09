@@ -94,11 +94,12 @@ test("data finansial dashboard hanya dikirim ke peran Keuangan", () => {
 });
 
 test("menu Broadcast dan WhatsApp hanya tampil untuk peran yang lolos gerbang server", () => {
-  // Admin PO hanya membaca CRM/Produksi: broadcast & WhatsApp membuka
-  // requireActor(CRM_OPERATOR_ROLES/WHATSAPP_INBOX_ROLES) lalu error bila diklik.
+  // Broadcast ikut operator CRM. WhatsApp tetap Admin Customer.
   assert.match(navSource, /const canOperateCrm = hasRole\(role, CRM_OPERATOR_ROLES\);/);
+  assert.match(navSource, /const canManageWhatsApp = hasRole\(role, CRM_ROLES\);/);
   assert.match(navSource, /const canViewWhatsAppInbox = hasRole\(role, WHATSAPP_INBOX_ROLES\);/);
   assert.match(navSource, /crmItems\.filter\(\(item\) => item\.href !== "\/crm\/follow-up" \|\| canOperateCrm\)/);
+  assert.match(navSource, /item\.href === "\/whatsapp" \? canViewWhatsAppInbox : canManageWhatsApp/);
   assert.match(navSource, /whatsAppVisibleItems\.length \?/);
   // Detail Desain memakai requireDeveloperActor, jadi tidak boleh ditawarkan
   // lewat pencarian dashboard untuk Admin Customer/Admin PO.

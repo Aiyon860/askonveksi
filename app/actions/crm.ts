@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { flashKindForError, flashMessagePath, messageForError, UserFacingError, runFormAction, runRedirectingAction, type FormActionState } from "@/lib/actions/response";
 import { auditFieldLabel, type AuditDiffEntry } from "@/lib/audit/labels";
-import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, GATE_OVERRIDE_ROLES, MASTER_DATA_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, GATE_OVERRIDE_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/session";
 import { DECORATION_METHOD_LABEL, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, OPEN_STAGES, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
@@ -872,7 +872,7 @@ export async function createCustomerAction(formData: FormData) {
 
 export async function importCustomersAction(formData: FormData) {
   return runRedirectingAction("/customers", async () => {
-    const actor = await requireActor(MASTER_DATA_ROLES);
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
     const rows = await parseCustomerWorkbook(customerExcelFile(formData));
     const lookupKeys = importCustomerLookupKeys(rows);
     const customerLookupWhere: Prisma.CustomerWhereInput[] = [];

@@ -25,7 +25,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TableViewport } from "@/components/table-viewport";
 import { Textarea } from "@/components/ui/textarea";
-import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
+import { CRM_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { DATA_PAGE_SIZE, DATA_PAGE_SIZES, parsePageParam, parsePageSizeParam } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
@@ -135,7 +135,7 @@ async function CampaignsContent({ searchParams }: { searchParams: CampaignSearch
   const active = rawActive === "active" || rawActive === "inactive" ? rawActive : "all";
   const range = parseCampaignDateRange(params.from, params.to);
   const state = { query, status, active, from: range.from, to: range.to, page: parsePageParam(params.page), pageSize: parsePageSizeParam(params.pageSize) } satisfies CampaignTableState;
-  const actor = await requireActor(CRM_OPERATOR_ROLES);
+  const actor = await requireActor(CRM_ROLES);
   const prisma = getPrismaClient();
   const filters: Prisma.WhatsAppCampaignWhereInput[] = [];
   if (query) filters.push({ name: { contains: query, mode: "insensitive" } });
