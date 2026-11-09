@@ -22,5 +22,12 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     forbidden();
   }
 
-  return <AppShell actor={actor}>{children}</AppShell>;
+  return (
+    <>
+      {process.env.NEXT_PUBLIC_SUPABASE_URL ? (
+        <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+      ) : null}
+      <AppShell actor={actor}>{children}</AppShell>
+    </>
+  );
 }

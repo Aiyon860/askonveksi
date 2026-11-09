@@ -40,9 +40,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="id" className={`h-full antialiased ${inter.variable}`} suppressHydrationWarning>
       <head>
-        {process.env.NEXT_PUBLIC_SUPABASE_URL ? (
-          <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
-        ) : null}
         <script dangerouslySetInnerHTML={{ __html: PRE_PAINT_PREFERENCES }} />
       </head>
       <body className="flex min-h-full flex-col font-sans">

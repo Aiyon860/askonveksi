@@ -70,10 +70,11 @@ export function LandingNavbar({
             <Image
               src={logoSrc}
               alt={brandName}
-              width={1920}
-              height={1080}
+              width={160}
+              height={90}
+              sizes="160px"
+              loading="eager"
               className="h-9 w-auto shrink-0 object-contain sm:h-10"
-              priority
               unoptimized={logoUnoptimized}
             />
           </Link>

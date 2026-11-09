@@ -61,8 +61,9 @@ export function LandingFooter({
                 <Image
                   src={logoSrc}
                   alt={brandName}
-                  width={1920}
-                  height={1080}
+                  width={160}
+                  height={90}
+                  sizes="160px"
                   className="h-10 w-auto object-contain"
                   unoptimized={logoUnoptimized}
                 />

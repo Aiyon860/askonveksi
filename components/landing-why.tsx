@@ -17,6 +17,7 @@ export function LandingWhy({ section }: { section: CmsWhySection }) {
         src={section.image.src}
         alt={section.image.alt}
         fill
+        quality={40}
         sizes="100vw"
         style={{ objectPosition: objectPosition(section.image.focus) }}
         className="-z-20 object-cover"
