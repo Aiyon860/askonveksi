@@ -4,6 +4,7 @@ import Image from "next/image";
 import { ComingSoonOverlay } from "@/components/coming-soon-overlay";
 import { LandingReveal, LandingStagger } from "@/components/landing-motion";
 import { RichText } from "@/components/rich-text";
+import { browserSafeImageSrc } from "@/lib/cms/selectors";
 import type { CmsImage, CmsProduct, CmsSiteContent } from "@/lib/cms/types";
 
 const PLACEHOLDER_COUNT = 9;
@@ -14,7 +15,7 @@ export function ProductDetailGallery({ images }: { images: CmsImage[] }) {
       {images.map((image, index) => (
         <div key={`${image.src}-${index}`} className="relative aspect-[3/2] w-full overflow-hidden bg-[#e3eaf1]">
           <Image
-            src={image.src}
+            src={browserSafeImageSrc(image.src)}
             alt={image.alt || `Foto produk ${index + 1}`}
             fill
             sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 26vw"
