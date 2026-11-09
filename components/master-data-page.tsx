@@ -111,7 +111,7 @@ export function MasterDataPage({
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="master-name" required>{nameLabel}</FieldLabel>
-                  <Input id="master-name" name="name" required minLength={2} maxLength={maxNameLength} />
+                  <Input id="master-name" name="name" required minLength={1} maxLength={maxNameLength} />
                 </Field>
                 {kindOptions && kindLabel ? (
                   <Field>

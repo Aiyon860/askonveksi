@@ -60,7 +60,7 @@ export function CustomerFields({
           <Input id={`${idPrefix}-name`} name="name" required minLength={2} maxLength={160} defaultValue={values?.name ?? ""} />
         </Field>
         <Field>
-          <FieldLabel htmlFor={`${idPrefix}-companyName`}>Perusahaan/komunitas</FieldLabel>
+          <FieldLabel htmlFor={`${idPrefix}-companyName`}>Perusahaan/Instansi/Komunitas</FieldLabel>
           <Input id={`${idPrefix}-companyName`} name="companyName" maxLength={160} defaultValue={values?.companyName ?? ""} />
         </Field>
         <Field>
@@ -107,8 +107,13 @@ export function CustomerFields({
           <FieldLabel htmlFor={`${idPrefix}-salesPicId`}>Sales/PIC</FieldLabel>
           {prospect ? (
             <>
-              <Input id={`${idPrefix}-salesPicId`} value="Michelle (Admin Customer)" readOnly className="bg-muted font-medium text-foreground" />
-              <input type="hidden" name="salesPicName" value="Michelle" />
+              <Input
+                id={`${idPrefix}-salesPicId`}
+                value={currentSalesPic?.name ?? "Michelle (Admin Customer)"}
+                readOnly
+                className="bg-muted font-medium text-foreground"
+              />
+              {values ? null : <input type="hidden" name="salesPicName" value="Michelle" />}
             </>
           ) : (
             <NativeSelect id={`${idPrefix}-salesPicId`} name="salesPicId" defaultValue={values?.salesPicId ?? ""} className="w-full">
