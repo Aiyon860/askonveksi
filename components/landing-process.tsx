@@ -19,7 +19,7 @@ export function LandingProcess({ section }: { section: CmsProcessSection }) {
             src={section.image.src}
             alt={section.image.alt}
             fill
-            sizes="(max-width: 1023px) 90vw, 38vw"
+            sizes="(max-width: 1023px) 100vw, 42vw"
             style={{ objectPosition: objectPosition(section.image.focus) }}
             className="object-cover"
           />

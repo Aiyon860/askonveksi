@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ["lucide-react", "recharts", "@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
   },
   images: {
+    qualities: [40, 75],
     formats: ["image/avif", "image/webp"],
     maximumRedirects: 0,
     minimumCacheTTL: 86400,
