@@ -33,7 +33,10 @@ export function SizeChartGrid({ sizeChart }: { sizeChart: CmsSizeChart }) {
             fill
             sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 30vw"
             className="object-cover"
-            priority={index < 3}
+            // File names contain parentheses. The optimizer 404s those, and the
+            // files are already small WebP, so serve them directly.
+            unoptimized
+            priority={index === 0}
           />
         </figure>
       ))}
