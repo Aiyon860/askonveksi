@@ -1498,8 +1498,10 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /borderColor: BORDER/);
   assert.match(pdfSource, /x: \(A4\.width - bold\.widthOfTextAtSize\(polaText, 13\)\) \/ 2/);
   // Revisi: "Sample ukuran" hanya dicetak di PDF penjahit, dengan satuan 1 PCS.
-  assert.match(pdfSource, /if \(variant === "penjahit" && data\.sampleSize\)/);
+  assert.match(pdfSource, /function drawSampleSizeLine\(\)/);
   assert.match(pdfSource, /`Sample ukuran \$\{safe\(data\.sampleSize\)\} 1 PCS`/);
+  // Baris sampel wajib dipanggil di lembar produk (multi-produk) maupun lembar tunggal.
+  assert.equal((pdfSource.match(/if \(variant === "penjahit"\) drawSampleSizeLine\(\);/g) ?? []).length, 2);
   assert.doesNotMatch(pdfSource, /Sampel ukuran/);
   // Revisi: perusahaan & instansi di-merge satu sel, label kecil, nilai dari data perusahaan.
   assert.match(pdfSource, /const companyLabel = data\.opportunity\.customer\.companyName \|\| data\.instansi;/);
@@ -1684,8 +1686,10 @@ test("upload desain per produk menunggu deposit hanya bila PO memerlukannya", as
   assert.match(designSource, /notes-\$\{itemId\}/);
   assert.match(agreementSource, /name=\{`designFiles-\$\{item\.id\}`\}/);
   assert.match(agreementSource, /name=\{`notes-\$\{item\.id\}`\}/);
-  // Tab PO: tombol Upload Desain sejajar Kirim 1 set PDF dan Sepakati.
+  // Tab PO: tombol Upload Desain sejajar Kirim 1 set PDF dan Sepakati; setelah desain ada
+  // labelnya berubah menjadi "Ubah Design" karena unggah ulang bersifat opsional.
   assert.match(agreementSource, /Upload Desain/);
+  assert.match(agreementSource, /designUploaded \? "Ubah Design" : "Upload Desain"/);
   assert.match(agreementSource, /Kirim 1 set PDF/);
   assert.match(agreementSource, /Sepakati PO terbaru/);
   // PDF boleh dikirim berulang: tombol kirim tidak disembunyikan setelah terkirim.
@@ -1826,6 +1830,20 @@ test("deposit PO: kolom tabel, tombol Isi Deposit, dan alur Upload Desain lalu K
   const depositInput = { purchaseOrderId: "cm123456789012", paymentMethodId: "cm123456789013", paidAt: "2026-10-11T09:00", amount: "50000" };
   assert.equal(purchaseOrderDepositSchema.safeParse(depositInput).success, true);
   assert.equal(purchaseOrderDepositSchema.safeParse({ ...depositInput, amount: "0" }).success, false);
+});
+
+test("revisi PO mewarisi desain lama dan tombolnya menjadi Ubah Design", async () => {
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const agreementSource = await readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8");
+  const revisionSource = actionSource.slice(actionSource.indexOf("export async function createPurchaseOrderRevisionAction"));
+  // Versi desain terakhir tiap produk disalin ke PO revisi dengan path yang sama.
+  assert.match(revisionSource, /designTask: \{\s*select: \{\s*revisions:/);
+  assert.match(revisionSource, /const latestSourceDesign = new Map/);
+  assert.match(revisionSource, /const carriedDesignRevisions = preparedItems\.flatMap/);
+  assert.match(revisionSource, /revisions: \{ create: carriedDesignRevisions \}/);
+  assert.match(revisionSource, /attachments: \{ create: design\.attachments\.map/);
+  // Karena desain lama sudah terhitung, tombol tidak lagi menyuruh unggah ulang.
+  assert.match(agreementSource, /designUploaded \? "Ubah Design" : "Upload Desain"/);
 });
 
 test("R1/R2: dialog deposit pakai useActionState, error inline, dan bukti punya route sendiri", async () => {

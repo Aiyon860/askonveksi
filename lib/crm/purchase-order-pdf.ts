@@ -532,6 +532,22 @@ export async function createPurchaseOrderPdf(
     // Size chart selalu ikut halaman gambar desain produk ini.
     drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== "PENJAHIT_DESIGN"), item.name, measureModelTable(rows));
     drawModelTable(rows, item.designNotes);
+    // Lembar ringkasan lama (yang dulu memuat sampel) sudah dihapus, jadi ukuran sampel
+    // dicetak ulang di tiap lembar produk penjahit — termasuk PO multi-produk.
+    if (variant === "penjahit") drawSampleSizeLine();
+  }
+
+  /**
+   * Baris "Sample ukuran M 1 PCS" khusus PDF penjahit; dokumen customer tidak memuatnya.
+   * Sampel selalu 1 pcs, sehingga satuannya ditulis eksplisit di baris yang sama.
+   */
+  function drawSampleSizeLine() {
+    if (!data.sampleSize) return;
+    // Jangan sampai baris ini jatuh di luar area cetak halaman terakhir.
+    if (y - 22 < margin) addPage();
+    markUsed();
+    page.drawText(`Sample ukuran ${safe(data.sampleSize)} 1 PCS`, { x: margin, y: y - 4, size: MIN_FONT_SIZE, font: bold });
+    y -= 22;
   }
 
   /**
@@ -645,11 +661,7 @@ export async function createPurchaseOrderPdf(
       drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null, measureModelTable(rows));
       drawModelTable(rows, data.designNotes);
       // Revisi: ukuran sampel hanya dicetak di PDF penjahit — dokumen customer tidak memuatnya.
-      // Sampel selalu 1 pcs, jadi satuannya ditulis eksplisit: "Sample ukuran M 1 PCS".
-      if (variant === "penjahit" && data.sampleSize) {
-        page.drawText(`Sample ukuran ${safe(data.sampleSize)} 1 PCS`, { x: margin, y: y - 4, size: MIN_FONT_SIZE, font: bold });
-        y -= 22;
-      }
+      if (variant === "penjahit") drawSampleSizeLine();
     }
     // Revisi: halaman Catatan penuh dihapus. Catatan desain non-aksesori sudah tampil
     // di baris NOTE size chart, sedangkan aksesori tampil di bawah jumlah produk.
