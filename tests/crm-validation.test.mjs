@@ -1523,9 +1523,14 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   // NOTE size chart (non-aksesori) dan di bawah angka jumlah produk (aksesori).
   assert.doesNotMatch(pdfSource, /drawParagraph\("Catatan"/);
   assert.doesNotMatch(pdfSource, /data\.notes/);
+  // Catatan NOTE memakai catatan produk; catatan desain umum lama hanya fallback.
+  assert.match(pdfSource, /function noteFor\(item: PurchaseOrderPdfItem \| undefined\)/);
+  assert.match(pdfSource, /return item\?\.designNotes\?\.trim\(\) \|\| data\.designNotes;/);
   assert.match(pdfSource, /function drawAccessoryTotal\(quantity: number, label: string \| null, note: string \| null\)/);
-  assert.match(pdfSource, /drawAccessoryTotal\(quantity, .*item\.designNotes\)/);
-  assert.match(pdfSource, /drawAccessoryTotal\(totalQuantity, null, data\.designNotes\)/);
+  assert.match(pdfSource, /drawAccessoryTotal\(quantity, .*noteFor\(item\)\)/);
+  assert.match(pdfSource, /drawAccessoryTotal\(totalQuantity, null, noteFor\(data\.items\[0\]\)\)/);
+  assert.match(pdfSource, /drawModelTable\(rows, noteFor\(item\)\)/);
+  assert.match(pdfSource, /drawModelTable\(rows, noteFor\(data\.items\[0\]\)\)/);
   assert.match(pdfSource, /Baris NOTE menempel langsung di bawah kotak jumlah produk/);
   assert.match(buttonSource, /PDF Customer/);
   assert.match(buttonSource, /PDF Penjahit/);
@@ -1540,6 +1545,16 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /item\?\.pola \|\| data\.pola \|\| data\.productName/);
   assert.match(routeSource, /Desain penjahit \$\{item\.name\}/);
   assert.match(routeSource, /penjahitDesignPath/);
+});
+
+test("form PO tidak lagi memuat catatan desain umum", async () => {
+  const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
+  // Catatan umum dihapus dari form; catatan per produk tetap ada dan menjadi sumber NOTE.
+  assert.doesNotMatch(formSource, /Catatan desain umum/);
+  assert.doesNotMatch(formSource, /name="designNotes"/);
+  assert.match(formSource, /Catatan lain/);
+  assert.match(formSource, /Catatan desain\{items\.length > 1/);
+  assert.match(formSource, /name=\{`\$\{prefix\}designNotes`\}/);
 });
 
 test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desain", async () => {

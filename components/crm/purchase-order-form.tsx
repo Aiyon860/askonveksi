@@ -54,7 +54,6 @@ type PurchaseOrderFormValues = {
   variationColor: string;
   orderDate: string;
   sampleSize: string;
-  designNotes: string;
   notes: string;
   deadline: string;
   designDeadline: string;
@@ -164,7 +163,6 @@ export function PurchaseOrderForm({
     instansi: values?.instansi ?? defaultInstansi ?? "",
     material: values?.material ?? "",
     sampleSize: values?.sampleSize ?? "",
-    designNotes: values?.designNotes ?? "",
     notes: values?.notes ?? "",
   }));
   const [garmentType, setGarmentType] = useState(values?.garmentType ?? "");
@@ -609,10 +607,7 @@ export function PurchaseOrderForm({
         </Button>
         <FieldDescription>Setiap produk punya warna sendiri, jadi satu nomor PO boleh memuat beberapa warna berbeda. Warna dasar wajib diisi; warna variasi opsional.</FieldDescription>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel htmlFor={`po-design-${fieldKey}`}>Catatan desain umum</FieldLabel><Textarea id={`po-design-${fieldKey}`} name="designNotes" maxLength={4000} rows={4} value={header.designNotes} onChange={(event) => setHeader((prev) => ({ ...prev, designNotes: event.target.value }))} /></Field>
-          <Field><FieldLabel htmlFor={`po-notes-${fieldKey}`}>Catatan lain</FieldLabel><Textarea id={`po-notes-${fieldKey}`} name="notes" maxLength={4000} rows={4} value={header.notes} onChange={(event) => setHeader((prev) => ({ ...prev, notes: event.target.value }))} /></Field>
-        </div>
+        <Field><FieldLabel htmlFor={`po-notes-${fieldKey}`}>Catatan lain</FieldLabel><Textarea id={`po-notes-${fieldKey}`} name="notes" maxLength={4000} rows={4} value={header.notes} onChange={(event) => setHeader((prev) => ({ ...prev, notes: event.target.value }))} /></Field>
         {formState.ok === false && formState.message ? (
           <Alert variant="destructive">
             <AlertTitle>PO belum tersimpan</AlertTitle>
