@@ -337,6 +337,8 @@ const purchaseOrderSizeSchema = z.object({
 const purchaseOrderRosterSchema = z.object({
   memberId: z.string().trim().min(1, "ID anggota wajib diisi.").max(80),
   name: z.string().trim().min(2, "Nama anggota minimal 2 karakter.").max(160),
+  // Jabatan opsional: tidak wajib diisi, tetapi bila diisi maksimal 80 karakter.
+  jabatan: optionalText(80),
   sizeId: entityIdSchema,
   sleeveLength: z.enum(["PENDEK", "PANJANG"], { message: "Panjang lengan roster wajib dipilih." }),
 });

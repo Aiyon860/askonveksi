@@ -518,6 +518,7 @@ function purchaseOrderInput(formData: FormData) {
     const quantities = formData.getAll(`${prefix}sizeQuantity`);
     const rosterMemberIds = formData.getAll(`${prefix}rosterMemberId`);
     const rosterNames = formData.getAll(`${prefix}rosterName`);
+    const rosterJabatans = formData.getAll(`${prefix}rosterJabatan`);
     const rosterSizeIds = formData.getAll(`${prefix}rosterSizeId`);
     const rosterSleeveLengths = formData.getAll(`${prefix}rosterSleeveLength`);
     return {
@@ -535,12 +536,13 @@ function purchaseOrderInput(formData: FormData) {
         sleeveLength: sleeveLengths[index],
         quantity: quantities[index],
       })),
-      roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
+      roster: Array.from({ length: Math.max(rosterMemberIds.length, rosterNames.length, rosterJabatans.length, rosterSizeIds.length, rosterSleeveLengths.length) }, (_, index) => ({
         memberId: rosterMemberIds[index],
         name: rosterNames[index],
+        jabatan: rosterJabatans[index],
         sizeId: rosterSizeIds[index],
         sleeveLength: rosterSleeveLengths[index],
-      })).filter((item) => item.memberId || item.name || item.sizeId || item.sleeveLength),
+      })).filter((item) => item.memberId || item.name || item.jabatan || item.sizeId || item.sleeveLength),
     };
   });
   return {
@@ -606,7 +608,7 @@ type ParsedPoItem = {
   designNotes?: string | null;
   sizes: Array<{ sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   rosterMode: "none" | "manual" | "excel";
-  roster: Array<{ memberId: string; name: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
+  roster: Array<{ memberId: string; name: string; jabatan?: string | null; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
 
 function legacyDecorationMethod(methods: string[]) {
@@ -677,7 +679,7 @@ async function preparePurchaseOrderRows(
   const byName = new Map(sizeMasters.map((item) => [item.name.toLocaleLowerCase("id-ID"), item]));
 
   const sizes: Array<{ itemId: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number; size: string; position: number }> = [];
-  const roster: Array<{ itemId: string; memberId: string; name: string; sizeId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; position: number }> = [];
+  const roster: Array<{ itemId: string; memberId: string; name: string; jabatan: string | null; sizeId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; position: number }> = [];
   for (const item of items) {
     const itemSizes = item.sizes.filter((size) => size.quantity > 0).map((size) => {
       const master = byId.get(size.sizeId);
@@ -689,12 +691,12 @@ async function preparePurchaseOrderRows(
     const manualRoster = item.roster.map((row) => {
       const master = byId.get(row.sizeId);
       if (!master) throw new UserFacingError(`Salah satu ukuran roster ${item.name} tidak aktif atau tidak ditemukan.`);
-      return { itemId: item.itemId, memberId: row.memberId, name: row.name, sizeId: row.sizeId, size: master.name, sleeveLength: row.sleeveLength };
+      return { itemId: item.itemId, memberId: row.memberId, name: row.name, jabatan: row.jabatan?.trim() || null, sizeId: row.sizeId, size: master.name, sleeveLength: row.sleeveLength };
     });
     const fileRoster = item.fileRoster.map((row, index) => {
       const master = byName.get(row.size.toLocaleLowerCase("id-ID"));
       if (!master) throw new UserFacingError(`Ukuran ${row.size} pada baris roster ${index + 2} (${item.name}) belum tersedia di Data Master.`);
-      return { itemId: item.itemId, memberId: row.memberId, name: row.name, sizeId: master.id, size: master.name, sleeveLength: row.sleeveLength };
+      return { itemId: item.itemId, memberId: row.memberId, name: row.name, jabatan: row.jabatan.trim() || null, sizeId: master.id, size: master.name, sleeveLength: row.sleeveLength };
     });
     const itemRoster = item.rosterMode === "excel" ? fileRoster : item.rosterMode === "manual" ? manualRoster : [];
     const normalizedIds = itemRoster.map((row) => row.memberId.toLocaleLowerCase("id-ID"));

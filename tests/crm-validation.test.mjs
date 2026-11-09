@@ -479,10 +479,36 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, pola: "Pola B" }] }).success, true);
   const dupSizes = { ...itemBase, sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }, { sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 1 }] };
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [dupSizes] }).success, false);
+  // Jabatan roster opsional: boleh diisi sebagian, boleh kosong, maksimal 80 karakter.
+  const rosterWithJabatan = { ...itemBase, roster: [{ ...itemBase.roster[0], jabatan: "Ketua" }, itemBase.roster[1]] };
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [rosterWithJabatan] }).success, true);
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...rosterWithJabatan, roster: [{ ...rosterWithJabatan.roster[0], jabatan: "x".repeat(81) }, rosterWithJabatan.roster[1]] }] }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "none", roster: [] }] }).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "excel", roster: [] }] }).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "excel" }] }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [] }).success, false);
+});
+
+test("jabatan roster opsional tersimpan dan dicetak kondisional", async () => {
+  const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../prisma/migrations/20261109010000_purchase_order_roster_jabatan/migration.sql", import.meta.url), "utf8");
+  const validationSource = await readFile(new URL("../lib/crm/validation.ts", import.meta.url), "utf8");
+  const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
+  const importSource = await readFile(new URL("../lib/crm/roster-import.ts", import.meta.url), "utf8");
+  const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
+  const pdfSource = await readFile(new URL("../lib/crm/purchase-order-pdf.ts", import.meta.url), "utf8");
+  const pdfRouteSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/pdf/route.ts", import.meta.url), "utf8");
+
+  assert.match(schema, /jabatan\s+String\?\s+@db\.VarChar\(80\)/);
+  assert.match(migration, /ADD COLUMN "jabatan" VARCHAR\(80\)/);
+  assert.match(validationSource, /jabatan: optionalText\(80\)/);
+  assert.match(formSource, /rosterJabatan/);
+  assert.match(actionSource, /rosterJabatan/);
+  assert.match(importSource, /value === "jabatan"/);
+  assert.match(pdfRouteSource, /jabatan: true/);
+  // Kolom PDF hanya muncul bila ada minimal satu jabatan; selain itu baris kosong diberi "-".
+  assert.match(pdfSource, /const hasJabatan = entries\.some\(\(entry\) => entry\.jabatan\?\.trim\(\)\)/);
+  assert.match(pdfSource, /jabatan: safe\(entry\.jabatan\?\.trim\(\) \|\| "-"\)/);
 });
 
 test("opsi deadline produksi dihitung dari tanggal Jakarta dan mempertahankan tanggal tersimpan", () => {
@@ -1411,7 +1437,7 @@ test("tabel invoice auto refresh dan cache tag invoices dikosongkan setelah pemb
   assert.match(opportunityPage, /label: "Lihat Kwitansi"/);
   // Id transaksi pembayaran (awal + termin) ikut ditarik oleh detail peluang; deposit tidak ikut dihitung awal.
   assert.match(dataSource, /paymentTermId: null, isDeposit: false \}, select: \{ id: true, amount: true \}/);
-  assert.match(dataSource, /terms: \{ orderBy: \{ position: "asc" \}, select: \{ position: true, transactions/);
+  assert.match(dataSource, /terms: \{\s*orderBy: \{ position: "asc" \},\s*select: \{ position: true, amount: true, dueAt: true, transactions/);
 
   // Daftar invoice di-cache bertag "invoices"; `revalidatePath` saja tidak mengosongkan cache itu.
   assert.match(actionSource, /function revalidateInvoiceList\(\) \{\s*revalidatePath\("\/crm\/invoices"\);\s*revalidateTag\("invoices", \{ expire: 0 \}\);/);
@@ -1510,11 +1536,25 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   // Size chart menahan ruang di halaman gambar desainnya; desain penjahit dikecualikan (halaman penuh sendiri).
   assert.match(pdfSource, /drawAssets\(embeddedAssets\.filter\(\(asset\) => asset\.itemId === item\.id && asset\.kind !== "PENJAHIT_DESIGN"\), item\.name, measureModelTable\(rows\)\)/);
   assert.match(pdfSource, /drawModelTable/);
-  // Size chart selalu mencetak seluruh kolom ukuran baku (XS…5XL) + TOTAL/PENDEK/PANJANG/NOTE
-  // walau PO tidak memesan ukuran tersebut; ukuran di luar daftar tetap ditambahkan.
+  // Size chart hanya mencetak ukuran yang benar-benar dipesan (qty > 0) supaya dokumen
+  // tidak penuh kolom kosong saat Data Master punya banyak ukuran; urutannya mengikuti
+  // tangga baku dan ukuran di luar daftar tetap ditambahkan di belakang.
   assert.match(pdfSource, /const SIZE_LADDER = \["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"\] as const/);
-  assert.match(pdfSource, /return \[\.\.\.SIZE_LADDER, \.\.\.extras\]/);
+  assert.match(pdfSource, /function chartColumns\(rows: Array<\{ size: string; quantity: number \}>\)/);
+  assert.match(pdfSource, /const ordered = new Set\(/);
+  assert.match(pdfSource, /\.filter\(\(row\) => row\.quantity > 0\)/);
+  assert.match(pdfSource, /const known = SIZE_LADDER\.filter\(\(size\) => ordered\.has\(size\)\)/);
+  assert.doesNotMatch(pdfSource, /return \[\.\.\.SIZE_LADDER, \.\.\.extras\]/);
   assert.match(pdfSource, /SIZE_CHART_NOTE_HEIGHT/);
+  // 10+ ukuran tetap rapi: lebar kolom mengikuti label terpanjang, kolom dibagi seimbang
+  // hanya bila tidak muat, tiap blok diberi nomor bagian, blok antara memakai SUBTOTAL,
+  // dan NOTE + total keseluruhan dicetak sekali di blok terakhir.
+  assert.match(pdfSource, /const SIZE_CHART_MIN_CELL_WIDTH = 30/);
+  assert.match(pdfSource, /function chartCellWidth\(columns: string\[\]\)/);
+  assert.match(pdfSource, /const perChunk = Math\.ceil\(columns\.length \/ blockCount\)/);
+  assert.match(pdfSource, /TABEL UKURAN — BAGIAN \$\{blockIndex \+ 1\} DARI \$\{chunks\.length\}/);
+  assert.match(pdfSource, /isLastBlock \? "TOTAL" : "SUBTOTAL"/);
+  assert.match(pdfSource, /if \(!isLastBlock\) \{/);
   // Halaman yang tidak terpakai dibuang: PO tidak boleh menyisakan halaman berisi footer saja.
   assert.match(pdfSource, /const usedPages = new Set<PDFPage>\(\)/);
   assert.match(pdfSource, /usedPages\.add\(page\)/);

@@ -767,7 +767,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           createdBy: { select: { name: true } },
           items: { select: { id: true, position: true, name: true, pola: true, baseColor: true, variationColor: true, productCategoryId: true, garmentType: true, decorationMethods: true, designNotes: true, penjahitDeadline: true, penjahitDesignPath: true, penjahitDesignName: true, designs: { select: { id: true, originalName: true }, orderBy: { position: "asc" } } }, orderBy: { position: "asc" } },
           sizes: { select: { id: true, position: true, itemId: true, sizeId: true, size: true, sleeveLength: true, quantity: true }, orderBy: { position: "asc" } },
-          rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
+          rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, jabatan: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
           // Desain diunggah per produk, jadi statusnya dihitung dari revisi tiap produk.
           designTask: { select: { id: true, deadline: true, revisions: { select: { itemId: true, revision: true } } } },
@@ -807,15 +807,34 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
             orderBy: { position: "asc" },
           },
           addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } },
-          salesOrder: { select: { id: true, salesOrderNo: true, status: true, payment: { select: { kind: true, transactions: { where: { status: "ACTIVE", paymentTermId: null, isDeposit: false }, select: { id: true, amount: true } }, terms: { orderBy: { position: "asc" }, select: { position: true, transactions: { where: { status: "ACTIVE" }, orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }], select: { id: true } } } } } } } },
+          salesOrder: {
+            select: {
+              id: true,
+              salesOrderNo: true,
+              status: true,
+              payment: {
+                select: {
+                  kind: true,
+                  initialAmount: true,
+                  initialDueAt: true,
+                  transactions: { where: { status: "ACTIVE", paymentTermId: null, isDeposit: false }, select: { id: true, amount: true } },
+                  terms: {
+                    orderBy: { position: "asc" },
+                    select: { position: true, amount: true, dueAt: true, transactions: { where: { status: "ACTIVE" }, orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }], select: { id: true } } },
+                  },
+                },
+              },
+            },
+          },
           // Prefill jadwal pembayaran pada form invoice (draft & revisi).
           pendingPayment: {
             select: {
               kind: true,
               initialValueType: true,
               initialValue: true,
+              initialAmount: true,
               initialDueAt: true,
-              terms: { select: { position: true, valueType: true, value: true, dueAt: true }, orderBy: { position: "asc" } },
+              terms: { select: { position: true, valueType: true, value: true, amount: true, dueAt: true }, orderBy: { position: "asc" } },
             },
           },
         },

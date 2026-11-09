@@ -38,7 +38,7 @@ type PurchaseOrderPdfData = {
   opportunity: { customer: { name: string; companyName: string | null } };
   items: Array<{ id: string; name: string; pola: string | null; baseColor: string | null; variationColor: string | null; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; productCategory: { name: string } | null }>;
   sizes: Array<{ itemId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
-  rosterEntries: Array<{ itemId: string; memberId: string; name: string; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
+  rosterEntries: Array<{ itemId: string; memberId: string; name: string; jabatan?: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
 
 type PurchaseOrderPdfItem = PurchaseOrderPdfData["items"][number];
@@ -64,9 +64,10 @@ const HEADING_BAR_HEIGHT = 26;
 const ROSTER_ROWS_PER_PAGE = 25;
 
 /**
- * Daftar ukuran tetap pada size chart (sesuai referensi Owner): semua kolom selalu
- * dicetak lengkap walau PO tidak memesan ukuran tersebut. Ukuran di luar daftar ini
- * tetap ditambahkan sebagai kolom tambahan supaya jumlahnya tidak pernah hilang.
+ * Urutan baku ukuran pada size chart. Kolom yang dicetak hanya ukuran yang benar-benar
+ * dipesan (lihat `chartColumns`), jadi PO dengan 3 ukuran cukup menampilkan 3 kolom
+ * walau Data Master punya banyak ukuran. Ukuran di luar daftar ini tetap ditampilkan
+ * sebagai kolom tambahan di belakang supaya jumlahnya tidak pernah hilang.
  */
 const SIZE_LADDER = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"] as const;
 const SIZE_ALIASES: Record<string, string> = { XXL: "2XL", XXXL: "3XL", "3X": "3XL", XXXXL: "4XL", XXXXXL: "5XL" };
@@ -398,36 +399,71 @@ export async function createPurchaseOrderPdf(
   const totalQuantity = data.sizes.reduce((sum, item) => sum + item.quantity, 0);
 
   const SIZE_CHART_LABEL_WIDTH = 76;
-  const SIZE_CHART_TOTAL_WIDTH = 62;
-  const SIZE_COLUMNS_PER_CHUNK = 9;
+  /** Cukup lebar untuk header "SUBTOTAL" pada blok lanjutan. */
+  const SIZE_CHART_TOTAL_WIDTH = 70;
   const SIZE_CHART_NOTE_HEIGHT = 34;
+  /** Label bagian di atas tabel saat kolom ukuran harus dipecah beberapa blok. */
+  const SIZE_CHART_CAPTION_HEIGHT = 18;
+  /** Lebar minimum kolom ukuran supaya label seperti "2XL"/"6XL" tidak terpotong. */
+  const SIZE_CHART_MIN_CELL_WIDTH = 30;
 
   /**
-   * Kolom size chart: daftar ukuran tetap (XS…5XL) selalu lengkap sesuai referensi,
-   * ditambah ukuran di luar daftar itu bila PO memakainya supaya jumlah tidak hilang.
+   * Kolom size chart: hanya ukuran yang dipesan (qty > 0), diurutkan mengikuti tangga
+   * baku lalu ukuran di luar tangga di belakangnya. Dokumen ikut berubah saat PO direvisi
+   * karena kolom selalu diturunkan dari baris ukuran PO terkini.
    */
-  function chartColumns(rows: Array<{ size: string }>) {
-    const extras = [...new Set(rows.map((row) => normalizeSize(row.size)))]
-      .filter((size) => size.length > 0 && !(SIZE_LADDER as readonly string[]).includes(size))
-      .sort((left, right) => left.localeCompare(right, "id-ID"));
-    return [...SIZE_LADDER, ...extras];
+  function chartColumns(rows: Array<{ size: string; quantity: number }>) {
+    const ordered = new Set(
+      rows
+        .filter((row) => row.quantity > 0)
+        .map((row) => normalizeSize(row.size))
+        .filter((size) => size.length > 0),
+    );
+    // PO tanpa baris ukuran sama sekali tetap memakai tangga baku agar tabel tidak kosong.
+    if (!ordered.size) return [...SIZE_LADDER];
+    const known = SIZE_LADDER.filter((size) => ordered.has(size));
+    const extras = [...ordered]
+      .filter((size) => !(SIZE_LADDER as readonly string[]).includes(size))
+      // Urutan alami: 6XL, 7XL, … 10XL (bukan alfabetis yang menaruh 10XL di depan).
+      .sort((left, right) => left.localeCompare(right, "id-ID", { numeric: true }));
+    return [...known, ...extras];
   }
 
-  function chartChunks(rows: Array<{ size: string }>) {
+  /** Lebar kolom yang dibutuhkan label terpanjang pada daftar ukuran (mis. "ALL SIZE"). */
+  function chartCellWidth(columns: string[]) {
+    const widest = Math.max(0, ...columns.map((column) => bold.widthOfTextAtSize(safe(column), MIN_FONT_SIZE)));
+    return Math.max(SIZE_CHART_MIN_CELL_WIDTH, widest + 8);
+  }
+
+  /**
+   * Bagi kolom ukuran menjadi beberapa blok hanya bila tidak muat satu baris. Pembagian
+   * dibuat seimbang (mis. 14 ukuran → 7 + 7) supaya tidak ada blok berisi satu kolom saja.
+   */
+  function chartChunks(rows: Array<{ size: string; quantity: number }>) {
     const columns: string[] = chartColumns(rows);
+    const available = CONTENT_WIDTH - SIZE_CHART_LABEL_WIDTH - SIZE_CHART_TOTAL_WIDTH;
+    const perBlock = Math.max(1, Math.floor(available / chartCellWidth(columns)));
+    const blockCount = Math.ceil(columns.length / perBlock);
+    const perChunk = Math.ceil(columns.length / blockCount);
     const chunks: string[][] = [];
-    for (let index = 0; index < columns.length; index += SIZE_COLUMNS_PER_CHUNK) chunks.push(columns.slice(index, index + SIZE_COLUMNS_PER_CHUNK));
+    for (let index = 0; index < columns.length; index += perChunk) chunks.push(columns.slice(index, index + perChunk));
     return chunks;
   }
 
-  /** Tinggi satu blok size chart (header + PENDEK + PANJANG + baris NOTE). */
-  function chartBlockHeight() {
-    return TABLE_ROW_HEIGHT * 3 + SIZE_CHART_NOTE_HEIGHT + 12;
+  /**
+   * Tinggi satu blok size chart: label bagian (bila dipecah), header, PENDEK, PANJANG,
+   * dan baris NOTE yang hanya muncul sekali di blok terakhir.
+   */
+  function chartBlockHeight(blockIndex: number, blockCount: number) {
+    const caption = blockCount > 1 ? SIZE_CHART_CAPTION_HEIGHT : 0;
+    const note = blockIndex === blockCount - 1 ? SIZE_CHART_NOTE_HEIGHT : 0;
+    return caption + TABLE_ROW_HEIGHT * 3 + note + 12;
   }
 
   /** Tinggi tabel ukuran untuk menahan ruang di halaman yang sama dengan gambar desain. */
-  function measureModelTable(rows: Array<{ size: string }>) {
-    return chartChunks(rows).length * chartBlockHeight();
+  function measureModelTable(rows: Array<{ size: string; quantity: number }>) {
+    const chunks = chartChunks(rows);
+    return chunks.reduce((sum, _chunk, index) => sum + chartBlockHeight(index, chunks.length), 0);
   }
 
   /**
@@ -439,12 +475,20 @@ export async function createPurchaseOrderPdf(
     const quantityFor = (size: string, sleeve: "PENDEK" | "PANJANG") =>
       rows.filter((row) => normalizeSize(row.size) === size && row.sleeveLength === sleeve).reduce((sum, row) => sum + row.quantity, 0);
 
-    for (const sizeChunk of chartChunks(rows)) {
-      if (y - chartBlockHeight() < margin) addPage();
+    const chunks = chartChunks(rows);
+    for (const [blockIndex, sizeChunk] of chunks.entries()) {
+      const isLastBlock = blockIndex === chunks.length - 1;
+      if (y - chartBlockHeight(blockIndex, chunks.length) < margin) addPage();
       markUsed();
       const cellWidth = (CONTENT_WIDTH - SIZE_CHART_LABEL_WIDTH - SIZE_CHART_TOTAL_WIDTH) / sizeChunk.length;
       const totalX = margin + CONTENT_WIDTH - SIZE_CHART_TOTAL_WIDTH;
       let rowTop = y;
+      // Saat kolom tidak muat satu baris, tiap blok diberi nomor bagian agar jelas berlanjut.
+      if (chunks.length > 1) {
+        const caption = `TABEL UKURAN — BAGIAN ${blockIndex + 1} DARI ${chunks.length}`;
+        page.drawText(clipPdfText(caption, bold, MIN_FONT_SIZE, CONTENT_WIDTH), { x: margin, y: rowTop - 13, size: MIN_FONT_SIZE, font: bold, color: rgb(0.42, 0.42, 0.42) });
+        rowTop -= SIZE_CHART_CAPTION_HEIGHT;
+      }
 
       const labelCell = (text: string) => {
         page.drawRectangle({ x: margin, y: rowTop - TABLE_ROW_HEIGHT, width: SIZE_CHART_LABEL_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
@@ -455,11 +499,11 @@ export async function createPurchaseOrderPdf(
         centeredText(clipPdfText(text, bold, MIN_FONT_SIZE, cellWidth - 8), margin + SIZE_CHART_LABEL_WIDTH + index * cellWidth, cellWidth, rowTop, TABLE_ROW_HEIGHT, bold, rgb(1, 1, 1));
       };
 
-      // Baris header: SIZE | kolom ukuran | TOTAL
+      // Baris header: SIZE | kolom ukuran | TOTAL (blok antara memakai SUBTOTAL).
       labelCell("SIZE");
       sizeChunk.forEach((size, index) => sizeCell(safe(size), index));
       page.drawRectangle({ x: totalX, y: rowTop - TABLE_ROW_HEIGHT, width: SIZE_CHART_TOTAL_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
-      centeredText("TOTAL", totalX, SIZE_CHART_TOTAL_WIDTH, rowTop, TABLE_ROW_HEIGHT, bold, rgb(1, 1, 1));
+      centeredText(isLastBlock ? "TOTAL" : "SUBTOTAL", totalX, SIZE_CHART_TOTAL_WIDTH, rowTop, TABLE_ROW_HEIGHT, bold, rgb(1, 1, 1));
       rowTop -= TABLE_ROW_HEIGHT;
 
       for (const sleeve of ["PENDEK", "PANJANG"] as const) {
@@ -477,7 +521,11 @@ export async function createPurchaseOrderPdf(
         rowTop -= TABLE_ROW_HEIGHT;
       }
 
-      // Baris NOTE + kotak total keseluruhan.
+      // Baris NOTE + kotak total keseluruhan — hanya sekali, di blok terakhir.
+      if (!isLastBlock) {
+        y = rowTop - 12;
+        continue;
+      }
       const noteHeight = SIZE_CHART_NOTE_HEIGHT;
       const noteWidth = CONTENT_WIDTH - SIZE_CHART_TOTAL_WIDTH;
       page.drawRectangle({ x: margin, y: rowTop - noteHeight, width: noteWidth, height: noteHeight, color: NOTE_BG, borderWidth: 0.8, borderColor: BORDER });
@@ -585,12 +633,24 @@ export async function createPurchaseOrderPdf(
     if (!entries.length) return;
     // Tanpa kolom "Produk": satu halaman roster hanya untuk satu produk, jadi nama produk
     // cukup di judul dan kolom Nama mendapat ruang lebih lebar.
-    const columns = [
-      { key: "memberId" as const, header: "ID", x: 6, width: 64 },
-      { key: "name" as const, header: "Nama", x: 72, width: 296 },
-      { key: "size" as const, header: "Size", x: 372, width: 66 },
-      { key: "sleeve" as const, header: "Lengan", x: 442, width: 81 },
-    ];
+    // Jabatan hanya dicetak bila minimal satu baris mengisinya; baris lain diberi "-"
+    // agar kolom tetap lurus dan tidak terlihat bolong.
+    type RosterColumn = { key: "memberId" | "name" | "jabatan" | "size" | "sleeve"; header: string; x: number; width: number; align?: "center" };
+    const hasJabatan = entries.some((entry) => entry.jabatan?.trim());
+    const columns: RosterColumn[] = hasJabatan
+      ? [
+          { key: "memberId", header: "ID", x: 6, width: 52 },
+          { key: "name", header: "Nama", x: 58, width: 196 },
+          { key: "jabatan", header: "Jabatan", x: 254, width: 124, align: "center" },
+          { key: "size", header: "Size", x: 378, width: 58 },
+          { key: "sleeve", header: "Lengan", x: 436, width: 87 },
+        ]
+      : [
+          { key: "memberId", header: "ID", x: 6, width: 64 },
+          { key: "name", header: "Nama", x: 72, width: 296 },
+          { key: "size", header: "Size", x: 372, width: 66 },
+          { key: "sleeve", header: "Lengan", x: 442, width: 81 },
+        ];
     const title = productName ? `ROSTER PEMAKAI — ${safe(productName.toUpperCase())}` : "ROSTER PEMAKAI";
     const poNo = safe(documentNo);
     for (let offset = 0; offset < entries.length; offset += ROSTER_ROWS_PER_PAGE) {
@@ -607,8 +667,10 @@ export async function createPurchaseOrderPdf(
       y -= 30;
       page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, color: BAR_BG });
       columns.forEach((column) => {
-        page.drawText(clipPdfText(column.header, bold, MIN_FONT_SIZE, column.width - 8), {
-          x: margin + column.x,
+        const text = clipPdfText(column.header, bold, MIN_FONT_SIZE, column.width - 8);
+        const textWidth = bold.widthOfTextAtSize(text, MIN_FONT_SIZE);
+        page.drawText(text, {
+          x: margin + column.x + (column.align === "center" ? (column.width - textWidth) / 2 : 0),
           y: y - TABLE_ROW_HEIGHT + 8,
           size: MIN_FONT_SIZE,
           font: bold,
@@ -618,15 +680,18 @@ export async function createPurchaseOrderPdf(
       y -= TABLE_ROW_HEIGHT;
       entries.slice(offset, offset + ROSTER_ROWS_PER_PAGE).forEach((entry) => {
         page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.5, borderColor: rgb(0.82, 0.82, 0.82) });
-        const cells: Record<(typeof columns)[number]["key"], string> = {
+        const cells: Record<RosterColumn["key"], string> = {
           memberId: safe(entry.memberId),
           name: safe(entry.name),
+          jabatan: safe(entry.jabatan?.trim() || "-"),
           size: safe(entry.size),
           sleeve: entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang",
         };
         columns.forEach((column) => {
-          page.drawText(clipPdfText(cells[column.key], regular, MIN_FONT_SIZE, column.width - 8), {
-            x: margin + column.x,
+          const text = clipPdfText(cells[column.key], regular, MIN_FONT_SIZE, column.width - 8);
+          const textWidth = regular.widthOfTextAtSize(text, MIN_FONT_SIZE);
+          page.drawText(text, {
+            x: margin + column.x + (column.align === "center" ? (column.width - textWidth) / 2 : 0),
             y: y - TABLE_ROW_HEIGHT + 8,
             size: MIN_FONT_SIZE,
             font: regular,

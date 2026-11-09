@@ -24,7 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getOpportunityDetail, getOpportunityDocumentHistory, getPurchaseOrderNoPreview } from "@/lib/crm/data";
-import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { numericCellClass } from "@/lib/table-alignment";
 import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories } from "@/lib/master-data";
@@ -298,6 +298,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                               key: `saved-${entryIndex}-${entry.memberId}`,
                               memberId: entry.memberId,
                               name: entry.name,
+                              jabatan: entry.jabatan ?? "",
                               sizeId: entry.sizeId ?? "",
                               sleeveLength: entry.sleeveLength,
                             })),
@@ -409,7 +410,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                   })),
                 };
                 return (
-                  <section key={invoice.id} aria-labelledby={`invoice-${invoice.id}`} className="min-w-0 rounded-lg border p-4">
+                  <section key={`${invoice.id}-${invoice.version}`} aria-labelledby={`invoice-${invoice.id}`} className="min-w-0 rounded-lg border p-4">
                     <InvoiceWorkflowSection
                       opportunityId={opportunity.id}
                       invoiceId={invoice.id}
@@ -520,6 +521,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
   const total = purchaseOrder.sizes.reduce((sum, item) => sum + item.quantity, 0);
   const isAccessory = purchaseOrder.garmentType === "AKSESORI";
   const sizeNames = [...new Set(purchaseOrder.sizes.map((item) => item.size))];
+  const hasRosterJabatan = purchaseOrder.rosterEntries.some((entry) => entry.jabatan?.trim());
   return (
     <div className="flex flex-col gap-4">
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
@@ -573,7 +575,7 @@ function PurchaseOrderSnapshot({ purchaseOrder }: { purchaseOrder: OpportunityDe
         <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeve) => { const rows = purchaseOrder.sizes.filter((item) => item.sleeveLength === sleeve); return <TableRow key={sleeve}><TableCell>{sleeve === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>{sizeNames.map((size) => <TableCell key={size} className="text-center font-mono">{rows.find((item) => item.size === size)?.quantity ?? 0}</TableCell>)}<TableCell className={numericCellClass(rows.reduce((sum, item) => sum + item.quantity, 0), "text-right font-mono")}>{rows.reduce((sum, item) => sum + item.quantity, 0)}</TableCell></TableRow>; })}</TableBody>
       </Table>
       )}
-      {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead>{purchaseOrder.items.length > 1 ? <TableHead>Produk</TableHead> : null}<TableHead>Ukuran</TableHead><TableHead>Lengan</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell>{purchaseOrder.items.length > 1 ? <TableCell>{purchaseOrder.items.find((poItem) => poItem.id === entry.itemId)?.name ?? "-"}</TableCell> : null}<TableCell>{entry.size}</TableCell><TableCell>{entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
+      {purchaseOrder.rosterEntries.length ? <div><p className="mb-2 text-sm font-medium">Roster pemakai ({purchaseOrder.rosterEntries.length})</p><Table containerClassName="max-h-96 rounded-lg border"><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Nama</TableHead>{hasRosterJabatan ? <TableHead className="text-center">Jabatan</TableHead> : null}{purchaseOrder.items.length > 1 ? <TableHead>Produk</TableHead> : null}<TableHead>Ukuran</TableHead><TableHead>Lengan</TableHead></TableRow></TableHeader><TableBody>{purchaseOrder.rosterEntries.slice(0, 50).map((entry) => <TableRow key={entry.id}><TableCell className="font-mono">{entry.memberId}</TableCell><TableCell>{entry.name}</TableCell>{hasRosterJabatan ? <TableCell className="text-center">{entry.jabatan?.trim() || "-"}</TableCell> : null}{purchaseOrder.items.length > 1 ? <TableCell>{purchaseOrder.items.find((poItem) => poItem.id === entry.itemId)?.name ?? "-"}</TableCell> : null}<TableCell>{entry.size}</TableCell><TableCell>{entry.sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell></TableRow>)}</TableBody></Table>{purchaseOrder.rosterEntries.length > 50 ? <p className="mt-2 text-xs text-muted-foreground">Menampilkan 50 baris pertama. Seluruh roster tersedia di PDF PO.</p> : null}</div> : null}
       {purchaseOrder.attachments.length ? (
         <div className="grid gap-2 sm:grid-cols-2">
           {purchaseOrder.attachments.map((attachment) => (
@@ -599,6 +601,22 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
   // Dokumen lama menyimpan Add On di baris; invoice baru di level invoice.
   // Keduanya ditampilkan sebagai satu section Add On SETELAH semua produk.
   const addons = [...invoice.addons, ...invoice.items.flatMap((item) => item.addons)];
+  // Data yang diisi saat invoice dibuat ditampilkan langsung agar admin tidak perlu
+  // membuka "Buat versi revisi" hanya untuk melihat jadwal dan jatuh tempo.
+  // Setelah invoice final, jadwal pindah dari pendingPayment ke pembayaran Sales Order.
+  const pendingSchedule = invoice.pendingPayment;
+  const salesOrderPayment = invoice.salesOrder?.payment ?? null;
+  const paymentKind = pendingSchedule?.kind ?? salesOrderPayment?.kind ?? null;
+  const initialAmount = pendingSchedule?.initialAmount ?? salesOrderPayment?.initialAmount ?? null;
+  const initialDueAt = pendingSchedule?.initialDueAt ?? salesOrderPayment?.initialDueAt ?? null;
+  const scheduleTerms = pendingSchedule?.terms ?? salesOrderPayment?.terms ?? [];
+  const discountValue = Number(invoice.discountValue.toString());
+  const totalDiscount = Number(invoice.totalDiscount.toString());
+  const taxPercent = Number(invoice.taxPercent?.toString() ?? 0);
+  const taxAmount = Number(invoice.taxAmount.toString());
+  const discountText = totalDiscount > 0
+    ? `${invoice.discountType === "NOMINAL" ? "Nominal" : "Persen"} ${invoice.discountType === "NOMINAL" ? formatCurrency(invoice.discountNominal) : `${discountValue.toLocaleString("id-ID")}%`} · ${formatCurrency(invoice.totalDiscount)}`
+    : "Tidak ada";
   return (
     <div className="flex flex-col gap-4">
       <Table className="min-w-[42rem] table-fixed">
@@ -610,11 +628,11 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
           <col className="w-[12%]" />
           <col className="w-[12%]" />
         </colgroup>
-        <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Qty</TableHead><TableHead className="text-right">Harga</TableHead><TableHead className="text-right">Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-center">Qty</TableHead><TableHead>Harga</TableHead><TableHead>Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
         <TableBody>
           {invoice.items.map((item) => {
             const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount.toString()) * addon.qty, 0);
-            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-right font-mono")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-right font-mono")}>{formatCurrency(item.unitPrice)}</TableCell><TableCell className={numericCellClass(item.discountAmount, "text-right font-mono")}>{formatCurrency(item.discountAmount)}</TableCell><TableCell className={numericCellClass(Number(item.subtotal.toString()) - legacyAddonTotal, "text-right font-mono")}>{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
+            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-center font-mono")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-left font-mono")}>{formatCurrency(item.unitPrice)}</TableCell><TableCell className={numericCellClass(item.discountAmount, "text-left font-mono")}>{formatCurrency(item.discountAmount)}</TableCell><TableCell className={numericCellClass(Number(item.subtotal.toString()) - legacyAddonTotal, "text-right font-mono")}>{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
           })}
           {addons.length ? <>
             <TableRow className="bg-info-surface hover:bg-info-surface">
@@ -625,7 +643,7 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
                 </div>
               </TableCell>
             </TableRow>
-            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className={numericCellClass(addon.qty, "text-right font-mono")}>{addon.qty}</TableCell><TableCell className={numericCellClass(addon.unitAmount, "text-right font-mono")}>{formatCurrency(addon.unitAmount)}</TableCell><TableCell className={numericCellClass(null, "text-right font-mono")}>-</TableCell><TableCell className={numericCellClass(Number(addon.unitAmount.toString()) * addon.qty, "text-right font-mono")}>{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
+            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className={numericCellClass(addon.qty, "text-center font-mono")}>{addon.qty}</TableCell><TableCell className={numericCellClass(addon.unitAmount, "text-left font-mono")}>{formatCurrency(addon.unitAmount)}</TableCell><TableCell className={numericCellClass(null, "text-left font-mono")}>-</TableCell><TableCell className={numericCellClass(Number(addon.unitAmount.toString()) * addon.qty, "text-right font-mono")}>{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
           </> : null}
         </TableBody>
       </Table>
@@ -634,11 +652,37 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
         <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Diskon</dt><dd className="font-mono">{formatCurrency(invoice.totalDiscount)}</dd></div>
         <div className="flex justify-between gap-4 border-t pt-2 font-medium"><dt>Total</dt><dd className="font-mono">{formatCurrency(invoice.total)}</dd></div>
       </dl>
-      <dl className="grid gap-2 text-sm sm:grid-cols-2">
-        <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1">{INVOICE_STATUS_LABEL[invoice.status]}</dd></div>
-        <div><dt className="text-xs text-muted-foreground">Diterbitkan</dt><dd className="mt-1">{formatDate(invoice.issuedAt, true)}</dd></div>
-        {invoice.notes ? <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Catatan</dt><dd className="mt-1 whitespace-pre-wrap">{invoice.notes}</dd></div> : null}
-      </dl>
+      <div className="rounded-lg border bg-muted/20 p-4">
+        <p className="text-sm font-medium">Informasi invoice</p>
+        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+          <div><dt className="text-xs text-muted-foreground">Status</dt><dd className="mt-1">{INVOICE_STATUS_LABEL[invoice.status]}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Tgl. jatuh tempo</dt><dd className="mt-1">{formatDate(invoice.dueAt)}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Jenis pembayaran</dt><dd className="mt-1">{paymentKind ? PAYMENT_KIND_LABEL[paymentKind] : "Belum diatur"}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Diterbitkan</dt><dd className="mt-1">{formatDate(invoice.issuedAt, true)}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Diskon total</dt><dd className="mt-1">{discountText}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Pajak</dt><dd className="mt-1">{taxPercent > 0 ? `${taxPercent.toLocaleString("id-ID")}% · ${formatCurrency(taxAmount)}` : "Tidak ada"}</dd></div>
+          <div className="sm:col-span-2 xl:col-span-3">
+            <dt className="text-xs text-muted-foreground">Jadwal pembayaran</dt>
+            <dd className="mt-1">
+              {initialAmount !== null ? (
+                <div className="flex flex-col gap-1">
+                  <span>{paymentKind === "LUNAS" ? "Pelunasan" : "Pembayaran awal"}: <strong className="font-mono">{formatCurrency(initialAmount)}</strong>{initialDueAt ? ` · deadline ${formatDate(initialDueAt)}` : " · tanpa deadline"}</span>
+                  {scheduleTerms.length ? (
+                    <ul className="flex flex-col gap-1">
+                      {scheduleTerms.map((term) => (
+                        <li key={term.position}>Termin {term.position + 1}: <span className="font-mono">{formatCurrency(term.amount)}</span> · {term.dueAt ? `jatuh tempo ${formatDate(term.dueAt)}` : "tanpa deadline"}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span>Sisa tagihan dibayar penuh pada jatuh tempo.</span>
+                  )}
+                </div>
+              ) : "Belum diatur"}
+            </dd>
+          </div>
+          {invoice.notes ? <div className="sm:col-span-2 xl:col-span-3"><dt className="text-xs text-muted-foreground">Catatan</dt><dd className="mt-1 whitespace-pre-wrap">{invoice.notes}</dd></div> : null}
+        </dl>
+      </div>
     </div>
   );
 }

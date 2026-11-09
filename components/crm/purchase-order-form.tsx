@@ -25,7 +25,7 @@ type SizeOption = { id: string; name: string };
 export type ProductCategoryOption = { id: string; name: string; garmentType: "JERSEY" | "NON_JERSEY" | "AKSESORI" };
 type SleeveLength = "PENDEK" | "PANJANG";
 type RosterMode = "none" | "manual" | "excel";
-type RosterRow = { key: string; memberId: string; name: string; sizeId: string; sleeveLength: SleeveLength | "" };
+type RosterRow = { key: string; memberId: string; name: string; jabatan: string; sizeId: string; sleeveLength: SleeveLength | "" };
 
 export type PurchaseOrderItemValues = {
   key: string;
@@ -112,7 +112,7 @@ function reconcileRoster(prev: RosterRow[], desired: Array<{ sizeId: string; sle
       if (reused.memberId === String(index + 1) && reused.sizeId === item.sizeId && reused.sleeveLength === item.sleeveLength) return reused;
       return { ...reused, sizeId: item.sizeId, sleeveLength: item.sleeveLength, memberId: String(index + 1) };
     }
-    return { key: `auto-${item.sizeId}-${item.sleeveLength}-${index}`, memberId: String(index + 1), name: "", sizeId: item.sizeId, sleeveLength: item.sleeveLength };
+    return { key: `auto-${item.sizeId}-${item.sleeveLength}-${index}`, memberId: String(index + 1), name: "", jabatan: "", sizeId: item.sizeId, sleeveLength: item.sleeveLength };
   });
 }
 
@@ -153,7 +153,7 @@ export function PurchaseOrderForm({
         baseColor: item.baseColor || (index === 0 ? values.baseColor ?? "" : ""),
         variationColor: item.variationColor || (index === 0 ? values.variationColor ?? "" : ""),
         matrix: { ...emptyMatrix(sizeOptions), ...item.matrix },
-        roster: item.roster.map((row, index) => ({ ...row, key: row.key || `saved-${index}-${row.memberId}` })),
+        roster: item.roster.map((row, index) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${index}-${row.memberId}` })),
       }));
     }
     return [newItem(`item-${Date.now()}`, sizeOptions)];
@@ -206,7 +206,7 @@ export function PurchaseOrderForm({
         ...item,
         productCategoryId: item.productCategoryId ?? "",
         matrix: { ...emptyMatrix(sizeOptions), ...item.matrix },
-        roster: (item.roster ?? []).map((row, rowIndex) => ({ ...row, key: row.key || `saved-${rowIndex}-${row.memberId}` })),
+        roster: (item.roster ?? []).map((row, rowIndex) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${rowIndex}-${row.memberId}` })),
       })));
       setDepositRequired(Boolean(saved.depositRequired));
       setRestoredDraft(true);
@@ -228,7 +228,7 @@ export function PurchaseOrderForm({
           depositRequired,
           items: items.map(({ key, name, pola, baseColor, variationColor, productCategoryId, decorationMethods, designNotes, matrix, rosterMode, roster, accessoryQuantity }) => ({
             key, name, pola, baseColor, variationColor, productCategoryId, decorationMethods, designNotes, matrix, rosterMode,
-            roster: roster.map(({ key: rowKey, memberId, name: rowName, sizeId, sleeveLength }) => ({ key: rowKey, memberId, name: rowName, sizeId, sleeveLength })),
+            roster: roster.map(({ key: rowKey, memberId, name: rowName, jabatan, sizeId, sleeveLength }) => ({ key: rowKey, memberId, name: rowName, jabatan, sizeId, sleeveLength })),
             accessoryQuantity,
           })),
         }));
@@ -561,11 +561,12 @@ export function PurchaseOrderForm({
                       ))}
                     </div>
                     {item.rosterMode === "manual" ? <div className="mt-4 flex min-w-0 flex-col gap-3">
-                      <FieldDescription>{total > 0 ? `${total.toLocaleString("id-ID")} baris dibuat otomatis dari matriks · ID 1..${total.toLocaleString("id-ID")} · urut ukuran terkecil, Pendek dulu. Isi kolom Nama saja.` : "Isi matriks ukuran dulu, baris roster akan muncul otomatis di sini."}</FieldDescription>
+                      <FieldDescription>{total > 0 ? `${total.toLocaleString("id-ID")} baris dibuat otomatis dari matriks · ID 1..${total.toLocaleString("id-ID")} · urut ukuran terkecil, Pendek dulu. Isi kolom Nama; Jabatan opsional.` : "Isi matriks ukuran dulu, baris roster akan muncul otomatis di sini."}</FieldDescription>
                       {total > 5_000 ? <Alert variant="destructive"><AlertTitle>Roster melebihi 5.000 baris</AlertTitle><AlertDescription>Kurangi jumlah pada matriks atau gunakan Impor Excel.</AlertDescription></Alert> : null}
-                      {item.roster.map((row) => <div key={row.key} className="grid gap-2 rounded-md border bg-muted/30 p-3 sm:grid-cols-[6rem_minmax(0,1fr)_7rem_8rem] sm:items-end">
+                      {item.roster.map((row) => <div key={row.key} className="grid gap-2 rounded-md border bg-muted/30 p-3 sm:grid-cols-[5rem_minmax(0,1fr)_10rem_6rem_7rem] sm:items-end">
                         <Field><FieldLabel htmlFor={`roster-id-${item.key}-${row.key}`} required>ID</FieldLabel><Input id={`roster-id-${item.key}-${row.key}`} name={`${prefix}rosterMemberId`} required maxLength={80} value={row.memberId} readOnly className="bg-muted font-mono tabular-nums" /></Field>
                         <Field><FieldLabel htmlFor={`roster-name-${item.key}-${row.key}`} required>Nama</FieldLabel><Input id={`roster-name-${item.key}-${row.key}`} name={`${prefix}rosterName`} required minLength={2} maxLength={160} value={row.name} onChange={(event) => updateItem(item.key, { roster: item.roster.map((entry) => entry.key === row.key ? { ...entry, name: event.target.value } : entry) })} /></Field>
+                        <Field><FieldLabel htmlFor={`roster-jabatan-${item.key}-${row.key}`}>Jabatan</FieldLabel><Input id={`roster-jabatan-${item.key}-${row.key}`} name={`${prefix}rosterJabatan`} maxLength={80} placeholder="Opsional" value={row.jabatan} onChange={(event) => updateItem(item.key, { roster: item.roster.map((entry) => entry.key === row.key ? { ...entry, jabatan: event.target.value } : entry) })} /></Field>
                         <Field><FieldLabel htmlFor={`roster-size-${item.key}-${row.key}`} required>Ukuran</FieldLabel><NativeSelect id={`roster-size-${item.key}-${row.key}`} value={row.sizeId} disabled aria-label={`Ukuran baris ${row.memberId}`}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.id}>{size.name}</NativeSelectOption>)}</NativeSelect><input type="hidden" name={`${prefix}rosterSizeId`} value={row.sizeId} /></Field>
                         <Field><FieldLabel htmlFor={`roster-sleeve-${item.key}-${row.key}`} required>Lengan</FieldLabel><NativeSelect id={`roster-sleeve-${item.key}`} value={row.sleeveLength} disabled aria-label={`Lengan baris ${row.memberId}`}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption><NativeSelectOption value="PENDEK">Pendek</NativeSelectOption><NativeSelectOption value="PANJANG">Panjang</NativeSelectOption></NativeSelect><input type="hidden" name={`${prefix}rosterSleeveLength`} value={row.sleeveLength} /></Field>
                       </div>)}
