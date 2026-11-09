@@ -7,6 +7,7 @@ import {
   ATTENDANCE_ADMIN_ROLES,
   AUDIT_VIEW_ROLES,
   CRM_OPERATOR_ROLES,
+  CRM_ROLES,
   CRM_VIEW_ROLES,
   DASHBOARD_ROLES,
   FINANCE_ROLES,
@@ -43,9 +44,9 @@ const ACCESS_RULES: readonly AccessRule[] = [
   { path: "/crm", roles: CRM_VIEW_ROLES },
   { path: "/customers", roles: CRM_VIEW_ROLES },
   { path: "/sales-orders", roles: CRM_VIEW_ROLES },
-  { path: "/whatsapp/jobs", roles: CRM_OPERATOR_ROLES },
+  { path: "/whatsapp/jobs", roles: CRM_ROLES },
   { path: "/whatsapp", roles: WHATSAPP_INBOX_ROLES },
-  { path: "/campaigns", roles: CRM_OPERATOR_ROLES },
+  { path: "/campaigns", roles: CRM_ROLES },
   { path: "/produksi", roles: PRODUCTION_VIEW_ROLES },
   { path: "/detail-desain", roles: PRODUCTION_VIEW_ROLES },
   { path: "/analytics", roles: ANALYTICS_ROLES },
@@ -53,7 +54,7 @@ const ACCESS_RULES: readonly AccessRule[] = [
   { path: "/admin/users", roles: USER_ADMIN_ROLES },
   { path: "/settings", roles: OWNER_ACTION_ROLES },
   { path: "/master-data/garment-sizes", roles: GARMENT_SIZE_ROLES },
-  { path: "/master-data/whatsapp", roles: CRM_OPERATOR_ROLES },
+  { path: "/master-data/whatsapp", roles: CRM_ROLES },
   { path: "/master-data", roles: MASTER_DATA_ADMIN_ROLES },
 ];
 

@@ -1,5 +1,5 @@
 import { requireActor } from "@/lib/auth/session";
-import { CRM_ROLES } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
 import { aggregateRosterToMatrix, parseRosterFile } from "@/lib/crm/roster-import";
 
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 // agar matriks form terisi otomatis tanpa menyimpan apa pun.
 export async function POST(request: Request) {
   try {
-    await requireActor(CRM_ROLES);
+    await requireActor(CRM_OPERATOR_ROLES);
   } catch {
     return Response.json({ ok: false, message: "Anda harus masuk." }, { status: 401 });
   }

@@ -1,14 +1,14 @@
-import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
+import { CRM_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { erpStorage, WHATSAPP_MEDIA_BUCKET } from "@/lib/storage/erp-storage";
 
 export const runtime = "nodejs";
 
-/** Pratinjau gambar campaign untuk form edit (butuh role operator CRM). */
+/** Pratinjau gambar campaign untuk form edit (Admin Customer). */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireActor(CRM_OPERATOR_ROLES);
+    await requireActor(CRM_ROLES);
   } catch {
     return new Response("Anda tidak berhak membuka gambar campaign.", { status: 403 });
   }

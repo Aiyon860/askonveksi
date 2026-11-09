@@ -43,7 +43,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TableViewport } from "@/components/table-viewport";
-import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, MASTER_DATA_ROLES, hasRole } from "@/lib/auth/permissions";
+import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import {
   getCustomers,
@@ -231,7 +231,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
   ]);
   const canChangeArchiveStatus = Boolean(actor && hasRole(actor.role, ARCHIVE_ROLES));
   const canOperate = Boolean(actor && hasRole(actor.role, CRM_OPERATOR_ROLES));
-  const canImportExport = Boolean(actor && hasRole(actor.role, MASTER_DATA_ROLES));
+  const canImportExport = Boolean(actor && hasRole(actor.role, CRM_OPERATOR_ROLES));
   const archived = segment === "archived";
   const showActions = Boolean(canOperate && (!archived || canChangeArchiveStatus));
 

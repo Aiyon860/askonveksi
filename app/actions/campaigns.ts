@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
+import { CRM_ROLES } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor } from "@/lib/auth/session";
 import { getPrismaClient } from "@/lib/prisma";
 import { campaignRecipientFilterSchema, campaignRecipientSelectionSchema, campaignTestSchema, campaignFieldsSchema, deleteCampaignSchema, parseJakartaDateTime, renderCampaignMessage, toggleCampaignSchema, updateCampaignSchema } from "@/lib/whatsapp/campaigns";
@@ -83,7 +83,7 @@ export async function sendCampaignTestAction(formData: FormData) {
 
 export async function createCampaignAction(formData: FormData) {
   return runRedirectingAction("/campaigns", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const parsed = campaignFieldsSchema.safeParse(campaignInput(formData));
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Campaign tidak valid.");
     const scheduledAt = parseJakartaDateTime(parsed.data.scheduledAt)!;
@@ -125,7 +125,7 @@ export async function createCampaignAction(formData: FormData) {
 
 export async function updateCampaignAction(formData: FormData) {
   return runRedirectingAction("/campaigns", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const parsed = updateCampaignSchema.safeParse({ ...campaignInput(formData), campaignId: formData.get("campaignId"), version: formData.get("version") });
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Campaign tidak valid.");
     const scheduledAt = parseJakartaDateTime(parsed.data.scheduledAt)!;
@@ -183,7 +183,7 @@ export async function updateCampaignAction(formData: FormData) {
 
 export async function toggleCampaignAction(formData: FormData) {
   return runRedirectingAction("/campaigns", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const parsed = toggleCampaignSchema.safeParse({ campaignId: formData.get("campaignId"), version: formData.get("version"), enabled: formData.get("enabled") });
     if (!parsed.success) throw new UserFacingError("Campaign tidak valid.");
     const now = new Date();
@@ -243,7 +243,7 @@ export async function getCampaignRecipientDialogAction(input: {
   customerTypeId?: string;
   productCategoryId?: string;
 }) {
-  await requireActor(CRM_OPERATOR_ROLES);
+  await requireActor(CRM_ROLES);
   const parsed = campaignRecipientFilterSchema.safeParse({
     campaignId: input.campaignId,
     query: input.query?.trim() ? input.query.trim() : undefined,
@@ -259,7 +259,7 @@ export async function getCampaignRecipientDialogAction(input: {
 /** Simpan penerima terpilih; campaign hanya dikirim ke customer di daftar ini. */
 export async function saveCampaignRecipientsAction(input: { campaignId: string; customerIds: string[] }) {
   return runRedirectingAction("/campaigns", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const parsed = campaignRecipientSelectionSchema.safeParse({ campaignId: input.campaignId, customerIds: input.customerIds ?? [] });
     if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Pilihan penerima campaign tidak valid.");
     const customerIds = [...new Set(parsed.data.customerIds)];
@@ -310,7 +310,7 @@ export async function saveCampaignRecipientsAction(input: { campaignId: string; 
 
 export async function deleteCampaignAction(formData: FormData) {
   return runRedirectingAction("/campaigns", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const parsed = deleteCampaignSchema.safeParse({ campaignId: formData.get("campaignId"), version: formData.get("version") });
     if (!parsed.success) throw new UserFacingError("Campaign tidak valid.");
 

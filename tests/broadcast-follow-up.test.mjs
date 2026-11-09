@@ -84,7 +84,7 @@ test("komponen follow-up lama sudah tidak ada lagi", async () => {
 test("Follow Up Hari Ini hanya mengirim ke customer terpilih dengan guard WhatsApp", async () => {
   const action = await read("app/actions/broadcast.ts");
 
-  assert.match(action, /requireActor\(WHATSAPP_ACCOUNT_MANAGER_ROLES\)/);
+  assert.match(action, /requireActor\(CRM_OPERATOR_ROLES\)/);
   assert.match(action, /getAll\("customerIds"\)/);
   assert.match(action, /Pilih minimal satu customer/);
   assert.match(action, /archivedAt: null/);

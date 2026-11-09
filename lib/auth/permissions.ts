@@ -2,14 +2,15 @@ import type { AppRole } from "@prisma/client";
 
 export const APP_ROLES = ["DEVELOPER", "OWNER", "ADMIN_CUSTOMER", "ADMIN_PO", "KEUANGAN", "DESIGNER", "ADMIN_SAGA"] as const satisfies readonly AppRole[];
 export const CRM_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
-// ADMIN_PO (peran tunggal untuk melihat sisi CRM) hanya membaca dan mengunduh PDF — tanpa aksi tulis.
+// Admin PO melihat CRM dan mengoperasikannya sebagai cadangan Admin Customer.
+// WhatsApp (kotak masuk, template, campaign, koneksi akun) tetap di CRM_ROLES.
 export const CRM_VIEW_ROLES = [...CRM_ROLES, "ADMIN_PO"] as const satisfies readonly AppRole[];
 export const DASHBOARD_ROLES = [...CRM_VIEW_ROLES, "KEUANGAN"] as const satisfies readonly AppRole[];
-export const CRM_OPERATOR_ROLES = CRM_ROLES;
-// D1: Admin PO boleh mengunggah desain langsung (menjadi acuan detailing) — tanpa hak tulis CRM lain.
-export const DESIGN_UPLOADER_ROLES = [...CRM_OPERATOR_ROLES, "ADMIN_PO"] as const satisfies readonly AppRole[];
-export const CUSTOMER_REMINDER_SETTING_ROLES = ["OWNER", "ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
-export const DEAL_ROLES = CRM_ROLES;
+export const CRM_OPERATOR_ROLES = [...CRM_ROLES, "ADMIN_PO"] as const satisfies readonly AppRole[];
+// D1: Admin PO boleh mengunggah desain langsung (menjadi acuan detailing).
+export const DESIGN_UPLOADER_ROLES = CRM_OPERATOR_ROLES;
+export const CUSTOMER_REMINDER_SETTING_ROLES = ["OWNER", "ADMIN_CUSTOMER", "ADMIN_PO"] as const satisfies readonly AppRole[];
+export const DEAL_ROLES = CRM_OPERATOR_ROLES;
 export const ARCHIVE_ROLES = CRM_OPERATOR_ROLES;
 export const REVERSE_DEAL_ROLES = DEAL_ROLES;
 export const USER_ADMIN_ROLES = ["DEVELOPER"] as const satisfies readonly AppRole[];
@@ -29,8 +30,9 @@ export function isAttendanceEmployee(role: AppRole) {
 // Konten website dikelola Owner; Developer selalu lolos lewat hasRole.
 export const CMS_ROLES = ["OWNER"] as const satisfies readonly AppRole[];
 // Akses menu Data Master dan seluruh aksi tulisnya: Owner, Developer, dan Keuangan.
-// MASTER_DATA_ROLES tetap dipakai untuk kebutuhan CRM (mis. form/import customer)
-// agar Admin Customer tidak kehilangan alur kerjanya.
+// MASTER_DATA_ROLES tetap dipakai untuk katalog CRM (jenis customer, sumber lead)
+// agar Admin Customer tidak kehilangan alur kerjanya. Impor/ekspor customer
+// memakai CRM_OPERATOR_ROLES.
 export const MASTER_DATA_ADMIN_ROLES = OWNER_ACTION_ROLES;
 export const MASTER_DATA_ROLES = ["ADMIN_CUSTOMER"] as const satisfies readonly AppRole[];
 // Data Master "Ukuran pakaian" dibuka juga untuk Admin PO (tambah, ubah, impor,

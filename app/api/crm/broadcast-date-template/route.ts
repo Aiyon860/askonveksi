@@ -1,4 +1,4 @@
-import { WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { createBroadcastDateTemplate } from "@/lib/crm/broadcast-date-excel";
 import { downloadFilename } from "@/lib/download-filename";
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
+    await requireActor(CRM_OPERATOR_ROLES);
   } catch {
     return new Response("Anda tidak memiliki akses ke template broadcast.", { status: 403 });
   }

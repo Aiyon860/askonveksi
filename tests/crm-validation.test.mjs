@@ -57,6 +57,7 @@ import {
 import { DATA_PAGE_SIZE, parsePageParam, parsePageSizeParam } from "../lib/pagination.ts";
 import {
   CRM_OPERATOR_ROLES,
+  CRM_ROLES,
   DEAL_ROLES,
   ARCHIVE_ROLES,
   REVERSE_DEAL_ROLES,
@@ -580,6 +581,9 @@ test("owner menjadi role tertinggi pada permission aplikasi", () => {
   }
   assert.equal(hasRole("OWNER", ["ADMIN_CUSTOMER"]), true);
   assert.equal(hasRole("ADMIN_CUSTOMER", DEAL_ROLES), true);
+  assert.equal(hasRole("ADMIN_PO", CRM_OPERATOR_ROLES), true);
+  assert.equal(hasRole("ADMIN_PO", DEAL_ROLES), true);
+  assert.equal(hasRole("ADMIN_PO", CRM_ROLES), false);
 });
 
 test("tab detail peluang dimulai dari PO dan label dekorasi memiliki fallback yang aman", () => {
@@ -1217,7 +1221,7 @@ test("customer mendukung menu mandiri, halaman detail, dan import export XLSX ya
   assert.match(pageSource, /<CustomerTableRowLink key=\{customer\.id\} href=\{customerDetailHref\(customer\.id, state\)\}>/);
   assert.match(pageSource, /params=\{exportParams\(state\)\}/);
   assert.match(pageSource, /form action=\{importCustomersAction\}/);
-  assert.match(actionSource, /requireActor\(MASTER_DATA_ROLES\)/);
+  assert.match(actionSource, /export async function importCustomersAction[\s\S]{0,240}requireActor\(CRM_OPERATOR_ROLES\)/);
   assert.match(actionSource, /parseCustomerWorkbook\(customerExcelFile\(formData\)\)/);
   assert.match(actionSource, /CUSTOMER_IMPORT_TRANSACTION_OPTIONS/);
   assert.doesNotMatch(actionSource, /assertNoDuplicateImportKeys\(rows\)/);

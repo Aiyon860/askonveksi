@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath, updateTag } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { parseBroadcastDatesWorkbook } from "@/lib/crm/broadcast-date-excel";
 import { nextCustomerNo, nextInvoiceNo, nextOpportunityNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
@@ -55,7 +55,7 @@ export async function getBroadcastRecipientsAction(input: {
  */
 export async function sendTodayFollowUpBroadcastAction(formData: FormData) {
   return runRedirectingAction(BROADCAST_PATH, async () => {
-    const actor = await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
     const requestedIds = [
       ...new Set(
         formData
@@ -219,7 +219,7 @@ async function releaseTempMediaSlot(prisma: ReturnType<typeof getPrismaClient>, 
  */
 export async function importBroadcastDatesAction(formData: FormData) {
   return runRedirectingAction(BROADCAST_PATH, async () => {
-    const actor = await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
     const file = formData.get("file");
     if (!(file instanceof File)) throw new UserFacingError("Pilih file Excel tanggal terlebih dahulu.");
 

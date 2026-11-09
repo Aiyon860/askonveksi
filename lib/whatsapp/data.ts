@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Prisma, WhatsAppJobStatus } from "@prisma/client";
 
-import { CRM_OPERATOR_ROLES, hasRole, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, CRM_ROLES, hasRole, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
 import { getActiveProductCategories } from "@/lib/master-data";
 import { pageCountFor, sliceArgs } from "@/lib/pagination";
@@ -111,7 +111,7 @@ export type WhatsAppTemplateTableInput = {
 };
 
 export async function getWhatsAppTemplates(input: WhatsAppTemplateTableInput) {
-  await requireActor(CRM_OPERATOR_ROLES);
+  await requireActor(CRM_ROLES);
   const prisma = getPrismaClient();
   const query = (input.query ?? "").trim().slice(0, 120);
   const trigger = input.trigger ?? "all";
@@ -146,7 +146,7 @@ export async function getWhatsAppTemplates(input: WhatsAppTemplateTableInput) {
 }
 
 export async function getWhatsAppJobs(status?: WhatsAppJobStatus) {
-  const actor = await requireActor(CRM_OPERATOR_ROLES);
+  const actor = await requireActor(CRM_ROLES);
   return getPrismaClient().whatsAppAutomationJob.findMany({
     where: {
       ...(status ? { status } : {}),
@@ -290,13 +290,13 @@ export async function getCampaignRecipientOptions(input: {
   customerTypeId?: string;
   productCategoryId?: string;
 }) {
-  await requireActor(CRM_OPERATOR_ROLES);
+  await requireActor(CRM_ROLES);
   return queryRecipientOptions({ ...input, limit: CAMPAIGN_RECIPIENT_LIMIT });
 }
 
 /** Daftar penerima broadcast Follow Up Hari Ini pada halaman CRM > Broadcast. */
 export async function getBroadcastRecipientOptions(input: RecipientFilterInput) {
-  await requireActor(WHATSAPP_ACCOUNT_MANAGER_ROLES);
+  await requireActor(CRM_OPERATOR_ROLES);
   return queryRecipientOptions({ ...input, limit: BROADCAST_RECIPIENT_LIMIT });
 }
 

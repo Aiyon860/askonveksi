@@ -4,7 +4,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { randomUUID } from "node:crypto";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { CRM_OPERATOR_ROLES, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
+import { CRM_ROLES, MASTER_DATA_ROLES, WHATSAPP_ACCOUNT_MANAGER_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { nextCustomerNo } from "@/lib/crm/numbers";
 import { mergeCustomerAcrossBrands } from "@/lib/crm/customer-scope";
@@ -97,7 +97,7 @@ export async function deleteWhatsAppAccountAction(formData: FormData) {
 
 export async function saveWhatsAppTemplateAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/templates", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const parsed = whatsappTemplateSchema.safeParse({
       id: String(formData.get("id") ?? "") || undefined,
       name: formData.get("name"),
@@ -129,7 +129,7 @@ export async function saveWhatsAppTemplateAction(formData: FormData) {
 
 export async function deleteWhatsAppTemplateAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/templates", async () => {
-    await requireActor(CRM_OPERATOR_ROLES);
+    await requireActor(CRM_ROLES);
     const parsed = entityIdSchema.safeParse(String(formData.get("id") ?? ""));
     if (!parsed.success) throw new UserFacingError("Template tidak valid.");
     const deleted = await getPrismaClient().whatsAppTemplate.deleteMany({ where: { id: parsed.data } });
@@ -141,7 +141,7 @@ export async function deleteWhatsAppTemplateAction(formData: FormData) {
 
 export async function toggleWhatsAppTemplateAction(formData: FormData) {
   return runRedirectingAction("/master-data/whatsapp/templates", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const parsed = entityIdSchema.safeParse(String(formData.get("id") ?? ""));
     if (!parsed.success) throw new UserFacingError("Template tidak valid.");
     const version = Number(formData.get("version"));
@@ -236,7 +236,7 @@ export async function markWhatsAppConversationReadAction(formData: FormData) {
 
 export async function linkWhatsAppConversationAction(formData: FormData) {
   return runRedirectingAction("/whatsapp", async () => {
-    await requireActor(CRM_OPERATOR_ROLES);
+    await requireActor(CRM_ROLES);
     const conversationId = String(formData.get("conversationId") ?? "");
     const customerId = String(formData.get("customerId") ?? "");
     await getPrismaClient().$transaction(async (tx) => {
@@ -352,7 +352,7 @@ export async function createWhatsAppCustomerAction(formData: FormData) {
 
 export async function retryWhatsAppJobAction(formData: FormData) {
   return runRedirectingAction("/whatsapp/jobs", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const updated = await getPrismaClient().whatsAppAutomationJob.updateMany({
       where: { id: String(formData.get("jobId") ?? ""), status: { in: ["FAILED", "CANCELLED"] }, ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }) },
       data: { status: "QUEUED", attempts: 0, scheduledAt: new Date(), nextAttemptAt: null, lastError: null, leaseOwner: null, leaseExpiresAt: null },
@@ -364,7 +364,7 @@ export async function retryWhatsAppJobAction(formData: FormData) {
 }
 
 export async function getInvoiceWhatsAppMessageAction(invoiceId: string) {
-  await requireActor(CRM_OPERATOR_ROLES);
+  await requireActor(CRM_ROLES);
   const parsed = entityIdSchema.safeParse(invoiceId);
   if (!parsed.success) throw new UserFacingError("Invoice tidak valid.");
   return getInvoiceWhatsAppMessage(parsed.data);
@@ -372,7 +372,7 @@ export async function getInvoiceWhatsAppMessageAction(invoiceId: string) {
 
 export async function cancelWhatsAppJobAction(formData: FormData) {
   return runRedirectingAction("/whatsapp/jobs", async () => {
-    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const actor = await requireActor(CRM_ROLES);
     const id = String(formData.get("jobId") ?? "");
     const updated = await getPrismaClient().whatsAppAutomationJob.updateMany({
       where: { id, status: { in: ["QUEUED", "RETRY", "FAILED"] }, ...(actor.role === "DEVELOPER" ? {} : { type: { not: "CAMPAIGN_TEST" } }) },
