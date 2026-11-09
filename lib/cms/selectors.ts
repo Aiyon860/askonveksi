@@ -20,6 +20,18 @@ export function objectPosition(focus?: "left" | "center" | "right") {
   return "center";
 }
 
+// Nginx on the VPS does not map %28/%29 back to parentheses, so a browser request 404s.
+export function browserSafeImageSrc(src: string) {
+  let path = src;
+  try {
+    path = decodeURI(src);
+  } catch {
+    return src;
+  }
+  if (!path.includes("(") && !path.includes(")")) return path;
+  return path.replace(/\s*\(([^)]*)\)/g, "-$1").replace(/[()]/g, "");
+}
+
 export function orderedProducts(content: CmsSiteContent) {
   return [...content.products].sort((a, b) => a.menuOrder - b.menuOrder || a.name.localeCompare(b.name));
 }

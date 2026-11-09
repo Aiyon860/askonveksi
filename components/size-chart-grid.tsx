@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { LandingReveal, LandingStagger } from "@/components/landing-motion";
 import { RichText } from "@/components/rich-text";
+import { browserSafeImageSrc } from "@/lib/cms/selectors";
 import type { CmsSizeChart } from "@/lib/cms/types";
 
 export function SizeChartHeader({ sizeChart }: { sizeChart: CmsSizeChart }) {
@@ -28,13 +29,12 @@ export function SizeChartGrid({ sizeChart }: { sizeChart: CmsSizeChart }) {
       {sizeChart.images.map((image, index) => (
         <figure key={`${image.src}-${index}`} className="relative aspect-square w-full overflow-hidden bg-[#e3eaf1]">
           <Image
-            src={image.src}
+            src={browserSafeImageSrc(image.src)}
             alt={image.alt || `Size chart Askonveksi ${index + 1}`}
             fill
             sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 30vw"
             className="object-cover"
-            // File names contain parentheses. The optimizer 404s those, and the
-            // files are already small WebP, so serve them directly.
+            // Already small WebP, so skip the optimizer.
             unoptimized
             priority={index === 0}
           />

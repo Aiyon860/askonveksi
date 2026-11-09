@@ -5,7 +5,7 @@ import Link from "next/link";
 import { LandingReveal, LandingStagger } from "@/components/landing-motion";
 import { RichText } from "@/components/rich-text";
 import { buttonVariants } from "@/components/ui/button";
-import { productCardImage } from "@/lib/cms/selectors";
+import { browserSafeImageSrc, productCardImage } from "@/lib/cms/selectors";
 import type { CmsProduct, CmsProductsSection } from "@/lib/cms/types";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +58,7 @@ export function LandingProducts({
                   <div className="relative aspect-square overflow-hidden bg-[#D4EEFF] px-3 pt-3 sm:px-4 sm:pt-4">
                     {image ? (
                       <Image
-                        src={image.src}
+                        src={browserSafeImageSrc(image.src)}
                         alt={image.alt || product.name}
                         fill
                         sizes="(max-width: 767px) 45vw, (max-width: 1023px) 30vw, 16vw"

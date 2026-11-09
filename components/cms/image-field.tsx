@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { browserSafeImageSrc } from "@/lib/cms/selectors";
 import type { CmsImage } from "@/lib/cms/types";
 
 export function ImageField({
@@ -51,7 +52,7 @@ export function ImageField({
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:flex-row sm:items-start">
         <div className="relative flex h-28 w-full shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background sm:w-44">
           {value?.src ? (
-            <Image src={value.src} alt={value.alt || label} width={480} height={320} className="h-full w-full object-contain" unoptimized />
+            <Image src={browserSafeImageSrc(value.src)} alt={value.alt || label} width={480} height={320} className="h-full w-full object-contain" unoptimized />
           ) : (
             <span className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
               <ImageIcon aria-hidden="true" className="size-6" />
