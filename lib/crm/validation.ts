@@ -66,6 +66,15 @@ export const updateCustomerSchema = customerFieldsSchema.and(
   }),
 );
 
+/** Edit prospek memakai aturan yang sama dengan tambah prospek: Kota dan Asal wajib. */
+export const updateProspectSchema = createProspectCustomerSchema.and(
+  z.object({
+    customerId: entityIdSchema,
+    opportunityId: entityIdSchema,
+    version: requiredVersion,
+  }),
+);
+
 export const archiveCustomerSchema = z.object({
   customerId: entityIdSchema,
   version: requiredVersion,

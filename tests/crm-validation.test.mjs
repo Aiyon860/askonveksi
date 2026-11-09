@@ -28,6 +28,7 @@ import {
   strongPasswordSchema,
   updateUserSchema,
   updateCustomerSchema,
+  updateProspectSchema,
   validateOpenOpportunitySchedule,
 } from "../lib/crm/validation.ts";
 import { downloadFilename } from "../lib/download-filename.ts";
@@ -158,6 +159,38 @@ test("prospek baru mewajibkan kota dan asal", () => {
   assert.equal(createProspectCustomerSchema.safeParse(base).success, true);
   assert.equal(createProspectCustomerSchema.safeParse({ ...base, city: "" }).success, false);
   assert.equal(createProspectCustomerSchema.safeParse({ ...base, address: "" }).success, false);
+});
+
+test("edit prospek memakai aturan tambah prospek dan identitas peluang", () => {
+  const base = {
+    customerId: "cm123456789012",
+    opportunityId: "cm123456789013",
+    version: "1",
+    name: "Budi",
+    whatsapp: "08123456789",
+    customerTypeId: "master-ct-personal",
+    city: "Bandung",
+    address: "Cimahi",
+  };
+  assert.equal(updateProspectSchema.safeParse(base).success, true);
+  assert.equal(updateProspectSchema.safeParse({ ...base, city: "" }).success, false);
+  assert.equal(updateProspectSchema.safeParse({ ...base, address: "" }).success, false);
+  assert.equal(updateProspectSchema.safeParse({ ...base, opportunityId: "pendek" }).success, false);
+  assert.equal(updateProspectSchema.safeParse({ ...base, version: "" }).success, false);
+});
+
+test("halaman Prospek menyediakan aksi edit untuk operator CRM", async () => {
+  const [pageSource, formSource, actionSource] = await Promise.all([
+    readFile(new URL("../app/(app)/crm/prospek/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/edit-prospect-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(pageSource, /<TableHead className="w-32">Aksi<\/TableHead>/);
+  assert.match(pageSource, /<EditProspectForm/);
+  assert.match(formSource, /action=\{updateProspectAction\}/);
+  assert.match(formSource, /name="returnTo"/);
+  assert.match(actionSource, /export async function updateProspectAction/);
+  assert.match(actionSource, /returnTo = prospekReturnPath/);
 });
 
 test("master data membatasi nama, deskripsi, dan urutan", () => {

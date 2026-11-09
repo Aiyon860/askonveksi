@@ -466,7 +466,13 @@ export async function getProspects({
       where,
       select: {
         id: true, opportunityNo: true, stage: true, createdAt: true,
-        customer: { select: { name: true, companyName: true, whatsapp: true, email: true, instagram: true, city: true, address: true } },
+        customer: {
+          select: {
+            id: true, customerNo: true, name: true, companyName: true, whatsapp: true, email: true, instagram: true,
+            city: true, address: true, notes: true, customerTypeId: true, leadSourceId: true, salesPicId: true, version: true,
+            salesPic: { select: { id: true, name: true, isActive: true } },
+          },
+        },
         salesPic: { select: { name: true } },
       },
       orderBy: prospectOrderBy(sort, direction),

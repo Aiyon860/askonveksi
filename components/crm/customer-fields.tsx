@@ -107,8 +107,13 @@ export function CustomerFields({
           <FieldLabel htmlFor={`${idPrefix}-salesPicId`}>Sales/PIC</FieldLabel>
           {prospect ? (
             <>
-              <Input id={`${idPrefix}-salesPicId`} value="Michelle (Admin Customer)" readOnly className="bg-muted font-medium text-foreground" />
-              <input type="hidden" name="salesPicName" value="Michelle" />
+              <Input
+                id={`${idPrefix}-salesPicId`}
+                value={currentSalesPic?.name ?? "Michelle (Admin Customer)"}
+                readOnly
+                className="bg-muted font-medium text-foreground"
+              />
+              {values ? null : <input type="hidden" name="salesPicName" value="Michelle" />}
             </>
           ) : (
             <NativeSelect id={`${idPrefix}-salesPicId`} name="salesPicId" defaultValue={values?.salesPicId ?? ""} className="w-full">

@@ -52,6 +52,7 @@ import {
   reverseSalesOrderSchema,
   updateCustomerSchema,
   updateOpportunitySchema,
+  updateProspectSchema,
   validateOpenOpportunitySchedule,
   voidPaymentTransactionSchema,
 } from "@/lib/crm/validation";
@@ -129,6 +130,19 @@ function opportunityRedirectPath(formData: FormData) {
   }
 
   return fallback;
+}
+
+/** Kembalikan pengguna ke daftar prospek dengan filter yang sama, tanpa membuka redirect bebas. */
+function prospekReturnPath(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || value.length > 1_000) return "/crm/prospek";
+
+  try {
+    const url = new URL(value, "http://askonveksi.local");
+    if (url.origin !== "http://askonveksi.local" || url.pathname !== "/crm/prospek") return "/crm/prospek";
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "/crm/prospek";
+  }
 }
 
 function optionalDate(value?: string) {
@@ -1258,6 +1272,55 @@ export async function createOpportunityAction(formData: FormData) {
   });
 }
 
+/**
+ * Sumber lead form prospek bisa berupa opsi "Lainnya" atau teks bebas.
+ * Helper ini menyamakan perilaku tambah dan edit prospek.
+ */
+async function resolveProspectLeadSource(
+  tx: Tx,
+  selectedLeadSourceId: string | undefined,
+  rawLeadSourceCustom: string,
+) {
+  const leadSourceCustom = rawLeadSourceCustom.trim();
+  let resolvedLeadSourceId = selectedLeadSourceId;
+
+  if (resolvedLeadSourceId === "custom_other" || (resolvedLeadSourceId && leadSourceCustom)) {
+    if (leadSourceCustom) {
+      const trimmedCustom = leadSourceCustom.slice(0, 80);
+      let customSource = await tx.leadSource.findFirst({
+        where: { name: { equals: trimmedCustom, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (!customSource) {
+        customSource = await tx.leadSource.create({
+          data: {
+            name: trimmedCustom,
+            description: "Sumber lead kustom dari form Prospek",
+            position: 99,
+            isActive: true,
+          },
+          select: { id: true },
+        });
+      }
+      resolvedLeadSourceId = customSource.id;
+    } else if (resolvedLeadSourceId === "custom_other") {
+      let otherSource = await tx.leadSource.findFirst({
+        where: { name: { equals: "Lainnya", mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (!otherSource) {
+        otherSource = await tx.leadSource.create({
+          data: { name: "Lainnya", description: "Sumber lead lainnya", position: 99, isActive: true },
+          select: { id: true },
+        });
+      }
+      resolvedLeadSourceId = otherSource.id;
+    }
+  }
+
+  return resolvedLeadSourceId;
+}
+
 export async function createProspectAction(formData: FormData) {
   return runRedirectingAction("/crm/prospek", async () => {
     const actor = await requireActor(CRM_OPERATOR_ROLES);
@@ -1282,42 +1345,11 @@ export async function createProspectAction(formData: FormData) {
       if (!salesPicId) throw new UserFacingError("Admin Customer aktif tidak ditemukan.");
 
       const rawLeadSourceCustom = formValue(formData, "leadSourceCustom");
-      const leadSourceCustom = typeof rawLeadSourceCustom === "string" ? rawLeadSourceCustom.trim() : "";
-      let resolvedLeadSourceId = customerParsed.data.leadSourceId;
-
-      if (resolvedLeadSourceId === "custom_other" || (resolvedLeadSourceId && leadSourceCustom)) {
-        if (leadSourceCustom) {
-          const trimmedCustom = leadSourceCustom.slice(0, 80);
-          let customSource = await tx.leadSource.findFirst({
-            where: { name: { equals: trimmedCustom, mode: "insensitive" } },
-            select: { id: true },
-          });
-          if (!customSource) {
-            customSource = await tx.leadSource.create({
-              data: {
-                name: trimmedCustom,
-                description: "Sumber lead kustom dari form Prospek",
-                position: 99,
-                isActive: true,
-              },
-              select: { id: true },
-            });
-          }
-          resolvedLeadSourceId = customSource.id;
-        } else if (resolvedLeadSourceId === "custom_other") {
-          let otherSource = await tx.leadSource.findFirst({
-            where: { name: { equals: "Lainnya", mode: "insensitive" } },
-            select: { id: true },
-          });
-          if (!otherSource) {
-            otherSource = await tx.leadSource.create({
-              data: { name: "Lainnya", description: "Sumber lead lainnya", position: 99, isActive: true },
-              select: { id: true },
-            });
-          }
-          resolvedLeadSourceId = otherSource.id;
-        }
-      }
+      const resolvedLeadSourceId = await resolveProspectLeadSource(
+        tx,
+        customerParsed.data.leadSourceId,
+        typeof rawLeadSourceCustom === "string" ? rawLeadSourceCustom : "",
+      );
 
       const [customerType, customerLeadSource] = await Promise.all([
         tx.customerType.findUnique({ where: { id: customerParsed.data.customerTypeId }, select: { id: true } }),
@@ -1372,6 +1404,129 @@ export async function createProspectAction(formData: FormData) {
     revalidatePath("/dashboard");
     revalidateCustomerReminders();
     return flashMessagePath("/crm/prospek", "notice", "Prospek berhasil dibuat.");
+  });
+}
+
+/**
+ * Edit data prospek dari halaman Prospek. Profil customer dan sumber lead peluang
+ * diperbarui bersama; Sales/PIC tetap seperti form tambah prospek (read-only).
+ */
+export async function updateProspectAction(formData: FormData) {
+  const returnTo = prospekReturnPath(formData.get("returnTo"));
+  return runRedirectingAction(returnTo, async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = updateProspectSchema.safeParse({
+      ...customerFields(formData),
+      customerId: formValue(formData, "customerId"),
+      opportunityId: formValue(formData, "opportunityId"),
+      version: formValue(formData, "version"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    const { customerId, opportunityId, version, ...fields } = parsed.data;
+    await getPrismaClient().$transaction(async (tx) => {
+      const [current, opportunity] = await Promise.all([
+        tx.customer.findUnique({
+          where: { id: customerId },
+          select: {
+            name: true,
+            companyName: true,
+            whatsapp: true,
+            email: true,
+            instagram: true,
+            address: true,
+            city: true,
+            notes: true,
+            customerTypeId: true,
+            leadSourceId: true,
+            archivedAt: true,
+          },
+        }),
+        tx.opportunity.findFirst({
+          where: { id: opportunityId, customerId },
+          select: { id: true, title: true, leadSourceId: true },
+        }),
+      ]);
+      if (!current || current.archivedAt) throw new UserFacingError("Prospek tidak ditemukan atau customer telah diarsipkan.");
+      if (!opportunity) throw new UserFacingError("Peluang prospek tidak ditemukan.");
+
+      const rawLeadSourceCustom = formValue(formData, "leadSourceCustom");
+      const resolvedLeadSourceId = await resolveProspectLeadSource(
+        tx,
+        fields.leadSourceId,
+        typeof rawLeadSourceCustom === "string" ? rawLeadSourceCustom : "",
+      );
+
+      const [customerType, leadSource] = await Promise.all([
+        tx.customerType.findUnique({ where: { id: fields.customerTypeId }, select: { id: true } }),
+        resolvedLeadSourceId ? tx.leadSource.findFirst({ where: { id: resolvedLeadSourceId, isActive: true }, select: { id: true } }) : null,
+      ]);
+      if (!customerType) throw new UserFacingError("Jenis customer tidak ditemukan.");
+      if (resolvedLeadSourceId && !leadSource) throw new UserFacingError("Sumber lead tidak aktif atau tidak ditemukan.");
+
+      const data = {
+        name: fields.name,
+        companyName: fields.companyName ?? null,
+        whatsapp: fields.whatsapp ?? null,
+        email: fields.email?.toLowerCase() ?? null,
+        instagram: fields.instagram ?? null,
+        address: fields.address ?? null,
+        city: fields.city ?? null,
+        notes: fields.notes ?? null,
+        customerTypeId: fields.customerTypeId,
+        leadSourceId: resolvedLeadSourceId ?? null,
+        version: { increment: 1 },
+      };
+      const updated = await tx.customer.updateMany({
+        where: { id: customerId, version, archivedAt: null },
+        data,
+      });
+      if (updated.count !== 1) throw new UserFacingError("Data prospek sudah berubah. Muat ulang halaman lalu coba lagi.");
+
+      const nextTitle = opportunity.title.startsWith("Prospek: ") ? `Prospek: ${fields.name}` : opportunity.title;
+      const leadSourceChanged = opportunity.leadSourceId !== data.leadSourceId;
+      const titleChanged = opportunity.title !== nextTitle;
+      const opportunityUpdated = await tx.opportunity.updateMany({
+        where: { id: opportunityId, customerId },
+        data: {
+          leadSourceId: data.leadSourceId,
+          ...(titleChanged ? { title: nextTitle } : {}),
+          version: { increment: 1 },
+        },
+      });
+      if (opportunityUpdated.count !== 1) throw new UserFacingError("Peluang prospek sudah berubah. Muat ulang halaman lalu coba lagi.");
+
+      const changedFields = [
+        current.name !== data.name ? "name" : null,
+        current.companyName !== data.companyName ? "companyName" : null,
+        current.whatsapp !== data.whatsapp ? "whatsapp" : null,
+        current.email !== data.email ? "email" : null,
+        current.instagram !== data.instagram ? "instagram" : null,
+        current.address !== data.address ? "address" : null,
+        current.city !== data.city ? "city" : null,
+        current.notes !== data.notes ? "notes" : null,
+        current.customerTypeId !== data.customerTypeId ? "customerTypeId" : null,
+        current.leadSourceId !== data.leadSourceId ? "leadSourceId" : null,
+      ].filter((field): field is string => field !== null);
+
+      if (changedFields.length) {
+        await audit(tx, actor, "Customer", customerId, "CUSTOMER_UPDATED", changedFields);
+      }
+      if (leadSourceChanged || titleChanged) {
+        await audit(tx, actor, "Opportunity", opportunityId, "OPPORTUNITY_UPDATED", [
+          ...(leadSourceChanged ? ["leadSourceId"] : []),
+          ...(titleChanged ? ["title"] : []),
+        ]);
+      }
+    }, DEAL_TRANSACTION_OPTIONS);
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/prospek");
+    revalidatePath(`/crm/peluang/${opportunityId}`);
+    revalidatePath("/customers");
+    revalidatePath(`/customers/${customerId}`);
+    revalidatePath("/dashboard");
+    return flashMessagePath(returnTo, "notice", "Data prospek diperbarui.");
   });
 }
 
