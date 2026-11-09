@@ -19,6 +19,9 @@ export function ProductDetailGallery({ images }: { images: CmsImage[] }) {
             fill
             sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 26vw"
             className="object-cover"
+            // Gallery files are already WebP near display size. Skipping the
+            // optimizer avoids a multi-second wait on the VPS for every photo.
+            unoptimized
           />
         </div>
       ))}

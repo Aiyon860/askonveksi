@@ -84,7 +84,7 @@ export function KatalogKainGrid({ fabric, comingSoon }: { fabric: CmsFabric; com
               {category.title}
             </h2>
           </LandingReveal>
-          <FabricImageGrid images={category.images} categoryTitle={category.title} priorityCount={categoryIndex === 0 ? 3 : 0} />
+          <FabricImageGrid images={category.images} categoryTitle={category.title} priorityCount={categoryIndex === 0 ? 1 : 0} />
         </section>
       ))}
     </div>
