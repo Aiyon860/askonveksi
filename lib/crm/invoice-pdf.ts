@@ -128,6 +128,7 @@ function layoutPointLines(
   runs: InvoicePointRun[],
   fonts: { regular: PDFFont; bold: PDFFont; italic: PDFFont; boldItalic: PDFFont },
   maxWidth: number,
+  size: number,
 ) {
   const lines: PointToken[][] = [];
   let line: PointToken[] = [];
@@ -142,7 +143,7 @@ function layoutPointLines(
     pendingSpace = false;
   };
   const append = (text: string, font: PDFFont, underline: boolean) => {
-    const tokenWidth = font.widthOfTextAtSize(text, MIN_FONT_SIZE);
+    const tokenWidth = font.widthOfTextAtSize(text, size);
     if (lineWidth > 0 && lineWidth + tokenWidth > maxWidth) newLine();
     line.push({ text, font, underline: underline && text.trim().length > 0 });
     lineWidth += tokenWidth;
@@ -227,43 +228,54 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     page.drawText(safeValue, { x: right - font.widthOfTextAtSize(safeValue, size), y, size, font, color });
   }
 
-  /** Judul seksi bergaris bawah gaya template ("Info Perusahaan", "Keterangan", ...). */
-  function sectionTitle(title: string, x: number, width: number, color = rgb(0.12, 0.12, 0.12)) {
-    page.drawText(safeText(title), { x, y, size: MIN_FONT_SIZE, font: bold, color });
-    y -= 6;
-    page.drawLine({ start: { x, y }, end: { x: x + width, y }, thickness: 1, color: RULE_LINE });
-    y -= 14;
+  /**
+   * Tinggi blok Keterangan / Syarat. Rumus ini harus sama dengan penurunan `y`
+   * di `drawPointList` supaya pilihan font benar-benar muat satu halaman.
+   */
+  function pointListDrop(points: PdfInvoiceSettingPoint[], width: number, size: number) {
+    if (!points.length) return 0;
+    const leading = size + 2;
+    const fonts = { regular, bold, italic, boldItalic };
+    let drop = 4 + leading + 4;
+    for (const point of points) {
+      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, size);
+      drop += lines.length * leading + 3;
+    }
+    return drop;
   }
 
   /**
    * Blok poin dari master "Pengaturan invoice". Tiap poin bisa memuat campuran
    * tebal/miring/garis bawah (fragmen HTML) dan baris baru di dalam poin.
+   * Tidak pindah halaman: font sudah dipilih supaya blok ini muat di halaman ringkasan.
    */
-  function drawPointList(title: string, points: PdfInvoiceSettingPoint[], x = margin, width = CONTENT_WIDTH) {
+  function drawPointList(title: string, points: PdfInvoiceSettingPoint[], x: number, width: number, size: number) {
     if (!points.length) return;
-    ensure(70);
-    sectionTitle(title, x, width);
+    const leading = size + 2;
     const fonts = { regular, bold, italic, boldItalic };
+    page.drawText(safeText(title), { x, y, size, font: bold, color: rgb(0.12, 0.12, 0.12) });
+    y -= 4;
+    page.drawLine({ start: { x, y }, end: { x: x + width, y }, thickness: 1, color: RULE_LINE });
+    y -= leading;
     points.forEach((point, index) => {
-      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22);
-      ensure(lines.length * 16 + 10);
-      page.drawText(`${index + 1}.`, { x, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.4, 0.4, 0.4) });
+      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, size);
+      page.drawText(`${index + 1}.`, { x, y, size, font: regular, color: rgb(0.4, 0.4, 0.4) });
       lines.forEach((tokens, lineIndex) => {
-        const lineY = y - lineIndex * 16;
+        const lineY = y - lineIndex * leading;
         let cursorX = x + 22;
         for (const token of tokens) {
           if (!token.text) continue;
-          page.drawText(token.text, { x: cursorX, y: lineY, size: MIN_FONT_SIZE, font: token.font, color: rgb(0.12, 0.12, 0.12) });
-          const tokenWidth = token.font.widthOfTextAtSize(token.text, MIN_FONT_SIZE);
+          page.drawText(token.text, { x: cursorX, y: lineY, size, font: token.font, color: rgb(0.12, 0.12, 0.12) });
+          const tokenWidth = token.font.widthOfTextAtSize(token.text, size);
           if (token.underline) {
             page.drawLine({ start: { x: cursorX, y: lineY - 2 }, end: { x: cursorX + tokenWidth, y: lineY - 2 }, thickness: 0.8, color: rgb(0.12, 0.12, 0.12) });
           }
           cursorX += tokenWidth;
         }
       });
-      y -= lines.length * 16 + 6;
+      y -= lines.length * leading + 3;
     });
-    y -= 10;
+    y -= 4;
   }
 
   const issueDate = invoice.issuedAt ?? invoice.createdAt;
@@ -449,16 +461,17 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     y = rowTop - rowHeight;
   });
 
-  // Halaman ringkasan gaya template: Keterangan kiri, angka kanan.
+  // Halaman ringkasan: angka kanan, Keterangan dan Syarat di kiri. Font kedua blok
+  // lebih kecil dari badan invoice (maks. 10pt) dan tidak pindah halaman.
   addPage();
   const summaryWidth = 218;
   const summaryX = A4.width - margin - summaryWidth;
   const listWidth = summaryX - margin - 20;
   const summaryTop = y;
+  const pageBottom = margin + 20;
   const settingPoints = assets.settingPoints ?? [];
-  drawPointList("Keterangan", settingPoints.filter((point) => point.section === "KETERANGAN"), margin, listWidth);
-  const listBottom = y;
-  y = summaryTop;
+  const keteranganPoints = settingPoints.filter((point) => point.section === "KETERANGAN");
+  const syaratPoints = settingPoints.filter((point) => point.section === "SYARAT_KETENTUAN");
   const summaryRows: Array<{ label: string; value: string; bold?: boolean }> = [
     { label: "Subtotal", value: templateMoney(invoice.subtotal.toString()) },
     { label: "Pajak", value: templateMoney(invoice.taxAmount.toString()) },
@@ -494,9 +507,26 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     page.drawText(signName, { x: signCenter - bold.widthOfTextAtSize(signName, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: bold });
     y -= 16;
   }
-  y = Math.min(y, listBottom) - 10;
+  const signatureBottom = y;
+  // shortcut: di bawah 5pt tidak diperkecil lagi; poin yang lebih panjang dari itu bisa melewati footer.
+  const pointSizes = [10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5];
+  let pointSize = pointSizes[pointSizes.length - 1];
+  for (const size of pointSizes) {
+    const keteranganDrop = pointListDrop(keteranganPoints, listWidth, size);
+    const syaratDrop = pointListDrop(syaratPoints, listWidth, size);
+    const used = syaratPoints.length
+      ? Math.max(keteranganDrop, summaryTop - signatureBottom) + 10 + syaratDrop
+      : keteranganDrop;
+    if (used <= summaryTop - pageBottom) {
+      pointSize = size;
+      break;
+    }
+  }
+  y = summaryTop;
+  drawPointList("Keterangan", keteranganPoints, margin, listWidth, pointSize);
+  y = Math.min(signatureBottom, y) - 10;
   // Syarat & Ketentuan selebar kolom kiri saja (separuh halaman) seperti template.
-  drawPointList("Syarat & Ketentuan", settingPoints.filter((point) => point.section === "SYARAT_KETENTUAN"), margin, listWidth);
+  drawPointList("Syarat & Ketentuan", syaratPoints, margin, listWidth, pointSize);
 
   document.setTitle(`Invoice ${invoice.invoiceNo}`);
   document.setAuthor(invoice.snapshotBusinessName ?? "AS Konveksi");
