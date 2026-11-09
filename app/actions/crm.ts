@@ -2930,6 +2930,15 @@ export async function issueInvoiceAction(formData: FormData) {
 
       const issuedAt = new Date();
       const business = await tx.businessProfile.findFirst({ where: {} });
+      // Urutan penting: unique index parsial hanya mengizinkan satu invoice ISSUED per
+      // peluang. Invoice lama harus di-SUPERSEDED lebih dulu, kalau tidak update ke
+      // ISSUED di bawahnya menabrak index dan gagal sebagai P2002.
+      if (previousIssued.length) {
+        await tx.invoice.updateMany({
+          where: { id: { in: previousIssued.map((item) => item.id) }, status: "ISSUED" },
+          data: { status: "SUPERSEDED", version: { increment: 1 } },
+        });
+      }
       const updated = await tx.invoice.updateMany({
         where: { id: parsed.data.invoiceId, status: "DRAFT", version: parsed.data.version },
         data: {
@@ -2953,12 +2962,6 @@ export async function issueInvoiceAction(formData: FormData) {
         },
       });
       if (updated.count !== 1) throw new UserFacingError("Invoice sudah berubah. Muat ulang halaman.");
-      if (previousIssued.length) {
-        await tx.invoice.updateMany({
-          where: { id: { in: previousIssued.map((item) => item.id) }, status: "ISSUED" },
-          data: { status: "SUPERSEDED", version: { increment: 1 } },
-        });
-      }
       const auditEvent = await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_ISSUED", ["status", "issuedAt", "snapshot"], undefined, [
         ...statusDiff(INVOICE_STATUS_LABEL.DRAFT, INVOICE_STATUS_LABEL.ISSUED),
         { field: "issuedAt", label: auditFieldLabel("issuedAt"), from: null, to: formatDate(issuedAt, true) },

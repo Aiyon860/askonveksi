@@ -628,11 +628,11 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
           <col className="w-[12%]" />
           <col className="w-[12%]" />
         </colgroup>
-        <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-center">Qty</TableHead><TableHead>Harga</TableHead><TableHead>Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-center">Qty</TableHead><TableHead>Harga</TableHead><TableHead className="text-left">Diskon</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
         <TableBody>
           {invoice.items.map((item) => {
             const legacyAddonTotal = item.addons.reduce((sum, addon) => sum + Number(addon.unitAmount.toString()) * addon.qty, 0);
-            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-center font-mono")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-left font-mono")}>{formatCurrency(item.unitPrice)}</TableCell><TableCell className={numericCellClass(item.discountAmount, "text-left font-mono")}>{formatCurrency(item.discountAmount)}</TableCell><TableCell className={numericCellClass(Number(item.subtotal.toString()) - legacyAddonTotal, "text-right font-mono")}>{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
+            return <TableRow key={item.id}><TableCell className="whitespace-normal">{item.productName ?? "Produk"}</TableCell><TableCell className="whitespace-normal">{item.description || "-"}</TableCell><TableCell className={numericCellClass(item.quantity, "text-center font-mono")}>{item.quantity}</TableCell><TableCell className={numericCellClass(item.unitPrice, "text-left font-mono")}>{formatCurrency(item.unitPrice)}</TableCell><TableCell className="text-left font-mono">{formatCurrency(item.discountAmount)}</TableCell><TableCell className={numericCellClass(Number(item.subtotal.toString()) - legacyAddonTotal, "text-right font-mono")}>{formatCurrency(Number(item.subtotal.toString()) - legacyAddonTotal)}</TableCell></TableRow>;
           })}
           {addons.length ? <>
             <TableRow className="bg-info-surface hover:bg-info-surface">
@@ -643,7 +643,7 @@ function InvoiceSnapshot({ invoice }: { invoice: OpportunityDetail["invoices"][n
                 </div>
               </TableCell>
             </TableRow>
-            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className={numericCellClass(addon.qty, "text-center font-mono")}>{addon.qty}</TableCell><TableCell className={numericCellClass(addon.unitAmount, "text-left font-mono")}>{formatCurrency(addon.unitAmount)}</TableCell><TableCell className={numericCellClass(null, "text-left font-mono")}>-</TableCell><TableCell className={numericCellClass(Number(addon.unitAmount.toString()) * addon.qty, "text-right font-mono")}>{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
+            {addons.map((addon, index) => <TableRow key={`${addon.label}-${index}`} className="bg-info-surface/40 hover:bg-info-surface/60"><TableCell className="whitespace-normal">{addon.label}</TableCell><TableCell className="whitespace-normal">{addon.description?.trim() || "-"}</TableCell><TableCell className={numericCellClass(addon.qty, "text-center font-mono")}>{addon.qty}</TableCell><TableCell className={numericCellClass(addon.unitAmount, "text-left font-mono")}>{formatCurrency(addon.unitAmount)}</TableCell><TableCell className="text-left font-mono">-</TableCell><TableCell className={numericCellClass(Number(addon.unitAmount.toString()) * addon.qty, "text-right font-mono")}>{formatCurrency(Number(addon.unitAmount.toString()) * addon.qty)}</TableCell></TableRow>)}
           </> : null}
         </TableBody>
       </Table>
