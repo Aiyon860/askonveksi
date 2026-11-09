@@ -81,7 +81,8 @@ export const archiveCustomerSchema = z.object({
 });
 
 export const masterDataFieldsSchema = z.object({
-  name: z.string().trim().min(2, "Nama minimal 2 karakter.").max(80),
+  // Ukuran pakaian sah hanya satu karakter (S, M, L, XL), jadi minimalnya 1 karakter.
+  name: z.string().trim().min(1, "Nama minimal 1 karakter.").max(80),
   description: optionalText(500),
   position: z.coerce.number().int().min(0).max(10_000),
 });

@@ -53,6 +53,11 @@ const HEADER_LOGO_CELL_WIDTH = 100;
 const HEADER_CELL_PADDING = 8;
 const HEADER_ROW_MIN_HEIGHT = 34;
 const HEADER_LINE_HEIGHT = 15;
+/**
+ * Label gabungan yang panjang (mis. "Perusahaan/Instansi/Komunitas") dicetak lebih kecil
+ * supaya tidak memakan tempat; nilai datanya tetap memakai ukuran teks default.
+ */
+const HEADER_COMPACT_LABEL_SIZE = 9;
 const TABLE_ROW_HEIGHT = 26;
 const HEADING_BAR_HEIGHT = 26;
 /** Baris roster per halaman A4; sisanya lanjut ke halaman berikutnya. */
@@ -98,9 +103,11 @@ type HeaderCell = {
   value?: string;
   extraLines?: Array<{ label: string; value: string }>;
   highlight?: boolean;
+  /** Label dicetak lebih kecil (nilai tetap ukuran default), dipakai untuk label gabungan panjang. */
+  compactLabel?: boolean;
 };
 
-type HeaderLine = Array<{ text: string; bold: boolean }>;
+type HeaderLine = Array<{ text: string; bold: boolean; size?: number }>;
 
 export async function createPurchaseOrderPdf(
   data: PurchaseOrderPdfData,
@@ -187,6 +194,15 @@ export async function createPurchaseOrderPdf(
   /** Isi satu sel tabel identitas menjadi baris-baris siap gambar (dipotong sesuai lebar kolom). */
   function cellLines(cell: HeaderCell, maxWidth: number): HeaderLine[] {
     if (!cell.extraLines?.length) {
+      if (cell.compactLabel) {
+        // Label panjang dicetak kecil, nilai tetap 12 pt supaya nama perusahaan/instansi tetap terbaca.
+        const prefix = `${safe(cell.label)} : `;
+        const available = Math.max(20, maxWidth - regular.widthOfTextAtSize(prefix, HEADER_COMPACT_LABEL_SIZE));
+        return [[
+          { text: prefix, bold: false, size: HEADER_COMPACT_LABEL_SIZE },
+          { text: clipPdfText(safe(cell.value ?? "-"), regular, MIN_FONT_SIZE, available), bold: false },
+        ]];
+      }
       return wrapPdfText(safe(`${cell.label} : ${cell.value ?? "-"}`), cell.highlight ? bold : regular, MIN_FONT_SIZE, maxWidth)
         .slice(0, 2)
         .map((line) => [{ text: line, bold: false }]);
@@ -241,7 +257,8 @@ export async function createPurchaseOrderPdf(
         ? { label: "Deadline", value: formatDate(penjahitItem?.penjahitDeadline ?? null), highlight: true }
         : { label: "Deadline", value: formatDate(data.deadline), highlight: true };
 
-    const rows: Array<[HeaderCell, HeaderCell]> = [
+    // Satu baris boleh berisi 1 sel (kolom data digabung) atau 2 sel.
+    const rows: HeaderCell[][] = [
       [
         { label: "Nama", value: data.opportunity.customer.name },
         { label: "Bahan", value: data.material },
@@ -261,12 +278,11 @@ export async function createPurchaseOrderPdf(
         { label: "Tinta / Bordir", value: decorationMethodsLabel(decoration) || "-" },
       ],
     ];
-    // Data pelengkap hanya muncul kalau terisi supaya kop tetap ringkas.
-    if (data.opportunity.customer.companyName || data.instansi) {
-      rows.push([
-        { label: "Perusahaan", value: data.opportunity.customer.companyName ?? "-" },
-        { label: "Instansi", value: data.instansi ?? "-" },
-      ]);
+    // Revisi: perusahaan & instansi dilebur jadi satu sel selebar dua kolom dengan label kecil.
+    // Nilainya WAJIB dari data perusahaan/instansi — bukan nama pemesan (customer.name).
+    const companyLabel = data.opportunity.customer.companyName || data.instansi;
+    if (companyLabel) {
+      rows.push([{ label: "Perusahaan/Instansi/Komunitas", value: companyLabel, compactLabel: true }]);
     }
     if (garmentType || category !== "-") {
       rows.push([
@@ -275,9 +291,10 @@ export async function createPurchaseOrderPdf(
       ]);
     }
 
-    const dataColumnWidth = (CONTENT_WIDTH - HEADER_LOGO_CELL_WIDTH) / 2;
-    const cellTextWidth = dataColumnWidth - HEADER_CELL_PADDING * 2;
-    const cellLinesByRow = rows.map((row) => row.map((cell) => cellLines(cell, cellTextWidth)));
+    const cellLinesByRow = rows.map((row) => {
+      const cellTextWidth = (CONTENT_WIDTH - HEADER_LOGO_CELL_WIDTH) / row.length - HEADER_CELL_PADDING * 2;
+      return row.map((cell) => cellLines(cell, cellTextWidth));
+    });
     // Tinggi tiap baris mengikuti isinya (minimal 34 pt) supaya kop tetap ringkas.
     const rowHeights = cellLinesByRow.map((cells) => Math.max(HEADER_ROW_MIN_HEIGHT, ...cells.map((lines) => lines.length * HEADER_LINE_HEIGHT + 12)));
     const tableHeight = rowHeights.reduce((sum, height) => sum + height, 0);
@@ -307,9 +324,11 @@ export async function createPurchaseOrderPdf(
       const rowTop = rowTops[rowIndex];
       const rowHeight = rowHeights[rowIndex];
       const rowBottom = rowTop - rowHeight;
+      // Sel digabung bila baris hanya punya satu sel: lebarnya = seluruh kolom data.
+      const cellWidth = (CONTENT_WIDTH - HEADER_LOGO_CELL_WIDTH) / row.length;
       row.forEach((cell, columnIndex) => {
-        const cellX = margin + HEADER_LOGO_CELL_WIDTH + columnIndex * dataColumnWidth;
-        page.drawRectangle({ x: cellX, y: rowBottom, width: dataColumnWidth, height: rowHeight, borderWidth: 0.8, borderColor: BORDER });
+        const cellX = margin + HEADER_LOGO_CELL_WIDTH + columnIndex * cellWidth;
+        page.drawRectangle({ x: cellX, y: rowBottom, width: cellWidth, height: rowHeight, borderWidth: 0.8, borderColor: BORDER });
         const lines = cellLinesByRow[rowIndex][columnIndex];
         const offset = Math.max(4, (rowHeight - lines.length * HEADER_LINE_HEIGHT) / 2);
         lines.forEach((runs, lineIndex) => {
@@ -317,8 +336,9 @@ export async function createPurchaseOrderPdf(
           const lineY = rowTop - offset - 12 - lineIndex * HEADER_LINE_HEIGHT;
           for (const run of runs) {
             const font = cell.highlight || run.bold ? bold : regular;
-            page.drawText(run.text, { x: cursorX, y: lineY, size: MIN_FONT_SIZE, font, color: cell.highlight ? DEADLINE_RED : rgb(0.12, 0.12, 0.12) });
-            cursorX += font.widthOfTextAtSize(run.text, MIN_FONT_SIZE);
+            const size = run.size ?? MIN_FONT_SIZE;
+            page.drawText(run.text, { x: cursorX, y: lineY, size, font, color: cell.highlight ? DEADLINE_RED : rgb(0.12, 0.12, 0.12) });
+            cursorX += font.widthOfTextAtSize(run.text, size);
           }
         });
       });
@@ -624,8 +644,12 @@ export async function createPurchaseOrderPdf(
       const rows = [...aggregated.values()];
       drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null, measureModelTable(rows));
       drawModelTable(rows, data.designNotes);
-      page.drawText(`Sampel ukuran: ${safe(data.sampleSize ?? "-")}`, { x: margin, y: y - 4, size: MIN_FONT_SIZE, font: bold });
-      y -= 22;
+      // Revisi: ukuran sampel hanya dicetak di PDF penjahit — dokumen customer tidak memuatnya.
+      // Sampel selalu 1 pcs, jadi satuannya ditulis eksplisit: "Sample ukuran M 1 PCS".
+      if (variant === "penjahit" && data.sampleSize) {
+        page.drawText(`Sample ukuran ${safe(data.sampleSize)} 1 PCS`, { x: margin, y: y - 4, size: MIN_FONT_SIZE, font: bold });
+        y -= 22;
+      }
     }
     // Revisi: halaman Catatan penuh dihapus. Catatan desain non-aksesori sudah tampil
     // di baris NOTE size chart, sedangkan aksesori tampil di bawah jumlah produk.

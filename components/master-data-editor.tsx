@@ -128,7 +128,7 @@ function SortableMasterDataRow({
           <Input
             value={item.name}
             required
-            minLength={2}
+            minLength={1}
             maxLength={80}
             aria-label={`${nameLabel} ${singularLabel.toLowerCase()} urutan ${number}`}
             onChange={(event) => onChange(item.id, "name", event.target.value)}

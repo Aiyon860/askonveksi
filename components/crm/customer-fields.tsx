@@ -60,7 +60,7 @@ export function CustomerFields({
           <Input id={`${idPrefix}-name`} name="name" required minLength={2} maxLength={160} defaultValue={values?.name ?? ""} />
         </Field>
         <Field>
-          <FieldLabel htmlFor={`${idPrefix}-companyName`}>Perusahaan/komunitas</FieldLabel>
+          <FieldLabel htmlFor={`${idPrefix}-companyName`}>Perusahaan/Instansi/Komunitas</FieldLabel>
           <Input id={`${idPrefix}-companyName`} name="companyName" maxLength={160} defaultValue={values?.companyName ?? ""} />
         </Field>
         <Field>

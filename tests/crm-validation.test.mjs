@@ -180,11 +180,14 @@ test("edit prospek memakai aturan tambah prospek dan identitas peluang", () => {
 });
 
 test("halaman Prospek menyediakan aksi edit untuk operator CRM", async () => {
-  const [pageSource, formSource, actionSource] = await Promise.all([
+  const [pageSource, formSource, actionSource, customerFieldsSource] = await Promise.all([
     readFile(new URL("../app/(app)/crm/prospek/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/crm/edit-prospect-form.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/customer-fields.tsx", import.meta.url), "utf8"),
   ]);
+  // Revisi: satu label untuk perusahaan, instansi, maupun komunitas.
+  assert.match(customerFieldsSource, />Perusahaan\/Instansi\/Komunitas<\/FieldLabel>/);
   assert.match(pageSource, /<TableHead className="w-32">Aksi<\/TableHead>/);
   assert.match(pageSource, /<EditProspectForm/);
   assert.match(formSource, /action=\{updateProspectAction\}/);
@@ -196,6 +199,9 @@ test("halaman Prospek menyediakan aksi edit untuk operator CRM", async () => {
 test("master data membatasi nama, deskripsi, dan urutan", () => {
   assert.equal(masterDataFieldsSchema.safeParse({ name: "Perusahaan", description: "Badan usaha", position: "10" }).success, true);
   assert.equal(masterDataFieldsSchema.safeParse({ name: " ", description: "", position: "-1" }).success, false);
+  // Revisi: ukuran pakaian boleh satu karakter (S, M, L) saat tambah maupun edit.
+  assert.equal(masterDataFieldsSchema.safeParse({ name: "M", description: "", position: "0" }).success, true);
+  assert.equal(sortableMasterDataFieldsSchema.safeParse({ name: "S", description: "" }).success, true);
 });
 
 test("jenis customer dibuat tanpa urutan manual dan edit massal membatasi payload", () => {
@@ -1491,6 +1497,14 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /HEADER_LOGO_CELL_WIDTH/);
   assert.match(pdfSource, /borderColor: BORDER/);
   assert.match(pdfSource, /x: \(A4\.width - bold\.widthOfTextAtSize\(polaText, 13\)\) \/ 2/);
+  // Revisi: "Sample ukuran" hanya dicetak di PDF penjahit, dengan satuan 1 PCS.
+  assert.match(pdfSource, /if \(variant === "penjahit" && data\.sampleSize\)/);
+  assert.match(pdfSource, /`Sample ukuran \$\{safe\(data\.sampleSize\)\} 1 PCS`/);
+  assert.doesNotMatch(pdfSource, /Sampel ukuran/);
+  // Revisi: perusahaan & instansi di-merge satu sel, label kecil, nilai dari data perusahaan.
+  assert.match(pdfSource, /const companyLabel = data\.opportunity\.customer\.companyName \|\| data\.instansi;/);
+  assert.match(pdfSource, /label: "Perusahaan\/Instansi\/Komunitas", value: companyLabel, compactLabel: true/);
+  assert.match(pdfSource, /HEADER_COMPACT_LABEL_SIZE/);
   // Size chart menahan ruang di halaman gambar desainnya; desain penjahit dikecualikan (halaman penuh sendiri).
   assert.match(pdfSource, /drawAssets\(embeddedAssets\.filter\(\(asset\) => asset\.itemId === item\.id && asset\.kind !== "PENJAHIT_DESIGN"\), item\.name, measureModelTable\(rows\)\)/);
   assert.match(pdfSource, /drawModelTable/);
