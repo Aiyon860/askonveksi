@@ -2498,8 +2498,24 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             items: {
               orderBy: { position: "asc" },
               select: {
+                id: true,
                 penjahitDeadline: true,
                 designs: { orderBy: { position: "asc" }, select: { position: true, path: true, originalName: true, contentType: true, sizeBytes: true } },
+              },
+            },
+            // Desain customer ikut disalin ke PO revisi: gambar lama tetap dipakai bila
+            // user hanya memperbaiki teks PO, dan mengganti gambar sifatnya opsional.
+            designTask: {
+              select: {
+                revisions: {
+                  orderBy: [{ revision: "desc" }, { createdAt: "desc" }],
+                  select: {
+                    itemId: true,
+                    revision: true,
+                    notes: true,
+                    attachments: { orderBy: { createdAt: "asc" }, select: { path: true, originalName: true, contentType: true, sizeBytes: true } },
+                  },
+                },
               },
             },
             opportunity: {
@@ -2535,6 +2551,25 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           data: { status: "SUPERSEDED", version: { increment: 1 } },
         });
         if (locked.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
+        // Versi desain terakhir tiap produk PO sumber ditempelkan ke item baru pada posisi
+        // yang sama. Path berkas dipakai bersama, jadi tidak ada gambar yang dihapus/disalin.
+        const latestSourceDesign = new Map(
+          (source.designTask?.revisions ?? [])
+            .filter((revision, index, all) => all.findIndex((entry) => entry.itemId === revision.itemId) === index)
+            .map((revision) => [revision.itemId, revision] as const),
+        );
+        const carriedDesignRevisions = preparedItems.flatMap((item, position) => {
+          const sourceItemId = source.items[position]?.id;
+          const design = sourceItemId ? latestSourceDesign.get(sourceItemId) : undefined;
+          if (!design || !design.attachments.length) return [];
+          return [{
+            itemId: item.itemId,
+            revision: 1,
+            notes: design.notes,
+            createdById: actor.id,
+            attachments: { create: design.attachments.map(({ path, originalName, contentType, sizeBytes }) => ({ path, originalName, contentType, sizeBytes })) },
+          }];
+        });
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
@@ -2558,7 +2593,12 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             notes: parsed.data.notes,
             deadline: optionalDate(parsed.data.deadline),
             depositRequired: parsed.data.depositRequired,
-            designTask: { create: { deadline: optionalDate(parsed.data.designDeadline)! } },
+            designTask: {
+              create: {
+                deadline: optionalDate(parsed.data.designDeadline)!,
+                ...(carriedDesignRevisions.length ? { revisions: { create: carriedDesignRevisions } } : {}),
+              },
+            },
             createdById: actor.id,
             items: {
               create: preparedItems.map((item, position) => ({

@@ -159,7 +159,9 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
       ? `Batas ${DESIGN_REVISION_LIMIT} versi desain tercapai. Buat revisi PO untuk membuka versi baru.`
       : designUploadedCount > 0 && designUploadedCount < designItems.length
         ? `Desain terunggah untuk ${designUploadedCount}/${designItems.length} produk. Lengkapi sisanya bila sudah siap.`
-        : "Unggah desain bila sudah tersedia.";
+        : designUploadedCount === designItems.length && designItems.length > 0
+          ? "Desain tersimpan dan dipakai ulang. Gunakan Ubah Design hanya bila ingin mengganti gambar."
+          : "Unggah desain bila sudah tersedia.";
   const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && designItems.length > 0 && designUploadedCount === designItems.length);
   const depositForDraft = poDraft?.deposit
     ? {

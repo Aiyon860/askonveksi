@@ -78,7 +78,7 @@ test("Detail Desain dan PDF memakai gambar desain yang disetujui", () => {
   assert.ok(pdf.indexOf("POLA :") < pdf.indexOf("function drawAssets"));
   // Tiap lembar produk: kop dulu, lalu gambar desain produknya, baru tabel ukuran.
   assert.ok(pdf.indexOf("drawSheetHeader(item, sheetIndex > 0)") < pdf.indexOf("drawProductSheet(item);"));
-  assert.ok(pdf.indexOf("drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id), item.name, measureModelTable(rows))") < pdf.indexOf("drawModelTable(rows, item.designNotes)"));
+  assert.ok(pdf.indexOf("drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== \"PENJAHIT_DESIGN\"), item.name, measureModelTable(rows))") < pdf.indexOf("drawModelTable(rows, noteFor(item))"));
   // Gambar desain terikat ke produknya lewat itemId sehingga jatuh di lembar produk yang tepat.
   assert.match(pdfRoute, /itemId,\s*caption: itemNames\.get\(itemId\)/);
   assert.match(pdf, /itemId\?: string \| null/);

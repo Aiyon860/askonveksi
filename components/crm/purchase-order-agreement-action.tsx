@@ -69,6 +69,8 @@ export function PurchaseOrderAgreementAction({
   const canSendPdf = designUploaded;
   const everyItemAtLimit = designItemCount > 0 && designItems.every((item) => item.revisionCount >= DESIGN_REVISION_LIMIT);
   const canCreateRevision = canUploadDesign && designTaskId !== null && !everyItemAtLimit && depositSettled;
+  // Desain yang sudah ada tidak perlu diunggah ulang; tombol berubah menjadi "Ubah Design".
+  const designActionLabel = designUploaded ? "Ubah Design" : "Upload Desain";
   const uploadBlockedReason = !canUploadDesign
     ? "Hanya Admin Customer atau Admin PO yang dapat mengunggah."
     : !depositSettled
@@ -85,18 +87,20 @@ export function PurchaseOrderAgreementAction({
       ) : null}
       {designTaskId ? (
         <>
-          <Button size="sm" className="w-auto" disabled={!canCreateRevision || undefined} onClick={() => setUploadOpen(true)} title={uploadBlockedReason ?? "Unggah desain"}>
+          <Button size="sm" className="w-auto" disabled={!canCreateRevision || undefined} onClick={() => setUploadOpen(true)} title={uploadBlockedReason ?? (designUploaded ? "Ubah desain" : "Unggah desain")}>
             <FileUp data-icon="inline-start" aria-hidden="true" />
-            Upload Desain
+            {designActionLabel}
           </Button>
           <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
             <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Unggah desain</DialogTitle>
+                <DialogTitle>{designUploaded ? "Ubah desain" : "Unggah desain"}</DialogTitle>
                 <DialogDescription>
-                  {designItemCount > 1
-                    ? "Isi desain untuk produk yang sudah siap. File baru setiap produk disimpan sebagai versi terpisah dan langsung menjadi acuan produksi."
-                    : "File baru selalu disimpan sebagai versi terpisah dan langsung menjadi acuan produksi."}
+                  {designUploaded
+                    ? "Desain lama tetap dipakai bila tidak ada file baru. Unggah file hanya untuk produk yang ingin diganti; versi baru disimpan terpisah."
+                    : designItemCount > 1
+                      ? "Isi desain untuk produk yang sudah siap. File baru setiap produk disimpan sebagai versi terpisah dan langsung menjadi acuan produksi."
+                      : "File baru selalu disimpan sebagai versi terpisah dan langsung menjadi acuan produksi."}
                 </DialogDescription>
               </DialogHeader>
               <form action={uploadDesignRevisionAction} onSubmit={() => setUploadOpen(false)}>
