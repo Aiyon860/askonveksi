@@ -60,21 +60,55 @@ export async function POST(request: Request) {
   );
 }
 
-export async function GET() {
-  return aiJsonResponse(
-    {
-      error: {
-        code: "method_not_allowed",
-        message: "Endpoint MCP hanya menerima POST JSON-RPC (Streamable HTTP, tanpa sesi).",
+/**
+ * Cursor (dan klien Streamable HTTP lain) membuka GET SSE setelah initialize.
+ * Server kita stateless / tanpa server-push, tapi 405 di sini membuat
+ * "MCP server failed to list its tools" / Status: error, 0 tools.
+ */
+export async function GET(request: Request) {
+  const accept = request.headers.get("accept") ?? "";
+  if (!accept.includes("text/event-stream")) {
+    return aiJsonResponse(
+      {
+        error: {
+          code: "method_not_allowed",
+          message: "GET /api/mcp hanya untuk SSE (Accept: text/event-stream). Pakai POST untuk JSON-RPC.",
+        },
       },
+      405,
+    );
+  }
+
+  return withAiAccess(
+    request,
+    "GET /api/mcp",
+    async () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          // Komentar SSE: stream hidup singkat; tidak ada notifikasi server-push.
+          controller.enqueue(encoder.encode(": ok\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
     },
-    405,
+    { params: "mcp:sse" },
   );
 }
 
-export async function DELETE() {
-  return aiJsonResponse(
-    { error: { code: "method_not_allowed", message: "Endpoint MCP stateless tidak menyimpan sesi." } },
-    405,
+export async function DELETE(request: Request) {
+  return withAiAccess(
+    request,
+    "DELETE /api/mcp",
+    async () => new Response(null, { status: 204 }),
+    { params: "mcp:delete" },
   );
 }
