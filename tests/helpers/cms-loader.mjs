@@ -14,8 +14,13 @@ async function resolveFile(absolute) {
 }
 
 export async function resolve(specifier, context, nextResolve) {
-  if (specifier === "next/cache" || specifier === "server-only") {
-    const stub = specifier === "next/cache" ? "next-cache-stub.mjs" : "server-only-stub.mjs";
+  if (specifier === "next/cache" || specifier === "server-only" || specifier === "next/headers") {
+    const stub =
+      specifier === "next/cache"
+        ? "next-cache-stub.mjs"
+        : specifier === "next/headers"
+          ? "next-headers-stub.mjs"
+          : "server-only-stub.mjs";
     return { url: pathToFileURL(resolvePath(root, "tests/helpers", stub)).href, shortCircuit: true };
   }
 

@@ -348,6 +348,7 @@ model AppUser {
   attendances               Attendance[]              @relation("AttendanceUser")
   recordedAttendances       Attendance[]              @relation("AttendanceRecordedBy")
   correctedAttendances      Attendance[]              @relation("AttendanceCorrectedBy")
+  aiApiTokens               AiApiToken[]              @relation("AiApiTokenCreatedBy")
   createdAt                 DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -468,8 +469,8 @@ model ProductCategory {
   createdAt          DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
 
-  @@index([isActive, position, name])
   @@unique([brand, name])
+  @@index([isActive, position, name])
 }
 
 model BusinessProfile {
@@ -875,7 +876,9 @@ model PurchaseOrderRosterEntry {
   itemId          String        @default("")
   memberId        String        @db.VarChar(80)
   name            String        @db.VarChar(160)
-  /** Jabatan pemakai (opsional); kosong berarti tidak dicetak di PO. */
+  /**
+   * Jabatan pemakai (opsional); kosong berarti tidak dicetak di PO.
+   */
   jabatan         String?       @db.VarChar(80)
   sizeId          String?
   size            String        @db.VarChar(40)
@@ -1423,8 +1426,8 @@ model WhatsAppTemplate {
   createdAt   DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime                @updatedAt @db.Timestamptz(3)
 
-  @@index([triggerType, isActive])
   @@unique([brand, name])
+  @@index([triggerType, isActive])
 }
 
 model WhatsAppConversation {
@@ -1610,4 +1613,38 @@ model InvoiceSettingPoint {
 
   @@index([section, position])
   @@index([brand, section, position])
+}
+
+/// Token akses baca-saja untuk asisten AI (ChatGPT/Claude/Gemini) lewat REST & MCP.
+/// Token asli tidak pernah disimpan: hanya hash SHA-256 + 8 karakter pertama sebagai petunjuk.
+model AiApiToken {
+  id          String       @id @default(cuid())
+  label       String       @db.VarChar(80)
+  tokenHash   String       @unique @db.VarChar(64)
+  tokenHint   String       @db.VarChar(12)
+  scopes      String[]     @default(["read:analytics"])
+  expiresAt   DateTime?    @db.Timestamptz(3)
+  revokedAt   DateTime?    @db.Timestamptz(3)
+  lastUsedAt  DateTime?    @db.Timestamptz(3)
+  createdById String?
+  createdBy   AppUser?     @relation("AiApiTokenCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  events      AiApiEvent[]
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([revokedAt])
+}
+
+/// Jejak audit setiap panggilan API AI: endpoint, parameter (tanpa data pribadi), status, durasi.
+model AiApiEvent {
+  id         String      @id @default(cuid())
+  tokenId    String?
+  token      AiApiToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  endpoint   String      @db.VarChar(120)
+  params     String?     @db.VarChar(500)
+  statusCode Int
+  durationMs Int
+  createdAt  DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([tokenId, createdAt])
 }
