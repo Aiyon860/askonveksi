@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { FileDown, Plus, Trash2 } from "lucide-react";
 
 import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction } from "@/app/actions/crm";
@@ -19,6 +20,7 @@ import { numericCellClass } from "@/lib/table-alignment";
 import { Textarea } from "@/components/ui/textarea";
 import { DECORATION_METHOD_LABEL, DECORATION_METHODS, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
 import { CUSTOM_PRODUCTION_DEADLINE_VALUE, isProductionDeadlinePreset, productionDeadlineOptions } from "@/lib/crm/production-deadline";
+import { findGarmentSizeByName } from "@/lib/crm/size-aliases";
 import { cn } from "@/lib/utils";
 
 type SizeOption = { id: string; name: string };
@@ -127,6 +129,7 @@ export function PurchaseOrderForm({
   submitLabel,
   purchaseOrderNoPreview,
   defaultInstansi,
+  canManageSizes = false,
 }: {
   opportunityId: string;
   sizeOptions: SizeOption[];
@@ -136,6 +139,8 @@ export function PurchaseOrderForm({
   submitLabel?: string;
   purchaseOrderNoPreview?: string;
   defaultInstansi?: string;
+  /** Role yang boleh membuka Data Master ukuran (Admin PO/Owner/Keuangan/Developer). */
+  canManageSizes?: boolean;
 }) {
   const values = initialValues;
   const hasCategoryOptions = Boolean(categoryOptions?.length);
@@ -310,7 +315,7 @@ export function PurchaseOrderForm({
       const next = emptyMatrix(sizeOptions);
       const unknown: string[] = [];
       for (const row of result.counts ?? []) {
-        const id = byName.get(row.size.toLocaleLowerCase("id-ID"));
+        const id = findGarmentSizeByName(byName, row.size);
         if (!id) { unknown.push(row.size); continue; }
         next[`${row.sleeveLength}:${id}`] = (next[`${row.sleeveLength}:${id}`] ?? 0) + row.quantity;
       }
@@ -379,7 +384,7 @@ export function PurchaseOrderForm({
             ) : (
               <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
             )}
-            <Field><FieldLabel htmlFor={`po-instansi-${fieldKey}`} required>Instansi</FieldLabel><Input id={`po-instansi-${fieldKey}`} name="instansi" required minLength={2} maxLength={160} value={header.instansi} onChange={(event) => setHeader((prev) => ({ ...prev, instansi: event.target.value }))} placeholder="Contoh: PT Maju / Dinas Pendidikan" /></Field>
+            <Field><FieldLabel htmlFor={`po-instansi-${fieldKey}`} required>Perusahaan/Instansi</FieldLabel><Input id={`po-instansi-${fieldKey}`} name="instansi" required minLength={2} maxLength={160} value={header.instansi} onChange={(event) => setHeader((prev) => ({ ...prev, instansi: event.target.value }))} placeholder="Contoh: PT Maju / Dinas Pendidikan" /></Field>
             <Field><FieldLabel htmlFor={`po-material-${fieldKey}`} required>Bahan</FieldLabel><Input id={`po-material-${fieldKey}`} name="material" required minLength={2} maxLength={120} value={header.material} onChange={(event) => setHeader((prev) => ({ ...prev, material: event.target.value }))} /></Field>
             <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" value={selectedOrderDate} onChange={(event) => { const nextOrderDate = event.currentTarget.value; setSelectedOrderDate(nextOrderDate); setDeadline(""); setDeadlineMode("PRESET"); setDesignDeadline((current) => current && current < nextOrderDate ? "" : current); setHasChangedOrderDate(true); }} /></Field>
             <Field>
@@ -534,7 +539,18 @@ export function PurchaseOrderForm({
                 <>
                   <FieldSet>
                     <FieldLegend>Matriks ukuran dan jumlah</FieldLegend>
-                    <FieldDescription>Isi nol untuk kombinasi yang tidak dipesan. Total roster, jika ada, harus sama per ukuran.</FieldDescription>
+                    <FieldDescription>
+                      Isi nol untuk kombinasi yang tidak dipesan. Total roster, jika ada, harus sama per ukuran.
+                      {canManageSizes ? (
+                        <>
+                          {" "}Ukuran belum ada?{" "}
+                          <Link href="/master-data/garment-sizes" target="_blank" rel="noreferrer" className="font-medium text-primary underline underline-offset-4">
+                            Tambah ukuran
+                          </Link>{" "}
+                          di Data Master, lalu muat ulang halaman ini.
+                        </>
+                      ) : null}
+                    </FieldDescription>
                     <Table containerClassName="max-w-full rounded-lg border">
                       <TableHeader><TableRow><TableHead>Model</TableHead>{sizeOptions.map((size) => <TableHead key={size.id} className="min-w-[4.5rem] text-center">{size.name}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
                       <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeveLength) => (

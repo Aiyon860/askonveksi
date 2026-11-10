@@ -20,6 +20,7 @@ import { groupPurchaseOrderInvoiceItems } from "@/lib/crm/invoice-grouping";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { productCostSeeds } from "@/lib/finance/project-products";
 import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
+import { findGarmentSizeByName, normalizeGarmentSizeName } from "@/lib/crm/size-aliases";
 import {
   rearmCustomerRemindersAfterLost,
   restoreCustomerRemindersAfterCancellation,
@@ -663,7 +664,11 @@ async function preparePurchaseOrderRows(
   for (const item of items) {
     item.sizes.forEach((size) => requestedIds.add(size.sizeId));
     item.roster.forEach((row) => requestedIds.add(row.sizeId));
-    item.fileRoster.forEach((row) => importedNames.add(row.size));
+    item.fileRoster.forEach((row) => {
+      // Ambil master untuk nama asli maupun alias bakunya (mis. XXL → 2XL).
+      importedNames.add(row.size);
+      importedNames.add(normalizeGarmentSizeName(row.size));
+    });
   }
   const sizeMasters = await db.garmentSize.findMany({
     where: {
@@ -694,7 +699,7 @@ async function preparePurchaseOrderRows(
       return { itemId: item.itemId, memberId: row.memberId, name: row.name, jabatan: row.jabatan?.trim() || null, sizeId: row.sizeId, size: master.name, sleeveLength: row.sleeveLength };
     });
     const fileRoster = item.fileRoster.map((row, index) => {
-      const master = byName.get(row.size.toLocaleLowerCase("id-ID"));
+      const master = findGarmentSizeByName(byName, row.size);
       if (!master) throw new UserFacingError(`Ukuran ${row.size} pada baris roster ${index + 2} (${item.name}) belum tersedia di Data Master.`);
       return { itemId: item.itemId, memberId: row.memberId, name: row.name, jabatan: row.jabatan.trim() || null, sizeId: master.id, size: master.name, sleeveLength: row.sleeveLength };
     });

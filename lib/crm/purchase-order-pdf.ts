@@ -7,6 +7,7 @@ import type { Brand } from "@/lib/brand/config";
 import { DEFAULT_BRAND } from "@/lib/brand/config";
 import { decorationMethodsLabel, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
 import { MIN_FONT_SIZE, clipPdfText, wrapPdfText } from "@/lib/crm/pdf-typography";
+import { normalizeGarmentSizeName } from "@/lib/crm/size-aliases";
 
 export type PurchaseOrderPdfVariant = "customer" | "penjahit";
 
@@ -70,11 +71,9 @@ const ROSTER_ROWS_PER_PAGE = 25;
  * sebagai kolom tambahan di belakang supaya jumlahnya tidak pernah hilang.
  */
 const SIZE_LADDER = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"] as const;
-const SIZE_ALIASES: Record<string, string> = { XXL: "2XL", XXXL: "3XL", "3X": "3XL", XXXXL: "4XL", XXXXXL: "5XL" };
 
 function normalizeSize(name: string) {
-  const upper = name.trim().toUpperCase().replace(/\s+/g, " ");
-  return SIZE_ALIASES[upper] ?? upper;
+  return normalizeGarmentSizeName(name);
 }
 
 function safe(value: string) {
