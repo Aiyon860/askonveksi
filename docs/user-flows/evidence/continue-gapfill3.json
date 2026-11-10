@@ -1,0 +1,311 @@
+{
+  "customersDom": {
+    "rows": [
+      {
+        "html": "<tr data-slot=\"table-row\" class=\"border-b transition-colors hover:bg-highlight-surface has-aria-expanded:bg-highlight-surface data-[state=selected]:bg-highlight-surface cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50\" tabindex=\"0\" role=\"link\"><td data-slot=\"",
+        "text": "1 CRM-0541 Hangry Belum diklasifikasikan - Belum ditugaskan Belum order Belum ada @NEEDS_CONTACT_ARSIP_CRM-0541 1 2 Nov ",
+        "attrs": [
+          "data-slot=table-row",
+          "class=border-b transition-colors hover:bg-highlight-surface has-aria-expanded:bg-highlight-surface data-[state=selected]:bg-highlight-surface cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "tabindex=0",
+          "role=link"
+        ],
+        "links": []
+      },
+      {
+        "html": "<tr data-slot=\"table-row\" class=\"border-b transition-colors hover:bg-highlight-surface has-aria-expanded:bg-highlight-surface data-[state=selected]:bg-highlight-surface cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50\" tabindex=\"0\" role=\"link\"><td data-slot=\"",
+        "text": "2 CRM-0540 Kak Faiz (LATSITARDANUS AW) Belum diklasifikasikan - Belum ditugaskan Belum order Belum ada @NEEDS_CONTACT_AR",
+        "attrs": [
+          "data-slot=table-row",
+          "class=border-b transition-colors hover:bg-highlight-surface has-aria-expanded:bg-highlight-surface data-[state=selected]:bg-highlight-surface cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "tabindex=0",
+          "role=link"
+        ],
+        "links": []
+      },
+      {
+        "html": "<tr data-slot=\"table-row\" class=\"border-b transition-colors hover:bg-highlight-surface has-aria-expanded:bg-highlight-surface data-[state=selected]:bg-highlight-surface cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50\" tabindex=\"0\" role=\"link\"><td data-slot=\"",
+        "text": "3 CRM-0539 Kak Faiz (LATSITARDANUS) Belum diklasifikasikan - Belum ditugaskan Belum order Belum ada @NEEDS_CONTACT_ARSIP",
+        "attrs": [
+          "data-slot=table-row",
+          "class=border-b transition-colors hover:bg-highlight-surface has-aria-expanded:bg-highlight-surface data-[state=selected]:bg-highlight-surface cursor-pointer focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "tabindex=0",
+          "role=link"
+        ],
+        "links": []
+      }
+    ],
+    "allCustomerHrefs": []
+  },
+  "afterRowClick": {
+    "url": "http://localhost:3000/customers/cmvzaaizy002u33sbw97myesg?returnTo=%2Fcustomers",
+    "dialog": false,
+    "links": []
+  },
+  "editDialog": null,
+  "lihatWebsite": {
+    "url": "http://localhost:3000/"
+  },
+  "ddScan": [
+    {
+      "href": "/detail-desain/cmmw2zwmrp35f198571b0c7f92",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00011",
+        "Order · Kak Faiz (LATSITARDANUS)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zwoni406a5f11b4fc110e",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00012",
+        "Order · Faili Semesta (Jersey)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zwqipa04ec9970b2a474e",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00013",
+        "Order · Kak Agam (Jersey)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zwsbz91ac98d2e3eff793",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00014",
+        "Order · Wearpack",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zwu44c4990c99d1b6b10f",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00015",
+        "Order · Kak sherly (polo)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zwvzv77817e9e0036f5dc",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00016",
+        "Order · Kak mutiara (Kaos Denim)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zwxvw2a56a882b1880851",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00017",
+        "Order · Kak Pratama (celana formal)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zpokx0002xhsbea3dtu9a",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00001",
+        "Order · Kak Faiz (Bola Angkatan 57)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zpsse000gxhsbmczo9h7n",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00002",
+        "Order · Kak Faiz (LATSITARDANUS AW)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zpx20000uxhsbb0qb3bcw",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00003",
+        "Order · KAK YESI (PASHMINA)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zq1bl0018xhsbzuons2hh",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00004",
+        "Order · Kak Faiz (Bola Angkatan 56)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zq5jk001mxhsb5pcw1e46",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00005",
+        "Order · Kak Ivano (OSIS)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zq9nx0020xhsbsb4447bd",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00006",
+        "Order · Kak Kevin (kaos)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zqdl1002exhsbjyq5zaa0",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00007",
+        "Order · Kak Faiz (Pengasuh AW)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zqhde002sxhsbzdvlgivg",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00008",
+        "Order · Bank Jateng",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zql8e0036xhsbn8sn32qy",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00009",
+        "Order · KKL UNTAG",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmw2zqp1f003kxhsb52tukzr8",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00010",
+        "Order · Kak Rona (Jersey)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zwztab86cf64f77a43790",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00018",
+        "Order · Kak Faiz (Pengasuh PSS)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zx1oy65e40b1745b55594",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00019",
+        "Order · Kak Faiz (Stelan LVI Gold)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    },
+    {
+      "href": "/detail-desain/cmmw2zx3kz0d293a76bebae875",
+      "labels": [],
+      "buttons": [],
+      "hasForm": false,
+      "statusLine": [
+        "Kembali ke Detail Desain",
+        "Desain final WO-AS-2025-00020",
+        "Order · Ibu Lisa (PNM)",
+        "Sudah masuk Produksi",
+        "Tidak ada gambar PNG/JPG desain untuk produk ini."
+      ]
+    }
+  ]
+}

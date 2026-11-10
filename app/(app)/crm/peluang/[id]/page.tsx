@@ -25,7 +25,9 @@ import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, GARMENT_SIZE_ROLES, OWNER_AC
 import { getCurrentActor } from "@/lib/auth/session";
 import { getOpportunityDetail, getOpportunityDocumentHistory, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { formatPurchaseOrderRevisionNo } from "@/lib/crm/document-numbers";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
+import { findGarmentSizeByName } from "@/lib/crm/size-aliases";
 import { numericCellClass } from "@/lib/table-alignment";
 import { getActiveGarmentSizes, getActivePaymentMethods, getActiveProductCategories } from "@/lib/master-data";
 import { parsePageParam } from "@/lib/pagination";
@@ -231,7 +233,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
             </Empty>
           ) : (
             <div className="flex min-w-0 max-w-full flex-col gap-6">
-              {opportunity.purchaseOrders.map((purchaseOrder) => (
+              {opportunity.purchaseOrders.map((purchaseOrder, purchaseOrderIndex) => (
                 <section key={purchaseOrder.id} aria-labelledby={`po-${purchaseOrder.id}`} className="min-w-0 rounded-lg border p-4">
                   <PurchaseOrderWorkflowSection
                     opportunityId={opportunity.id}
@@ -277,10 +279,14 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                         items: poItems.map((poItem, itemIndex) => {
                           const itemSizes = purchaseOrder.sizes.filter((size) => !purchaseOrder.items.length || size.itemId === poItem.id);
                           const itemRoster = purchaseOrder.rosterEntries.filter((entry) => !purchaseOrder.items.length || entry.itemId === poItem.id);
+                          // Data lama menyimpan ukuran sebagai nama (sizeId null). Petakan lewat nama
+                          // agar jumlah lama tidak hilang saat revisi; nama yang tidak ada di master
+                          // dibiarkan apa adanya supaya form bisa memperingatkan, bukan diam jadi nol.
+                          const sizeIdByName = new Map(sizeOptions.map((size) => [size.name.toLocaleLowerCase("id-ID"), size.id]));
                           const matrix: Record<string, number> = {};
                           for (const row of itemSizes) {
-                            const key = `${row.sleeveLength}:${row.sizeId ?? row.size.toLocaleLowerCase("id-ID")}`;
-                            matrix[key] = Math.max(0, Math.trunc(row.quantity));
+                            const sizeId = row.sizeId ?? findGarmentSizeByName(sizeIdByName, row.size) ?? row.size.toLocaleLowerCase("id-ID");
+                            matrix[`${row.sleeveLength}:${sizeId}`] = Math.max(0, Math.trunc(row.quantity));
                           }
                           const accessoryQuantity = purchaseOrder.garmentType === "AKSESORI"
                             ? String(itemSizes.reduce((sum, row) => sum + Math.max(0, Math.trunc(row.quantity)), 0) || "")
@@ -301,7 +307,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                               memberId: entry.memberId,
                               name: entry.name,
                               jabatan: entry.jabatan ?? "",
-                              sizeId: entry.sizeId ?? "",
+                              sizeId: entry.sizeId ?? findGarmentSizeByName(sizeIdByName, entry.size) ?? "",
                               sleeveLength: entry.sleeveLength,
                             })),
                             accessoryQuantity,
@@ -309,9 +315,11 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                         }),
                       };
                     })()}
-                    purchaseOrderNoPreview={purchaseOrderNoPreview}
+                    // Nomor yang benar-benar terbentuk saat revisi berakhiran -R, bukan nomor dasar berikutnya.
+                    purchaseOrderNoPreview={purchaseOrder.status === "SUPERSEDED" ? purchaseOrderNoPreview : formatPurchaseOrderRevisionNo(purchaseOrder.purchaseOrderNo, purchaseOrder.revision + 1)}
                     defaultInstansi={opportunity.customer.companyName ?? undefined}
                     canManageSizes={canManageSizes}
+                    latestInChain={purchaseOrderIndex === 0}
                     penjahitItems={purchaseOrder.items.map((item) => ({
                       id: item.id,
                       name: item.name,
@@ -425,12 +433,13 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                       canCancel={canCancelDocuments}
                       inNegotiation={inNegotiation}
                       purchaseOrder={editableInvoicePo}
-                      hasSalesOrder={Boolean(invoice.salesOrder)}
+                      hasSalesOrder={invoice.salesOrder?.status === "ACTIVE"}
+                      hasCancelledSalesOrder={invoice.salesOrder?.status === "CANCELLED"}
                       hasNewerActiveRevision={hasNewerActiveRevision}
                       revisionLimitReached={latestInvoiceRevision >= 4}
                       draftValues={invoiceDraftValues}
                       salesOrderHref={invoice.salesOrder ? `/sales-orders/${invoice.salesOrder.id}` : undefined}
-                      salesOrderLabel={invoice.salesOrder ? `Lihat ${invoice.salesOrder.salesOrderNo}` : undefined}
+                      salesOrderLabel={invoice.salesOrder ? `Lihat ${invoice.salesOrder.salesOrderNo}${invoice.salesOrder.status === "CANCELLED" ? " (dibatalkan)" : ""}` : undefined}
                       receipts={invoiceReceipts}
                     >
                       <InvoiceSnapshot invoice={invoice} />

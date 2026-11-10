@@ -1,0 +1,47 @@
+{
+  "invoiceTab": {
+    "labels": [
+      "Baris per halaman"
+    ],
+    "buttons": [
+      "Export Excel",
+      "Filter"
+    ],
+    "main": [
+      "10",
+      "20",
+      "50",
+      "Semua"
+    ]
+  },
+  "invoiceCreate": {
+    "url": "http://localhost:3000/crm/invoices",
+    "labels": [
+      "Baris per halaman"
+    ],
+    "buttons": [
+      "Export Excel",
+      "Filter"
+    ],
+    "main": [
+      "10",
+      "20",
+      "50",
+      "Semua"
+    ],
+    "dialog": null
+  },
+  "follow": {
+    "heading": "Periksa kembali",
+    "body": "",
+    "allText": {
+      "textContent": "Periksa kembaliPilih minimal satu customer sebelum menekan Follow Up Hari Ini.",
+      "innerText": "",
+      "childCount": 1
+    }
+  },
+  "followFlash": {
+    "tag": "DIV",
+    "text": "BRAND AKTIF\n\nAskonveksi\n\nGeser untuk pindah ke SAGA.\n\nO\n\nowner\n\nowner@mail.com\n\nOwner\nKeluar\n\nSemua kategori\nBelum diklasifikasikan\nInstansi\nKomunitas\nPersonal\nPerusahaan\nReseller\nSemua order\nJersey\nKemeja\nPDH / PDL\nWorkshirt\nSeragam Kerja\nWearpack\nPolo Shirt\nKaos Sablon\nKaos Vneck\nKaos Raglan\nJaket"
+  }
+}

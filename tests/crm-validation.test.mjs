@@ -561,6 +561,28 @@ test("membatalkan invoice draft tidak lagi diblokir CHECK issuedAt", async () =>
   assert.match(responseSource, /console\.error\("\[redirecting-action\]"/);
 });
 
+test("invoice terbit tanpa Sales Order dapat dibatalkan agar PO dapat direvisi", async () => {
+  const [actionSource, workflowSource] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8"),
+  ]);
+  // Pembatalan menerima DRAFT dan ISSUED; invoice yang sudah menjadi SO tetap harus lewat SO.
+  assert.match(actionSource, /invoice\.status !== "DRAFT" && invoice\.status !== "ISSUED"/);
+  assert.match(actionSource, /invoice\.status === "ISSUED" && invoice\.salesOrder\?\.status === "ACTIVE"/);
+  assert.match(actionSource, /Batalkan Sales Order tersebut terlebih dahulu agar invoice ini dapat dibatalkan/);
+  // SO yang dibatalkan tidak menghalangi pembatalan invoice; tanpa ini invoice beku selamanya.
+  assert.match(actionSource, /Batalkan invoice ini lalu buat revisi PO untuk melanjutkan dokumen baru/);
+  // Status audit mengikuti status asal dokumen, bukan selalu DRAFT.
+  assert.match(actionSource, /statusDiff\(INVOICE_STATUS_LABEL\[invoice\.status\], INVOICE_STATUS_LABEL\.CANCELLED\)/);
+  // Guard revisi PO memeriksa SO lebih dulu; invoice terbit memberi arahan membatalkan invoice,
+  // bukan menyuruh membatalkan Sales Order yang belum pernah terbentuk.
+  assert.match(actionSource, /Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati/);
+  assert.match(actionSource, /Masih ada invoice terbit\. Batalkan invoice tersebut terlebih dahulu sebelum merevisi PO yang disepakati/);
+  // Tombol batal tersedia untuk invoice terbit tanpa SO.
+  assert.match(workflowSource, /invoiceStatus === "DRAFT" \|\| \(invoiceStatus === "ISSUED" && !hasSalesOrder\)/);
+  assert.match(workflowSource, /Batalkan invoice terbit/);
+});
+
 test("deadline produksi mengenali preset dan nilai kustom", () => {
   const reference = new Date("2026-09-09T06:00:00.000Z");
   const presets = productionDeadlineOptions(reference);
@@ -1009,9 +1031,11 @@ test("revisi invoice dapat dibuat dari draft atau invoice terbit tanpa Sales Ord
   assert.match(actionSource, /data: \{ status: "SUPERSEDED", version: \{ increment: 1 \} \}/);
   // UI menampilkan revisi pada invoice terbit tanpa SO, tetapi tidak pada dokumen lama
   // yang sudah punya revisi lebih baru atau saat batas revisi tercapai.
-  assert.match(workflowSource, /invoiceStatus === "DRAFT" \|\| \(invoiceStatus === "ISSUED" && !hasSalesOrder\)/);
+  assert.match(workflowSource, /invoiceStatus === "DRAFT" \|\| \(invoiceStatus === "ISSUED" && !hasSalesOrder && !hasCancelledSalesOrder\)/);
   assert.match(workflowSource, /!hasNewerActiveRevision && !revisionLimitReached/);
-  assert.match(pageSource, /hasSalesOrder=\{Boolean\(invoice\.salesOrder\)\}/);
+  // Sales Order yang sudah dibatalkan tidak lagi mengunci invoice (revisi/batal tetap tersedia);
+  // hanya SO aktif yang menutup jalur dokumen.
+  assert.match(pageSource, /hasSalesOrder=\{invoice\.salesOrder\?\.status === "ACTIVE"\}/);
   assert.match(pageSource, /hasNewerActiveRevision=\{hasNewerActiveRevision\}/);
   assert.match(pageSource, /revisionLimitReached=\{latestInvoiceRevision >= 4\}/);
 });
@@ -1508,6 +1532,46 @@ test("kesepakatan PO menunggu desain terunggah, tanpa langkah konfirmasi custome
   // Revisi dari PO disepakati dibuka untuk mitigasi H-1.
   assert.match(actionSource, /source\.status !== "DRAFT" && source\.status !== "AGREED"/);
   assert.match(actionSource, /Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati/);
+});
+
+test("PO yang dibatalkan dapat dilanjutkan sebagai PO baru", async () => {
+  const [actionSource, workflowSource, pageSourceForPoRestart] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/purchase-order-workflow-section.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+  ]);
+  // Tanpa jalur ini, PO batal memblokir PO baru (draft action menolak selama riwayat PO ada)
+  // sekaligus memblokir revisi (hanya draft/disepakati) — peluang mati permanen.
+  assert.match(actionSource, /source\.status !== "AGREED" && source\.status !== "CANCELLED"/);
+  // Batas 3 revisi mengunci dokumen hidup saja; dokumen terminal tidak boleh jadi jalan buntu.
+  assert.match(actionSource, /source\.status !== "CANCELLED" && source\.revision >= 4/);
+  assert.match(actionSource, /Batalkan invoice tersebut terlebih dahulu sebelum membuat PO baru/);
+  // Riwayat pembatalan tetap CANCELLED (hanya versinya naik untuk mengunci klik ganda).
+  assert.match(actionSource, /source\.status === "CANCELLED"\s*\? await tx\.purchaseOrder\.updateMany/);
+  assert.match(workflowSource, /purchaseOrderStatus === "CANCELLED" \? "Buat PO baru"/);
+  assert.match(workflowSource, /\(purchaseOrderStatus === "CANCELLED" \|\| purchaseOrderRevision < 4\)/);
+  // Hanya dokumen terakhir yang boleh dilanjutkan agar nomor revisi unik tidak bentrok.
+  assert.match(actionSource, /Hanya dokumen terakhir pada rantai PO yang dapat dilanjutkan/);
+  assert.match(workflowSource, /purchaseOrderStatus === "CANCELLED" && latestInChain/);
+  assert.match(pageSourceForPoRestart, /latestInChain=\{purchaseOrderIndex === 0\}/);
+});
+
+test("form revisi PO dan invoice membawa isian dokumen lama", async () => {
+  const [orderFormSource, invoiceFormSource, pageSource] = await Promise.all([
+    readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+  ]);
+  // Matriks ukuran direvisi: sel lama dipertahankan, ukuran tanpa pasangan di master dilaporkan.
+  assert.match(orderFormSource, /matrix: resolveMatrix\(item\.matrix, sizeOptions\)\.matrix/);
+  assert.match(orderFormSource, /const droppedSizeQuantity = values\?\.items\.reduce/);
+  assert.match(orderFormSource, /Sebagian jumlah ukuran tidak terbawa/);
+  // Data lama menyimpan ukuran sebagai nama; revisi memetakannya lewat nama sebelum menyerah.
+  assert.match(pageSource, /const sizeId = row\.sizeId \?\? findGarmentSizeByName\(sizeIdByName, row\.size\)/);
+  // Harga/deskripsi baris invoice dicocokkan per nama lalu per urutan, bukan dikosongkan.
+  assert.match(invoiceFormSource, /function savedRowsFor\(group: \{ productName: string \}, index: number\)/);
+  assert.match(invoiceFormSource, /if \(values\?\.items\.length === groups\.length\) return \[values\.items\[index\]\]/);
+  assert.match(invoiceFormSource, /const saved = savedRowsFor\(group, rowIndex\)\[0\]/);
 });
 
 test("PDF PO punya varian customer dan penjahit dengan deadline merah", async () => {

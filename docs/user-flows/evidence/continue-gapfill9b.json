@@ -1,0 +1,31 @@
+{
+  "tab": {
+    "url": "http://localhost:3000/crm/peluang/cmw94ed6q0002j4z7ybrvjxhw?tab=invoice",
+    "labels": [],
+    "buttons": [
+      "PODraft",
+      "Invoice & DealBelum ada",
+      "Riwayat PO & Invoice4 perubahan",
+      "Ubah Design",
+      "Kirim 1 set PDF",
+      "Sepakati PO terbaru",
+      "Edit PDF Penjahit",
+      "Batalkan",
+      "Edit PDF Penjahit",
+      "Edit PDF Penjahit",
+      "Edit PDF Penjahit"
+    ],
+    "main": [
+      "Kembali ke pipeline",
+      "Prospek: Syaza",
+      "OPP-AS-000013 · Syaza · Diperbarui 9 Nov 2026, 17.48",
+      "Negosiasi",
+      "PO",
+      "Draft",
+      "Invoice & Deal",
+      "Belum ada",
+      "Riwayat PO & Invoice",
+      "4 perubahan"
+    ]
+  }
+}

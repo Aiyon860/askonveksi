@@ -1,0 +1,679 @@
+{
+  "pipelineStages": {
+    "stages": [
+      "Follow Up",
+      "Negosiasi",
+      "Deal",
+      "Lost",
+      "Repeat Order"
+    ],
+    "links": [
+      "/crm/peluang/cmw983s9z0014s7z7aaxgoib9",
+      "/crm/peluang/cmw985bxt0018s7z7044ze0q6",
+      "/crm/peluang/cmw985bxt0018s7z7044ze0q6?tab=po",
+      "/crm/peluang/cmw987f36002ds7z7zix5ck00",
+      "/crm/peluang/cmw987f36002ds7z7zix5ck00?tab=po"
+    ],
+    "heads": [
+      {
+        "t": "Follow Up",
+        "cls": "text-sm font-bold tracking-tight text-hi"
+      },
+      {
+        "t": "Negosiasi",
+        "cls": "text-sm font-bold tracking-tight text-wa"
+      },
+      {
+        "t": "Deal (SO)",
+        "cls": "text-sm font-bold tracking-tight text-su"
+      },
+      {
+        "t": "Lost",
+        "cls": "text-sm font-bold tracking-tight text-de"
+      }
+    ],
+    "cards": [
+      "Repeat Order",
+      "Tambah PO",
+      "Tambah PO",
+      "Tambah PO",
+      "Tambah PO",
+      "Tambah PO",
+      "Tambah PO",
+      "Tambah PO"
+    ]
+  },
+  "peluang": {
+    "href": "/crm/peluang/cmw983s9z0014s7z7aaxgoib9",
+    "main": [
+      "Kembali ke pipeline",
+      "Prospek: Veronica",
+      "OPP-AS-000018 · Veronica · Diperbarui 9 Nov 2026, 19.22",
+      "Negosiasi",
+      "PO",
+      "Disepakati",
+      "Invoice & Deal",
+      "Terbit",
+      "Riwayat PO & Invoice",
+      "16 perubahan",
+      "Purchase Order customer",
+      "Satu rantai revisi berisi bahan, desain, ukuran, dan jumlah yang disepakati.",
+      "PO-AS-VER091126-1-R3 · Revisi 2",
+      "Dibuat 9 Nov 2026, 21.09 oleh owner",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "Revisi PO disepakati",
+      "Status",
+      "Disepakati",
+      "Jenis pakaian",
+      "Jersey",
+      "Kategori",
+      "Jersey",
+      "Instansi",
+      "SMA N 15 Semarang",
+      "Pola",
+      "Test: Test",
+      "Bahan",
+      "Test",
+      "Warna dasar",
+      "Test: Test",
+      "Warna variasi",
+      "Test: -",
+      "Deposit",
+      "Tanpa deposit",
+      "Metode dekorasi",
+      "Test: Tanpa dekorasi",
+      "Deadline produksi",
+      "23 Nov 2026",
+      "Total jumlah",
+      "2",
+      "Catatan desain",
+      "-",
+      "Catatan lain",
+      "-",
+      "Model\tS\tM\tTotal",
+      "Pendek\t1\t0\t1",
+      "Panjang\t0\t1\t1",
+      "PO-AS-VER091126-1-R2 · Revisi 1",
+      "Dibuat 9 Nov 2026, 20.38 oleh owner",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "Status",
+      "Digantikan",
+      "Jenis pakaian",
+      "Jersey",
+      "Kategori",
+      "Jersey",
+      "Instansi",
+      "SMA N 15 Semarang",
+      "Pola",
+      "Test: Test",
+      "Bahan",
+      "Test",
+      "Warna dasar",
+      "Test: Test",
+      "Warna variasi",
+      "Test: -",
+      "Deposit",
+      "Tanpa deposit",
+      "Metode dekorasi",
+      "Test: Tanpa dekorasi",
+      "Deadline produksi",
+      "23 Nov 2026",
+      "Total jumlah",
+      "2",
+      "Catatan desain",
+      "-",
+      "Catatan lain",
+      "-",
+      "Model\tS\tM\tTotal",
+      "Pendek\t1\t0\t1",
+      "Panjang\t0\t1\t1",
+      "PO-AS-VER091126-1 · Dokumen awal",
+      "Dibuat 9 Nov 2026, 20.16 oleh owner",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "Status",
+      "Digantikan",
+      "Jenis pakaian",
+      "Jersey",
+      "Kategori",
+      "Jersey",
+      "Instansi",
+      "SMA N 15 Semarang",
+      "Pola",
+      "Test: Test"
+    ],
+    "labels": [],
+    "buttons": [
+      "Kembali ke pipeline",
+      "Veronica",
+      "PODisepakati",
+      "Invoice & DealTerbit",
+      "Riwayat PO & Invoice16 perubahan",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "Revisi PO disepakati",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "Kirim ulang",
+      "Salin pesan invoice",
+      "Batalkan invoice terbit",
+      "Semua dokumen",
+      "PO PO-AS-VER091126-1-R3 · Revisi 2",
+      "PO PO-AS-VER091126-1-R2 · Revisi 1",
+      "PO PO-AS-VER091126-1 · Dokumen awal",
+      "Invoice INV-AS-2026-00018 · Revisi 3",
+      "Invoice INV-AS-2026-00017 · Revisi 2",
+      "Invoice INV-AS-2026-00016 · Revisi 1",
+      "Invoice INV-AS-2026-00015 · Dokumen awal"
+    ]
+  },
+  "prospekPageButtons": [
+    {
+      "t": "Prospek",
+      "href": "/crm/prospek",
+      "type": null
+    },
+    {
+      "t": "Export Excel",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Prospek",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "No. prospek",
+      "href": "/crm/prospek?sort=opportunityNo",
+      "type": null
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    },
+    {
+      "t": "Edit",
+      "href": null,
+      "type": "button"
+    }
+  ],
+  "prospekDialog": {
+    "opened": true,
+    "title": [
+      "Tambah Prospek"
+    ],
+    "labels": [
+      "Nama customer* (wajib)",
+      "Perusahaan/Instansi/Komunitas",
+      "Jenis customer* (wajib)",
+      "Sumber lead",
+      "Sales/PIC",
+      "Kota* (wajib)",
+      "Asal* (wajib)",
+      "WhatsApp",
+      "Email",
+      "Instagram",
+      "Catatan umum"
+    ],
+    "buttons": [
+      "Simpan Prospek",
+      "Tutup"
+    ],
+    "text": [
+      "Pilih jenis customer",
+      "Personal",
+      "Perusahaan",
+      "Komunitas",
+      "Instansi",
+      "Belum diklasifikasikan",
+      "Reseller",
+      "Belum ditentukan",
+      "Instagram",
+      "WhatsApp",
+      "Referral",
+      "Website",
+      "Marketplace",
+      "Walk-in",
+      "Landing Page",
+      "Google Maps",
+      "Teman Kak Gandrik",
+      "Lainnya",
+      "Event",
+      "ADS",
+      "Teman Kak Fawwaz"
+    ]
+  },
+  "expenseCtas": [
+    {
+      "t": "Dashboard",
+      "href": "/dashboard"
+    },
+    {
+      "t": "Laporan absensi",
+      "href": "/absensi/laporan"
+    },
+    {
+      "t": "Project",
+      "href": "/keuangan/pemasukan"
+    },
+    {
+      "t": "Pengeluaran",
+      "href": "/keuangan/pengeluaran"
+    },
+    {
+      "t": "Laporan",
+      "href": "/keuangan/laporan"
+    },
+    {
+      "t": "Pipeline",
+      "href": "/crm"
+    },
+    {
+      "t": "Prospek",
+      "href": "/crm/prospek"
+    },
+    {
+      "t": "Customer",
+      "href": "/customers"
+    },
+    {
+      "t": "Purchase Order",
+      "href": "/crm/purchase-orders"
+    },
+    {
+      "t": "Invoice",
+      "href": "/crm/invoices"
+    },
+    {
+      "t": "Sales Order",
+      "href": "/crm/sales-orders"
+    },
+    {
+      "t": "Broadcast",
+      "href": "/crm/follow-up"
+    },
+    {
+      "t": "Kotak Masuk1",
+      "href": "/whatsapp"
+    },
+    {
+      "t": "Template Pesan",
+      "href": "/master-data/whatsapp/templates"
+    },
+    {
+      "t": "Akun & Koneksi",
+      "href": "/master-data/whatsapp/accounts"
+    },
+    {
+      "t": "Campaign promo",
+      "href": "/campaigns"
+    },
+    {
+      "t": "Produksi",
+      "href": "/produksi"
+    },
+    {
+      "t": "Kelola Website",
+      "href": "/cms"
+    },
+    {
+      "t": "Riwayat Perubahan",
+      "href": "/cms/riwayat"
+    },
+    {
+      "t": "Ringkasan",
+      "href": "/analytics"
+    },
+    {
+      "t": "Kanal akuisisi",
+      "href": "/analytics/lead-sources"
+    },
+    {
+      "t": "Jenis customer",
+      "href": "/master-data/customer-types"
+    },
+    {
+      "t": "Sumber lead",
+      "href": "/master-data/lead-sources"
+    },
+    {
+      "t": "Ukuran pakaian",
+      "href": "/master-data/garment-sizes"
+    },
+    {
+      "t": "Kategori produk",
+      "href": "/master-data/product-categories"
+    },
+    {
+      "t": "Metode pembayaran",
+      "href": "/master-data/payment-methods"
+    },
+    {
+      "t": "Pengaturan invoice",
+      "href": "/master-data/invoice-settings"
+    },
+    {
+      "t": "Profil perusahaan",
+      "href": "/master-data/business-profile"
+    },
+    {
+      "t": "Pengguna",
+      "href": "/admin/users"
+    },
+    {
+      "t": "Log aktivitas",
+      "href": "/log-aktivitas"
+    },
+    {
+      "t": "Pengaturan",
+      "href": "/settings"
+    },
+    {
+      "t": "Keluar",
+      "href": null
+    },
+    {
+      "t": "Riwayat Hapus",
+      "href": "/keuangan/pengeluaran/riwayat"
+    },
+    {
+      "t": "Export Excel",
+      "href": null
+    },
+    {
+      "t": "Pengeluaran",
+      "href": null
+    },
+    {
+      "t": "Terapkan",
+      "href": null
+    },
+    {
+      "t": "Reset",
+      "href": "/keuangan/pengeluaran"
+    },
+    {
+      "t": "Tanggal",
+      "href": "/keuangan/pengeluaran?order=asc"
+    },
+    {
+      "t": "Edit",
+      "href": null
+    },
+    {
+      "t": "Hapus",
+      "href": null
+    }
+  ],
+  "expenseDialog": {
+    "opened": true,
+    "title": [
+      "Tambah pengeluaran"
+    ],
+    "labels": [
+      "Digunakan untuk apa* (wajib)",
+      "Customer (opsional, untuk filter)",
+      "Tanggal digunakan* (wajib)",
+      "Nominal* (wajib)",
+      "Kategori* (wajib)",
+      "Metode pembayaran* (wajib)",
+      "Bisa diganti (reimburse)",
+      "Bukti pengeluaran* (wajib)",
+      "Pilih file"
+    ],
+    "buttons": [
+      "Simpan pengeluaran",
+      "Tutup"
+    ],
+    "text": [
+      "Pilih kategori",
+      "Wifi",
+      "Lingkungan",
+      "ADS",
+      "Cicilan laptop",
+      "Free Pick",
+      "Ongkir cust",
+      "Ongkir admin produksi",
+      "Listrik depan",
+      "Listrik Belakang",
+      "Peralatan / Perlengkapan Kantor",
+      "Sampel",
+      "Konten",
+      "Meeting",
+      "Event ifana saga",
+      "Gosend mobil produksi",
+      "Lembur",
+      "Loker",
+      "DLL",
+      "Lainnya",
+      "Project",
+      "Pilih metode",
+      "Tunai",
+      "Mandiri",
+      "BNI",
+      "Transfer"
+    ]
+  },
+  "custLinks": [],
+  "customerDetail": {
+    "missing": true,
+    "pageText": [
+      "Data customer",
+      "Cari, urutkan, dan kelola satu profil customer untuk seluruh peluang dan order.",
+      "Semua customer",
+      "528 customer aktif",
+      "Export Excel",
+      "Import Excel",
+      "Tambah customer",
+      "No\tNo. customer",
+      "Customer",
+      "Jenis\tPerusahaan/komunitas\tSales/PIC\tStatus aktivitas\tOrder terakhir\tKontak\tPeluang",
+      "Diperbarui",
+      "Aksi",
+      "1\tCRM-0541\tHangry",
+      "Belum diklasifikasikan",
+      "-",
+      "Belum ditugaskan\tBelum order\tBelum ada",
+      "@NEEDS_CONTACT_ARSIP_CRM-0541",
+      "1\t2 Nov 2026",
+      "Edit",
+      "Arsipkan",
+      "2\tCRM-0540\tKak Faiz (LATSITARDANUS AW)",
+      "Belum diklasifikasikan",
+      "-",
+      "Belum ditugaskan\tBelum order\tBelum ada",
+      "@NEEDS_CONTACT_ARSIP_CRM-0540",
+      "1\t2 Nov 2026",
+      "Edit",
+      "Arsipkan",
+      "3\tCRM-0539\tKak Faiz (LATSITARDANUS)",
+      "Belum diklasifikasikan"
+    ]
+  },
+  "cmsPratinjauNav": {
+    "url": "http://localhost:3000/cms/beranda",
+    "main": [
+      "Beranda",
+      "Edit seluruh isi landing page: hero, produk, proses, keunggulan, klien, testimoni, dan CTA.",
+      "Terakhir disimpan 30 Okt 2026, 22.11 oleh Konten awal.",
+      "Lihat Website",
+      "Batalkan",
+      "Simpan & Tayangkan",
+      "Urutan & bagian yang tampil",
+      "Hero + keunggulan",
+      "Katalog produk",
+      "Proses produksi",
+      "Mengapa memilih kami",
+      "Logo klien",
+      "Testimoni",
+      "Ajakan kontak (CTA)",
+      "Gunakan tombol naik/turun dan ikon mata. Minimal satu bagian harus tampil.",
+      "Hero",
+      "Teks kecil di atas judul",
+      "Judul baris pertama",
+      "Judul baris kedua",
+      "Deskripsi"
+    ],
+    "note": "no popup"
+  },
+  "ddLinks": [
+    "/detail-desain/cmmw2zwmrp35f198571b0c7f92",
+    "/detail-desain/cmmw2zwoni406a5f11b4fc110e",
+    "/detail-desain/cmmw2zwqipa04ec9970b2a474e",
+    "/detail-desain/cmmw2zwsbz91ac98d2e3eff793",
+    "/detail-desain/cmmw2zwu44c4990c99d1b6b10f",
+    "/detail-desain/cmmw2zwvzv77817e9e0036f5dc",
+    "/detail-desain/cmmw2zwxvw2a56a882b1880851",
+    "/detail-desain/cmw2zpokx0002xhsbea3dtu9a",
+    "/detail-desain/cmw2zpsse000gxhsbmczo9h7n",
+    "/detail-desain/cmw2zpx20000uxhsbb0qb3bcw",
+    "/detail-desain/cmw2zq1bl0018xhsbzuons2hh",
+    "/detail-desain/cmw2zq5jk001mxhsb5pcw1e46",
+    "/detail-desain/cmw2zq9nx0020xhsbsb4447bd",
+    "/detail-desain/cmw2zqdl1002exhsbjyq5zaa0",
+    "/detail-desain/cmw2zqhde002sxhsbzdvlgivg"
+  ],
+  "dd_/detail-desain/cmmw2zwmrp35f198571b0c7f92": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00011",
+      "Order · Kak Faiz (LATSITARDANUS)",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  },
+  "dd_/detail-desain/cmmw2zwoni406a5f11b4fc110e": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00012",
+      "Order · Faili Semesta (Jersey)",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  },
+  "dd_/detail-desain/cmmw2zwqipa04ec9970b2a474e": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00013",
+      "Order · Kak Agam (Jersey)",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  },
+  "dd_/detail-desain/cmmw2zwsbz91ac98d2e3eff793": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00014",
+      "Order · Wearpack",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  },
+  "dd_/detail-desain/cmmw2zwu44c4990c99d1b6b10f": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00015",
+      "Order · Kak sherly (polo)",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  },
+  "dd_/detail-desain/cmmw2zwvzv77817e9e0036f5dc": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00016",
+      "Order · Kak mutiara (Kaos Denim)",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  },
+  "dd_/detail-desain/cmmw2zwxvw2a56a882b1880851": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00017",
+      "Order · Kak Pratama (celana formal)",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  },
+  "dd_/detail-desain/cmw2zpokx0002xhsbea3dtu9a": {
+    "labels": [],
+    "buttons": [],
+    "main": [
+      "Kembali ke Detail Desain",
+      "Desain final WO-AS-2025-00001",
+      "Order · Kak Faiz (Bola Angkatan 57)",
+      "Sudah masuk Produksi",
+      "Tidak ada gambar PNG/JPG desain untuk produk ini."
+    ],
+    "hasUpload": false
+  }
+}
