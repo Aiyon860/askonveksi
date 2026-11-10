@@ -42,6 +42,16 @@ function documentRevisionLabel(revision: number) {
   return revision <= 1 ? "Dokumen awal" : `Revisi ${revision - 1}`;
 }
 
+/**
+ * Hanya DP/Lunas yang mengunci pembatalan. Query peluang sudah menyaring transaksi deposit
+ * (`isDeposit: false`), jadi hitungan ini cukup memakai daftar transaksi yang tersedia.
+ */
+function invoiceSettledPaymentCount(invoice: OpportunityDetail["invoices"][number]) {
+  const payment = invoice.salesOrder?.payment;
+  if (!payment) return 0;
+  return payment.transactions.length + payment.terms.reduce((total, term) => total + term.transactions.length, 0);
+}
+
 export default async function OpportunityDetailPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ document?: string | string[]; historyPage?: string | string[]; tab?: string | string[] }>;
@@ -142,6 +152,16 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
   const scheduledPayment = invoiceDraft ? undefined : issuedInvoice?.pendingPayment;
   const readyForDeal = Boolean(agreedPo && issuedInvoice && !poDraft && !invoiceDraft);
   const poRevisionCount = Math.max(0, opportunity.purchaseOrders.length - 1);
+  const purchaseOrderCancelBlockedReason = (purchaseOrderId: string) => {
+    const activeInvoice = opportunity.invoices.find((invoice) => invoice.purchaseOrderId === purchaseOrderId && (invoice.status === "DRAFT" || invoice.status === "ISSUED"));
+    if (activeInvoice) {
+      return `Invoice ${activeInvoice.invoiceNo} masih ${INVOICE_STATUS_LABEL[activeInvoice.status]}. Batalkan invoice tersebut terlebih dahulu sebelum membatalkan PO.`;
+    }
+    if (opportunity.invoices.some((invoice) => invoice.purchaseOrderId === purchaseOrderId && invoiceSettledPaymentCount(invoice) > 0)) {
+      return "Pembayaran DP/Lunas sudah masuk. PO yang sudah dibayar tidak dapat dibatalkan.";
+    }
+    return null;
+  };
   const poTabStatus = poDraft ? "Draft" : agreedPo ? "Disepakati" : cancelledPo ? "Dibatalkan" : poRevisionCount ? `${poRevisionCount} revisi` : opportunity.purchaseOrders.length ? "Dokumen awal" : "Belum ada";
   const invoiceTabStatus = invoiceDraft ? "Draft" : issuedInvoice ? "Terbit" : cancelledInvoice ? "Dibatalkan" : opportunity.invoices.length ? `${opportunity.invoices.length} revisi` : "Belum ada";
   const canShowPurchaseOrderAgreement = canOperate && inNegotiation && (Boolean(poDraft) || opportunity.purchaseOrders.length === 0);
@@ -245,6 +265,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                     description={`Dibuat ${formatDate(purchaseOrder.createdAt, true)} oleh ${purchaseOrder.createdBy.name}`}
                     canOperate={canOperate}
                     canCancel={canCancelDocuments}
+                    cancelBlockedReason={purchaseOrderCancelBlockedReason(purchaseOrder.id)}
                     inNegotiation={inNegotiation}
                     sizeOptions={sizeOptions}
                     categoryOptions={categoryOptions}
@@ -385,7 +406,8 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                       ...invoice.salesOrder.payment.terms.flatMap((term) => (term.transactions[0] ? [{ id: term.transactions[0].id, label: `Lihat Kwitansi Termin ${term.position + 1}` }] : [])),
                     ]
                   : [];
-                const hasNewerActiveRevision = opportunity.invoices.some((other) => other.id !== invoice.id && (other.status === "DRAFT" || other.status === "ISSUED") && other.revision > invoice.revision);
+                const hasNewerActiveRevision = opportunity.invoices.some((other) => other.id !== invoice.id && other.revision > invoice.revision
+                  && (other.status === "DRAFT" || other.status === "ISSUED" || (invoice.status === "CANCELLED" && other.status === "CANCELLED")));
                 const invoiceDraftValues = {
                   notes: invoice.notes ?? "",
                   dueAt: invoice.dueAt?.toISOString().slice(0, 10) ?? "",
@@ -431,6 +453,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                       description={`Berdasarkan ${invoiceSourcePo?.purchaseOrderNo ?? "PO"} · Dibuat ${formatDate(invoice.createdAt, true)}`}
                       canOperate={canOperate}
                       canCancel={canCancelDocuments}
+                      cancelBlockedReason={invoiceSettledPaymentCount(invoice) > 0 ? "Pembayaran DP/Lunas sudah masuk. Invoice yang sudah dibayar tidak dapat dibatalkan." : null}
                       inNegotiation={inNegotiation}
                       purchaseOrder={editableInvoicePo}
                       hasSalesOrder={invoice.salesOrder?.status === "ACTIVE"}
