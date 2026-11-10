@@ -5,10 +5,10 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
-import { GARMENT_SIZE_ROLES, MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, GARMENT_SIZE_ROLES, MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { groupProductCategories } from "@/lib/crm/constants";
-import { compareGarmentSizeNames, sortGarmentSizeRows } from "@/lib/crm/size-aliases";
+import { compareGarmentSizeNames, normalizeGarmentSizeName, sortGarmentSizeRows } from "@/lib/crm/size-aliases";
 import {
   bulkUpdateMasterDataSchema,
   bulkUpdateProductCategoriesSchema,
@@ -550,6 +550,56 @@ export async function createGarmentSizeAction(formData: FormData) {
     revalidatePath("/master-data/garment-sizes");
     return flashMessagePath("/master-data/garment-sizes", "notice", "Ukuran pakaian berhasil dibuat.");
   });
+}
+
+export type EnsureGarmentSizeResult =
+  | { ok: true; size: { id: string; name: string } }
+  | { ok: false; message: string };
+
+/**
+ * Dipakai matriks PO: kolom ukuran ke-8 boleh diganti nama, dan ukuran yang belum ada
+ * di Data Master dibuat otomatis (urutan baku + audit) supaya matriks tetap bisa disimpan.
+ * Siapa pun yang boleh membuat PO boleh memicunya; Developer selalu lolos lewat hasRole.
+ */
+export async function ensureGarmentSizeAction(rawName: string): Promise<EnsureGarmentSizeResult> {
+  // Di luar try: penolakan akses tetap diproses seperti aksi lain, bukan jadi pesan generik.
+  const actor = await requireActor(CRM_OPERATOR_ROLES);
+  try {
+    const parsed = sortableMasterDataFieldsSchema.safeParse({ name: rawName });
+    if (!parsed.success) return { ok: false, message: firstValidationMessage(parsed.error) };
+    const name = normalizeGarmentSizeName(parsed.data.name);
+    if (!name) return { ok: false, message: "Nama ukuran tidak boleh kosong." };
+    if (name.length > 40) return { ok: false, message: "Nama ukuran maksimal 40 karakter." };
+
+    const prisma = getPrismaClient();
+    const existing = await prisma.garmentSize.findFirst({
+      where: { name: { equals: name, mode: "insensitive" } },
+      select: { id: true, name: true, isActive: true },
+    });
+    if (existing?.isActive) return { ok: true, size: { id: existing.id, name: existing.name } };
+
+    const size = await prisma.$transaction(async (tx) => {
+      if (existing) {
+        // Ukuran nonaktif yang diminta lagi di PO diaktifkan kembali, bukan dibuat ganda.
+        await tx.garmentSize.update({ where: { id: existing.id }, data: { isActive: true } });
+        await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "GarmentSize", entityId: existing.id, action: "GARMENT_SIZE_UPDATED", changedFields: ["isActive"] } });
+        return { id: existing.id, name: existing.name };
+      }
+      const lastItem = await tx.garmentSize.aggregate({ _max: { position: true } });
+      const created = await tx.garmentSize.create({
+        data: { name, position: (lastItem._max.position ?? -1) + 1 },
+        select: { id: true, name: true },
+      });
+      await reindexGarmentSizePositions(tx);
+      await tx.auditEvent.create({ data: { actorId: actor.id, entityType: "GarmentSize", entityId: created.id, action: "GARMENT_SIZE_CREATED", changedFields: ["name", "position"] } });
+      return created;
+    }, MASTER_DATA_TRANSACTION_OPTIONS);
+    revalidatePath("/master-data/garment-sizes");
+    revalidatePath("/crm");
+    return { ok: true, size };
+  } catch (error) {
+    return { ok: false, message: error instanceof UserFacingError ? error.message : "Ukuran belum dapat disimpan. Coba lagi." };
+  }
 }
 
 export async function importGarmentSizesAction(formData: FormData) {

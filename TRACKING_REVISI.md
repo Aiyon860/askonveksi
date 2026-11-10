@@ -363,3 +363,22 @@ Permintaan: absensi harian dengan foto langsung dari kamera, pengaturan Owner, l
 - [ ] **Belum diuji di browser nyata**: izin kamera/GPS, tampilan dialog, dan alur retake memerlukan HTTPS + perangkat berkamera.
 - [ ] **Migration sudah diterapkan ke database lokal**, tetapi **belum ke produksi**; belum ada commit.
 - Catatan build: Turbopack masih memberi 3 peringatan dynamic filesystem access dari modul CMS yang sudah ada; modul foto absensi tidak memicu peringatan. Build tetap exit 0.
+
+
+---
+
+## Revisi 10 Nov 2026 — Matriks ukuran PO: kolom ke-8 bisa diganti nama, REQ tetap paling kanan
+
+Susunan kolom matriks tiap produk: **7 kolom tetap** dari Data Master (urutan baku XS…3XL) + **1 kolom yang namanya bisa diedit** (default 4XL) + **kolom REQ selalu paling kanan** sebelum Total. Jadi `XS S M L XL 2XL 3XL [4XL] REQ`.
+
+- [x] Header kolom ubahan berupa input: Enter/blur menyimpan, Escape membatalkan; maks 40 karakter; tidak boleh bentrok dengan kolom lain di tabel yang sama.
+- [x] Nama yang sudah ada di Data Master langsung dipakai (termasuk alias `XXL` → `2XL`) tanpa menulis apa pun ke database.
+- [x] Nama yang belum ada **tidak langsung tersimpan**: muncul peringatan "Ukuran X belum ada di Data Master" dengan tombol **Tambahkan ke Data Master** atau **Batal**, supaya typo tidak masuk master. Penambahan memakai urutan baku + audit `GARMENT_SIZE_CREATED` (ukuran nonaktif diaktifkan lagi, `GARMENT_SIZE_UPDATED`).
+- [x] `datalist` saran nama ukuran master pada input header mengurangi salah ketik.
+- [x] Kolom REQ tidak ikut jatah 8 kolom; bila master belum punya ukuran `REQ`, form membuatnya sekali saat dibuka (idempoten + audit) agar kolomnya tidak hilang.
+- [x] Angka pada kolom ikut pindah saat nama ukuran diganti (Pendek & Panjang), begitupun baris roster manual.
+- [x] PO lama yang memakai ukuran di luar 8 kolom (mis. 5XL) tetap menampilkan kolomnya (sebelum REQ) saat revisi supaya jumlahnya tidak hilang; impor Excel melaporkan ukuran yang tidak ada di kolom tabel.
+- [x] Autosave draft naik ke versi 7 (menyimpan pilihan kolom ke-8); PDF/dokumen PO tidak berubah.
+- [x] Berkas: `lib/crm/po-size-columns.ts` (baru), `components/crm/purchase-order-form.tsx`, `app/actions/master-data.ts`, tes `tests/po-size-columns.test.mjs`.
+- [x] Verifikasi: `npm test` **490/490 lolos**, `npx tsc --noEmit` bersih, ESLint file terkait bersih, `npm run build` sukses.
+- [ ] Belum diuji di browser nyata dengan data produksi.

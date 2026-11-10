@@ -1563,7 +1563,7 @@ test("form revisi PO dan invoice membawa isian dokumen lama", async () => {
     readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
   ]);
   // Matriks ukuran direvisi: sel lama dipertahankan, ukuran tanpa pasangan di master dilaporkan.
-  assert.match(orderFormSource, /matrix: resolveMatrix\(item\.matrix, sizeOptions\)\.matrix/);
+  assert.match(orderFormSource, /matrix: resolveMatrix\(item\.matrix, poSizeColumns\(sizeOptions, customSize, item\.matrix\)\)\.matrix/);
   assert.match(orderFormSource, /const droppedSizeQuantity = values\?\.items\.reduce/);
   assert.match(orderFormSource, /Sebagian jumlah ukuran tidak terbawa/);
   // Data lama menyimpan ukuran sebagai nama; revisi memetakannya lewat nama sebelum menyerah.
@@ -1766,7 +1766,7 @@ test("Revisi PO: warna per produk, kategori Lainnya, multi desain penjahit, PDF 
   assert.match(formSource, /name=\{`\$\{prefix\}variationColor`\}/);
   assert.doesNotMatch(formSource, /name="baseColor"/);
   assert.doesNotMatch(formSource, /name="variationColor"/);
-  assert.match(formSource, /const AUTOSAVE_VERSION = 6;/);
+  assert.match(formSource, /const AUTOSAVE_VERSION = 7;/);
   assert.match(formSource, /Tambah produk\s*</);
   assert.doesNotMatch(formSource, /Tambah produk \(warna sama\)/);
   assert.match(formSource, /Setiap produk punya warna sendiri/);
