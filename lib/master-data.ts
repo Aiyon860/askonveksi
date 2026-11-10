@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import { CRM_VIEW_ROLES, GARMENT_SIZE_ROLES, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { sortProductCategoryRows } from "@/lib/crm/constants";
+import { sortGarmentSizeRows } from "@/lib/crm/size-aliases";
 import { getPrismaClient } from "@/lib/prisma";
 
 const getCachedCustomerFormOptions = unstable_cache(
@@ -65,10 +66,13 @@ export async function getGarmentSizes() {
     },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
-  return items.map((item) => ({
-    ...item,
-    _count: { customers: item._count.purchaseRows + item._count.rosterEntries + item._count.invoiceItems },
-  }));
+  // Urutan tampilan selalu XS…N-XL…REQ, bukan sekadar position mentah.
+  return sortGarmentSizeRows(
+    items.map((item) => ({
+      ...item,
+      _count: { customers: item._count.purchaseRows + item._count.rosterEntries + item._count.invoiceItems },
+    })),
+  );
 }
 
 export async function getProductCategories() {
@@ -128,11 +132,13 @@ export async function getActivePaymentMethods() {
 
 export async function getActiveGarmentSizes() {
   await requireActor(CRM_VIEW_ROLES);
-  return getPrismaClient().garmentSize.findMany({
+  const items = await getPrismaClient().garmentSize.findMany({
     where: { isActive: true },
     select: { id: true, name: true },
     orderBy: [{ position: "asc" }, { name: "asc" }],
   });
+  // Matriks PO: kolom kanan = ukuran terbesar / custom (lalu REQ jika ada).
+  return sortGarmentSizeRows(items);
 }
 
 /** Poin master "Pengaturan invoice" untuk halaman editor (dua kolom, urutan manual). */

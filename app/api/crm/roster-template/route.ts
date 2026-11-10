@@ -1,5 +1,6 @@
 import { CRM_OPERATOR_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { sortGarmentSizeRows } from "@/lib/crm/size-aliases";
 import { downloadFilename } from "@/lib/download-filename";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -8,11 +9,13 @@ export const runtime = "nodejs";
 export async function GET() {
   try { await requireActor(CRM_OPERATOR_ROLES); } catch { return new Response("Anda tidak memiliki akses ke template roster.", { status: 403 }); }
   const { default: ExcelJS } = await import("exceljs");
-  const sizes = await getPrismaClient().garmentSize.findMany({
-    where: { isActive: true },
-    select: { name: true },
-    orderBy: [{ position: "asc" }, { name: "asc" }],
-  });
+  const sizes = sortGarmentSizeRows(
+    await getPrismaClient().garmentSize.findMany({
+      where: { isActive: true },
+      select: { name: true },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+    }),
+  );
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ERM Askonveksi";
   const roster = workbook.addWorksheet("Roster");

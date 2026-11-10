@@ -5,6 +5,7 @@ import type { AiApiToken } from "@prisma/client";
 import { getPrismaClient } from "@/lib/prisma";
 
 import { authenticateAiToken } from "@/lib/ai/auth";
+import { mcpWwwAuthenticate } from "@/lib/ai/mcp-oauth";
 import { AiRequestError } from "@/lib/ai/query";
 import { checkAiRateLimit } from "@/lib/ai/rate-limit";
 
@@ -79,7 +80,7 @@ export async function withAiAccess(
     return json(
       { error: { code: auth.code, message: auth.message } },
       auth.status,
-      auth.status === 401 ? { "WWW-Authenticate": 'Bearer realm="askonveksi-ai"' } : undefined,
+      auth.status === 401 ? { "WWW-Authenticate": mcpWwwAuthenticate() } : undefined,
     );
   }
 
