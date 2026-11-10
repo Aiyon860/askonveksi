@@ -780,6 +780,15 @@ test("aksi pindah status dari detail peluang tidak fallback ke board", async () 
   assert.doesNotMatch(detailPageSource, /OpportunityStageForm/);
 });
 
+test("status tab PO/Invoice memakai badge berwarna", async () => {
+  const tabsSource = await readFile(new URL("../components/crm/opportunity-process-tabs.tsx", import.meta.url), "utf8");
+  assert.match(tabsSource, /export function opportunityTabStatusVariant/);
+  assert.match(tabsSource, /label === "Disepakati" \|\| label === "Terbit"\) return "success"/);
+  assert.match(tabsSource, /label === "Dibatalkan"\) return "destructive"/);
+  assert.match(tabsSource, /label === "Draft"\) return "warning"/);
+  assert.match(tabsSource, /<Badge variant=\{opportunityTabStatusVariant\(statusLabel\)\}/);
+});
+
 test("R10: tab Deal dilebur ke Invoice & Deal dan tautan ?tab=deal diarahkan ke tab invoice", async () => {
   const [constantsSource, tabsSource, detailPageSource, actionSource, invoiceDetailSource] = await Promise.all([
     readFile(new URL("../lib/crm/constants.ts", import.meta.url), "utf8"),
