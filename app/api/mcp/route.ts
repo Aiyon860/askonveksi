@@ -8,6 +8,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
+ * Proxy Anthropic/OpenAI kadang hanya mengirim `Accept: text/event-stream`.
+ * SDK menolak itu (406); normalisasi agar handshake konektor tetap jalan.
+ */
+function replayWithMcpAccept(request: Request, body: string) {
+  const headers = new Headers(request.headers);
+  const accept = headers.get("accept") ?? "";
+  if (!accept.includes("application/json") || !accept.includes("text/event-stream")) {
+    headers.set("accept", "application/json, text/event-stream");
+  }
+  return new Request(request.url, { method: "POST", headers, body });
+}
+
+/**
  * Endpoint MCP (Streamable HTTP, stateless) untuk ChatGPT / Claude / Gemini.
  *
  * Satu token Bearer dipakai bersama REST; rate limit dan audit log berlaku sama.
@@ -35,12 +48,7 @@ export async function POST(request: Request) {
       const server = createAiMcpServer(aiBaseUrl());
       await server.connect(transport);
 
-      // Request asli sudah dibaca untuk audit; kirim ulang body yang sama ke transport.
-      const replay = new Request(request.url, {
-        method: "POST",
-        headers: request.headers,
-        body,
-      });
+      const replay = replayWithMcpAccept(request, body);
 
       try {
         return await transport.handleRequest(replay);

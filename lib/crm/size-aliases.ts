@@ -11,10 +11,47 @@ const SIZE_ALIASES: Record<string, string> = {
   XXXXXL: "5XL",
 };
 
+/** Urutan huruf tetap sebelum tangga N-XL. */
+const LETTER_SIZE_RANK: Record<string, number> = {
+  XS: 10,
+  S: 20,
+  M: 30,
+  L: 40,
+  XL: 50,
+};
+
 /** Trim, rapikan spasi, huruf besar, lalu petakan ke nama baku. */
 export function normalizeGarmentSizeName(name: string) {
   const upper = name.trim().toLocaleUpperCase("id-ID").replace(/\s+/g, " ");
   return SIZE_ALIASES[upper] ?? upper;
+}
+
+/**
+ * Kunci urutan: XS…XL, lalu 2XL…N XL (numerik), nama lain, REQ paling akhir.
+ * Dipakai master ukuran, matriks PO, dan kolom size chart PDF.
+ */
+export function garmentSizeSortKey(name: string) {
+  const normalized = normalizeGarmentSizeName(name);
+  if (normalized === "REQ") return 1_000_000;
+  const letterRank = LETTER_SIZE_RANK[normalized];
+  if (letterRank != null) return letterRank;
+  const xlMatch = /^(\d+)XL$/.exec(normalized);
+  if (xlMatch) return 50 + Number(xlMatch[1]);
+  return 900_000;
+}
+
+export function compareGarmentSizeNames(left: string, right: string) {
+  const keyDelta = garmentSizeSortKey(left) - garmentSizeSortKey(right);
+  if (keyDelta !== 0) return keyDelta;
+  return normalizeGarmentSizeName(left).localeCompare(normalizeGarmentSizeName(right), "id-ID", { numeric: true });
+}
+
+export function sortGarmentSizeNames(names: Iterable<string>) {
+  return [...names].sort(compareGarmentSizeNames);
+}
+
+export function sortGarmentSizeRows<T extends { name: string }>(rows: T[]) {
+  return [...rows].sort((left, right) => compareGarmentSizeNames(left.name, right.name));
 }
 
 /**

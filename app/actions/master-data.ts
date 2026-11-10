@@ -8,6 +8,7 @@ import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/a
 import { GARMENT_SIZE_ROLES, MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { groupProductCategories } from "@/lib/crm/constants";
+import { compareGarmentSizeNames, sortGarmentSizeRows } from "@/lib/crm/size-aliases";
 import {
   bulkUpdateMasterDataSchema,
   bulkUpdateProductCategoriesSchema,
@@ -25,6 +26,16 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { SITE_LOGO_CACHE_TAG } from "@/lib/site-logo";
 import { BUSINESS_ASSETS_BUCKET, erpStorage } from "@/lib/storage/erp-storage";
+
+/** Samakan `position` master ukuran dengan urutan baku (XS…N-XL…REQ). */
+async function reindexGarmentSizePositions(tx: Prisma.TransactionClient) {
+  const items = await tx.garmentSize.findMany({ select: { id: true, name: true, position: true } });
+  const sorted = sortGarmentSizeRows(items);
+  for (const [position, item] of sorted.entries()) {
+    if (item.position === position) continue;
+    await tx.garmentSize.update({ where: { id: item.id }, data: { position } });
+  }
+}
 
 // Pooler Supabase bisa lambat (ratusan ms per query). Default Prisma
 // (maxWait 2s / timeout 5s) bisa berakhir P2028 "melewati batas waktu",
@@ -187,6 +198,7 @@ async function importGarmentSizeRows(actorId: string, rows: MasterDataExcelRow[]
       await tx.auditEvent.create({ data: { actorId, entityType: "GarmentSize", entityId: item.id, action: "GARMENT_SIZE_UPDATED", changedFields: ["position"] } });
       position += 1;
     }
+    await reindexGarmentSizePositions(tx);
   }, MASTER_DATA_TRANSACTION_OPTIONS);
 }
 
@@ -530,6 +542,7 @@ export async function createGarmentSizeAction(formData: FormData) {
         data: { ...parsed.data, position: (lastItem._max.position ?? -1) + 1 },
         select: { id: true },
       });
+      await reindexGarmentSizePositions(tx);
       await tx.auditEvent.create({
         data: { actorId: actor.id, entityType: "GarmentSize", entityId: created.id, action: "GARMENT_SIZE_CREATED", changedFields: ["name", "description", "position"] },
       });
@@ -575,11 +588,13 @@ export async function bulkUpdateGarmentSizesAction(formData: FormData) {
         throw new UserFacingError("Daftar ukuran sudah berubah. Muat ulang lalu coba lagi.");
       }
       const currentById = new Map(currentItems.map((item) => [item.id, item]));
-      for (const item of parsed.data) {
+      // Simpan apa adanya dulu, lalu reindex ke urutan baku supaya 2XL/4XL/3XL jadi 2XL/3XL/4XL.
+      const orderedItems = [...parsed.data].sort((left, right) => compareGarmentSizeNames(left.name, right.name));
+      for (const item of orderedItems) {
         const current = currentById.get(item.id);
         if (current && current.name !== item.name) await tx.garmentSize.update({ where: { id: item.id }, data: { name: `temporary-${randomUUID()}` } });
       }
-      for (const [position, item] of parsed.data.entries()) {
+      for (const [position, item] of orderedItems.entries()) {
         const current = currentById.get(item.id);
         if (!current) throw new UserFacingError("Ukuran tidak ditemukan. Muat ulang lalu coba lagi.");
         const description = item.description ?? null;

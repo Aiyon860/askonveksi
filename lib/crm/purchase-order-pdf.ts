@@ -7,7 +7,7 @@ import type { Brand } from "@/lib/brand/config";
 import { DEFAULT_BRAND } from "@/lib/brand/config";
 import { decorationMethodsLabel, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
 import { MIN_FONT_SIZE, clipPdfText, wrapPdfText } from "@/lib/crm/pdf-typography";
-import { normalizeGarmentSizeName } from "@/lib/crm/size-aliases";
+import { normalizeGarmentSizeName, sortGarmentSizeNames } from "@/lib/crm/size-aliases";
 
 export type PurchaseOrderPdfVariant = "customer" | "penjahit";
 
@@ -65,12 +65,11 @@ const HEADING_BAR_HEIGHT = 26;
 const ROSTER_ROWS_PER_PAGE = 25;
 
 /**
- * Urutan baku ukuran pada size chart. Kolom yang dicetak hanya ukuran yang benar-benar
- * dipesan (lihat `chartColumns`), jadi PO dengan 3 ukuran cukup menampilkan 3 kolom
- * walau Data Master punya banyak ukuran. Ukuran di luar daftar ini tetap ditampilkan
- * sebagai kolom tambahan di belakang supaya jumlahnya tidak pernah hilang.
+ * Daftar ukuran tetap pada size chart: semua kolom selalu dicetak lengkap walau PO
+ * tidak memesan ukuran tersebut (qty 0 tetap tampil). Ukuran di luar daftar ini
+ * (mis. 5XL/7XL/10XL) tetap ditambahkan dan diurutkan sebelum REQ.
  */
-const SIZE_LADDER = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"] as const;
+const SIZE_LADDER = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "REQ"] as const;
 
 function normalizeSize(name: string) {
   return normalizeGarmentSizeName(name);
@@ -407,25 +406,14 @@ export async function createPurchaseOrderPdf(
   const SIZE_CHART_MIN_CELL_WIDTH = 30;
 
   /**
-   * Kolom size chart: hanya ukuran yang dipesan (qty > 0), diurutkan mengikuti tangga
-   * baku lalu ukuran di luar tangga di belakangnya. Dokumen ikut berubah saat PO direvisi
-   * karena kolom selalu diturunkan dari baris ukuran PO terkini.
+   * Kolom size chart: daftar ukuran tetap (XS…4XL + REQ) selalu lengkap, ditambah
+   * ukuran di luar daftar itu bila PO memakainya. Urutan mengikuti tangga baku
+   * (custom N-XL sebelum REQ) supaya kolom kanan bisa 5XL/7XL/10XL lalu REQ.
    */
   function chartColumns(rows: Array<{ size: string; quantity: number }>) {
-    const ordered = new Set(
-      rows
-        .filter((row) => row.quantity > 0)
-        .map((row) => normalizeSize(row.size))
-        .filter((size) => size.length > 0),
-    );
-    // PO tanpa baris ukuran sama sekali tetap memakai tangga baku agar tabel tidak kosong.
-    if (!ordered.size) return [...SIZE_LADDER];
-    const known = SIZE_LADDER.filter((size) => ordered.has(size));
-    const extras = [...ordered]
-      .filter((size) => !(SIZE_LADDER as readonly string[]).includes(size))
-      // Urutan alami: 6XL, 7XL, … 10XL (bukan alfabetis yang menaruh 10XL di depan).
-      .sort((left, right) => left.localeCompare(right, "id-ID", { numeric: true }));
-    return [...known, ...extras];
+    const extras = [...new Set(rows.map((row) => normalizeSize(row.size)))]
+      .filter((size) => size.length > 0 && !(SIZE_LADDER as readonly string[]).includes(size));
+    return sortGarmentSizeNames([...SIZE_LADDER, ...extras]);
   }
 
   /** Lebar kolom yang dibutuhkan label terpanjang pada daftar ukuran (mis. "ALL SIZE"). */

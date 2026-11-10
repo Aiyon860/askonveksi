@@ -82,10 +82,11 @@ export default async function AiAccessPage() {
             </pre>
           </div>
           <div>
-            <p className="font-medium">MCP (ChatGPT, Claude, Gemini)</p>
+            <p className="font-medium">MCP (ChatGPT, Claude, Gemini, Cursor)</p>
             <p className="text-muted-foreground">
-              URL server: <code className="rounded bg-muted px-1 py-0.5 text-xs">{origin}/api/mcp</code> — transport Streamable HTTP,
-              header <code className="rounded bg-muted px-1 py-0.5 text-xs">Authorization: Bearer &lt;token&gt;</code>.
+              URL server: <code className="rounded bg-muted px-1 py-0.5 text-xs">{origin}/api/mcp</code> — Streamable HTTP.
+              Cursor/Gemini: header <code className="rounded bg-muted px-1 py-0.5 text-xs">Authorization: Bearer &lt;token&gt;</code>.
+              Claude/ChatGPT connector: tambah URL saja, lalu tempel token di halaman izin OAuth.
             </p>
           </div>
           <div>

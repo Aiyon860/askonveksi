@@ -73,12 +73,22 @@ Tool yang tersedia:
 
 ### Menyambungkan
 
-**Claude** — Settings → Connectors → *Add custom connector*, isi URL
-`https://askonveksi.web.id/api/mcp` dan header `Authorization: Bearer <token>`.
+**Claude / ChatGPT (custom connector)** — isi URL `https://askonveksi.web.id/api/mcp`.
+Klien akan membuka halaman OAuth Askonveksi; tempel token `askai_…` di sana.
+(Alternatif Claude: Request headers → `Authorization: Bearer <token>` bila UI menampilkannya.)
 
-**ChatGPT** — aktifkan Developer mode / *New connector*, jenis MCP, URL yang sama, header yang
-sama. Bila akun belum mendukung konektor MCP, pakai REST lewat *Actions* dengan skema OpenAPI
-dari `GET /api/ai`.
+**Cursor** — `~/.cursor/mcp.json` / `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "askonveksi": {
+      "url": "https://askonveksi.web.id/api/mcp",
+      "headers": { "Authorization": "Bearer askai_xxx" }
+    }
+  }
+}
+```
 
 **Gemini CLI**
 

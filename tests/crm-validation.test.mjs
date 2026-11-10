@@ -1600,15 +1600,12 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   // Size chart menahan ruang di halaman gambar desainnya; desain penjahit dikecualikan (halaman penuh sendiri).
   assert.match(pdfSource, /drawAssets\(embeddedAssets\.filter\(\(asset\) => asset\.itemId === item\.id && asset\.kind !== "PENJAHIT_DESIGN"\), item\.name, measureModelTable\(rows\)\)/);
   assert.match(pdfSource, /drawModelTable/);
-  // Size chart hanya mencetak ukuran yang benar-benar dipesan (qty > 0) supaya dokumen
-  // tidak penuh kolom kosong saat Data Master punya banyak ukuran; urutannya mengikuti
-  // tangga baku dan ukuran di luar daftar tetap ditambahkan di belakang.
-  assert.match(pdfSource, /const SIZE_LADDER = \["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL"\] as const/);
+  // Size chart selalu mencetak tangga baku XS…4XL + REQ (qty 0 tetap tampil);
+  // ukuran custom di luar daftar (5XL/7XL/10XL) ditambahkan dan diurutkan sebelum REQ.
+  assert.match(pdfSource, /const SIZE_LADDER = \["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "REQ"\] as const/);
   assert.match(pdfSource, /function chartColumns\(rows: Array<\{ size: string; quantity: number \}>\)/);
-  assert.match(pdfSource, /const ordered = new Set\(/);
-  assert.match(pdfSource, /\.filter\(\(row\) => row\.quantity > 0\)/);
-  assert.match(pdfSource, /const known = SIZE_LADDER\.filter\(\(size\) => ordered\.has\(size\)\)/);
-  assert.doesNotMatch(pdfSource, /return \[\.\.\.SIZE_LADDER, \.\.\.extras\]/);
+  assert.match(pdfSource, /sortGarmentSizeNames\(\[\.\.\.SIZE_LADDER, \.\.\.extras\]\)/);
+  assert.doesNotMatch(pdfSource, /\.filter\(\(row\) => row\.quantity > 0\)/);
   assert.match(pdfSource, /SIZE_CHART_NOTE_HEIGHT/);
   // 10+ ukuran tetap rapi: lebar kolom mengikuti label terpanjang, kolom dibagi seimbang
   // hanya bila tidak muat, tiap blok diberi nomor bagian, blok antara memakai SUBTOTAL,
