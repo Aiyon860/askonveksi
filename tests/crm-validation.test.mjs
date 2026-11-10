@@ -1593,10 +1593,14 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   // Baris sampel wajib dipanggil di lembar produk (multi-produk) maupun lembar tunggal.
   assert.equal((pdfSource.match(/if \(variant === "penjahit"\) drawSampleSizeLine\(\);/g) ?? []).length, 2);
   assert.doesNotMatch(pdfSource, /Sampel ukuran/);
-  // Revisi: perusahaan & instansi di-merge satu sel, label kecil, nilai dari data perusahaan.
-  assert.match(pdfSource, /const companyLabel = data\.opportunity\.customer\.companyName \|\| data\.instansi;/);
-  assert.match(pdfSource, /label: "Perusahaan\/Instansi\/Komunitas", value: companyLabel, compactLabel: true/);
-  assert.match(pdfSource, /HEADER_COMPACT_LABEL_SIZE/);
+  // Kop 1:1 sesuai referensi: murni 3 baris (tanpa Perusahaan/Instansi/Jenis pakaian/Kategori),
+  // sel Warna memakai bullet list + baris Variasi, dan bar POLA menyatu langsung di bawah tabel.
+  assert.doesNotMatch(pdfSource, /Perusahaan\/Instansi\/Komunitas/);
+  assert.doesNotMatch(pdfSource, /label: "Jenis pakaian"/);
+  assert.doesNotMatch(pdfSource, /label: "Kategori"/);
+  assert.match(pdfSource, /const bulletPrefix = "\\u2022 ";/);
+  assert.match(pdfSource, /footerLine: trimmedVariation \? `Variasi: \$\{trimmedVariation\}` : undefined/);
+  assert.match(pdfSource, /const polaBottom = tableBottom - HEADER_POLA_ROW_HEIGHT;/);
   // Size chart menahan ruang di halaman gambar desainnya; desain penjahit dikecualikan (halaman penuh sendiri).
   assert.match(pdfSource, /drawAssets\(embeddedAssets\.filter\(\(asset\) => asset\.itemId === item\.id && asset\.kind !== "PENJAHIT_DESIGN"\), item\.name, measureModelTable\(rows\)\)/);
   assert.match(pdfSource, /drawModelTable/);
