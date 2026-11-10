@@ -61,6 +61,8 @@ type PurchaseOrderWorkflowSectionProps = {
   draftValues: PurchaseOrderDraftValues;
   purchaseOrderNoPreview: string;
   defaultInstansi?: string;
+  /** Role yang boleh membuka Data Master ukuran; dipakai tautan "Tambah ukuran" di form revisi. */
+  canManageSizes?: boolean;
   /** Sprint 11 (R3): baris deadline/desain penjahit per item untuk dialog Edit PDF Penjahit. */
   penjahitItems: PenjahitPlanItem[];
   children: ReactNode;
@@ -82,6 +84,7 @@ export function PurchaseOrderWorkflowSection({
   draftValues,
   purchaseOrderNoPreview,
   defaultInstansi,
+  canManageSizes = false,
   penjahitItems,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
@@ -137,6 +140,7 @@ export function PurchaseOrderWorkflowSection({
             submitLabel="Buat versi revisi"
             purchaseOrderNoPreview={purchaseOrderNoPreview}
             defaultInstansi={defaultInstansi}
+            canManageSizes={canManageSizes}
           />
           <Button
             type="button"

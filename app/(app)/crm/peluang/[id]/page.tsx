@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, GARMENT_SIZE_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getOpportunityDetail, getOpportunityDocumentHistory, getPurchaseOrderNoPreview } from "@/lib/crm/data";
 import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
@@ -111,6 +111,8 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
   }
 
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
+  // Admin PO boleh menambah ukuran langsung dari form PO; role lain hanya melihat tautan bila berhak.
+  const canManageSizes = hasRole(actor.role, GARMENT_SIZE_ROLES);
   // D1: Admin PO boleh mengunggah desain langsung (read-only CRM lainnya tetap).
   const canUploadDesignRole = hasRole(actor.role, DESIGN_UPLOADER_ROLES);
   const canCancelDocuments = hasRole(actor.role, OWNER_ACTION_ROLES);
@@ -308,7 +310,8 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                       };
                     })()}
                     purchaseOrderNoPreview={purchaseOrderNoPreview}
-                    defaultInstansi={opportunity.customer.companyName ?? opportunity.customer.name}
+                    defaultInstansi={opportunity.customer.companyName ?? undefined}
+                    canManageSizes={canManageSizes}
                     penjahitItems={purchaseOrder.items.map((item) => ({
                       id: item.id,
                       name: item.name,
@@ -325,7 +328,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                   </PurchaseOrderWorkflowSection>
                 </section>
               ))}
-              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} categoryOptions={categoryOptions} purchaseOrderNoPreview={purchaseOrderNoPreview} defaultInstansi={opportunity.customer.companyName ?? opportunity.customer.name} /> : null}
+              {canOperate && inNegotiation && opportunity.purchaseOrders.length === 0 ? <PurchaseOrderForm opportunityId={opportunity.id} sizeOptions={sizeOptions} categoryOptions={categoryOptions} purchaseOrderNoPreview={purchaseOrderNoPreview} defaultInstansi={opportunity.customer.companyName ?? undefined} canManageSizes={canManageSizes} /> : null}
             </div>
           )}
         </CardContent>
