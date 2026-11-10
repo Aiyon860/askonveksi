@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { createContext, memo, useContext, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, Shirt, SlidersHorizontal, Tags, UserPlus, Users, UsersRound, Wallet, Waypoints } from "lucide-react";
+import { Banknote, BarChart3, Building2, CalendarCheck2, CalendarClock, CircleDollarSign, ClipboardList, CreditCard, Database, Factory, FileText, Gauge, Globe2, History, Kanban, KanbanSquare, KeyRound, LayoutDashboard, LayoutTemplate, Magnet, Megaphone, MessageCircle, PenTool, Receipt, Ruler, ScrollText, Settings2, Shirt, SlidersHorizontal, Tags, UserPlus, Users, UsersRound, Wallet, Waypoints } from "lucide-react";
 import useSWR from "swr";
 
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +64,7 @@ const masterItems = [
 
 const ownerMasterItems = [
   { href: "/admin/users", label: "Pengguna", icon: Users },
+  { href: "/admin/ai-access", label: "Akses AI", icon: KeyRound },
 ] as const;
 
 const websiteItems = [
