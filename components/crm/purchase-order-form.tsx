@@ -508,7 +508,7 @@ export function PurchaseOrderForm({
                     maxLength={120}
                     value={item.baseColor}
                     onChange={(event) => updateItem(item.key, { baseColor: event.target.value })}
-                    placeholder="Contoh: Navy"
+                    placeholder="Contoh: Based (Merah): M-727, Based (Biru): B-012"
                     aria-label={`Warna dasar produk ${index + 1}`}
                   />
                 </Field>
@@ -520,7 +520,7 @@ export function PurchaseOrderForm({
                     maxLength={240}
                     value={item.variationColor}
                     onChange={(event) => updateItem(item.key, { variationColor: event.target.value })}
-                    placeholder="Opsional, contoh: Putih di list lengan"
+                    placeholder="Opsional, contoh: Kuning (K-04)"
                     aria-label={`Warna variasi produk ${index + 1}`}
                   />
                 </Field>

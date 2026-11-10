@@ -49,16 +49,16 @@ type PdfAsset = { kind: string; label: string; originalName: string; contentType
 const A4 = { width: 595.28, height: 841.89 };
 const margin = 36;
 const CONTENT_WIDTH = A4.width - margin * 2;
-/** Sel logo di kiri tabel identitas; sisanya dibagi dua kolom data. */
-const HEADER_LOGO_CELL_WIDTH = 100;
+/** Sel logo di kiri tabel identitas; dua kolom data mengikuti proporsi gambar referensi. */
+const HEADER_LOGO_CELL_WIDTH = 116;
+const HEADER_LEFT_DATA_WIDTH = 226;
+const HEADER_RIGHT_DATA_WIDTH = CONTENT_WIDTH - HEADER_LOGO_CELL_WIDTH - HEADER_LEFT_DATA_WIDTH;
+const HEADER_DATA_COLUMN_WIDTHS = [HEADER_LEFT_DATA_WIDTH, HEADER_RIGHT_DATA_WIDTH] as const;
 const HEADER_CELL_PADDING = 8;
+const HEADER_BULLET_INDENT = 8;
 const HEADER_ROW_MIN_HEIGHT = 34;
 const HEADER_LINE_HEIGHT = 15;
-/**
- * Label gabungan yang panjang (mis. "Perusahaan/Instansi/Komunitas") dicetak lebih kecil
- * supaya tidak memakan tempat; nilai datanya tetap memakai ukuran teks default.
- */
-const HEADER_COMPACT_LABEL_SIZE = 9;
+const HEADER_POLA_ROW_HEIGHT = 32;
 const TABLE_ROW_HEIGHT = 26;
 const HEADING_BAR_HEIGHT = 26;
 /** Baris roster per halaman A4; sisanya lanjut ke halaman berikutnya. */
@@ -96,17 +96,16 @@ const BRAND_BAR_BG = {
   SAGA: rgb(0.22, 0.3, 0.18),
 } as const;
 
-/** Sel tabel identitas: satu baris "Label : nilai", atau label + beberapa baris tambahan. */
+/** Sel tabel identitas: satu baris "Label : nilai", atau label + daftar bullet warna & baris Variasi. */
 type HeaderCell = {
   label: string;
   value?: string;
-  extraLines?: Array<{ label: string; value: string }>;
+  bullets?: string[];
+  footerLine?: string;
   highlight?: boolean;
-  /** Label dicetak lebih kecil (nilai tetap ukuran default), dipakai untuk label gabungan panjang. */
-  compactLabel?: boolean;
 };
 
-type HeaderLine = Array<{ text: string; bold: boolean; size?: number }>;
+type HeaderLine = { indent?: number; runs: Array<{ text: string; bold: boolean }> };
 
 export async function createPurchaseOrderPdf(
   data: PurchaseOrderPdfData,
@@ -192,36 +191,33 @@ export async function createPurchaseOrderPdf(
 
   /** Isi satu sel tabel identitas menjadi baris-baris siap gambar (dipotong sesuai lebar kolom). */
   function cellLines(cell: HeaderCell, maxWidth: number): HeaderLine[] {
-    if (!cell.extraLines?.length) {
-      if (cell.compactLabel) {
-        // Label panjang dicetak kecil, nilai tetap 12 pt supaya nama perusahaan/instansi tetap terbaca.
-        const prefix = `${safe(cell.label)} : `;
-        const available = Math.max(20, maxWidth - regular.widthOfTextAtSize(prefix, HEADER_COMPACT_LABEL_SIZE));
-        return [[
-          { text: prefix, bold: false, size: HEADER_COMPACT_LABEL_SIZE },
-          { text: clipPdfText(safe(cell.value ?? "-"), regular, MIN_FONT_SIZE, available), bold: false },
-        ]];
-      }
+    const hasMultilineColor = Boolean(cell.bullets?.length || cell.footerLine);
+    if (!hasMultilineColor) {
       return wrapPdfText(safe(`${cell.label} : ${cell.value ?? "-"}`), cell.highlight ? bold : regular, MIN_FONT_SIZE, maxWidth)
         .slice(0, 2)
-        .map((line) => [{ text: line, bold: false }]);
+        .map((line) => ({ runs: [{ text: line, bold: false }] }));
     }
-    const lines: HeaderLine[] = [[{ text: `${safe(cell.label)} :`, bold: false }]];
-    for (const extra of cell.extraLines) {
-      const prefix = `${safe(extra.label)}: `;
-      const available = Math.max(20, maxWidth - bold.widthOfTextAtSize(prefix, MIN_FONT_SIZE));
-      lines.push([
-        { text: prefix, bold: true },
-        { text: clipPdfText(safe(extra.value), regular, MIN_FONT_SIZE, available), bold: false },
-      ]);
+    const lines: HeaderLine[] = [{ runs: [{ text: `${safe(cell.label)} :`, bold: false }] }];
+    const bulletWidth = Math.max(20, maxWidth - HEADER_BULLET_INDENT);
+    for (const item of cell.bullets ?? []) {
+      const bulletPrefix = "\u2022 ";
+      const textWidth = Math.max(20, bulletWidth - regular.widthOfTextAtSize(bulletPrefix, MIN_FONT_SIZE));
+      lines.push({
+        indent: HEADER_BULLET_INDENT,
+        runs: [{ text: `${bulletPrefix}${clipPdfText(safe(item), regular, MIN_FONT_SIZE, textWidth)}`, bold: false }],
+      });
+    }
+    if (cell.footerLine) {
+      lines.push({
+        runs: [{ text: clipPdfText(safe(cell.footerLine), regular, MIN_FONT_SIZE, maxWidth), bold: false }],
+      });
     }
     return lines;
   }
 
   /**
-   * Kop ringkas sesuai referensi: sel logo di kiri + tabel dua kolom tiga baris
-   * (Nama/Bahan · Tgl Order/Warna · Deadline/Tinta-Bordir). Baris tambahan hanya
-   * dipakai bila datanya ada, sehingga kop tidak memakan tempat ke bawah.
+   * Kop ringkas 1:1 sesuai referensi: sel logo di kiri + tabel dua kolom tiga baris
+   * (Nama/Bahan · Tgl Order/Warna · Deadline/Tinta-Bordir) + baris POLA menyatu di bawahnya.
    */
   function drawSheetHeader(item: PurchaseOrderPdfItem | null, freshPage: boolean) {
     if (freshPage) addPage();
@@ -237,16 +233,17 @@ export async function createPurchaseOrderPdf(
       y -= 18;
     }
 
-    const garmentType = item?.garmentType ?? data.garmentType;
-    // Kategori per produk boleh kosong di form; jatuhkan ke kategori level PO
-    // (pilihan "PDH / PDL" user tersimpan di sana) supaya tidak tercetak "-".
-    const category = item?.productCategory?.name ?? data.productCategory ?? "-";
     const decoration = item?.decorationMethods.length ? item.decorationMethods : poDecoration;
     // Warna mengikuti produk: satu PO boleh memuat beberapa warna berbeda.
     // PO lama (item tanpa warna) jatuh ke kolom warna header supaya PDF lama tidak berubah.
     const colorItem = item ?? (data.items.length === 1 ? data.items[0] : null);
     const baseColor = colorItem?.baseColor ?? data.baseColor ?? data.color;
     const variationColor = colorItem?.variationColor ?? data.variationColor;
+    const baseColorBullets = (baseColor ?? "")
+      .split(/[,;\r\n]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const trimmedVariation = variationColor?.trim() || "";
 
     // Varian penjahit (Sprint 11 R3): sel Deadline hanya berisi deadline penjahit per item
     // (null tampil "-"); lembar tunggal memakai satu-satunya produk. Varian customer tetap deadline PO.
@@ -256,8 +253,7 @@ export async function createPurchaseOrderPdf(
         ? { label: "Deadline", value: formatDate(penjahitItem?.penjahitDeadline ?? null), highlight: true }
         : { label: "Deadline", value: formatDate(data.deadline), highlight: true };
 
-    // Satu baris boleh berisi 1 sel (kolom data digabung) atau 2 sel.
-    const rows: HeaderCell[][] = [
+    const rows: [HeaderCell, HeaderCell][] = [
       [
         { label: "Nama", value: data.opportunity.customer.name },
         { label: "Bahan", value: data.material },
@@ -266,10 +262,8 @@ export async function createPurchaseOrderPdf(
         { label: "Tgl Order", value: formatDate(data.orderDate) },
         {
           label: "Warna",
-          extraLines: [
-            ...(baseColor ? [{ label: "Warna Base", value: baseColor }] : []),
-            ...(variationColor ? [{ label: "Warna List", value: variationColor }] : []),
-          ],
+          bullets: baseColorBullets,
+          footerLine: trimmedVariation ? `Variasi: ${trimmedVariation}` : undefined,
         },
       ],
       [
@@ -277,27 +271,14 @@ export async function createPurchaseOrderPdf(
         { label: "Tinta / Bordir", value: decorationMethodsLabel(decoration) || "-" },
       ],
     ];
-    // Revisi: perusahaan & instansi dilebur jadi satu sel selebar dua kolom dengan label kecil.
-    // Nilainya WAJIB dari data perusahaan/instansi — bukan nama pemesan (customer.name).
-    const companyLabel = data.opportunity.customer.companyName || data.instansi;
-    if (companyLabel) {
-      rows.push([{ label: "Perusahaan/Instansi/Komunitas", value: companyLabel, compactLabel: true }]);
-    }
-    if (garmentType || category !== "-") {
-      rows.push([
-        { label: "Jenis pakaian", value: garmentType ? GARMENT_TYPE_LABEL[garmentType] : "-" },
-        { label: "Kategori", value: category },
-      ]);
-    }
 
-    const cellLinesByRow = rows.map((row) => {
-      const cellTextWidth = (CONTENT_WIDTH - HEADER_LOGO_CELL_WIDTH) / row.length - HEADER_CELL_PADDING * 2;
-      return row.map((cell) => cellLines(cell, cellTextWidth));
-    });
+    const cellLinesByRow = rows.map((row) =>
+      row.map((cell, columnIndex) => cellLines(cell, HEADER_DATA_COLUMN_WIDTHS[columnIndex] - HEADER_CELL_PADDING * 2)),
+    );
     // Tinggi tiap baris mengikuti isinya (minimal 34 pt) supaya kop tetap ringkas.
-    const rowHeights = cellLinesByRow.map((cells) => Math.max(HEADER_ROW_MIN_HEIGHT, ...cells.map((lines) => lines.length * HEADER_LINE_HEIGHT + 12)));
+    const rowHeights = cellLinesByRow.map((cells) => Math.max(HEADER_ROW_MIN_HEIGHT, ...cells.map((lines) => lines.length * HEADER_LINE_HEIGHT + 14)));
     const tableHeight = rowHeights.reduce((sum, height) => sum + height, 0);
-    if (y - tableHeight - 46 < margin) {
+    if (y - tableHeight - HEADER_POLA_ROW_HEIGHT - 18 < margin) {
       addPage();
       markUsed();
     }
@@ -311,7 +292,7 @@ export async function createPurchaseOrderPdf(
     }
 
     page.drawRectangle({ x: margin, y: tableBottom, width: HEADER_LOGO_CELL_WIDTH, height: tableHeight, borderWidth: 0.8, borderColor: BORDER });
-    const logoScale = logo.scaleToFit(HEADER_LOGO_CELL_WIDTH - 18, tableHeight - 22);
+    const logoScale = logo.scaleToFit(HEADER_LOGO_CELL_WIDTH - 16, tableHeight - 20);
     page.drawImage(logo, {
       x: margin + (HEADER_LOGO_CELL_WIDTH - logoScale.width) / 2,
       y: tableBottom + (tableHeight - logoScale.height) / 2,
@@ -323,34 +304,32 @@ export async function createPurchaseOrderPdf(
       const rowTop = rowTops[rowIndex];
       const rowHeight = rowHeights[rowIndex];
       const rowBottom = rowTop - rowHeight;
-      // Sel digabung bila baris hanya punya satu sel: lebarnya = seluruh kolom data.
-      const cellWidth = (CONTENT_WIDTH - HEADER_LOGO_CELL_WIDTH) / row.length;
+      let cellX = margin + HEADER_LOGO_CELL_WIDTH;
       row.forEach((cell, columnIndex) => {
-        const cellX = margin + HEADER_LOGO_CELL_WIDTH + columnIndex * cellWidth;
+        const cellWidth = HEADER_DATA_COLUMN_WIDTHS[columnIndex];
         page.drawRectangle({ x: cellX, y: rowBottom, width: cellWidth, height: rowHeight, borderWidth: 0.8, borderColor: BORDER });
         const lines = cellLinesByRow[rowIndex][columnIndex];
         const offset = Math.max(4, (rowHeight - lines.length * HEADER_LINE_HEIGHT) / 2);
-        lines.forEach((runs, lineIndex) => {
-          let cursorX = cellX + HEADER_CELL_PADDING;
+        lines.forEach((line, lineIndex) => {
+          let cursorX = cellX + HEADER_CELL_PADDING + (line.indent ?? 0);
           const lineY = rowTop - offset - 12 - lineIndex * HEADER_LINE_HEIGHT;
-          for (const run of runs) {
+          for (const run of line.runs) {
             const font = cell.highlight || run.bold ? bold : regular;
-            const size = run.size ?? MIN_FONT_SIZE;
-            page.drawText(run.text, { x: cursorX, y: lineY, size, font, color: cell.highlight ? DEADLINE_RED : rgb(0.12, 0.12, 0.12) });
-            cursorX += font.widthOfTextAtSize(run.text, size);
+            page.drawText(run.text, { x: cursorX, y: lineY, size: MIN_FONT_SIZE, font, color: cell.highlight ? DEADLINE_RED : rgb(0.12, 0.12, 0.12) });
+            cursorX += font.widthOfTextAtSize(run.text, MIN_FONT_SIZE);
           }
         });
+        cellX += cellWidth;
       });
     });
-    y = tableBottom - 12;
 
-    // Judul POLA: bar bergaris dengan teks di tengah — pola milik produk di lembar ini
-    // (revisi: pola per produk; fallback ke pola lama / nama produk level PO).
+    // Judul POLA menyatu langsung di bawah tabel identitas (tanpa jeda) sesuai gambar referensi.
     const sheetPola = item?.pola || data.pola || data.productName;
     const polaText = clipPdfText(`POLA : ${safe(sheetPola.toUpperCase())}`, bold, 13, CONTENT_WIDTH - 24);
-    page.drawRectangle({ x: margin, y: y - 28, width: CONTENT_WIDTH, height: 28, borderWidth: 0.8, borderColor: BORDER, color: rgb(1, 1, 1) });
-    page.drawText(polaText, { x: (A4.width - bold.widthOfTextAtSize(polaText, 13)) / 2, y: y - 19, size: 13, font: bold, color: rgb(0.12, 0.12, 0.12) });
-    y -= 40;
+    const polaBottom = tableBottom - HEADER_POLA_ROW_HEIGHT;
+    page.drawRectangle({ x: margin, y: polaBottom, width: CONTENT_WIDTH, height: HEADER_POLA_ROW_HEIGHT, borderWidth: 0.8, borderColor: BORDER, color: rgb(1, 1, 1) });
+    page.drawText(polaText, { x: (A4.width - bold.widthOfTextAtSize(polaText, 13)) / 2, y: polaBottom + (HEADER_POLA_ROW_HEIGHT - 10) / 2, size: 13, font: bold, color: rgb(0.12, 0.12, 0.12) });
+    y = polaBottom - 12;
   }
 
   /**
