@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OpportunityDetailTab } from "@/lib/crm/constants";
 
@@ -10,6 +11,14 @@ const TAB_LABELS: Array<[OpportunityDetailTab, string]> = [
   ["invoice", "Invoice & Deal"],
   ["aktivitas", "Riwayat PO & Invoice"],
 ];
+
+/** Warna pill status tab: hijau = selesai positif, merah = batal, kuning = draft. */
+export function opportunityTabStatusVariant(label: string) {
+  if (label === "Disepakati" || label === "Terbit") return "success";
+  if (label === "Dibatalkan") return "destructive";
+  if (label === "Draft") return "warning";
+  return "secondary";
+}
 
 export function OpportunityProcessTabs({
   initialTab,
@@ -41,12 +50,19 @@ export function OpportunityProcessTabs({
     <Tabs value={activeTab} onValueChange={selectTab}>
       <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
         <TabsList activateOnFocus className="min-w-max">
-          {TAB_LABELS.map(([value, label]) => (
-            <TabsTrigger key={value} value={value}>
-              <span>{label}</span>
-              {status[value] ? <span className="hidden text-xs font-normal text-muted-foreground md:inline">{status[value]}</span> : null}
-            </TabsTrigger>
-          ))}
+          {TAB_LABELS.map(([value, label]) => {
+            const statusLabel = status[value];
+            return (
+              <TabsTrigger key={value} value={value}>
+                <span>{label}</span>
+                {statusLabel ? (
+                  <Badge variant={opportunityTabStatusVariant(statusLabel)} className="hidden md:inline-flex">
+                    {statusLabel}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
       </div>
       {children}

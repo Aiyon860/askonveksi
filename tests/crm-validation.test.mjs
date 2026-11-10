@@ -561,16 +561,43 @@ test("membatalkan invoice draft tidak lagi diblokir CHECK issuedAt", async () =>
   assert.match(responseSource, /console\.error\("\[redirecting-action\]"/);
 });
 
+test("PO disepakati dan invoice terbit dapat dibatalkan selama belum ada DP/Lunas", async () => {
+  const [actionSource, poWorkflowSource, invoiceWorkflowSource, pageSource] = await Promise.all([
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/purchase-order-workflow-section.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+  ]);
+  // PO draft maupun disepakati dapat dibatalkan.
+  assert.match(actionSource, /purchaseOrder\.status !== "DRAFT" && purchaseOrder\.status !== "AGREED"/);
+  // Invoice aktif menahan pembatalan PO; invoice harus dibatalkan lebih dulu.
+  assert.match(actionSource, /blockingInvoice[\s\S]{0,400}Batalkan invoice tersebut terlebih dahulu sebelum membatalkan PO/);
+  // DP/Lunas mengunci pembatalan; deposit tidak dihitung.
+  assert.match(actionSource, /async function settledPaymentCount[\s\S]{0,300}isDeposit: false/);
+  assert.match(actionSource, /settledPaymentCount\(tx, \{ purchaseOrderId: purchaseOrder\.id \}\)/);
+  assert.match(actionSource, /settledPaymentCount\(tx, \{ invoiceId: parsed\.data\.invoiceId \}\)/);
+  // SO tanpa pembayaran ikut dibatalkan dan peluang kembali ke Negosiasi (bukan Lost).
+  assert.match(actionSource, /async function cancelSalesOrderForRevision[\s\S]{0,900}stage: "NEGOSIASI"/);
+  assert.match(actionSource, /purchaseOrder\.salesOrder\?\.status === "ACTIVE"[\s\S]{0,120}cancelSalesOrderForRevision/);
+  // UI menyediakan tombol batal untuk PO disepakati dan invoice terbit.
+  assert.match(poWorkflowSource, /purchaseOrderStatus === "AGREED" \? "Batalkan PO disepakati"/);
+  assert.match(poWorkflowSource, /const canCancelPurchaseOrder = purchaseOrderStatus === "DRAFT" \|\| purchaseOrderStatus === "AGREED"/);
+  assert.match(invoiceWorkflowSource, /cancelBlockedReason/);
+  assert.match(pageSource, /purchaseOrderCancelBlockedReason/);
+  assert.match(pageSource, /invoiceSettledPaymentCount/);
+});
+
 test("invoice terbit tanpa Sales Order dapat dibatalkan agar PO dapat direvisi", async () => {
   const [actionSource, workflowSource] = await Promise.all([
     readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
     readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8"),
   ]);
-  // Pembatalan menerima DRAFT dan ISSUED; invoice yang sudah menjadi SO tetap harus lewat SO.
+  // Pembatalan menerima DRAFT dan ISSUED, tetapi terkunci setelah DP/Lunas masuk.
   assert.match(actionSource, /invoice\.status !== "DRAFT" && invoice\.status !== "ISSUED"/);
-  assert.match(actionSource, /invoice\.status === "ISSUED" && invoice\.salesOrder\?\.status === "ACTIVE"/);
-  assert.match(actionSource, /Batalkan Sales Order tersebut terlebih dahulu agar invoice ini dapat dibatalkan/);
-  // SO yang dibatalkan tidak menghalangi pembatalan invoice; tanpa ini invoice beku selamanya.
+  assert.match(actionSource, /settledPaymentCount\(tx, \{ invoiceId: parsed\.data\.invoiceId \}\)/);
+  assert.match(actionSource, /Pembayaran DP\/Lunas sudah masuk pada invoice/);
+  // SO aktif tanpa pembayaran ikut dibatalkan agar revisi PO bisa dilanjutkan.
+  assert.match(actionSource, /invoice\.salesOrder\?\.status === "ACTIVE"[\s\S]{0,120}cancelSalesOrderForRevision/);
   assert.match(actionSource, /Batalkan invoice ini lalu buat revisi PO untuk melanjutkan dokumen baru/);
   // Status audit mengikuti status asal dokumen, bukan selalu DRAFT.
   assert.match(actionSource, /statusDiff\(INVOICE_STATUS_LABEL\[invoice\.status\], INVOICE_STATUS_LABEL\.CANCELLED\)/);
@@ -578,8 +605,8 @@ test("invoice terbit tanpa Sales Order dapat dibatalkan agar PO dapat direvisi",
   // bukan menyuruh membatalkan Sales Order yang belum pernah terbentuk.
   assert.match(actionSource, /Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati/);
   assert.match(actionSource, /Masih ada invoice terbit\. Batalkan invoice tersebut terlebih dahulu sebelum merevisi PO yang disepakati/);
-  // Tombol batal tersedia untuk invoice terbit tanpa SO.
-  assert.match(workflowSource, /invoiceStatus === "DRAFT" \|\| \(invoiceStatus === "ISSUED" && !hasSalesOrder\)/);
+  // Tombol batal tersedia untuk invoice draft maupun terbit; server yang menahan bila sudah dibayar.
+  assert.match(workflowSource, /invoiceStatus === "DRAFT" \|\| invoiceStatus === "ISSUED"/);
   assert.match(workflowSource, /Batalkan invoice terbit/);
 });
 
@@ -751,6 +778,15 @@ test("aksi pindah status dari detail peluang tidak fallback ke board", async () 
   // Panel Status pipeline dihapus dari semua tab detail peluang; pindah status hanya via board.
   assert.doesNotMatch(detailPageSource, /Status pipeline/);
   assert.doesNotMatch(detailPageSource, /OpportunityStageForm/);
+});
+
+test("status tab PO/Invoice memakai badge berwarna", async () => {
+  const tabsSource = await readFile(new URL("../components/crm/opportunity-process-tabs.tsx", import.meta.url), "utf8");
+  assert.match(tabsSource, /export function opportunityTabStatusVariant/);
+  assert.match(tabsSource, /label === "Disepakati" \|\| label === "Terbit"\) return "success"/);
+  assert.match(tabsSource, /label === "Dibatalkan"\) return "destructive"/);
+  assert.match(tabsSource, /label === "Draft"\) return "warning"/);
+  assert.match(tabsSource, /<Badge variant=\{opportunityTabStatusVariant\(statusLabel\)\}/);
 });
 
 test("R10: tab Deal dilebur ke Invoice & Deal dan tautan ?tab=deal diarahkan ke tab invoice", async () => {
@@ -1012,27 +1048,29 @@ test("status aktivitas berubah pada bulan ke-6 serta ditahan oleh peluang terbuk
   assert.equal(activityStatusFromSchedule(schedule, new Date("2027-03-01T00:00:00.000Z"), true), "AKTIF");
 });
 
-test("revisi invoice dapat dibuat dari draft atau invoice terbit tanpa Sales Order", async () => {
+test("revisi invoice dapat dibuat dari draft, invoice terbit, atau invoice yang dibatalkan", async () => {
   const [actionSource, workflowSource, pageSource] = await Promise.all([
     readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
     readFile(new URL("../components/crm/invoice-workflow-section.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
   ]);
-  // Sumber revisi: draft atau invoice terbit yang belum punya Sales Order.
-  assert.match(actionSource, /source\.status !== "DRAFT" && source\.status !== "ISSUED"/);
+  // Sumber revisi: draft, invoice terbit, atau invoice batal yang belum pernah menjadi SO.
+  assert.match(actionSource, /source\.status !== "DRAFT" && source\.status !== "ISSUED" && source\.status !== "CANCELLED"/);
   assert.match(actionSource, /source\.status === "ISSUED" && source\.salesOrder/);
   assert.match(actionSource, /Invoice terbit yang sudah memiliki Sales Order tidak dapat direvisi/);
-  assert.match(actionSource, /source\.status === "ISSUED" && !parsed\.data\.schedule/);
+  assert.match(actionSource, /\(source\.status === "ISSUED" \|\| isCancelled\) && !parsed\.data\.schedule/);
   // Nomor revisi diambil dari revisi terbesar agar celah dokumen batal tidak bentrok.
   assert.match(actionSource, /const latestRevision = aggregate\._max\.revision \?\? source\.revision/);
-  assert.match(actionSource, /if \(latestRevision >= 4\)/);
+  assert.match(actionSource, /if \(!isCancelled && latestRevision >= 4\)/);
+  // Invoice batal tetap CANCELLED (hanya versinya naik) agar bukti pembatalan tidak hilang.
+  assert.match(actionSource, /source\.status === "CANCELLED"[\s\S]{0,800}data: \{ version: \{ increment: 1 \} \}/);
   // Invoice terbit lama tetap ISSUED sampai revisi baru diterbitkan, lalu digantikan.
   assert.match(actionSource, /const previousIssued = invoice\.opportunity\.invoices\.filter/);
   assert.match(actionSource, /data: \{ status: "SUPERSEDED", version: \{ increment: 1 \} \}/);
-  // UI menampilkan revisi pada invoice terbit tanpa SO, tetapi tidak pada dokumen lama
-  // yang sudah punya revisi lebih baru atau saat batas revisi tercapai.
-  assert.match(workflowSource, /invoiceStatus === "DRAFT" \|\| \(invoiceStatus === "ISSUED" && !hasSalesOrder && !hasCancelledSalesOrder\)/);
-  assert.match(workflowSource, /!hasNewerActiveRevision && !revisionLimitReached/);
+  // UI menampilkan revisi pada invoice draft/terbit/batal; batas revisi tidak mengunci dokumen batal.
+  assert.match(workflowSource, /invoiceStatus === "CANCELLED"[\s\S]{0,200}!hasCancelledSalesOrder/);
+  assert.match(workflowSource, /const revisionLimitBlocks = invoiceStatus !== "CANCELLED" && revisionLimitReached/);
+  assert.match(workflowSource, /!hasNewerActiveRevision && !revisionLimitBlocks/);
   // Sales Order yang sudah dibatalkan tidak lagi mengunci invoice (revisi/batal tetap tersedia);
   // hanya SO aktif yang menutup jalur dokumen.
   assert.match(pageSource, /hasSalesOrder=\{invoice\.salesOrder\?\.status === "ACTIVE"\}/);
@@ -1563,7 +1601,7 @@ test("form revisi PO dan invoice membawa isian dokumen lama", async () => {
     readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
   ]);
   // Matriks ukuran direvisi: sel lama dipertahankan, ukuran tanpa pasangan di master dilaporkan.
-  assert.match(orderFormSource, /matrix: resolveMatrix\(item\.matrix, sizeOptions\)\.matrix/);
+  assert.match(orderFormSource, /matrix: resolveMatrix\(item\.matrix, poSizeColumns\(sizeOptions, customSize, item\.matrix\)\)\.matrix/);
   assert.match(orderFormSource, /const droppedSizeQuantity = values\?\.items\.reduce/);
   assert.match(orderFormSource, /Sebagian jumlah ukuran tidak terbawa/);
   // Data lama menyimpan ukuran sebagai nama; revisi memetakannya lewat nama sebelum menyerah.
@@ -1766,7 +1804,7 @@ test("Revisi PO: warna per produk, kategori Lainnya, multi desain penjahit, PDF 
   assert.match(formSource, /name=\{`\$\{prefix\}variationColor`\}/);
   assert.doesNotMatch(formSource, /name="baseColor"/);
   assert.doesNotMatch(formSource, /name="variationColor"/);
-  assert.match(formSource, /const AUTOSAVE_VERSION = 6;/);
+  assert.match(formSource, /const AUTOSAVE_VERSION = 7;/);
   assert.match(formSource, /Tambah produk\s*</);
   assert.doesNotMatch(formSource, /Tambah produk \(warna sama\)/);
   assert.match(formSource, /Setiap produk punya warna sendiri/);

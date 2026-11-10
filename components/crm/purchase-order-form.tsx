@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FileDown, Plus, Trash2 } from "lucide-react";
 
 import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction } from "@/app/actions/crm";
+import { ensureGarmentSizeAction } from "@/app/actions/master-data";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { initialFormActionState } from "@/lib/actions/form-state";
@@ -20,7 +21,8 @@ import { numericCellClass } from "@/lib/table-alignment";
 import { Textarea } from "@/components/ui/textarea";
 import { DECORATION_METHOD_LABEL, DECORATION_METHODS, GARMENT_TYPE_LABEL } from "@/lib/crm/constants";
 import { CUSTOM_PRODUCTION_DEADLINE_VALUE, isProductionDeadlinePreset, productionDeadlineOptions } from "@/lib/crm/production-deadline";
-import { findGarmentSizeByName } from "@/lib/crm/size-aliases";
+import { findGarmentSizeByName, normalizeGarmentSizeName } from "@/lib/crm/size-aliases";
+import { defaultPoCustomSize, poSizeColumns, remapPoSizeColumn, savedPoCustomSize } from "@/lib/crm/po-size-columns";
 import { cn } from "@/lib/utils";
 
 type SizeOption = { id: string; name: string };
@@ -42,6 +44,8 @@ export type PurchaseOrderItemValues = {
   decorationMethods: string[];
   designNotes: string;
   matrix: Record<string, number>;
+  /** Kolom ukuran ke-8: 7 kolom lain tetap dari Data Master, kolom ini namanya boleh diganti. */
+  customSize?: SizeOption | null;
   rosterMode: RosterMode;
   roster: RosterRow[];
   accessoryQuantity: string;
@@ -75,7 +79,8 @@ function emptyMatrix(sizeOptions: SizeOption[]) {
 }
 
 function newItem(key: string, sizeOptions: SizeOption[], name = ""): PurchaseOrderItemValues {
-  return { key, name, pola: "", baseColor: "", variationColor: "", productCategoryId: "", decorationMethods: [], designNotes: "", matrix: emptyMatrix(sizeOptions), rosterMode: "none", roster: [], accessoryQuantity: "" };
+  const customSize = defaultPoCustomSize(sizeOptions);
+  return { key, name, pola: "", baseColor: "", variationColor: "", productCategoryId: "", decorationMethods: [], designNotes: "", matrix: emptyMatrix(poSizeColumns(sizeOptions, customSize, {})), customSize, rosterMode: "none", roster: [], accessoryQuantity: "" };
 }
 
 /**
@@ -101,9 +106,9 @@ function resolveMatrix(matrix: Record<string, number>, sizeOptions: SizeOption[]
   return { matrix: resolved, dropped };
 }
 
-function buildDesiredRoster(sizeOptions: SizeOption[], source: Record<string, number>) {
+function buildDesiredRoster(columns: SizeOption[], source: Record<string, number>) {
   const desired: Array<{ sizeId: string; sleeveLength: SleeveLength }> = [];
-  for (const size of sizeOptions) {
+  for (const size of columns) {
     for (const sleeveLength of ["PENDEK", "PANJANG"] as const) {
       const quantity = source[`${sleeveLength}:${size.id}`] ?? 0;
       for (let index = 0; index < quantity; index += 1) desired.push({ sizeId: size.id, sleeveLength });
@@ -141,7 +146,7 @@ function reconcileRoster(prev: RosterRow[], desired: Array<{ sizeId: string; sle
   });
 }
 
-const AUTOSAVE_VERSION = 6;
+const AUTOSAVE_VERSION = 7;
 
 export function PurchaseOrderForm({
   opportunityId,
@@ -181,15 +186,19 @@ export function PurchaseOrderForm({
 
   const [items, setItems] = useState<PurchaseOrderItemValues[]>(() => {
     if (values?.items.length) {
-      return values.items.map((item, index) => ({
-        ...item,
-        // PO lama: warna masih tersimpan di header. Pindahkan ke produk pertama supaya
-        // form lama tetap terisi (produk lain boleh diberi warna sendiri).
-        baseColor: item.baseColor || (index === 0 ? values.baseColor ?? "" : ""),
-        variationColor: item.variationColor || (index === 0 ? values.variationColor ?? "" : ""),
-        matrix: resolveMatrix(item.matrix, sizeOptions).matrix,
-        roster: item.roster.map((row, index) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${index}-${row.memberId}` })),
-      }));
+      return values.items.map((item, index) => {
+        const customSize = item.customSize ?? savedPoCustomSize(sizeOptions, item.matrix);
+        return {
+          ...item,
+          // PO lama: warna masih tersimpan di header. Pindahkan ke produk pertama supaya
+          // form lama tetap terisi (produk lain boleh diberi warna sendiri).
+          baseColor: item.baseColor || (index === 0 ? values.baseColor ?? "" : ""),
+          variationColor: item.variationColor || (index === 0 ? values.variationColor ?? "" : ""),
+          customSize,
+          matrix: resolveMatrix(item.matrix, poSizeColumns(sizeOptions, customSize, item.matrix)).matrix,
+          roster: item.roster.map((row, index) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${index}-${row.memberId}` })),
+        };
+      });
     }
     return [newItem(`item-${Date.now()}`, sizeOptions)];
   });
@@ -218,6 +227,29 @@ export function PurchaseOrderForm({
   const [depositRequired, setDepositRequired] = useState(values?.depositRequired ?? false);
   const [hasChangedOrderDate, setHasChangedOrderDate] = useState(false);
   const [previewState, setPreviewState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
+  // Status ganti nama kolom ukuran ke-8, satu entri per produk.
+  const [sizeColumnState, setSizeColumnState] = useState<Record<string, { saving: boolean; error: string | null }>>({});
+  // Nama ukuran yang belum ada di Data Master: dibuat hanya setelah admin menekan "Tambahkan".
+  const [pendingSizes, setPendingSizes] = useState<Record<string, string | undefined>>({});
+  // Naikkan untuk mengembalikan isi input kolom ke-8 ke nama ukuran yang tersimpan (batal/typo).
+  const [resetSizeColumn, setResetSizeColumn] = useState<Record<string, number | undefined>>({});
+  const sizeNameListId = `po-size-names-${fieldKey}`;
+  // Kolom REQ wajib ada di matriks. Kalau master belum memilikinya, buat sekali (idempoten,
+  // tercatat audit) supaya kolom REQ tidak hilang dan matriks tetap bisa disimpan.
+  const [ensuredRequestSize, setEnsuredRequestSize] = useState<SizeOption | null>(null);
+  const allSizes = useMemo(
+    () => (ensuredRequestSize && !sizeOptions.some((size) => size.id === ensuredRequestSize.id) ? [...sizeOptions, ensuredRequestSize] : sizeOptions),
+    [sizeOptions, ensuredRequestSize],
+  );
+  useEffect(() => {
+    if (sizeOptions.some((size) => normalizeGarmentSizeName(size.name) === "REQ")) return;
+    void ensureGarmentSizeAction("REQ").then((result) => { if (result.ok) setEnsuredRequestSize(result.size); });
+  }, [sizeOptions]);
+  // Ukuran yang sudah ada di master; dipakai untuk memastikan typo tidak langsung tersimpan.
+  const masterSizeByName = useMemo(
+    () => new Map(allSizes.map((size) => [size.name.toLocaleLowerCase("id-ID"), size])),
+    [allSizes],
+  );
   const deadlineOptions = useMemo(
     () => productionDeadlineOptions(selectedOrderDate || jakartaToday(), hasChangedOrderDate ? undefined : values?.deadline),
     [hasChangedOrderDate, selectedOrderDate, values?.deadline],
@@ -236,13 +268,18 @@ export function PurchaseOrderForm({
       const saved = JSON.parse(raw) as { v: number; header: typeof header; items: PurchaseOrderItemValues[]; depositRequired?: boolean };
       if (saved?.v !== AUTOSAVE_VERSION || !Array.isArray(saved.items) || !saved.items.length) return;
       setHeader((prev) => ({ ...prev, ...saved.header }));
-      setItems(saved.items.map((item, index) => ({
-        ...newItem(item.key || `item-${Date.now()}-${index}`, sizeOptions),
-        ...item,
-        productCategoryId: item.productCategoryId ?? "",
-        matrix: resolveMatrix(item.matrix, sizeOptions).matrix,
-        roster: (item.roster ?? []).map((row, rowIndex) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${rowIndex}-${row.memberId}` })),
-      })));
+      setItems(saved.items.map((item, index) => {
+        const restored = newItem(item.key || `item-${Date.now()}-${index}`, sizeOptions);
+        const customSize = item.customSize ?? restored.customSize ?? null;
+        return {
+          ...restored,
+          ...item,
+          customSize,
+          productCategoryId: item.productCategoryId ?? "",
+          matrix: resolveMatrix(item.matrix, poSizeColumns(sizeOptions, customSize, item.matrix)).matrix,
+          roster: (item.roster ?? []).map((row, rowIndex) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${rowIndex}-${row.memberId}` })),
+        };
+      }));
       setDepositRequired(Boolean(saved.depositRequired));
       setRestoredDraft(true);
     } catch { /* Abaikan draft rusak. */ }
@@ -261,8 +298,8 @@ export function PurchaseOrderForm({
           v: AUTOSAVE_VERSION,
           header,
           depositRequired,
-          items: items.map(({ key, name, pola, baseColor, variationColor, productCategoryId, decorationMethods, designNotes, matrix, rosterMode, roster, accessoryQuantity }) => ({
-            key, name, pola, baseColor, variationColor, productCategoryId, decorationMethods, designNotes, matrix, rosterMode,
+          items: items.map(({ key, name, pola, baseColor, variationColor, productCategoryId, decorationMethods, designNotes, matrix, customSize, rosterMode, roster, accessoryQuantity }) => ({
+            key, name, pola, baseColor, variationColor, productCategoryId, decorationMethods, designNotes, matrix, customSize, rosterMode,
             roster: roster.map(({ key: rowKey, memberId, name: rowName, jabatan, sizeId, sleeveLength }) => ({ key: rowKey, memberId, name: rowName, jabatan, sizeId, sleeveLength })),
             accessoryQuantity,
           })),
@@ -296,8 +333,72 @@ export function PurchaseOrderForm({
     setItems((current) => (current.length > 1 ? current.filter((item) => item.key !== key) : current));
   }
 
+  /** Kolom ukuran satu produk: 7 tetap dari master, kolom ke-8 pilihan admin, plus ukuran PO lama. */
+  function itemColumns(item: PurchaseOrderItemValues) {
+    return poSizeColumns(allSizes, item.customSize ?? null, item.matrix);
+  }
+
+  /**
+   * Ganti nama kolom ukuran ke-8. Nama yang sudah ada di Data Master langsung dipakai tanpa
+   * menyentuh database; nama baru hanya diusulkan dan dibuat setelah admin menekan "Tambahkan"
+   * (supaya typo tidak ikut tersimpan sebagai ukuran). Jumlah kedua lengan ikut pindah.
+   */
+  function resetCustomSizeInput(itemKey: string) {
+    setPendingSizes((prev) => ({ ...prev, [itemKey]: undefined }));
+    setResetSizeColumn((prev) => ({ ...prev, [itemKey]: (prev[itemKey] ?? 0) + 1 }));
+  }
+
+  function applyCustomSize(item: PurchaseOrderItemValues, nextSize: SizeOption) {
+    const current = item.customSize ?? null;
+    const clash = itemColumns(item).find((size) => size.id !== current?.id && normalizeGarmentSizeName(size.name) === normalizeGarmentSizeName(nextSize.name));
+    if (clash) {
+      resetCustomSizeInput(item.key);
+      setSizeColumnState((prev) => ({ ...prev, [item.key]: { saving: false, error: `Ukuran ${nextSize.name} sudah ada di kolom lain tabel ini.` } }));
+      return;
+    }
+    updateItem(item.key, {
+      customSize: nextSize,
+      matrix: remapPoSizeColumn(item.matrix, current?.id ?? "", nextSize.id),
+      roster: item.roster.map((row) => (row.sizeId === current?.id ? { ...row, sizeId: nextSize.id } : row)),
+    });
+    setSizeColumnState((prev) => ({ ...prev, [item.key]: { saving: false, error: null } }));
+    setPendingSizes((prev) => ({ ...prev, [item.key]: undefined }));
+  }
+
+  function handleCustomSizeCommit(item: PurchaseOrderItemValues, input: HTMLInputElement) {
+    const rawName = input.value.trim();
+    const current = item.customSize ?? null;
+    if (!rawName) {
+      resetCustomSizeInput(item.key);
+      setSizeColumnState((prev) => ({ ...prev, [item.key]: { saving: false, error: "Nama ukuran tidak boleh kosong." } }));
+      return;
+    }
+    if (normalizeGarmentSizeName(rawName) === normalizeGarmentSizeName(current?.name ?? "")) {
+      resetCustomSizeInput(item.key);
+      return;
+    }
+    const existing = findGarmentSizeByName(masterSizeByName, rawName);
+    if (existing) {
+      applyCustomSize(item, existing);
+      return;
+    }
+    setSizeColumnState((prev) => ({ ...prev, [item.key]: { saving: false, error: null } }));
+    setPendingSizes((prev) => ({ ...prev, [item.key]: rawName }));
+  }
+
+  async function confirmNewSize(item: PurchaseOrderItemValues, name: string) {
+    setSizeColumnState((prev) => ({ ...prev, [item.key]: { saving: true, error: null } }));
+    const result = await ensureGarmentSizeAction(name);
+    if (!result.ok) {
+      resetCustomSizeInput(item.key);
+      setSizeColumnState((prev) => ({ ...prev, [item.key]: { saving: false, error: result.message } }));
+      return;
+    }
+    applyCustomSize(item, result.size);
+  }
+
   function syncRoster(item: PurchaseOrderItemValues, source: Record<string, number>) {
-    const desired = buildDesiredRoster(sizeOptions, source);
+    const desired = buildDesiredRoster(poSizeColumns(allSizes, item.customSize ?? null, source), source);
     if (desired.length > 5_000) return;
     updateItem(item.key, { roster: reconcileRoster(item.roster, desired) });
   }
@@ -317,12 +418,12 @@ export function PurchaseOrderForm({
     if (next === "manual") syncRoster(item, item.matrix);
   }
 
-  function rowTotal(item: PurchaseOrderItemValues, sleeveLength: SleeveLength) {
-    return sizeOptions.reduce((total, size) => total + (item.matrix[`${sleeveLength}:${size.id}`] ?? 0), 0);
+  function rowTotal(columns: SizeOption[], item: PurchaseOrderItemValues, sleeveLength: SleeveLength) {
+    return columns.reduce((total, size) => total + (item.matrix[`${sleeveLength}:${size.id}`] ?? 0), 0);
   }
 
-  function rosterTotal(item: PurchaseOrderItemValues) {
-    return sizeOptions.reduce((total, size) => total + (item.matrix[`PENDEK:${size.id}`] ?? 0) + (item.matrix[`PANJANG:${size.id}`] ?? 0), 0);
+  function rosterTotal(columns: SizeOption[], item: PurchaseOrderItemValues) {
+    return columns.reduce((total, size) => total + (item.matrix[`PENDEK:${size.id}`] ?? 0) + (item.matrix[`PANJANG:${size.id}`] ?? 0), 0);
   }
 
   function toggleDecoration(item: PurchaseOrderItemValues, method: string) {
@@ -341,8 +442,9 @@ export function PurchaseOrderForm({
       const response = await fetch("/api/crm/roster-preview", { method: "POST", body });
       const result = (await response.json()) as { ok: boolean; message?: string; counts?: Array<{ sleeveLength: SleeveLength; size: string; quantity: number }> };
       if (!result.ok) throw new Error(result.message || "File roster tidak valid.");
-      const byName = new Map(sizeOptions.map((size) => [size.name.toLocaleLowerCase("id-ID"), size.id]));
-      const next = emptyMatrix(sizeOptions);
+      const columns = itemColumns(item);
+      const byName = new Map(columns.map((size) => [size.name.toLocaleLowerCase("id-ID"), size.id]));
+      const next = emptyMatrix(columns);
       const unknown: string[] = [];
       for (const row of result.counts ?? []) {
         const id = findGarmentSizeByName(byName, row.size);
@@ -352,7 +454,7 @@ export function PurchaseOrderForm({
       updateItem(item.key, { matrix: next });
       setPreviewState((prev) => ({
         ...prev,
-        [item.key]: { loading: false, error: unknown.length ? `Ukuran tidak dikenal (tidak ikut terisi): ${[...new Set(unknown)].join(", ")}` : null },
+        [item.key]: { loading: false, error: unknown.length ? `Ukuran tidak ada di kolom tabel ini (tidak ikut terisi): ${[...new Set(unknown)].join(", ")}` : null },
       }));
     } catch (error) {
       setPreviewState((prev) => ({ ...prev, [item.key]: { loading: false, error: error instanceof Error ? error.message : "File roster tidak valid." } }));
@@ -485,7 +587,10 @@ export function PurchaseOrderForm({
 
         {items.map((item, index) => {
           const prefix = `item-${index}-`;
-          const total = rosterTotal(item);
+          const columns = itemColumns(item);
+          const total = rosterTotal(columns, item);
+          const sizeColumn = sizeColumnState[item.key];
+          const pendingSizeName = pendingSizes[item.key];
           const itemCategory = categoryOptions?.find((category) => category.id === item.productCategoryId);
           const itemGarment = itemCategory?.garmentType ?? effectiveGarmentType;
           const itemIsAccessory = itemGarment === "AKSESORI";
@@ -581,29 +686,74 @@ export function PurchaseOrderForm({
                     <FieldLegend>Matriks ukuran dan jumlah</FieldLegend>
                     <FieldDescription>
                       Isi nol untuk kombinasi yang tidak dipesan. Total roster, jika ada, harus sama per ukuran.
+                      {" "}Kolom <span className="font-medium">REQ</span> selalu ada di kanan. Nama kolom ukuran ke-8 bisa diganti:
+                      nama yang sudah ada di Data Master langsung dipakai, nama baru dikonfirmasi dulu sebelum ditambahkan.
                       {canManageSizes ? (
                         <>
-                          {" "}Ukuran belum ada?{" "}
+                          {" "}Ukuran kolom 1–7 diatur di{" "}
                           <Link href="/master-data/garment-sizes" target="_blank" rel="noreferrer" className="font-medium text-primary underline underline-offset-4">
-                            Tambah ukuran
+                            Data Master ukuran
                           </Link>{" "}
-                          di Data Master, lalu muat ulang halaman ini.
+                          (muat ulang halaman ini setelah diubah).
                         </>
                       ) : null}
                     </FieldDescription>
+                    <datalist id={sizeNameListId}>
+                      {allSizes.map((size) => <option key={size.id} value={size.name} />)}
+                    </datalist>
                     <Table containerClassName="max-w-full rounded-lg border">
-                      <TableHeader><TableRow><TableHead>Model</TableHead>{sizeOptions.map((size) => <TableHead key={size.id} className="min-w-[4.5rem] text-center">{size.name}</TableHead>)}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
+                      <TableHeader><TableRow><TableHead>Model</TableHead>{columns.map((size) => {
+                        const isCustom = size.id === item.customSize?.id;
+                        return (
+                          <TableHead key={size.id} className="min-w-[4.5rem] text-center">
+                            {isCustom ? (
+                              <Input
+                                key={`${item.key}-${size.id}-${resetSizeColumn[item.key] ?? 0}`}
+                                defaultValue={size.name}
+                                maxLength={40}
+                                list={sizeNameListId}
+                                disabled={sizeColumn?.saving}
+                                aria-label={`Nama ukuran kolom yang bisa diubah, produk ${index + 1}`}
+                                title="Ganti nama ukuran kolom ini"
+                                className="w-full min-w-0 text-center font-semibold"
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+                                  if (event.key === "Escape") { resetCustomSizeInput(item.key); event.currentTarget.blur(); }
+                                }}
+                                onBlur={(event) => handleCustomSizeCommit(item, event.currentTarget)}
+                              />
+                            ) : size.name}
+                          </TableHead>
+                        );
+                      })}<TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
                       <TableBody>{(["PENDEK", "PANJANG"] as const).map((sleeveLength) => (
                         <TableRow key={sleeveLength}>
                           <TableCell className="font-medium">{sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>
-                          {sizeOptions.map((size) => {
+                          {columns.map((size) => {
                             const key = `${sleeveLength}:${size.id}`;
                             return <TableCell key={size.id} className="p-2"><input type="hidden" name={`${prefix}sizeId`} value={size.id} /><input type="hidden" name={`${prefix}sleeveLength`} value={sleeveLength} /><Input name={`${prefix}sizeQuantity`} type="number" min={0} max={10_000_000} step={1} inputMode="numeric" required value={item.matrix[key] ?? 0} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }} onChange={(event) => updateMatrixValue(item, key, event.currentTarget.value)} aria-label={`${sleeveLength === "PENDEK" ? "Pendek" : "Panjang"} ukuran ${size.name} produk ${index + 1}`} className="w-full min-w-0 text-center font-mono tabular-nums" /></TableCell>;
                           })}
-                          <TableCell className={numericCellClass(rowTotal(item, sleeveLength), "text-right font-mono font-medium tabular-nums")}>{rowTotal(item, sleeveLength)}</TableCell>
+                          <TableCell className={numericCellClass(rowTotal(columns, item, sleeveLength), "text-right font-mono font-medium tabular-nums")}>{rowTotal(columns, item, sleeveLength)}</TableCell>
                         </TableRow>
                       ))}</TableBody>
                     </Table>
+                    {sizeColumn?.error ? <Alert variant="destructive"><AlertTitle>Nama ukuran kolom ke-8</AlertTitle><AlertDescription>{sizeColumn.error}</AlertDescription></Alert> : null}
+                    {pendingSizeName ? (
+                      <Alert>
+                        <AlertTitle>Ukuran “{pendingSizeName}” belum ada di Data Master</AlertTitle>
+                        <AlertDescription>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>Typo? Batalkan dan ketik ulang. Jika memang ukuran baru, tambahkan ke Data Master.</span>
+                            <Button type="button" size="sm" onClick={() => void confirmNewSize(item, pendingSizeName)} disabled={sizeColumn?.saving}>
+                              {sizeColumn?.saving ? "Menyimpan..." : "Tambahkan ke Data Master"}
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => resetCustomSizeInput(item.key)} disabled={sizeColumn?.saving}>
+                              Batal
+                            </Button>
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
                   </FieldSet>
 
                   <FieldSet>
@@ -623,7 +773,7 @@ export function PurchaseOrderForm({
                         <Field><FieldLabel htmlFor={`roster-id-${item.key}-${row.key}`} required>ID</FieldLabel><Input id={`roster-id-${item.key}-${row.key}`} name={`${prefix}rosterMemberId`} required maxLength={80} value={row.memberId} readOnly className="bg-muted font-mono tabular-nums" /></Field>
                         <Field><FieldLabel htmlFor={`roster-name-${item.key}-${row.key}`} required>Nama</FieldLabel><Input id={`roster-name-${item.key}-${row.key}`} name={`${prefix}rosterName`} required minLength={2} maxLength={160} value={row.name} onChange={(event) => updateItem(item.key, { roster: item.roster.map((entry) => entry.key === row.key ? { ...entry, name: event.target.value } : entry) })} /></Field>
                         <Field><FieldLabel htmlFor={`roster-jabatan-${item.key}-${row.key}`}>Jabatan</FieldLabel><Input id={`roster-jabatan-${item.key}-${row.key}`} name={`${prefix}rosterJabatan`} maxLength={80} placeholder="Opsional" value={row.jabatan} onChange={(event) => updateItem(item.key, { roster: item.roster.map((entry) => entry.key === row.key ? { ...entry, jabatan: event.target.value } : entry) })} /></Field>
-                        <Field><FieldLabel htmlFor={`roster-size-${item.key}-${row.key}`} required>Ukuran</FieldLabel><NativeSelect id={`roster-size-${item.key}-${row.key}`} value={row.sizeId} disabled aria-label={`Ukuran baris ${row.memberId}`}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption>{sizeOptions.map((size) => <NativeSelectOption key={size.id} value={size.id}>{size.name}</NativeSelectOption>)}</NativeSelect><input type="hidden" name={`${prefix}rosterSizeId`} value={row.sizeId} /></Field>
+                        <Field><FieldLabel htmlFor={`roster-size-${item.key}-${row.key}`} required>Ukuran</FieldLabel><NativeSelect id={`roster-size-${item.key}-${row.key}`} value={row.sizeId} disabled aria-label={`Ukuran baris ${row.memberId}`}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption>{columns.map((size) => <NativeSelectOption key={size.id} value={size.id}>{size.name}</NativeSelectOption>)}</NativeSelect><input type="hidden" name={`${prefix}rosterSizeId`} value={row.sizeId} /></Field>
                         <Field><FieldLabel htmlFor={`roster-sleeve-${item.key}-${row.key}`} required>Lengan</FieldLabel><NativeSelect id={`roster-sleeve-${item.key}`} value={row.sleeveLength} disabled aria-label={`Lengan baris ${row.memberId}`}><NativeSelectOption value="" disabled>Pilih</NativeSelectOption><NativeSelectOption value="PENDEK">Pendek</NativeSelectOption><NativeSelectOption value="PANJANG">Panjang</NativeSelectOption></NativeSelect><input type="hidden" name={`${prefix}rosterSleeveLength`} value={row.sleeveLength} /></Field>
                       </div>)}
                     </div> : null}

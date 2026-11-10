@@ -1,10 +1,7 @@
 {
   "mcpServers": {
     "askonveksi": {
-      "url": "https://askonveksi.web.id/api/mcp",
-      "headers": {
-        "Authorization": "Bearer ${env:ASKONVEKSI_AI_TOKEN}"
-      }
+      "url": "https://askonveksi.web.id/api/mcp"
     }
   }
 }

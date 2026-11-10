@@ -102,9 +102,25 @@ const nextConfig: NextConfig = {
         headers: attendanceSecurityHeaders(),
       },
       {
+        // OAuth MCP dibuka sebagai popup oleh ChatGPT/Cursor. COOP same-origin
+        // memutus window.opener sehingga tombol submit terasa “tidak jalan”.
+        source: "/api/mcp/oauth/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Cross-Origin-Opener-Policy", value: "unsafe-none" },
+          ...(process.env.NODE_ENV === "production"
+            ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
+            : []),
+        ],
+      },
+      {
         // Seluruh halaman lain dilindungi penuh dari framing / clickjacking.
-        // /absensi dikecualikan karena sudah punya blok Permissions-Policy sendiri.
-        source: "/((?!cms-preview|absensi).*)",
+        // /absensi + OAuth MCP dikecualikan (header khusus di atas).
+        source: "/((?!cms-preview|absensi|api/mcp/oauth).*)",
         headers: [
           { key: "Content-Security-Policy", value: "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

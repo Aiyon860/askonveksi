@@ -55,6 +55,8 @@ type PurchaseOrderWorkflowSectionProps = {
   description: string;
   canOperate: boolean;
   canCancel: boolean;
+  /** Alasan pembatalan dinonaktifkan (mis. masih ada invoice aktif atau DP/Lunas sudah masuk). */
+  cancelBlockedReason?: string | null;
   inNegotiation: boolean;
   sizeOptions: SizeOption[];
   categoryOptions: ProductCategoryOption[];
@@ -80,6 +82,7 @@ export function PurchaseOrderWorkflowSection({
   description,
   canOperate,
   canCancel,
+  cancelBlockedReason = null,
   inNegotiation,
   sizeOptions,
   categoryOptions,
@@ -101,6 +104,9 @@ export function PurchaseOrderWorkflowSection({
     (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED" || (purchaseOrderStatus === "CANCELLED" && latestInChain))
     && (purchaseOrderStatus === "CANCELLED" || purchaseOrderRevision < 4)
     && canOperate && inNegotiation && !isCreatingRevision;
+  // PO disepakati boleh dibatalkan sebelum ada invoice aktif dan sebelum DP/Lunas masuk.
+  // Setelah batal, tombol "Buat PO baru" di atas menjadi jalur revisi dokumen.
+  const canCancelPurchaseOrder = purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED";
 
   return (
     <>
@@ -127,13 +133,22 @@ export function PurchaseOrderWorkflowSection({
               {purchaseOrderStatus === "CANCELLED" ? "Buat PO baru" : purchaseOrderStatus === "AGREED" ? "Revisi PO disepakati" : "Buat versi revisi"}
             </Button>
           ) : null}
-          {canCancel && purchaseOrderStatus === "DRAFT" ? (
-            <DocumentCancelButton
-              action={cancelPurchaseOrderAction}
-              fields={{ purchaseOrderId, version: purchaseOrderVersion }}
-              title="Batalkan PO draft?"
-              description="PO akan berstatus Dibatalkan dan tidak dapat disepakati lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
-            />
+          {canCancel && canCancelPurchaseOrder ? (
+            cancelBlockedReason ? (
+              <p className="max-w-xs text-xs text-muted-foreground sm:text-right">{cancelBlockedReason}</p>
+            ) : (
+              <DocumentCancelButton
+                action={cancelPurchaseOrderAction}
+                fields={{ purchaseOrderId, version: purchaseOrderVersion }}
+                triggerLabel={purchaseOrderStatus === "AGREED" ? "Batalkan PO disepakati" : "Batalkan PO"}
+                title={purchaseOrderStatus === "AGREED" ? "Batalkan PO disepakati?" : "Batalkan PO draft?"}
+                description={
+                  purchaseOrderStatus === "AGREED"
+                    ? "PO disepakati dapat dibatalkan selama belum ada pembayaran DP/Lunas dan tidak ada invoice aktif. Setelah dibatalkan, PO dapat dilanjutkan sebagai dokumen baru."
+                    : "PO akan berstatus Dibatalkan dan tidak dapat disepakati lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
+                }
+              />
+            )
           ) : null}
         </div>
       </div>
