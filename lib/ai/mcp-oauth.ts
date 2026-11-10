@@ -101,6 +101,8 @@ export function authorizationServerMetadata() {
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: ["ai:read"],
     client_id_metadata_document_supported: true,
+    // ChatGPT/Codex: RFC 9207 — wajib agar redirect stabil + validasi iss.
+    authorization_response_iss_parameter_supported: true,
   };
 }
 
@@ -112,11 +114,29 @@ function isAllowedRedirectUri(uri: string) {
     return false;
   }
   if (parsed.protocol === "https:") return true;
-  // Claude Code / lokal: http://127.0.0.1:<port>/... atau localhost
+  // Claude Code / Cursor / Gemini lokal: http://127.0.0.1:<port>/... atau localhost
   if (parsed.protocol === "http:" && (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost")) {
     return true;
   }
   return false;
+}
+
+/** Claude Code: redirect CIMD tanpa port harus cocok dengan http://localhost:<ephemeral>/callback. */
+function redirectUriMatches(registered: string, actual: string) {
+  if (registered === actual) return true;
+  let a: URL;
+  let b: URL;
+  try {
+    a = new URL(registered);
+    b = new URL(actual);
+  } catch {
+    return false;
+  }
+  const loopback =
+    (a.hostname === "localhost" || a.hostname === "127.0.0.1") &&
+    (b.hostname === "localhost" || b.hostname === "127.0.0.1");
+  if (!loopback) return false;
+  return a.protocol === b.protocol && a.pathname === b.pathname && a.search === b.search;
 }
 
 export type RegisteredClient = {
@@ -190,7 +210,10 @@ export function parseAuthorizeQuery(url: URL): { ok: true; data: AuthorizeQuery 
 
   const client = resolveClient(client_id);
   if (!client) return { ok: false, message: "client_id tidak valid." };
-  if (client.redirect_uris.length > 0 && !client.redirect_uris.includes(redirect_uri)) {
+  if (
+    client.redirect_uris.length > 0 &&
+    !client.redirect_uris.some((registered) => redirectUriMatches(registered, redirect_uri))
+  ) {
     return { ok: false, message: "redirect_uri tidak terdaftar untuk klien ini." };
   }
 
@@ -199,6 +222,20 @@ export function parseAuthorizeQuery(url: URL): { ok: true; data: AuthorizeQuery 
     data: { response_type, client_id, redirect_uri, state, code_challenge, code_challenge_method, scope },
   };
 }
+
+const pageCss = `
+    body{font-family:ui-sans-serif,system-ui,sans-serif;background:#0f1419;color:#e7ecf1;margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
+    main{width:min(420px,100%);background:#1a222c;border:1px solid #2c3642;border-radius:12px;padding:24px}
+    h1{font-size:1.15rem;margin:0 0 8px}
+    p{margin:0 0 16px;color:#9aa7b5;font-size:.95rem;line-height:1.45}
+    label{display:block;font-size:.85rem;margin-bottom:6px}
+    input[type=password],input[type=text]{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #3a4654;background:#0f1419;color:#e7ecf1}
+    button{margin-top:14px;width:100%;padding:11px 14px;border:0;border-radius:8px;background:#e8c07a;color:#1a1408;font-weight:600;cursor:pointer}
+    button:disabled{opacity:.7;cursor:wait}
+    a{color:#e8c07a}
+    .err{background:#3a1d1d;color:#ffb4b4;border:1px solid #5c2b2b;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:.9rem}
+    .meta{font-size:.8rem;color:#7d8b99;word-break:break-all}
+`;
 
 export function renderAuthorizePage(query: AuthorizeQuery, error?: string) {
   const fields = [
@@ -216,6 +253,7 @@ export function renderAuthorizePage(query: AuthorizeQuery, error?: string) {
         `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`,
     )
     .join("\n");
+  const action = `${aiBaseUrl()}/api/mcp/oauth/authorize`;
 
   return `<!doctype html>
 <html lang="id">
@@ -223,28 +261,48 @@ export function renderAuthorizePage(query: AuthorizeQuery, error?: string) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hubungkan Askonveksi MCP</title>
-  <style>
-    body{font-family:ui-sans-serif,system-ui,sans-serif;background:#0f1419;color:#e7ecf1;margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
-    main{width:min(420px,100%);background:#1a222c;border:1px solid #2c3642;border-radius:12px;padding:24px}
-    h1{font-size:1.15rem;margin:0 0 8px}
-    p{margin:0 0 16px;color:#9aa7b5;font-size:.95rem;line-height:1.45}
-    label{display:block;font-size:.85rem;margin-bottom:6px}
-    input[type=password],input[type=text]{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #3a4654;background:#0f1419;color:#e7ecf1}
-    button{margin-top:14px;width:100%;padding:11px 14px;border:0;border-radius:8px;background:#e8c07a;color:#1a1408;font-weight:600;cursor:pointer}
-    .err{background:#3a1d1d;color:#ffb4b4;border:1px solid #5c2b2b;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:.9rem}
-  </style>
+  <style>${pageCss}</style>
 </head>
 <body>
   <main>
     <h1>Askonveksi Sales Analytics</h1>
-    <p>Tempel token AI (<code>askai_…</code>) dari Pengaturan → Akses AI. Token hanya dikirim ke server Askonveksi.</p>
+    <p>Tempel token AI (<code>askai_…</code>) dari Pengaturan → Akses AI. Setelah diizinkan, jendela ini mengembalikan ke Cursor/Claude.</p>
+    <p class="meta">Kembali ke: ${escapeHtml(query.redirect_uri)}</p>
     ${error ? `<div class="err">${escapeHtml(error)}</div>` : ""}
-    <form method="post" action="/api/mcp/oauth/authorize" autocomplete="off">
+    <form method="post" action="${escapeHtml(action)}" autocomplete="off"
+      onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Menghubungkan…';">
       ${hidden}
       <label for="api_key">Token AI</label>
-      <input id="api_key" name="api_key" type="password" required minlength="20" placeholder="askai_…" />
+      <input id="api_key" name="api_key" type="password" required minlength="20" placeholder="askai_…" autofocus />
       <button type="submit">Izinkan akses baca</button>
     </form>
+  </main>
+</body>
+</html>`;
+}
+
+/**
+ * Jangan pakai 302 mentah ke http://localhost: browser sering menelan
+ * redirect HTTPS→HTTP tanpa pesan. Halaman ini + JS + tautan manual lebih andal.
+ */
+export function renderAuthorizeSuccessPage(redirectUrl: string) {
+  const safe = escapeHtml(redirectUrl);
+  const jsUrl = JSON.stringify(redirectUrl);
+  return `<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="refresh" content="0;url=${safe}" />
+  <title>Mengembalikan ke klien</title>
+  <style>${pageCss}</style>
+  <script>location.replace(${jsUrl});</script>
+</head>
+<body>
+  <main>
+    <h1>Token diterima</h1>
+    <p>Mengembalikan ke Cursor/Claude… Jika jendela tidak berpindah, klik tautan di bawah (biarkan Cursor tetap terbuka).</p>
+    <p><a href="${safe}">Lanjutkan sambungan MCP</a></p>
   </main>
 </body>
 </html>`;
@@ -299,6 +357,8 @@ export async function completeAuthorize(form: URLSearchParams) {
   const redirect = new URL(parsed.data.redirect_uri);
   redirect.searchParams.set("code", code);
   if (parsed.data.state) redirect.searchParams.set("state", parsed.data.state);
+  // Exact string match dengan metadata `issuer` (tanpa slash di akhir).
+  redirect.searchParams.set("iss", mcpIssuerUrl());
   return { ok: true as const, redirect: redirect.toString() };
 }
 

@@ -2,10 +2,18 @@ import {
   completeAuthorize,
   parseAuthorizeQuery,
   renderAuthorizePage,
+  renderAuthorizeSuccessPage,
 } from "@/lib/ai/mcp-oauth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Popup OAuth ChatGPT/Cursor butuh opener tetap hidup. */
+const oauthHtmlHeaders = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Cache-Control": "no-store",
+  "Cross-Origin-Opener-Policy": "unsafe-none",
+};
 
 export async function GET(request: Request) {
   const parsed = parseAuthorizeQuery(new URL(request.url));
@@ -13,11 +21,11 @@ export async function GET(request: Request) {
     const safe = parsed.message.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
     return new Response(`<!doctype html><meta charset="utf-8"><title>OAuth error</title><p>${safe}</p>`, {
       status: 400,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+      headers: oauthHtmlHeaders,
     });
   }
   return new Response(renderAuthorizePage(parsed.data), {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+    headers: oauthHtmlHeaders,
   });
 }
 
@@ -41,9 +49,12 @@ export async function POST(request: Request) {
     };
     return new Response(renderAuthorizePage(query, result.message), {
       status: 400,
-      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+      headers: oauthHtmlHeaders,
     });
   }
 
-  return Response.redirect(result.redirect, 302);
+  return new Response(renderAuthorizeSuccessPage(result.redirect), {
+    status: 200,
+    headers: oauthHtmlHeaders,
+  });
 }
