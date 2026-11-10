@@ -78,6 +78,29 @@ function newItem(key: string, sizeOptions: SizeOption[], name = ""): PurchaseOrd
   return { key, name, pola: "", baseColor: "", variationColor: "", productCategoryId: "", decorationMethods: [], designNotes: "", matrix: emptyMatrix(sizeOptions), rosterMode: "none", roster: [], accessoryQuantity: "" };
 }
 
+/**
+ * Petakan matriks tersimpan ke kolom ukuran aktif. Revisi harus membawa isian lama apa adanya,
+ * jadi sel dengan `sizeId` lama maupun nama ukuran (data impor seperti "All Size") tetap dicoba.
+ * Jumlah yang benar-benar tidak punya pasangan di master dikembalikan sebagai `dropped` supaya
+ * form bisa memperingatkan admin, bukan diam-diam menjadi nol.
+ */
+function resolveMatrix(matrix: Record<string, number>, sizeOptions: SizeOption[]) {
+  const ids = new Set(sizeOptions.map((size) => size.id));
+  const byName = new Map(sizeOptions.map((size) => [size.name.toLocaleLowerCase("id-ID"), size.id]));
+  const resolved = emptyMatrix(sizeOptions);
+  let dropped = 0;
+  for (const [key, quantity] of Object.entries(matrix)) {
+    const separator = key.indexOf(":");
+    const sleeveLength = separator < 0 ? "" : key.slice(0, separator);
+    const sizePart = separator < 0 ? "" : key.slice(separator + 1);
+    const sizeId = ids.has(sizePart) ? sizePart : findGarmentSizeByName(byName, sizePart);
+    const amount = Math.max(0, Math.trunc(Number(quantity) || 0));
+    if (sizeId && (sleeveLength === "PENDEK" || sleeveLength === "PANJANG")) resolved[`${sleeveLength}:${sizeId}`] += amount;
+    else dropped += amount;
+  }
+  return { matrix: resolved, dropped };
+}
+
 function buildDesiredRoster(sizeOptions: SizeOption[], source: Record<string, number>) {
   const desired: Array<{ sizeId: string; sleeveLength: SleeveLength }> = [];
   for (const size of sizeOptions) {
@@ -148,6 +171,13 @@ export function PurchaseOrderForm({
   const fieldKey = sourcePurchaseOrderId ?? "new";
   const autosaveKey = `po-draft-v2:${opportunityId}:${fieldKey}`;
   const isNewForm = !values;
+  // Jumlah lama yang ukurannya tidak ada di master (mis. impor "All Size") tidak bisa ditempatkan
+  // otomatis; dilaporkan di atas matriks agar tidak hilang tanpa jejak saat revisi. Produk aksesori
+  // memakai isian jumlah, bukan matriks ukuran, jadi tidak ikut dihitung.
+  const droppedSizeQuantity = values?.items.reduce((sum, item) => {
+    const itemGarment = categoryOptions?.find((category) => category.id === item.productCategoryId)?.garmentType ?? values.garmentType;
+    return itemGarment === "AKSESORI" ? sum : sum + resolveMatrix(item.matrix, sizeOptions).dropped;
+  }, 0) ?? 0;
 
   const [items, setItems] = useState<PurchaseOrderItemValues[]>(() => {
     if (values?.items.length) {
@@ -157,7 +187,7 @@ export function PurchaseOrderForm({
         // form lama tetap terisi (produk lain boleh diberi warna sendiri).
         baseColor: item.baseColor || (index === 0 ? values.baseColor ?? "" : ""),
         variationColor: item.variationColor || (index === 0 ? values.variationColor ?? "" : ""),
-        matrix: { ...emptyMatrix(sizeOptions), ...item.matrix },
+        matrix: resolveMatrix(item.matrix, sizeOptions).matrix,
         roster: item.roster.map((row, index) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${index}-${row.memberId}` })),
       }));
     }
@@ -210,7 +240,7 @@ export function PurchaseOrderForm({
         ...newItem(item.key || `item-${Date.now()}-${index}`, sizeOptions),
         ...item,
         productCategoryId: item.productCategoryId ?? "",
-        matrix: { ...emptyMatrix(sizeOptions), ...item.matrix },
+        matrix: resolveMatrix(item.matrix, sizeOptions).matrix,
         roster: (item.roster ?? []).map((row, rowIndex) => ({ ...row, jabatan: row.jabatan ?? "", key: row.key || `saved-${rowIndex}-${row.memberId}` })),
       })));
       setDepositRequired(Boolean(saved.depositRequired));
@@ -442,6 +472,16 @@ export function PurchaseOrderForm({
             ) : null}
           </div>
         </FieldSet>
+
+        {droppedSizeQuantity > 0 ? (
+          <Alert>
+            <AlertTitle>Sebagian jumlah ukuran tidak terbawa</AlertTitle>
+            <AlertDescription>
+              Dokumen ini memakai ukuran yang tidak ada di Data Master (mis. “All Size”), jadi {droppedSizeQuantity.toLocaleString("id-ID")} pcs tidak dapat
+              ditempatkan otomatis. Lengkapi matriks ukuran sebelum menyimpan revisi.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         {items.map((item, index) => {
           const prefix = `item-${index}-`;

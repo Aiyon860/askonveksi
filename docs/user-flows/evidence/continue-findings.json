@@ -1,0 +1,1101 @@
+{
+  "steps": [
+    {
+      "step": "detail-desain",
+      "status": 500,
+      "title": "Askonveksi",
+      "url": "http://localhost:3000/detail-desain",
+      "headings": [
+        "Halaman tidak dapat dimuat"
+      ],
+      "labels": [],
+      "buttons": [
+        "Dashboard",
+        "Laporan absensi",
+        "Project",
+        "Pengeluaran",
+        "Laporan",
+        "Pipeline",
+        "Prospek",
+        "Customer",
+        "Purchase Order",
+        "Invoice",
+        "Sales Order",
+        "Broadcast",
+        "Kotak Masuk1",
+        "Template Pesan",
+        "Akun & Koneksi",
+        "Campaign promo",
+        "Produksi",
+        "Kelola Website",
+        "Riwayat Perubahan",
+        "Ringkasan",
+        "Kanal akuisisi",
+        "Jenis customer",
+        "Sumber lead",
+        "Ukuran pakaian",
+        "Kategori produk",
+        "Metode pembayaran",
+        "Pengaturan invoice",
+        "Profil perusahaan",
+        "Pengguna",
+        "Log aktivitas",
+        "Pengaturan",
+        "Keluar",
+        "Coba lagi",
+        "Kembali"
+      ],
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "name": "",
+          "id": "base-ui-_r_c_",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        }
+      ],
+      "alerts": [],
+      "bodyStart": "self.__next_r=\"DC5pa5gvz3CDYvrDHDDHC\"(self.__next_f=self.__next_f||[]).push([0])self.__next_f.push([1,\"8:\\\"[project]/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js [app-client] (ecmascript)\\\"\\n9:\\\"/_next/static/chunks/node_modules_0p777igqw7j7u._.js\\\"\\na:\\\"/_next/static/chunks/_13cfvfihbm56-._.js\\\"\\nb:I[\\\"$8\\\",[\\\"$9\\\",\\\"$a\\\"],\\\"SegmentViewNode\\\"]\\nd:\\\"$Sreact.fragment\\\"\\n23:\\\"[project]/components/ui/toast.tsx [app-client] (ecmascript)\\\"\\n24:I[\\\"$23\\\",[\\\"$9\\\",\\\"$a\\\"],\\\"Toaster\\\"]\\n26:\\\"[project]/node_modules/next/dist/client/components/layout-router.js [app-client] (ecmascript)\\\"\\n27:I[\\\"$26\\\",[\\\"$9\\\",\\\"$a\\\"],\\\"default\\\"]\\n29:\\\"[project]/node_modules/next/dist/client/components/render-from-template-context.js [app-client] (ecmascript)\\\"\\n2a:I[\\\"$29\\\",[\\\"$9\\\",\\\"$a\\\"],\\\"default\\\"]\\n70:\\\"[project]/node_modules/next/dist/lib/framework/boundary-components.js [app-client] (ecmascript)\\\"\\n71:I[\\\"$70\\\",[\\\"$9\\\",\\\"$a\\\"],\\\"OutletBoundary\\\"]\\n73:\\\"$Sreact.suspense\\\"\\n80:\\\"ViewportBoundary\\\"\\n81:I[\\\"$70\\\",[\\\"$9\\\",\\\"$a\\\"],\\\"$80\\\"]\\n8a:\\\"MetadataBoundary\\\"\\n8b:I[\\\"$70\\\",[\\\"$9\\\",\\\"$a\\\"],\\\"$8a\\\"]\\n97:\\\"[project]/node_modules/next/dist/client/components/builtin/global-err"
+    },
+    {
+      "step": "invoice-settings",
+      "status": 200,
+      "title": "Askonveksi",
+      "url": "http://localhost:3000/master-data/invoice-settings",
+      "headings": [
+        "Pengaturan invoice"
+      ],
+      "labels": [],
+      "buttons": [
+        "Dashboard",
+        "Laporan absensi",
+        "Project",
+        "Pengeluaran",
+        "Laporan",
+        "Pipeline",
+        "Prospek",
+        "Customer",
+        "Purchase Order",
+        "Invoice",
+        "Sales Order",
+        "Broadcast",
+        "Kotak Masuk1",
+        "Template Pesan",
+        "Akun & Koneksi",
+        "Campaign promo",
+        "Produksi",
+        "Kelola Website",
+        "Riwayat Perubahan",
+        "Ringkasan",
+        "Kanal akuisisi",
+        "Jenis customer",
+        "Sumber lead",
+        "Ukuran pakaian",
+        "Kategori produk",
+        "Metode pembayaran",
+        "Pengaturan invoice",
+        "Profil perusahaan",
+        "Pengguna",
+        "Log aktivitas",
+        "Pengaturan",
+        "Keluar",
+        "Simpan pengaturan"
+      ],
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "name": "",
+          "id": "base-ui-_R_9f59eralbH1_",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_001f32ecd1b93fafc310c76f8848d0f256093c2303",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40fd66e39cc469fd37a0b5c03d90d239b2badd9f68",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "points",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        }
+      ],
+      "alerts": [],
+      "bodyStart": "DashboardAbsensiLaporan absensiKeuanganProjectPengeluaranLaporanCRMPipelineProspekCustomerPurchase OrderInvoiceSales OrderBroadcastWhatsAppDisconnectKotak Masuk1Template PesanAkun & KoneksiCampaign promoProduksiProduksiWebsiteKelola WebsiteRiwayat PerubahanAnalyticsRingkasanKanal akuisisiData MasterJenis customerSumber leadUkuran pakaianKategori produkMetode pembayaranPengaturan invoiceProfil perusahaanPenggunaLog aktivitasPengaturanBrand aktifAskonveksiGeser untuk pindah ke SAGA.Oownerowner@mail.comOwnerKeluarPengaturan invoicePoin Keterangan dan Syarat & Ketentuan yang dicetak pada PDF invoice. Enter membuat poin baru, Shift+Enter menambah baris dalam poin yang sama, dan teks bisa ditebalkan, dimiringkan, atau digarisbawahi.Keterangan7 poinTeks yang dicetak sebagai blok \"Keterangan\" pada PDF invoice. Enter membuat poin baru. .invoice-point-editor p.is-editor-empty:first-child::before { color: currentColor; content: attr(data-placeholder); float: left; height: 0; opacity: 0.5; pointer-events: none; } Pembayaran DP minimal 50% dari total invoice penjualan.Pelunasan dilakukan sebelum barang dikirim / diambil.Penambahan biaya untuk ukuran khusus (UP SIZE) : (2XL = Rp10.000), (3XL = R"
+    },
+    {
+      "step": "po-list",
+      "status": 200,
+      "links": [
+        {
+          "tag": "A",
+          "text": "Prospek",
+          "href": "/crm/prospek"
+        },
+        {
+          "tag": "A",
+          "text": "Purchase Order",
+          "href": "/crm/purchase-orders"
+        },
+        {
+          "tag": "A",
+          "text": "Invoice",
+          "href": "/crm/invoices"
+        },
+        {
+          "tag": "A",
+          "text": "Sales Order",
+          "href": "/crm/sales-orders"
+        },
+        {
+          "tag": "A",
+          "text": "Broadcast",
+          "href": "/crm/follow-up"
+        },
+        {
+          "tag": "A",
+          "text": "No. PO",
+          "href": "/crm/purchase-orders?sort=purchaseOrderNo"
+        },
+        {
+          "tag": "A",
+          "text": "Jenis pakaian",
+          "href": "/crm/purchase-orders?sort=productName"
+        },
+        {
+          "tag": "A",
+          "text": "Customer",
+          "href": "/crm/purchase-orders?sort=customer"
+        },
+        {
+          "tag": "A",
+          "text": "Status",
+          "href": "/crm/purchase-orders?sort=status"
+        },
+        {
+          "tag": "A",
+          "text": "Tanggal dibuat",
+          "href": "/crm/purchase-orders?order=asc"
+        },
+        {
+          "tag": "A",
+          "text": "Deadline produksi",
+          "href": "/crm/purchase-orders?sort=deadline"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/9b1abee7-1072-4c50-b637-a61e2cf7c19f/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/91f738e7-63c5-4f78-8b00-2099cd405ccb/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/d79b197a-d525-4747-b81d-4e0a6132ba8d/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/79a215bb-e25d-4203-8823-e9c9d3d307a2/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/56c74950-5f5d-493d-a7b5-4d6a9d924f39/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/ddb59cfe-be52-45b9-b65a-9b745ade39ab/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/b6542d8a-0606-4c92-8917-f76d0346f742/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/cmvt5mg6s06ib0msbamg5p0ex/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/purchase-order/cmvt5mg7706j20msbiufefo0p/pdf?preview=1"
+        }
+      ]
+    },
+    {
+      "step": "po-detail",
+      "status": 200,
+      "target": "http://localhost:3000/crm/prospek",
+      "title": "Askonveksi",
+      "url": "http://localhost:3000/crm/prospek",
+      "headings": [
+        "Prospek"
+      ],
+      "labels": [
+        "Dari tanggal",
+        "Sampai tanggal",
+        "Baris per halaman"
+      ],
+      "buttons": [
+        "Dashboard",
+        "Laporan absensi",
+        "Project",
+        "Pengeluaran",
+        "Laporan",
+        "Pipeline",
+        "Prospek",
+        "Customer",
+        "Purchase Order",
+        "Invoice",
+        "Sales Order",
+        "Broadcast",
+        "Kotak Masuk1",
+        "Template Pesan",
+        "Akun & Koneksi",
+        "Campaign promo",
+        "Produksi",
+        "Kelola Website",
+        "Riwayat Perubahan",
+        "Ringkasan",
+        "Kanal akuisisi",
+        "Jenis customer",
+        "Sumber lead",
+        "Ukuran pakaian",
+        "Kategori produk",
+        "Metode pembayaran",
+        "Pengaturan invoice",
+        "Profil perusahaan",
+        "Pengguna",
+        "Log aktivitas",
+        "Pengaturan",
+        "Keluar",
+        "Terapkan",
+        "Reset",
+        "Export Excel",
+        "Prospek",
+        "No. prospek",
+        "Customer",
+        "Kota",
+        "Tanggal input",
+        "Haifa",
+        "Edit",
+        "Yasmin",
+        "Edit",
+        "Indah",
+        "Edit",
+        "Veronica",
+        "Edit",
+        "Hega",
+        "Edit",
+        "KOV HERITAGE (ZAKKY)",
+        "Edit",
+        "Shinta",
+        "Edit",
+        "Eza",
+        "Edit",
+        "Syaza",
+        "Edit"
+      ],
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "name": "",
+          "id": "base-ui-_R_9f59eralbH1_",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_001f32ecd1b93fafc310c76f8848d0f256093c2303",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "search",
+          "name": "",
+          "id": "base-ui-_R_2ninebn5rvd9eralb_",
+          "placeholder": "Cari nomor, customer, kontak, atau kota...",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "date",
+          "name": "from",
+          "id": "prospect-from",
+          "placeholder": "",
+          "required": false,
+          "label": "Dari tanggal"
+        },
+        {
+          "tag": "input",
+          "type": "date",
+          "name": "to",
+          "id": "prospect-to",
+          "placeholder": "",
+          "required": false,
+          "label": "Sampai tanggal"
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "name": "pageSize",
+          "id": "pageSize",
+          "placeholder": "",
+          "required": false,
+          "label": "Baris per halaman"
+        }
+      ],
+      "alerts": [],
+      "bodyStart": "DashboardAbsensiLaporan absensiKeuanganProjectPengeluaranLaporanCRMPipelineProspekCustomerPurchase OrderInvoiceSales OrderBroadcastWhatsAppDisconnectKotak Masuk1Template PesanAkun & KoneksiCampaign promoProduksiProduksiWebsiteKelola WebsiteRiwayat PerubahanAnalyticsRingkasanKanal akuisisiData MasterJenis customerSumber leadUkuran pakaianKategori produkMetode pembayaranPengaturan invoiceProfil perusahaanPenggunaLog aktivitasPengaturanBrand aktifAskonveksiGeser untuk pindah ke SAGA.Oownerowner@mail.comOwnerKeluarProspekPantau calon customer sampai peluang berubah menjadi Deal.Dari tanggalSampai tanggalTerapkanResetExport ExcelProspek9 prospekNoNo. prospekCustomerKontakKotaAsalSales/PICStatusTahap PipelineTanggal inputAksi1OPP-AS-000021HaifaSMP Semesta082258003813SemarangSMP SemestamichelleProspekNegosiasi9 Nov 2026, 19.22Edit2OPP-AS-000020YasminSMP IT Permata Bunda082224341653SemarangSMP IT Permata BundamichelleProspekNegosiasi9 Nov 2026, 19.17Edit3OPP-AS-000019IndahLYFE085156139015SemarangLYFEmichelleProspekNegosiasi9 Nov 2026, 19.15Edit4OPP-AS-000018VeronicaSMA N 15 Semarang087826944034SemarangSMA N 15 SemarangmichelleProspekNegosiasi9 Nov 2026, 19.14Edit5OPP-AS-000017HegaTouring B"
+    },
+    {
+      "step": "invoice-list",
+      "status": 200,
+      "links": [
+        {
+          "tag": "A",
+          "text": "Invoice",
+          "href": "/crm/invoices"
+        },
+        {
+          "tag": "A",
+          "text": "Pengaturan invoice",
+          "href": "/master-data/invoice-settings"
+        },
+        {
+          "tag": "A",
+          "text": "No. Invoice",
+          "href": "/crm/invoices?sort=invoiceNo"
+        },
+        {
+          "tag": "A",
+          "text": "Customer",
+          "href": "/crm/invoices?sort=customer"
+        },
+        {
+          "tag": "A",
+          "text": "No. PO",
+          "href": "/crm/invoices?sort=purchaseOrderNo"
+        },
+        {
+          "tag": "A",
+          "text": "Status",
+          "href": "/crm/invoices?sort=status"
+        },
+        {
+          "tag": "A",
+          "text": "Total",
+          "href": "/crm/invoices?sort=total"
+        },
+        {
+          "tag": "A",
+          "text": "Tanggal dibuat",
+          "href": "/crm/invoices?order=asc"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmw9iftz90000trsby5zdqysl/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmw9epu6l0018npsb2cnud2ta/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmw9enykc0011npsbdu6ns2a3/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmw9elcy2000rnpsbrig1xpwz/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mgg506zt0msbxc99rb1u/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mggm070f0msb0jhtjx0l/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mgkc076a0msbzwevnjm9/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mglk078d0msbzf2v3vum/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mglz07930msbxo8b4shw/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mgme079t0msbt4ne9sp0/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mgmr07ag0msbmed9yohb/pdf?preview=1"
+        },
+        {
+          "tag": "A",
+          "text": "",
+          "href": "/api/crm/invoice/cmvt5mg7u06kn0msbj4bsgpn9/pdf?preview=1"
+        }
+      ]
+    },
+    {
+      "step": "invoice-detail",
+      "status": 200,
+      "target": "http://localhost:3000/crm/invoices",
+      "title": "Askonveksi",
+      "url": "http://localhost:3000/crm/invoices",
+      "headings": [
+        "Invoice"
+      ],
+      "labels": [
+        "Baris per halaman"
+      ],
+      "buttons": [
+        "Dashboard",
+        "Laporan absensi",
+        "Project",
+        "Pengeluaran",
+        "Laporan",
+        "Pipeline",
+        "Prospek",
+        "Customer",
+        "Purchase Order",
+        "Invoice",
+        "Sales Order",
+        "Broadcast",
+        "Kotak Masuk1",
+        "Template Pesan",
+        "Akun & Koneksi",
+        "Campaign promo",
+        "Produksi",
+        "Kelola Website",
+        "Riwayat Perubahan",
+        "Ringkasan",
+        "Kanal akuisisi",
+        "Jenis customer",
+        "Sumber lead",
+        "Ukuran pakaian",
+        "Kategori produk",
+        "Metode pembayaran",
+        "Pengaturan invoice",
+        "Profil perusahaan",
+        "Pengguna",
+        "Log aktivitas",
+        "Pengaturan",
+        "Keluar",
+        "Export Excel",
+        "Filter",
+        "No. Invoice",
+        "Customer",
+        "No. PO",
+        "Status",
+        "Total",
+        "Tanggal dibuat"
+      ],
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "name": "",
+          "id": "base-ui-_R_9f59eralbH1_",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_001f32ecd1b93fafc310c76f8848d0f256093c2303",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "search",
+          "name": "",
+          "id": "base-ui-_R_2minebn5rvd9eralb_",
+          "placeholder": "Cari no. invoice, customer, atau no. PO...",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_40124d123333db9562bb4631b823853e9aca5365fb",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "invoiceId",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "name": "pageSize",
+          "id": "pageSize",
+          "placeholder": "",
+          "required": false,
+          "label": "Baris per halaman"
+        }
+      ],
+      "alerts": [],
+      "bodyStart": "DashboardAbsensiLaporan absensiKeuanganProjectPengeluaranLaporanCRMPipelineProspekCustomerPurchase OrderInvoiceSales OrderBroadcastWhatsAppDisconnectKotak Masuk1Template PesanAkun & KoneksiCampaign promoProduksiProduksiWebsiteKelola WebsiteRiwayat PerubahanAnalyticsRingkasanKanal akuisisiData MasterJenis customerSumber leadUkuran pakaianKategori produkMetode pembayaranPengaturan invoiceProfil perusahaanPenggunaLog aktivitasPengaturanBrand aktifAskonveksiGeser untuk pindah ke SAGA.Oownerowner@mail.comOwnerKeluarInvoicePantau draft dan invoice yang sudah diterbitkan.396 invoiceExport ExcelFilterNoNo. InvoiceCustomerNo. POStatusPembayaranTotalTanggal dibuatAksi1INV-AS-2026-00018SMA N 15 SemarangPO-AS-VER091126-1-R3DibatalkanJadwal belum diaturRp 2.002.00010 Nov 20262INV-AS-2026-00017SMA N 15 SemarangPO-AS-VER091126-1-R3DigantikanJadwal belum diaturRp 202.0009 Nov 20263INV-AS-2026-00016SMA N 15 SemarangPO-AS-VER091126-1-R3DigantikanJadwal belum diaturRp 202.0009 Nov 20264INV-AS-2026-00015SMA N 15 SemarangPO-AS-VER091126-1-R3TerbitMenunggu DPRp 202.0009 Nov 20265INV-AS-2026-00245Kak Angga Arsa MESSPO-AS-KAA24010926-2TerbitLunasRp 220.0001 Okt 20266INV-AS-2026-00246Kak Angga Arsa MESSPO-"
+    },
+    {
+      "step": "so-list",
+      "status": 200,
+      "links": []
+    },
+    {
+      "step": "so-detail-dialog",
+      "clicked": null,
+      "title": "Askonveksi",
+      "url": "http://localhost:3000/crm/sales-orders",
+      "headings": [
+        "Sales Order"
+      ],
+      "labels": [
+        "Baris per halaman"
+      ],
+      "buttons": [
+        "Dashboard",
+        "Laporan absensi",
+        "Project",
+        "Pengeluaran",
+        "Laporan",
+        "Pipeline",
+        "Prospek",
+        "Customer",
+        "Purchase Order",
+        "Invoice",
+        "Sales Order",
+        "Broadcast",
+        "Kotak Masuk1",
+        "Template Pesan",
+        "Akun & Koneksi",
+        "Campaign promo",
+        "Produksi",
+        "Kelola Website",
+        "Riwayat Perubahan",
+        "Ringkasan",
+        "Kanal akuisisi",
+        "Jenis customer",
+        "Sumber lead",
+        "Ukuran pakaian",
+        "Kategori produk",
+        "Metode pembayaran",
+        "Pengaturan invoice",
+        "Profil perusahaan",
+        "Pengguna",
+        "Log aktivitas",
+        "Pengaturan",
+        "Keluar",
+        "Export Excel",
+        "Filter",
+        "No. SO",
+        "Customer",
+        "No. PO",
+        "No. Invoice",
+        "Status SO",
+        "Total",
+        "Tanggal diterima"
+      ],
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "name": "",
+          "id": "base-ui-_R_9f59eralbH1_",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "hidden",
+          "name": "$ACTION_ID_001f32ecd1b93fafc310c76f8848d0f256093c2303",
+          "id": "",
+          "placeholder": "",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "type": "search",
+          "name": "",
+          "id": "base-ui-_R_2minebn5rvd9eralb_",
+          "placeholder": "Cari no. SO, PO, invoice, atau customer...",
+          "required": false,
+          "label": ""
+        },
+        {
+          "tag": "select",
+          "type": "",
+          "name": "pageSize",
+          "id": "pageSize",
+          "placeholder": "",
+          "required": false,
+          "label": "Baris per halaman"
+        }
+      ],
+      "alerts": [],
+      "bodyStart": "DashboardAbsensiLaporan absensiKeuanganProjectPengeluaranLaporanCRMPipelineProspekCustomerPurchase OrderInvoiceSales OrderBroadcastWhatsAppDisconnectKotak Masuk1Template PesanAkun & KoneksiCampaign promoProduksiProduksiWebsiteKelola WebsiteRiwayat PerubahanAnalyticsRingkasanKanal akuisisiData MasterJenis customerSumber leadUkuran pakaianKategori produkMetode pembayaranPengaturan invoiceProfil perusahaanPenggunaLog aktivitasPengaturanBrand aktifAskonveksiGeser untuk pindah ke SAGA.Oownerowner@mail.comOwnerKeluarSales OrderPantau Sales Order yang terbentuk dari Deal.392 Sales OrderExport ExcelFilterNoNo. SOCustomerNo. PONo. InvoiceStatus InvoiceStatus WOStatus SOTotalTanggal diterima1SO-AS-2026-00240Kak FauzanPO-AS-KAF7010926-1INV-AS-2026-00254LunasSelesaiAktifRp 375.00029 Sep 20262SO-AS-2026-00243Sintesa uwaisPO-AS-SIU010926-2INV-AS-2026-00257Belum LunasSelesaiAktifRp 2.395.00028 Sep 20263SO-AS-2026-00244Kak AliPO-AS-KAA26010926-1INV-AS-2026-00258Belum LunasSelesaiAktifRp 2.170.00028 Sep 20264SO-AS-2026-00245Kak DikiPO-AS-KAD11010926-1INV-AS-2026-00259Belum LunasSelesaiAktifRp 2.180.00026 Sep 20265SO-AS-2026-00246Kak FaqihPO-AS-KAF8010926-1INV-AS-2026-00260Belum LunasSelesaiAktifRp "
+    },
+    {
+      "step": "cms-preview",
+      "status": 200,
+      "title": "Pratinjau Website | Askonveksi",
+      "url": "http://localhost:3000/cms-preview",
+      "headings": [
+        "UJI CMS TAUTAN PUBLIKSeragam dan Apparel Custom",
+        "Bahan Berkualitas",
+        "Jahitan Presisi",
+        "Custom Desain",
+        "On Time Production",
+        "Berbagai Pilihan Apparel Sesuai Kebutuhan Anda",
+        "Kemeja",
+        "PDH",
+        "Jaket",
+        "Rompi",
+        "Jersey",
+        "Kaos",
+        "Apron",
+        "Polo",
+        "Terlengkap, Modern, dan Terpercaya",
+        "1. Konsultasi & Desain",
+        "2. Pemilihan Bahan",
+        "3. Produksi",
+        "4. Finishing",
+        "5. Pengiriman",
+        "Layanan Konveksi di Jawa Tengah untuk Kebutuhan Bisnis",
+        "Pengalaman",
+        "Tim Profesional",
+        "Kapasitas Produksi Besar",
+        "Harga Kompetitif"
+      ],
+      "labels": [],
+      "buttons": [
+        "Beranda",
+        "Tentang Kami",
+        "Testimoni",
+        "Portofolio",
+        "Size Chart",
+        "Produk",
+        "Katalog Kain",
+        "Contact",
+        "Hubungi Kami",
+        "Konsultasi Sekarang",
+        "Lihat Keunggulan",
+        "Lihat Semua Produk",
+        "Kemeja",
+        "PDH",
+        "Jaket",
+        "Rompi",
+        "Jersey",
+        "Kaos",
+        "Apron",
+        "Polo",
+        "Konsultasikan Kebutuhan",
+        "Hubungi Kami Sekarang",
+        "Kemeja",
+        "Kemeja PDH/PDL",
+        "Workshirt",
+        "Seragam Kerja",
+        "Celana",
+        "Celana Formal",
+        "Celana Training",
+        "Kaos",
+        "Sablon DTF/Plastisol",
+        "Vneck",
+        "Raglan",
+        "Jersey",
+        "Jersey Kerah",
+        "Jersey Oblong",
+        "Wearpack",
+        "Poloshirt",
+        "Jacket",
+        "Lanyard",
+        "Rompi / Vest / Apron",
+        "Totebag / Topi",
+        "Gantungan Kunci",
+        "Stiker",
+        "Baju Selam",
+        "Beranda",
+        "Tentang Kami",
+        "Testimoni",
+        "Portofolio",
+        "Size Chart",
+        "Katalog Kain",
+        "Contact",
+        "Kontak"
+      ],
+      "inputs": [],
+      "alerts": [],
+      "bodyStart": "BerandaTentang KamiTestimoniPortofolioSize ChartProdukKatalog KainContactHubungi KamiKonveksi di SemarangUJI CMS TAUTAN PUBLIKSeragam dan Apparel CustomAskonveksi melayani pembuatan seragam dan apparel custom untuk perusahaan, instansi, sekolah, komunitas, dan brand di Semarang serta berbagai wilayah Jawa Tengah.Konsultasi SekarangLihat KeunggulanBahan BerkualitasPilihan bahan yang nyaman dan tahan lamaJahitan PresisiHasil rapi dan kuat dengan standar tinggiCustom DesainBebas desain, warna, ukuran, dan logoOn Time ProductionKomitmen pada ketepatan waktu produksiProduk KamiBerbagai Pilihan Apparel Sesuai Kebutuhan AndaKami memproduksi berbagai jenis seragam dan apparel dengan kualitas terbaik, cocok untuk kebutuhan perusahaan, instansi, komunitas, sekolah, dan brand.Lihat Semua ProdukKemejaPDHJaketRompiJerseyKaosApronPoloDari DesainHingga Siap PakaiProses Produksi KamiTerlengkap, Modern, dan TerpercayaDengan dukungan tenaga kerja berpengalaman dan mesin modern, kami memastikan setiap tahap produksi berjalan dengan standar kualitas tinggi.1. Konsultasi & DesainDiskusi kebutuhan, konsep, dan desain2. Pemilihan BahanBahan sesuai spesifikasi3. ProduksiCutting, jahit, bordir/sablon4. Fin"
+    },
+    {
+      "step": "export-customers",
+      "ok": false,
+      "exportLink": null,
+      "buttons": [
+        "Export Excel",
+        "Import Excel"
+      ]
+    },
+    {
+      "step": "export-api-customer",
+      "status": 200,
+      "ct": "application/json",
+      "size": 93978
+    }
+  ]
+}

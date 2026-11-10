@@ -65,6 +65,8 @@ type InvoiceWorkflowSectionProps = {
   purchaseOrder: PurchaseOrder | null;
   /** Sales Order aktif menutup revisi invoice karena pembayaran/produksi sudah berjalan. */
   hasSalesOrder: boolean;
+  /** Sales Order sudah dibatalkan: invoice batal-nya tidak bisa diganti selama PO-nya sama. */
+  hasCancelledSalesOrder?: boolean;
   /** Revisi yang lebih baru sudah ada; invoice lama tidak boleh bercabang. */
   hasNewerActiveRevision: boolean;
   revisionLimitReached: boolean;
@@ -88,6 +90,7 @@ export function InvoiceWorkflowSection({
   inNegotiation,
   purchaseOrder,
   hasSalesOrder,
+  hasCancelledSalesOrder = false,
   hasNewerActiveRevision,
   revisionLimitReached,
   draftValues,
@@ -112,7 +115,12 @@ export function InvoiceWorkflowSection({
   // kondisi awal tanpa perlu setState di dalam effect.
   // Draft dan invoice terbit tanpa Sales Order dapat direvisi. Invoice terbit lama tetap
   // aktif sampai revisinya diterbitkan, sehingga revisi baru tidak bercabang.
-  const canReviseStatus = invoiceStatus === "DRAFT" || (invoiceStatus === "ISSUED" && !hasSalesOrder);
+  // Invoice yang PO-nya sudah pernah menjadi Sales Order (walau dibatalkan) tidak bisa direvisi:
+  // satu PO hanya boleh punya satu Sales Order, jadi revisinya tidak akan pernah bisa di-Deal-kan.
+  const canReviseStatus = invoiceStatus === "DRAFT" || (invoiceStatus === "ISSUED" && !hasSalesOrder && !hasCancelledSalesOrder);
+  // Invoice terbit boleh dibatalkan selama belum membentuk Sales Order — jalur yang sama
+  // dengan revisi PO: dokumen batal membebaskan PO tanpa harus menghapus SO yang tak ada.
+  const canCancelInvoice = invoiceStatus === "DRAFT" || (invoiceStatus === "ISSUED" && !hasSalesOrder);
   const showCreateRevision = canReviseStatus && !hasNewerActiveRevision && !revisionLimitReached && canOperate && inNegotiation && !isCreatingRevision && Boolean(purchaseOrder);
   // Saat revisi masih draft, invoice terbit lama hanya boleh dilihat PDF-nya, bukan dikirim ulang.
   const showDeliveryActions = invoiceStatus === "ISSUED" && !hasNewerActiveRevision;
@@ -151,14 +159,18 @@ export function InvoiceWorkflowSection({
                   Buat revisi invoice
                 </Button>
               ) : null}
-              {canCancel && invoiceStatus === "DRAFT" ? (
+              {canCancel && canCancelInvoice ? (
                 <DocumentCancelButton
                   action={cancelInvoiceAction}
                   fields={{ invoiceId, version: invoiceVersion }}
-                  triggerLabel="Batalkan invoice"
+                  triggerLabel={invoiceStatus === "ISSUED" ? "Batalkan invoice terbit" : "Batalkan invoice"}
                   confirmLabel="Ya, batalkan invoice"
-                  title="Batalkan invoice draft?"
-                  description="Invoice akan berstatus Dibatalkan dan tidak dapat diterbitkan lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
+                  title={invoiceStatus === "ISSUED" ? "Batalkan invoice terbit?" : "Batalkan invoice draft?"}
+                  description={
+                    invoiceStatus === "ISSUED"
+                      ? "Invoice terbit ini belum memiliki Sales Order, jadi masih dapat dibatalkan. Nomor invoice menjadi tidak berlaku, jadwal pembayarannya dilepas, dan PO dapat direvisi setelahnya. Invoice tidak dapat diterbitkan ulang."
+                      : "Invoice akan berstatus Dibatalkan dan tidak dapat diterbitkan lagi. Perubahan hanya pada status dan audit log; data lain tidak diubah."
+                  }
                 />
               ) : null}
               {salesOrderHref && salesOrderLabel ? (

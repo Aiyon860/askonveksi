@@ -1,0 +1,633 @@
+{
+  "customerTypes": {
+    "labels": [
+      "Baris per halaman",
+      "File import",
+      "Nama* (wajib)",
+      "Deskripsi"
+    ],
+    "kindOptions": [],
+    "createTitle": [
+      "Excel",
+      "Tambah jenis customer"
+    ],
+    "invalid": {
+      "id": "",
+      "name": "ref: <Node>"
+    }
+  },
+  "sizes": {
+    "labels": [
+      "Baris per halaman",
+      "File import",
+      "Nama* (wajib)",
+      "Deskripsi"
+    ],
+    "kindOptions": [],
+    "createTitle": [
+      "Excel",
+      "Tambah ukuran pakaian"
+    ],
+    "invalid": {
+      "id": "",
+      "name": "ref: <Node>"
+    }
+  },
+  "categories": {
+    "labels": [
+      "Baris per halaman",
+      "File import",
+      "Nama kategori* (wajib)",
+      "Jenis kategori* (wajib)"
+    ],
+    "kindOptions": [
+      {
+        "v": "",
+        "t": "Pilih jenis kategori"
+      },
+      {
+        "v": "JERSEY",
+        "t": "Jersey"
+      },
+      {
+        "v": "NON_JERSEY",
+        "t": "Non-jersey"
+      },
+      {
+        "v": "AKSESORI",
+        "t": "Aksesoris"
+      }
+    ],
+    "createTitle": [
+      "Excel",
+      "Tambah kategori produk"
+    ],
+    "invalid": {
+      "id": "",
+      "name": "ref: <Node>"
+    }
+  },
+  "usersCreate": {
+    "opened": false
+  },
+  "resetConfirm": {
+    "missing": true,
+    "main": [
+      "Semua",
+      "Halaman 1 / 1",
+      "Tambah pengguna",
+      "Akun langsung aktif dan tidak mengirim undangan email.",
+      "Nama",
+      "*",
+      "(wajib)",
+      "Email",
+      "*",
+      "(wajib)",
+      "Role",
+      "*",
+      "(wajib)",
+      "Owner",
+      "Admin Customer",
+      "Admin PO",
+      "Keuangan",
+      "Desainer",
+      "Admin Saga",
+      "Brand",
+      "*",
+      "(wajib)",
+      "Askonveksi",
+      "SAGA",
+      "Menentukan data brand yang dilihat pengguna.",
+      "Password awal",
+      "*",
+      "(wajib)",
+      "Password dapat memakai karakter apa pun.",
+      "Buat pengguna"
+    ]
+  },
+  "waTemplatesPage": {
+    "labels": [],
+    "buttons": [
+      "Filter",
+      "Tambah template"
+    ],
+    "main": [
+      "Template Pesan WhatsApp",
+      "Kelola pesan cepat dan pesan otomatis WhatsApp. Klik baris untuk melihat detail.",
+      "Filter",
+      "0 template ditemukan",
+      "Tambah template",
+      "Template tidak ditemukan",
+      "Coba kata kunci lain, ubah filter, atau tambah template baru."
+    ]
+  },
+  "waTemplateDialog": {
+    "opened": true,
+    "title": [
+      "Tambah template"
+    ],
+    "desc": [
+      "Template chat manual boleh aktif lebih dari satu."
+    ],
+    "labels": [
+      "Nama* (wajib)",
+      "Pemicu* (wajib)",
+      "Isi pesan* (wajib)",
+      "Aktif"
+    ],
+    "buttons": [
+      "Simpan template",
+      "Tutup"
+    ],
+    "text": [
+      "Chat manual",
+      "Tindak lanjut peluang",
+      "Reminder repeat order",
+      "Invoice diterbitkan",
+      "Pengingat pembayaran"
+    ],
+    "invalid": {
+      "name": "ref: <Node>",
+      "id": ""
+    }
+  },
+  "waAccounts": {
+    "labels": [
+      "Label",
+      "Nomor"
+    ],
+    "buttons": [
+      "Tambah",
+      "Pairing",
+      "Jadikan aktif",
+      "Logout",
+      "Hapus"
+    ],
+    "main": [
+      "Akun & Koneksi WhatsApp",
+      "Hubungkan nomor bisnis dan tentukan satu nomor yang dipakai untuk mengirim.",
+      "Tambah nomor",
+      "Gunakan kode negara tanpa tanda tambah, misalnya 6281234567890.",
+      "Label",
+      "Nomor",
+      "Tambah",
+      "Test",
+      "6285943467111",
+      "LOGGED_OUT",
+      "Intentional Logout",
+      "Kode pairing berlaku 60 detik. Jika kedaluwarsa, klik Pairing lagi untuk meminta kode baru.",
+      "Pairing",
+      "Jadikan aktif",
+      "Logout",
+      "Hapus"
+    ]
+  },
+  "waInbox": {
+    "labels": [
+      "Tautkan ke customer",
+      "Pesan",
+      "Lampiran"
+    ],
+    "buttons": [
+      {
+        "t": "",
+        "aria": "Buka menu utama"
+      },
+      {
+        "t": "Cek pesan",
+        "aria": "Cek pesan terbaru"
+      },
+      {
+        "t": "Tandai dibaca",
+        "aria": null
+      },
+      {
+        "t": "",
+        "aria": "Buka pilihan customer"
+      },
+      {
+        "t": "Tautkan",
+        "aria": null
+      },
+      {
+        "t": "Tambah customer baru",
+        "aria": null
+      },
+      {
+        "t": "Pilih file",
+        "aria": null
+      },
+      {
+        "t": "Kirim",
+        "aria": null
+      }
+    ],
+    "placeholders": [
+      {
+        "ph": "Cari nama atau nomor",
+        "name": "q",
+        "aria": "Cari percakapan WhatsApp",
+        "id": "base-ui-_R_16d9bn5rvd9eralb_"
+      },
+      {
+        "ph": "",
+        "name": "$ACTION_ID_40ce6445c54f83534d2019c6a25625edf904517aeb",
+        "aria": null,
+        "id": ""
+      },
+      {
+        "ph": "",
+        "name": "conversationId",
+        "aria": null,
+        "id": ""
+      },
+      {
+        "ph": "",
+        "name": "$ACTION_ID_40ea1809bec73f7e073c63829b7fa467229315518c",
+        "aria": null,
+        "id": ""
+      },
+      {
+        "ph": "",
+        "name": "conversationId",
+        "aria": null,
+        "id": ""
+      },
+      {
+        "ph": "Cari nama, nomor customer, atau WhatsApp",
+        "name": "",
+        "aria": null,
+        "id": "customer-search"
+      },
+      {
+        "ph": "",
+        "name": "customerId",
+        "aria": null,
+        "id": ""
+      },
+      {
+        "ph": "",
+        "name": "$ACTION_ID_40c1e05528d85ec73b9c926ee10a9dba4989808d81",
+        "aria": null,
+        "id": ""
+      },
+      {
+        "ph": "",
+        "name": "conversationId",
+        "aria": null,
+        "id": ""
+      },
+      {
+        "ph": "",
+        "name": "text",
+        "aria": null,
+        "id": "message-text"
+      },
+      {
+        "ph": "",
+        "name": "attachment",
+        "aria": null,
+        "id": "attachment"
+      }
+    ],
+    "main": [
+      "Kotak Masuk WhatsApp",
+      "Percakapan customer dan status pengiriman dari nomor bisnis ASKonveksi.",
+      "Cek status pengiriman",
+      "Sepertinya Anda mendapat pesan baru",
+      "Tekan Cek pesan untuk memuat percakapan terbaru.",
+      "Cek pesan",
+      "Percakapan",
+      "6281225562697",
+      "1",
+      "P",
+      "6281225562697",
+      "6281225562697 melalui Test",
+      "Tandai dibaca",
+      "Tautkan ke customer",
+      "Tautkan",
+      "atau",
+      "Tambah customer baru",
+      "Pesan",
+      "Lampiran",
+      "Pilih file",
+      "Belum ada lampiran",
+      "PDF, JPG, PNG, atau WebP. Maksimal 10 MB.",
+      "Kirim"
+    ]
+  },
+  "waJobs": {
+    "labels": [],
+    "buttons": [
+      "Filter",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan",
+      "Batalkan"
+    ],
+    "main": [
+      "Status Pengiriman WhatsApp",
+      "Pantau hasil pengiriman manual dan otomatis terbaru.",
+      "Kembali ke WhatsApp",
+      "Semua status",
+      "Menunggu",
+      "Sedang diproses",
+      "Terkirim",
+      "Akan dicoba lagi",
+      "Gagal",
+      "Dibatalkan",
+      "Filter",
+      "Waktu\tCustomer\tJenis\tStatus\tPercobaan\tKeterangan\tAksi",
+      "9/11/2026, 22.16.45\tSMA N 15 Semarang\tInvoice terbit\tMenunggu\t0\tMenunggu worker. Jadwal: 9/11/2026, 22.16.45.",
+      "Batalkan",
+      "1/1/2026, 09.00.00\tPAPB Batch 3\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "27/1/2026, 09.00.00\tKak Adrian\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "21/1/2026, 09.00.00\tPremio\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "21/1/2026, 09.00.00\tKak Shinta\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "21/1/2026, 09.00.00\tKak Are Himaskon\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "21/1/2026, 09.00.00\tDr Okty\tInvoice terbit\tAkan dicoba lagi\t1\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "3/1/2026, 09.00.00\tKak Farah\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "19/1/2026, 09.00.00\tKOV\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "12/1/2026, 09.00.00\tPak Erwin\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "9/1/2026, 09.00.00\tBank Jateng\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "10/2/2026, 09.00.00\tKak Acil\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "8/1/2026, 09.00.00\tKak Dika\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "8/1/2026, 09.00.00\tKak Rofi\tInvoice terbit\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "4/3/2026, 09.00.00\tKak Damar\tPengingat pembayaran\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "1/3/2026, 09.00.00\tKak Damar\tPengingat pembayaran\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline.",
+      "Batalkan",
+      "26/2/2026, 09.00.00\tKak Damar\tPengingat pembayaran\tAkan dicoba lagi\t0\tNomor WhatsApp aktif sedang offline."
+    ]
+  },
+  "campaignsPage": {
+    "labels": [
+      "Baris per halaman",
+      "Nama campaign",
+      "Mulai kirim (WIB)",
+      "Pesan WhatsApp",
+      "Gambar pamflet/poster (opsional)"
+    ],
+    "buttons": [
+      "Filter",
+      "Pilih Customer",
+      "Hapus",
+      "Pilih Customer",
+      "Hapus",
+      "Pilih gambar",
+      "Jadwalkan campaign"
+    ],
+    "main": [
+      "Campaign promo",
+      "Buat pesan promo, pilih customer penerimanya, lalu jadwalkan pengiriman WhatsApp.",
+      "2 campaign tercatat",
+      "Filter",
+      "No\tCampaign\tMulai (WIB)\tStatus\tPengiriman\tAktif\tAksi",
+      "1\tTestCampaign\t23 Okt 2026, 20.48\tDilewati",
+      "0 penerima dipilih",
+      "0 terkirim, 0 gagal, 0 tertunda, mulai terlambat",
+      "Pilih Customer",
+      "Hapus",
+      "2\tTestCampaign\t23 Okt 2026, 20.45\tSelesai",
+      "0 penerima dipilih",
+      "0 terkirim, 0 gagal, 0 tertunda, mulai terlambat",
+      "Pilih Customer",
+      "Hapus",
+      "Menampilkan 1 hingga 2 dari 2 data",
+      "Baris per halaman",
+      "10",
+      "20",
+      "50",
+      "Semua",
+      "Halaman 1 / 1",
+      "Campaign baru",
+      "Nama campaign",
+      "Mulai kirim (WIB)",
+      "Pesan WhatsApp",
+      "Variabel: {{customer_name}}, {{company_name}}, {{business_name}}",
+      "Gambar pamflet/poster (opsional)",
+      "Pilih gambar",
+      "Tanpa gambar",
+      "Max 10 MB.",
+      "Jadwalkan campaign"
+    ]
+  },
+  "campaignDialog": {
+    "opened": false
+  },
+  "followUp": {
+    "labels": [
+      "Tanggal dari",
+      "Tanggal ke",
+      "Kategori Customer",
+      "Kategori Order",
+      "Baris per halaman",
+      "Pesan",
+      "Gambar pamflet/poster (opsional)"
+    ],
+    "buttons": [
+      "Import Tanggal Excel",
+      "{{customer_name}}",
+      "{{company_name}}",
+      "{{business_name}}",
+      "{{sales_pic_name}}",
+      "Pilih gambar",
+      "Kirim Pesan"
+    ],
+    "main": [
+      "Broadcast",
+      "Pilih customer penerima broadcast Repeat Order lewat WhatsApp, tulis pesannya, lalu tekan Kirim Pesan.",
+      "Penerima broadcast",
+      "537 customer aktif, menampilkan 500 pertama. Centang customer yang akan menerima broadcast Repeat Order lewat WhatsApp.",
+      "Import Tanggal Excel",
+      "Tanggal dari",
+      "Tanggal ke",
+      "Kategori Customer",
+      "Semua kategori",
+      "Belum diklasifikasikan",
+      "Instansi",
+      "Komunitas",
+      "Personal",
+      "Perusahaan",
+      "Reseller",
+      "Kategori Order",
+      "Semua order",
+      "Jersey",
+      "Kemeja",
+      "PDH / PDL",
+      "Workshirt",
+      "Seragam Kerja",
+      "Wearpack",
+      "Polo Shirt",
+      "Kaos Sablon",
+      "Kaos Vneck",
+      "Kaos Raglan",
+      "Jaket",
+      "Rompi / Apron",
+      "Lainnya",
+      "Lanyard",
+      "Totebag",
+      "Topi",
+      "Ganci",
+      "No\tNama Customer\tKategori Customer\tTanggal Terakhir Order",
+      "Pilih",
+      "1\tABDUL KHAMID\tInstansi\t-",
+      "2\tAbraham\tInstansi\t22 Agu 2026",
+      "3\tAbyan\tInstansi\t-",
+      "4\tAGIL\tInstansi\t-",
+      "5\tAkmal Hafid\tInstansi\t-",
+      "6\tAKMIL\tInstansi\t-",
+      "7\tALSENS\tInstansi\t-",
+      "8\tAndre\tInstansi\t-",
+      "9\tAnugerah Group\tInstansi\t-",
+      "10\tArka\tInstansi\t-",
+      "Menampilkan 1 hingga 10 dari 500 data",
+      "Baris per halaman",
+      "10",
+      "25"
+    ]
+  },
+  "followUpKirim": {
+    "opened": true,
+    "title": [
+      "Periksa kembali"
+    ],
+    "desc": [],
+    "labels": [],
+    "buttons": [],
+    "text": [],
+    "invalid": null
+  },
+  "exportCustomers": {
+    "noDownload": true
+  },
+  "exportToast": {
+    "nodes": [],
+    "bodyMatch": "Export Excel"
+  },
+  "designerDash": {
+    "status": 200,
+    "url": "http://localhost:3000/absensi",
+    "main": [
+      "Absensi",
+      "Ambil foto absen masuk hari ini dan lihat riwayat kehadiran Anda.",
+      "Selasa, 10 November 2026",
+      "Jam server 10:20 WIB",
+      "Belum absen",
+      "Belum absen hari ini",
+      "Batas toleransi sudah lewat. Absen sekarang akan tercatat Terlambat.",
+      "Absen sekarang",
+      "Ketentuan hari ini",
+      "Jam masuk",
+      "09:00 WIB",
+      "Toleransi",
+      "15 menit",
+      "Status hari",
+      "Hari kerja",
+      "Lokasi dicatat sebagai bukti pendukung. Jika GPS tidak tersedia, absen tetap dapat dikirim.",
+      "Riwayat absensi",
+      "Alpha otomatis dihitung untuk hari kerja yang sudah lewat tanpa catatan absensi.",
+      "Bulan riwayat absensi",
+      "Hadir",
+      "1",
+      "Terlambat",
+      "3",
+      "Izin",
+      "0",
+      "Alpha",
+      "3",
+      "Belum absen",
+      "1",
+      "Tingkat kehadiran"
+    ]
+  },
+  "designerLog": {
+    "status": 200,
+    "url": "http://localhost:3000/absensi",
+    "main": [
+      "Absensi",
+      "Ambil foto absen masuk hari ini dan lihat riwayat kehadiran Anda.",
+      "Selasa, 10 November 2026",
+      "Jam server 10:20 WIB",
+      "Belum absen",
+      "Belum absen hari ini",
+      "Batas toleransi sudah lewat. Absen sekarang akan tercatat Terlambat.",
+      "Absen sekarang",
+      "Ketentuan hari ini",
+      "Jam masuk",
+      "09:00 WIB",
+      "Toleransi",
+      "15 menit",
+      "Status hari",
+      "Hari kerja",
+      "Lokasi dicatat sebagai bukti pendukung. Jika GPS tidak tersedia, absen tetap dapat dikirim.",
+      "Riwayat absensi",
+      "Alpha otomatis dihitung untuk hari kerja yang sudah lewat tanpa catatan absensi.",
+      "Bulan riwayat absensi",
+      "Hadir",
+      "1",
+      "Terlambat",
+      "3",
+      "Izin",
+      "0"
+    ]
+  }
+}

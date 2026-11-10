@@ -1,0 +1,132 @@
+{
+  "tab": {
+    "url": "http://localhost:3000/crm/peluang/cmvt5mgg006zp0msbqb4r4vgn?tab=invoice",
+    "main": [
+      "Kembali ke pipeline",
+      "Kemeja 1 pcs",
+      "OPP-000432 · Kak Angga Arsa MESS · Diperbarui 29 Okt 2026, 13.20",
+      "Deal",
+      "PO",
+      "Disepakati",
+      "Invoice & Deal",
+      "Terbit",
+      "Riwayat PO & Invoice",
+      "0 perubahan",
+      "Invoice konveksi",
+      "Harga mengikuti ukuran dan jumlah pada PO Disepakati.",
+      "INV-AS-2026-00245 · Dokumen awal",
+      "Berdasarkan PO-AS-KAA24010926-2 · Dibuat 1 Okt 2026, 10.00",
+      "Kirim ulang",
+      "Salin pesan invoice",
+      "Lihat Kwitansi",
+      "Lihat SO-AS-2026-00231",
+      "Produk\tDeskripsi\tQty\tHarga\tDiskon\tJumlah",
+      "Subtotal",
+      "Rp 220.000",
+      "Diskon",
+      "Rp 0",
+      "Total",
+      "Rp 220.000",
+      "Informasi invoice",
+      "Status",
+      "Terbit",
+      "Tgl. jatuh tempo",
+      "28 Sep 2026",
+      "Jenis pembayaran",
+      "Lunas",
+      "Diterbitkan",
+      "21 Sep 2026, 09.00",
+      "Diskon total",
+      "Tidak ada",
+      "Pajak",
+      "Tidak ada",
+      "Jadwal pembayaran",
+      "Pelunasan: Rp 220.000 · tanpa deadline",
+      "Sisa tagihan dibayar penuh pada jatuh tempo.",
+      "Catatan",
+      "Tanggal uang masuk mengikuti sheet Saldo Akhir.",
+      "Deal dan Sales Order",
+      "Periksa kesiapan dokumen sebelum Admin mengonfirmasi pembayaran dan membentuk Sales Order.",
+      "Peluang sudah Deal",
+      "Sales Order yang terbentuk tersedia pada ringkasan di bawah.",
+      "Sales Order terbentuk",
+      "Buka dokumen untuk melihat pembayaran dan progres order.",
+      "SO-AS-2026-00231",
+      "Rp 220.000 · LUNAS",
+      "Aktif"
+    ],
+    "labels": [],
+    "controls": [
+      {
+        "t": "Kembali ke pipeline",
+        "href": "/crm"
+      },
+      {
+        "t": "Kak Angga Arsa MESS",
+        "href": "/customers/cmvt5mgfl06yy0msbg1bu3g5m"
+      },
+      {
+        "t": "PODisepakati",
+        "href": null
+      },
+      {
+        "t": "Invoice & DealTerbit",
+        "href": null
+      },
+      {
+        "t": "Riwayat PO & Invoice0 perubahan",
+        "href": null
+      },
+      {
+        "t": "PDF Customer",
+        "href": "/api/crm/purchase-order/cmvt5mgg206zq0msbo3vqi255/pdf?preview=1"
+      },
+      {
+        "t": "PDF Penjahit",
+        "href": "/api/crm/purchase-order/cmvt5mgg206zq0msbo3vqi255/pdf?preview=1&variant=penjahit"
+      },
+      {
+        "t": "Edit PDF Penjahit",
+        "href": null
+      },
+      {
+        "t": "Kirim ulang",
+        "href": null
+      },
+      {
+        "t": "Salin pesan invoice",
+        "href": null
+      },
+      {
+        "t": "Lihat Kwitansi",
+        "href": "/api/crm/payment-transactions/cmvtipe6j003vpxsbqhqd7bu7/kwitansi?preview=1"
+      },
+      {
+        "t": "Lihat SO-AS-2026-00231",
+        "href": "/sales-orders/cmvt5mgga06zv0msbcz52jypu"
+      },
+      {
+        "t": "SO-AS-2026-00231",
+        "href": "/sales-orders/cmvt5mgga06zv0msbcz52jypu"
+      },
+      {
+        "t": "Semua dokumen",
+        "href": "/crm/peluang/cmvt5mgg006zp0msbqb4r4vgn?tab=aktivitas#document-history"
+      },
+      {
+        "t": "PO PO-AS-KAA24010926-2 · Dokumen awal",
+        "href": "/crm/peluang/cmvt5mgg006zp0msbqb4r4vgn?tab=aktivitas&document=cmvt5mgg206zq0msbo3vqi255#document-history"
+      },
+      {
+        "t": "Invoice INV-AS-2026-00245 · Dokumen awal",
+        "href": "/crm/peluang/cmvt5mgg006zp0msbqb4r4vgn?tab=aktivitas&document=cmvt5mgg506zt0msbxc99rb1u#document-history"
+      }
+    ]
+  },
+  "kw": {
+    "href": "/api/crm/payment-transactions/cmvtipe6j003vpxsbqhqd7bu7/kwitansi?preview=1",
+    "status": 200,
+    "ct": "application/pdf",
+    "size": 495762
+  }
+}

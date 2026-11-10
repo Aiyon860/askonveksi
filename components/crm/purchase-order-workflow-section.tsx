@@ -63,6 +63,8 @@ type PurchaseOrderWorkflowSectionProps = {
   defaultInstansi?: string;
   /** Role yang boleh membuka Data Master ukuran; dipakai tautan "Tambah ukuran" di form revisi. */
   canManageSizes?: boolean;
+  /** Hanya dokumen terakhir pada rantai PO yang boleh dilanjutkan dari status batal. */
+  latestInChain?: boolean;
   /** Sprint 11 (R3): baris deadline/desain penjahit per item untuk dialog Edit PDF Penjahit. */
   penjahitItems: PenjahitPlanItem[];
   children: ReactNode;
@@ -85,6 +87,7 @@ export function PurchaseOrderWorkflowSection({
   purchaseOrderNoPreview,
   defaultInstansi,
   canManageSizes = false,
+  latestInChain = true,
   penjahitItems,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
@@ -92,7 +95,12 @@ export function PurchaseOrderWorkflowSection({
   // Draft yang sudah tersimpan bersifat readonly; perubahan hanya lewat "Buat versi revisi".
   // PO yang sudah disepakati bisa direvisi untuk mitigasi perubahan (mis. tambah qty H-1);
   // server menolak bila invoice sudah terbit atau Sales Order sudah terbentuk.
-  const canCreateRevision = (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED") && purchaseOrderRevision < 4 && canOperate && inNegotiation && !isCreatingRevision;
+  // PO batal juga bisa dilanjutkan sebagai "Buat PO baru": tanpa jalur ini peluang yang PO-nya
+  // dibatalkan tidak akan pernah punya PO lagi (server tetap menolak bila masih ada PO aktif).
+  const canCreateRevision =
+    (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED" || (purchaseOrderStatus === "CANCELLED" && latestInChain))
+    && (purchaseOrderStatus === "CANCELLED" || purchaseOrderRevision < 4)
+    && canOperate && inNegotiation && !isCreatingRevision;
 
   return (
     <>
@@ -116,7 +124,7 @@ export function PurchaseOrderWorkflowSection({
           {canCreateRevision ? (
             <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
               <CopyPlus data-icon="inline-start" aria-hidden="true" />
-              {purchaseOrderStatus === "AGREED" ? "Revisi PO disepakati" : "Buat versi revisi"}
+              {purchaseOrderStatus === "CANCELLED" ? "Buat PO baru" : purchaseOrderStatus === "AGREED" ? "Revisi PO disepakati" : "Buat versi revisi"}
             </Button>
           ) : null}
           {canCancel && purchaseOrderStatus === "DRAFT" ? (
@@ -137,7 +145,7 @@ export function PurchaseOrderWorkflowSection({
             categoryOptions={categoryOptions}
             initialValues={draftValues}
             sourcePurchaseOrderId={purchaseOrderId}
-            submitLabel="Buat versi revisi"
+            submitLabel={purchaseOrderStatus === "CANCELLED" ? "Buat PO baru" : "Buat versi revisi"}
             purchaseOrderNoPreview={purchaseOrderNoPreview}
             defaultInstansi={defaultInstansi}
             canManageSizes={canManageSizes}

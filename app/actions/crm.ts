@@ -1899,7 +1899,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
         if (!opportunity || opportunity.customer.archivedAt) throw new UserFacingError("Peluang aktif tidak ditemukan.");
         if (opportunity.stage !== "NEGOSIASI") throw new UserFacingError("PO hanya dapat dibuat saat peluang berada di Negosiasi.");
         if (opportunity.purchaseOrders.length) throw new UserFacingError("Selesaikan draft PO yang sedang aktif.");
-        if (opportunity._count.purchaseOrders > 0) throw new UserFacingError("Gunakan aksi Revisi PO dari dokumen sebelumnya.");
+        if (opportunity._count.purchaseOrders > 0) throw new UserFacingError("Peluang ini sudah punya riwayat PO. Gunakan tombol Buat PO baru pada dokumen terakhir.");
 
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
         const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
@@ -2530,33 +2530,55 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
                 stage: true,
                 customer: { select: { id: true, name: true, poCustomerCode: true } },
                 invoices: { where: { status: { in: ["DRAFT", "ISSUED"] } }, select: { id: true, status: true } },
-                purchaseOrders: { where: { status: "AGREED" }, select: { id: true }, take: 1 },
+                purchaseOrders: { where: { status: { in: ["DRAFT", "AGREED"] } }, select: { id: true }, take: 2 },
               },
             },
           },
         });
-        if (!source || (source.status !== "DRAFT" && source.status !== "AGREED")) throw new UserFacingError("Revisi hanya dapat dibuat dari PO draft atau disepakati yang aktif.");
-        if (source.revision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi PO sudah tercapai.");
+        if (!source || (source.status !== "DRAFT" && source.status !== "AGREED" && source.status !== "CANCELLED")) throw new UserFacingError("Revisi hanya dapat dibuat dari PO draft, disepakati, atau dibatalkan.");
+        // Batas 3 revisi mengunci dokumen yang masih hidup. PO batal sudah tidak bisa disepakati,
+        // jadi rantai berikutnya tetap dibuka — tanpa ini peluang mati permanen tanpa jalan keluar.
+        if (source.status !== "CANCELLED" && source.revision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi PO sudah tercapai.");
         if (source.opportunityId !== parsed.data.opportunityId) throw new UserFacingError("PO sumber tidak sesuai dengan peluang.");
         if (source.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Revisi PO hanya dapat dibuat saat Negosiasi.");
-        if (source.status === "DRAFT") {
-          if (source.opportunity.purchaseOrders.length || source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("PO atau invoice sudah final dan tidak dapat direvisi.");
+        const otherActivePo = source.opportunity.purchaseOrders.find((purchaseOrder) => purchaseOrder.id !== source.id);
+        if (source.status === "CANCELLED") {
+          // PO batal adalah jalan keluar peluang: dokumen pengganti disalin dari dokumen terakhir
+          // supaya isian lama tetap terpakai dan rantai nomor PO berlanjut (-R berikutnya).
+          if (otherActivePo) throw new UserFacingError("Masih ada PO aktif pada peluang ini. Selesaikan draft atau revisi PO tersebut terlebih dahulu.");
+          // Hanya dokumen terakhir yang boleh dilanjutkan: nomor revisi harus unik per peluang,
+          // jadi melanjutkan dokumen lama akan bentrok dengan revisi yang sudah ada.
+          const latestRevision = await tx.purchaseOrder.aggregate({ where: { opportunityId: source.opportunityId }, _max: { revision: true } });
+          if ((latestRevision._max.revision ?? 0) > source.revision) throw new UserFacingError("Hanya dokumen terakhir pada rantai PO yang dapat dilanjutkan. Gunakan tombol Buat PO baru pada dokumen terbaru.");
+          if (source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("Masih ada invoice terbit. Batalkan invoice tersebut terlebih dahulu sebelum membuat PO baru.");
+          if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat PO baru.");
+        } else if (source.status === "DRAFT") {
+          if (otherActivePo || source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("PO atau invoice sudah final dan tidak dapat direvisi.");
           if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
         } else {
           // E3: revisi dari PO yang sudah disepakati (mis. tambah qty H-1).
-          if (source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("Invoice sudah terbit. Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati.");
+          // Sales Order diperiksa lebih dulu: SO aktif berarti pembayaran/produksi sudah
+          // berjalan. Invoice terbit tanpa SO cukup dibatalkan dari tab Invoice, bukan SO.
+          const downstream = await tx.salesOrder.findFirst({ where: { purchaseOrderId: source.id, status: "ACTIVE" }, select: { salesOrderNo: true } });
+          if (downstream) throw new UserFacingError(`Sales Order ${downstream.salesOrderNo} sudah terbentuk. Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati.`);
+          if (source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("Masih ada invoice terbit. Batalkan invoice tersebut terlebih dahulu sebelum merevisi PO yang disepakati.");
           if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
-          const downstream = await tx.salesOrder.findFirst({ where: { purchaseOrderId: source.id, status: "ACTIVE" }, select: { id: true } });
-          if (downstream) throw new UserFacingError("Sales Order sudah terbentuk. Batalkan Sales Order terlebih dahulu sebelum merevisi PO yang disepakati.");
         }
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
         const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         // Sisi "sebelum" revisi diambil sebelum PO sumber dikunci menjadi SUPERSEDED.
         const sourceSnapshot = await purchaseOrderSnapshot(tx, source.id);
-        const locked = await tx.purchaseOrder.updateMany({
-          where: { id: source.id, status: source.status, revision: source.revision, version: source.version },
-          data: { status: "SUPERSEDED", version: { increment: 1 } },
-        });
+        // PO batal tetap berstatus CANCELLED di riwayat (bukti pembatalannya tidak ditimpa);
+        // versinya naik hanya untuk mengunci klik ganda pembuatan PO pengganti.
+        const locked = source.status === "CANCELLED"
+          ? await tx.purchaseOrder.updateMany({
+              where: { id: source.id, status: "CANCELLED", version: source.version },
+              data: { version: { increment: 1 } },
+            })
+          : await tx.purchaseOrder.updateMany({
+              where: { id: source.id, status: source.status, revision: source.revision, version: source.version },
+              data: { status: "SUPERSEDED", version: { increment: 1 } },
+            });
         if (locked.count !== 1) throw new UserFacingError("PO sudah berubah. Muat ulang halaman.");
         // Versi desain terakhir tiap produk PO sumber ditempelkan ke item baru pada posisi
         // yang sama. Path berkas dipakai bersama, jadi tidak ada gambar yang dihapus/disalin.
@@ -2641,14 +2663,18 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
           "revision", "garmentType", "productCategoryId", "productName", "instansi", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
         ], { sourcePurchaseOrderId: source.id, fromStatus: source.status }, diffSnapshots(sourceSnapshot, snapshot));
-        return source.opportunityId;
+        return { opportunityId: source.opportunityId, replacedCancelled: source.status === "CANCELLED" };
     }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     timer.mark("transaction");
 
     revalidatePath("/crm");
-    revalidatePath(`/crm/peluang/${opportunityId}`);
+    revalidatePath(`/crm/peluang/${opportunityId.opportunityId}`);
     timer.mark("revalidate");
-    return flashMessagePath(`/crm/peluang/${opportunityId}?tab=po`, "notice", "Draft revisi PO dibuat.");
+    return flashMessagePath(
+      `/crm/peluang/${opportunityId.opportunityId}?tab=po`,
+      "notice",
+      opportunityId.replacedCancelled ? "PO baru dibuat dari dokumen yang dibatalkan." : "Draft revisi PO dibuat.",
+    );
   });
 }
 
@@ -2733,7 +2759,7 @@ export async function createInvoiceDraftAction(_prevState: FormActionState, form
         if (opportunity.purchaseOrders.length) throw new UserFacingError("Sepakati atau selesaikan draft PO sebelum membuat invoice.");
         if (opportunity.invoices.some((item) => item.status === "DRAFT")) throw new UserFacingError("Peluang ini masih memiliki invoice draft.");
         if (opportunity.invoices.some((item) => item.status === "ISSUED" && item.purchaseOrderId === parsed.data.purchaseOrderId)) {
-          throw new UserFacingError("PO ini sudah memiliki invoice terbit dan bersifat final.");
+          throw new UserFacingError("PO ini sudah memiliki invoice terbit. Batalkan invoice tersebut terlebih dahulu untuk membuat invoice baru.");
         }
 
         const purchaseOrder = await tx.purchaseOrder.findFirst({
@@ -3043,7 +3069,7 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
             total: true,
             dueAt: true,
             notes: true,
-            salesOrder: { select: { id: true } },
+            salesOrder: { select: { id: true, status: true } },
             opportunity: {
               select: {
                 stage: true,
@@ -3072,8 +3098,13 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
         if (source.opportunityId !== parsed.data.opportunityId || source.purchaseOrderId !== parsed.data.purchaseOrderId) {
           throw new UserFacingError("Invoice sumber tidak sesuai dengan peluang atau PO aktif.");
         }
-        if (source.status === "ISSUED" && source.salesOrder) {
+        if (source.status === "ISSUED" && source.salesOrder?.status === "ACTIVE") {
           throw new UserFacingError("Invoice terbit yang sudah memiliki Sales Order tidak dapat direvisi. Batalkan Sales Order terlebih dahulu.");
+        }
+        if (source.status === "ISSUED" && source.salesOrder) {
+          // SO-nya sudah dibatalkan: invoice tidak bisa lanjut ke Deal karena satu PO hanya boleh
+          // punya satu Sales Order. Dokumen baru harus lewat revisi PO, bukan revisi invoice.
+          throw new UserFacingError("Sales Order invoice ini sudah dibatalkan. Batalkan invoice ini lalu buat revisi PO untuk melanjutkan dokumen baru.");
         }
         if (source.opportunity.invoices.some((item) => item.status === "DRAFT")) {
           throw new UserFacingError("Selesaikan invoice draft lain sebelum membuat revisi.");
@@ -3380,7 +3411,20 @@ async function finalizeDeal(tx: Tx, actor: Actor, invoiceId: string, initialPaym
   if (!invoice.purchaseOrder.deadline) throw new UserFacingError("Deadline produksi pada PO final belum ditentukan.");
   if (invoice.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Peluang tidak lagi berada di Negosiasi.");
   if (invoice.opportunity.purchaseOrders.length || invoice.opportunity.invoices.length) throw new UserFacingError("Selesaikan seluruh draft PO dan invoice sebelum Deal.");
-  if (invoice.salesOrder) throw new UserFacingError("Invoice ini sudah memiliki Sales Order.");
+  // Satu PO hanya boleh punya satu Sales Order (`SalesOrder.purchaseOrderId` unik), termasuk SO
+  // yang sudah dibatalkan. Periksa lewat PO, bukan lewat invoice, supaya pesannya akurat dan
+  // tidak berakhir sebagai galat unik saat SO lama sudah dibatalkan.
+  const previousOrder = await tx.salesOrder.findFirst({
+    where: { purchaseOrderId: invoice.purchaseOrderId },
+    select: { salesOrderNo: true, status: true },
+  });
+  if (previousOrder) {
+    throw new UserFacingError(
+      previousOrder.status === "ACTIVE"
+        ? `Invoice ini sudah menjadi ${previousOrder.salesOrderNo}.`
+        : `PO ini sudah pernah menjadi ${previousOrder.salesOrderNo} yang dibatalkan. Buat revisi PO lalu invoice baru untuk melanjutkan.`,
+    );
+  }
 
   const activeOrder = await tx.salesOrder.findFirst({ where: { opportunityId: invoice.opportunityId, status: "ACTIVE" }, select: { id: true } });
   if (activeOrder) throw new UserFacingError("Peluang ini sudah memiliki Sales Order aktif.");
@@ -3903,28 +3947,60 @@ export async function cancelInvoiceAction(formData: FormData) {
     const result = await getPrismaClient().$transaction(async (tx) => {
       const invoice = await tx.invoice.findUnique({
         where: { id: parsed.data.invoiceId },
-        select: { invoiceNo: true, opportunityId: true, status: true },
+        select: {
+          invoiceNo: true,
+          opportunityId: true,
+          status: true,
+          salesOrder: { select: { salesOrderNo: true, status: true } },
+        },
       });
       if (!invoice) throw new UserFacingError("Invoice tidak ditemukan.");
-      if (invoice.status !== "DRAFT") throw new UserFacingError("Hanya invoice berstatus Draft yang dapat dibatalkan.");
+      if (invoice.status !== "DRAFT" && invoice.status !== "ISSUED") {
+        throw new UserFacingError("Invoice yang sudah digantikan atau dibatalkan tidak dapat dibatalkan lagi.");
+      }
+      // Invoice terbit boleh dibatalkan selama Sales Order-nya belum aktif: dengan SO aktif, uang
+      // sudah diterima dan produksi berjalan, jadi SO yang harus dibatalkan lebih dulu. SO yang
+      // sudah dibatalkan tidak menghalangi apa pun — kalau dihitung, invoice tidak akan pernah bisa
+      // dibatalkan dan PO tidak akan pernah bisa direvisi.
+      if (invoice.status === "ISSUED" && invoice.salesOrder?.status === "ACTIVE") {
+        throw new UserFacingError(`Invoice ${invoice.invoiceNo} sudah menjadi ${invoice.salesOrder.salesOrderNo}. Batalkan Sales Order tersebut terlebih dahulu agar invoice ini dapat dibatalkan.`);
+      }
       const updated = await tx.invoice.updateMany({
-        where: { id: parsed.data.invoiceId, status: "DRAFT", version: parsed.data.version },
+        where: { id: parsed.data.invoiceId, status: invoice.status, version: parsed.data.version },
         data: { status: "CANCELLED", version: { increment: 1 } },
       });
       if (updated.count !== 1) throw new UserFacingError("Invoice sudah berubah. Muat ulang halaman.");
       // Jadwal pembayaran ikut dilepas: dokumen batal tidak lagi memegang jadwal.
       await tx.pendingPaymentTerm.deleteMany({ where: { pendingPayment: { invoiceId: parsed.data.invoiceId } } });
       await tx.pendingDealPayment.deleteMany({ where: { invoiceId: parsed.data.invoiceId } });
+      // Pengiriman WhatsApp yang belum jalan dibatalkan agar invoice batal tidak terkirim
+      // (worker juga menolak job yang invoice-nya bukan ISSUED lagi).
+      const pendingJobs = await tx.whatsAppAutomationJob.findMany({
+        where: { invoiceId: parsed.data.invoiceId, status: { in: ["QUEUED", "RETRY"] } },
+        select: { id: true },
+      });
+      if (pendingJobs.length) {
+        const jobIds = pendingJobs.map((job) => job.id);
+        await tx.whatsAppAutomationJob.updateMany({
+          where: { id: { in: jobIds } },
+          data: { status: "CANCELLED", nextAttemptAt: null, leaseOwner: null, leaseExpiresAt: null, lastError: "Invoice dibatalkan." },
+        });
+        await tx.whatsAppMessage.updateMany({
+          where: { automationJobId: { in: jobIds }, status: { in: ["QUEUED", "SENDING"] } },
+          data: { status: "CANCELLED" },
+        });
+      }
       await audit(tx, actor, "Invoice", parsed.data.invoiceId, "INVOICE_CANCELLED", ["status", "cancelReason"], {
         invoiceNo: invoice.invoiceNo,
+        previousStatus: invoice.status,
         cancelReason: parsed.data.cancelReason,
         cancelledById: actor.id,
         cancelledByName: actor.name,
       }, [
-        ...statusDiff(INVOICE_STATUS_LABEL.DRAFT, INVOICE_STATUS_LABEL.CANCELLED),
+        ...statusDiff(INVOICE_STATUS_LABEL[invoice.status], INVOICE_STATUS_LABEL.CANCELLED),
         { field: "cancelReason", label: auditFieldLabel("cancelReason"), from: null, to: parsed.data.cancelReason },
       ]);
-      return { opportunityId: invoice.opportunityId };
+      return { opportunityId: invoice.opportunityId, invoiceNo: invoice.invoiceNo, wasIssued: invoice.status === "ISSUED" };
     }, DEAL_TRANSACTION_OPTIONS);
 
     revalidatePath("/crm");
@@ -3933,7 +4009,7 @@ export async function cancelInvoiceAction(formData: FormData) {
     return flashMessagePath(
       `/crm/peluang/${result.opportunityId}?tab=invoice`,
       "notice",
-      `Invoice draft dibatalkan oleh ${actor.name}. Alasan: ${parsed.data.cancelReason}`,
+      `${result.wasIssued ? "Invoice terbit" : "Invoice draft"} ${result.invoiceNo} dibatalkan oleh ${actor.name}. Alasan: ${parsed.data.cancelReason}`,
     );
   });
 }

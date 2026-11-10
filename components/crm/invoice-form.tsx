@@ -190,12 +190,24 @@ export function InvoiceForm({
   }
 
   /**
+   * Revisi invoice harus membawa isian invoice lama. Nama produk bisa sudah diganti admin
+   * (atau berisi nama bawaan PO), jadi bila pencocokan nama gagal, baris dengan urutan yang
+   * sama dipakai asalkan jumlah barisnya masih sama — lebih baik daripada mengosongkan harga.
+   */
+  function savedRowsFor(group: { productName: string }, index: number): DraftItem[] {
+    const byName = savedByProduct.get(normalizeName(group.productName));
+    if (byName?.length) return byName;
+    if (values?.items.length === groups.length) return [values.items[index]];
+    return [];
+  }
+
+  /**
    * Draft baru selalu satu baris per produk. Untuk revisi draft lama yang masih
    * punya baris per ukuran, harga awal memakai rata-rata tertimbang qty agar
    * total lama tidak melompat sebelum admin menyesuaikan.
    */
-  function initialPricingFor(group: { productName: string }): RowPricing {
-    const saved = savedByProduct.get(normalizeName(group.productName)) ?? [];
+  function initialPricingFor(group: { productName: string }, index: number): RowPricing {
+    const saved = savedRowsFor(group, index);
     if (!saved.length) return { unitPrice: "", discountType: "PERCENTAGE", discountPercent: "", discountNominal: "" };
     const first = saved[0];
     const savedQuantity = saved.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
@@ -340,7 +352,7 @@ export function InvoiceForm({
           <TableHeader><TableRow><TableHead>Produk</TableHead><TableHead>Deskripsi</TableHead><TableHead className="w-16 text-center">Qty</TableHead><TableHead className="min-w-36">Harga</TableHead><TableHead className="min-w-40">Diskon</TableHead></TableRow></TableHeader>
           <TableBody>
             {groups.map((group, rowIndex) => {
-              const saved = savedByProduct.get(normalizeName(group.productName))?.[0];
+              const saved = savedRowsFor(group, rowIndex)[0];
               const rowName = saved?.productName?.trim() || group.productName;
               const row = rows[rowIndex];
               const gross = rowGross(row, group.quantity);

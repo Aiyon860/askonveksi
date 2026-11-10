@@ -1,0 +1,168 @@
+[
+  {
+    "step": "po-tab",
+    "url": "http://localhost:3000/crm/peluang/cmw94ed6q0002j4z7ybrvjxhw?tab=po",
+    "tabButtons": [
+      "Riwayat PO & Invoice4 perubahan",
+      "Ubah Design",
+      "Kirim 1 set PDF",
+      "Sepakati PO terbaru",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "PO PO-AS-SYA091126-1-R4 · Revisi 3",
+      "PO PO-AS-SYA091126-1-R3 · Revisi 2",
+      "PO PO-AS-SYA091126-1-R2 · Revisi 1"
+    ],
+    "mainHead": [
+      "Kembali ke pipeline",
+      "Prospek: Syaza",
+      "OPP-AS-000013 · Syaza · Diperbarui 9 Nov 2026, 17.48",
+      "Negosiasi",
+      "PO",
+      "Draft",
+      "Invoice & Deal",
+      "Belum ada",
+      "Riwayat PO & Invoice",
+      "4 perubahan",
+      "Purchase Order customer",
+      "Satu rantai revisi berisi bahan, desain, ukuran, dan jumlah yang disepakati.",
+      "Ubah Design",
+      "Kirim 1 set PDF",
+      "Sepakati PO terbaru",
+      "Desain tersimpan dan dipakai ulang. Gunakan Ubah Design hanya bila ingin mengganti gambar.",
+      "PO-AS-SYA091126-1-R4 · Revisi 3",
+      "Dibuat 9 Nov 2026, 19.28 oleh michelle",
+      "PDF Customer",
+      "PDF Penjahit",
+      "Edit PDF Penjahit",
+      "Batalkan",
+      "Status",
+      "Draft",
+      "Jenis pakaian",
+      "Jersey",
+      "Kategori",
+      "Jersey",
+      "Instansi",
+      "Syaza",
+      "Pola",
+      "Jersey Reguler: Jersey Ossmanda",
+      "Bahan",
+      "Milano",
+      "Warna dasar",
+      "Jersey Reguler: Biru",
+      "Warna variasi",
+      "Jersey Reguler: -",
+      "Deposit",
+      "Tanpa deposit",
+      "Metode dekorasi",
+      "Jersey Reguler: Printing",
+      "Deadline produksi",
+      "5 Des 2026",
+      "Total jumlah",
+      "30",
+      "Catatan desain",
+      "-",
+      "Catatan lain",
+      "-",
+      "Model\tXS\tS\tM\tL\tXL\tTotal",
+      "Pendek\t2\t4\t9\t14\t1\t30",
+      "Panjang\t0\t0\t0\t0\t0\t0",
+      "Roster pemakai (30)",
+      "ID\tNama\tUkuran\tLengan",
+      "1\tAnjelina (Wakil Ketua OSIS Bidang Pengelola)\tXS\tPendek",
+      "2\tTesya (Anggota Seksi Bidang IX)\tXS\tPendek",
+      "3\tNoji (Ketua OSIS)\tS\tPendek",
+      "4\tFarrel (Ketua Seksi Bidang V)\tS\tPendek",
+      "5\tLiana (Ketua Seksi Bidang VIII)\tS\tPendek"
+    ]
+  },
+  {
+    "step": "dialog",
+    "clicked": "Ubah Design",
+    "dialog": {
+      "title": [
+        "Ubah desain"
+      ],
+      "description": [
+        "Desain lama tetap dipakai bila tidak ada file baru. Unggah file hanya untuk produk yang ingin diganti; versi baru disimpan terpisah.",
+        "Belum ada file",
+        "PNG atau JPG, maksimal 5 file dan 5 MB per file. Versi tersimpan 1/4."
+      ],
+      "labels": [
+        "Desain",
+        "File desain* (wajib)",
+        "Catatan revisi"
+      ],
+      "buttons": [
+        "Pilih file",
+        "Batal",
+        "Unggah desain",
+        "Tutup"
+      ],
+      "placeholders": [
+        {
+          "tag": "INPUT",
+          "name": "designTaskId",
+          "placeholder": "",
+          "accept": "",
+          "required": false,
+          "type": "hidden"
+        },
+        {
+          "tag": "INPUT",
+          "name": "designFiles-4847cffd-4263-4d73-a5bf-2c066e3cc44c",
+          "placeholder": "",
+          "accept": ".png,.jpg,.jpeg,image/png,image/jpeg",
+          "required": true,
+          "type": "file"
+        },
+        {
+          "tag": "TEXTAREA",
+          "name": "notes-4847cffd-4263-4d73-a5bf-2c066e3cc44c",
+          "placeholder": "Contoh: Perubahan warna logo depan.",
+          "accept": "",
+          "required": false,
+          "type": ""
+        }
+      ],
+      "text": [
+        "Ubah desain",
+        "Desain lama tetap dipakai bila tidak ada file baru. Unggah file hanya untuk produk yang ingin diganti; versi baru disimpan terpisah.",
+        "Desain",
+        "File desain",
+        "*",
+        "(wajib)",
+        "Pilih file",
+        "Belum ada file",
+        "PNG atau JPG, maksimal 5 file dan 5 MB per file. Versi tersimpan 1/4.",
+        "Catatan revisi",
+        "Batal",
+        "Unggah desain",
+        "Tutup"
+      ]
+    }
+  },
+  {
+    "step": "empty-submit",
+    "after": {
+      "url": "http://localhost:3000/crm/peluang/cmw94ed6q0002j4z7ybrvjxhw?tab=po",
+      "validation": {
+        "name": "designFiles-4847cffd-4263-4d73-a5bf-2c066e3cc44c",
+        "msg": "Please fill out this field.",
+        "id": "po-design-files-cmw98ll3y0051s7z75xi5x1xa-4847cffd-4263-4d73-a5bf-2c066e3cc44c"
+      },
+      "flash": "File desain",
+      "stillDialog": 1
+    }
+  }
+]

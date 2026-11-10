@@ -1,0 +1,15 @@
+{
+  "pendingList": {
+    "main": [
+      "Detail Desain",
+      "Work Order masuk ke kanban Produksi setelah desain diberi keterangan oleh tim Produksi.",
+      "Export semua revisi",
+      "Belum dikirim",
+      "0 Work Order tersedia",
+      "Tidak ada Work Order dengan status ini",
+      "Work Order dari pembayaran pertama akan muncul di sini untuk diberi keterangan desain."
+    ],
+    "links": [],
+    "empty": false
+  }
+}
