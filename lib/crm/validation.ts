@@ -75,6 +75,11 @@ export const updateProspectSchema = createProspectCustomerSchema.and(
   }),
 );
 
+export const deleteProspectSchema = z.object({
+  opportunityId: entityIdSchema,
+  version: requiredVersion,
+});
+
 export const archiveCustomerSchema = z.object({
   customerId: entityIdSchema,
   version: requiredVersion,

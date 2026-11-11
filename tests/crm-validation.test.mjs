@@ -8,6 +8,7 @@ import {
   createCustomerSchema,
   createProspectCustomerSchema,
   createOpportunitySchema,
+  deleteProspectSchema,
   createUserSchema,
   cancelInvoiceSchema,
   cancelPurchaseOrderSchema,
@@ -38,6 +39,7 @@ import {
 } from "../lib/analytics/report-period.ts";
 import { parseFinanceDateRange, parseFinanceReportMode } from "../lib/finance/date-range.ts";
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
+import { prospectCustomerRemovable, prospectDeleteBlockReason } from "../lib/crm/prospect-delete.ts";
 import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
 import { formatPercentage } from "../lib/crm/format.ts";
 import {
@@ -194,6 +196,40 @@ test("halaman Prospek menyediakan aksi edit untuk operator CRM", async () => {
   assert.match(formSource, /name="returnTo"/);
   assert.match(actionSource, /export async function updateProspectAction/);
   assert.match(actionSource, /returnTo = prospekReturnPath/);
+});
+
+test("prospek tanpa order boleh dihapus, prospek dengan order ditolak", () => {
+  const base = { stage: "FOLLOW_UP", isRepeatOrder: false, purchaseOrderCount: 0, invoiceCount: 0, salesOrderCount: 0 };
+  assert.equal(prospectDeleteBlockReason(base), null);
+  assert.match(prospectDeleteBlockReason({ ...base, stage: "DEAL" }), /Deal/);
+  assert.match(prospectDeleteBlockReason({ ...base, isRepeatOrder: true }), /Deal/);
+  assert.match(prospectDeleteBlockReason({ ...base, purchaseOrderCount: 1 }), /order/);
+  assert.match(prospectDeleteBlockReason({ ...base, invoiceCount: 1 }), /order/);
+  assert.match(prospectDeleteBlockReason({ ...base, salesOrderCount: 1 }), /order/);
+
+  assert.equal(deleteProspectSchema.safeParse({ opportunityId: "cm123456789012", version: "1" }).success, true);
+  assert.equal(deleteProspectSchema.safeParse({ opportunityId: "pendek", version: "1" }).success, false);
+  assert.equal(deleteProspectSchema.safeParse({ opportunityId: "cm123456789012", version: "" }).success, false);
+});
+
+test("customer prospek ikut terhapus hanya bila tidak punya peluang atau reminder lain", () => {
+  assert.equal(prospectCustomerRemovable({ lifecycle: "PROSPEK", opportunityCount: 1, reminderCount: 0 }), true);
+  assert.equal(prospectCustomerRemovable({ lifecycle: "PROSPEK", opportunityCount: 2, reminderCount: 0 }), false);
+  assert.equal(prospectCustomerRemovable({ lifecycle: "PROSPEK", opportunityCount: 1, reminderCount: 1 }), false);
+  assert.equal(prospectCustomerRemovable({ lifecycle: "CUSTOMER", opportunityCount: 1, reminderCount: 0 }), false);
+});
+
+test("halaman Prospek menyediakan tombol hapus di samping edit", async () => {
+  const [pageSource, actionSource] = await Promise.all([
+    readFile(new URL("../app/(app)/crm/prospek/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(pageSource, /<EditProspectForm[^\n]*\n\s*<form action=\{deleteProspectAction\}>/);
+  assert.match(pageSource, /confirmTitle="Hapus prospek\?"/);
+  assert.match(pageSource, /<Trash2 data-icon="inline-start" aria-hidden="true" \/>\n\s*Hapus/);
+  assert.match(actionSource, /export async function deleteProspectAction/);
+  assert.match(actionSource, /const actor = await requireActor\(CRM_OPERATOR_ROLES\);/);
+  assert.match(actionSource, /deleteProspectRecord\(tx, parsed\.data\)/);
 });
 
 test("master data membatasi nama, deskripsi, dan urutan", () => {
