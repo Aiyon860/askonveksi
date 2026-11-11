@@ -1417,9 +1417,9 @@ export async function createProspectAction(formData: FormData) {
 }
 
 /**
- * Hapus prospek dari halaman Prospek. Prospek yang sudah menjadi Deal atau
- * sudah memiliki PO, invoice, atau Sales Order ditolak oleh aturan
- * `prospectDeleteBlockReason`.
+ * Hapus prospek dari halaman Prospek, sekaligus membersihkan PO, invoice, dan
+ * order yang lahir dari prospek itu ketika admin salah input. Penghapusan
+ * ditolak bila sudah ada uang masuk, produksi berjalan, atau pengeluaran.
  */
 export async function deleteProspectAction(formData: FormData) {
   const returnTo = prospekReturnPath(formData.get("returnTo"));
@@ -1436,19 +1436,44 @@ export async function deleteProspectAction(formData: FormData) {
       await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_DELETED", ["stage", "customerId"], {
         opportunityNo: result.opportunityNo,
         customerRemoved: result.customerRemoved,
+        purchaseOrders: result.deletedPurchaseOrders,
+        invoices: result.deletedInvoices,
+        salesOrders: result.deletedSalesOrders,
       });
+      for (const invoiceNo of result.deletedInvoices) {
+        await audit(tx, actor, "Invoice", parsed.data.opportunityId, "INVOICE_DELETED_WITH_PROSPECT", ["status"], { invoiceNo });
+      }
+      for (const purchaseOrderNo of result.deletedPurchaseOrders) {
+        await audit(tx, actor, "PurchaseOrder", parsed.data.opportunityId, "PURCHASE_ORDER_DELETED_WITH_PROSPECT", ["status"], { purchaseOrderNo });
+      }
       if (result.customerRemoved) {
         await audit(tx, actor, "Customer", result.customerId, "CUSTOMER_DELETED", ["lifecycle"]);
       }
       return result;
     }, DEAL_TRANSACTION_OPTIONS);
 
+    // Lampiran PO/desain dibersihkan setelah commit; kegagalan storage tidak
+    // membatalkan penghapusan data yang sudah sah.
+    if (deleted.filePaths.length) {
+      const { error } = await erpStorage(PO_DESIGNS_BUCKET).remove(deleted.filePaths);
+      if (error) console.error("[prospect-delete] gagal menghapus lampiran", error.message);
+    }
+
     revalidatePath("/crm");
     revalidatePath("/crm/prospek");
     revalidatePath("/customers");
     revalidatePath("/dashboard");
     revalidateCustomerReminders();
-    return flashMessagePath(returnTo, "notice", `Prospek ${deleted.opportunityNo} dihapus.`);
+    const documentSummary = [
+      deleted.deletedPurchaseOrders.length ? `${deleted.deletedPurchaseOrders.length} PO` : null,
+      deleted.deletedInvoices.length ? `${deleted.deletedInvoices.length} invoice` : null,
+      deleted.deletedSalesOrders.length ? `${deleted.deletedSalesOrders.length} sales order` : null,
+    ].filter((item): item is string => Boolean(item)).join(" dan ");
+    return flashMessagePath(
+      returnTo,
+      "notice",
+      `Prospek ${deleted.opportunityNo}${documentSummary ? ` beserta ${documentSummary}` : ""} dihapus.`,
+    );
   });
 }
 

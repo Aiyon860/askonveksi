@@ -39,7 +39,7 @@ import {
 } from "../lib/analytics/report-period.ts";
 import { parseFinanceDateRange, parseFinanceReportMode } from "../lib/finance/date-range.ts";
 import { calculateConversionRate } from "../lib/analytics/conversion-rate.ts";
-import { prospectCustomerRemovable, prospectDeleteBlockReason } from "../lib/crm/prospect-delete.ts";
+import { prospectCustomerRemovable, prospectDeleteBlockReason, prospectPurgeBlockReason } from "../lib/crm/prospect-delete.ts";
 import { decorationMethodLabel, parseOpportunityDetailTab } from "../lib/crm/constants.ts";
 import { formatPercentage } from "../lib/crm/format.ts";
 import {
@@ -198,18 +198,24 @@ test("halaman Prospek menyediakan aksi edit untuk operator CRM", async () => {
   assert.match(actionSource, /returnTo = prospekReturnPath/);
 });
 
-test("prospek tanpa order boleh dihapus, prospek dengan order ditolak", () => {
-  const base = { stage: "FOLLOW_UP", isRepeatOrder: false, purchaseOrderCount: 0, invoiceCount: 0, salesOrderCount: 0 };
-  assert.equal(prospectDeleteBlockReason(base), null);
-  assert.match(prospectDeleteBlockReason({ ...base, stage: "DEAL" }), /Deal/);
-  assert.match(prospectDeleteBlockReason({ ...base, isRepeatOrder: true }), /Deal/);
-  assert.match(prospectDeleteBlockReason({ ...base, purchaseOrderCount: 1 }), /order/);
-  assert.match(prospectDeleteBlockReason({ ...base, invoiceCount: 1 }), /order/);
-  assert.match(prospectDeleteBlockReason({ ...base, salesOrderCount: 1 }), /order/);
+test("prospek terbuka boleh dihapus, Deal dan repeat order ditolak", () => {
+  assert.equal(prospectDeleteBlockReason({ stage: "FOLLOW_UP", isRepeatOrder: false }), null);
+  assert.equal(prospectDeleteBlockReason({ stage: "NEGOSIASI", isRepeatOrder: false }), null);
+  assert.match(prospectDeleteBlockReason({ stage: "DEAL", isRepeatOrder: false }), /Deal/);
+  assert.match(prospectDeleteBlockReason({ stage: "NEGOSIASI", isRepeatOrder: true }), /Deal/);
 
   assert.equal(deleteProspectSchema.safeParse({ opportunityId: "cm123456789012", version: "1" }).success, true);
   assert.equal(deleteProspectSchema.safeParse({ opportunityId: "pendek", version: "1" }).success, false);
   assert.equal(deleteProspectSchema.safeParse({ opportunityId: "cm123456789012", version: "" }).success, false);
+});
+
+test("hapus berantai ditolak bila sudah ada uang, produksi, atau pengeluaran", () => {
+  const clean = { paymentTransactionCount: 0, depositCount: 0, productionWorkOrderCount: 0, expenseCount: 0 };
+  assert.equal(prospectPurgeBlockReason(clean), null);
+  assert.match(prospectPurgeBlockReason({ ...clean, paymentTransactionCount: 1 }), /pembayaran/);
+  assert.match(prospectPurgeBlockReason({ ...clean, depositCount: 1 }), /deposit/);
+  assert.match(prospectPurgeBlockReason({ ...clean, productionWorkOrderCount: 1 }), /produksi/);
+  assert.match(prospectPurgeBlockReason({ ...clean, expenseCount: 1 }), /pengeluaran/);
 });
 
 test("customer prospek ikut terhapus hanya bila tidak punya peluang atau reminder lain", () => {
@@ -227,6 +233,8 @@ test("halaman Prospek menyediakan tombol hapus di samping edit", async () => {
   assert.match(pageSource, /<EditProspectForm[^\n]*\n\s*<form action=\{deleteProspectAction\}>/);
   assert.match(pageSource, /confirmTitle="Hapus prospek\?"/);
   assert.match(pageSource, /<Trash2 data-icon="inline-start" aria-hidden="true" \/>\n\s*Hapus/);
+  // Konfirmasi menyebut PO/invoice yang ikut terhapus, bukan hanya prospeknya.
+  assert.match(pageSource, /beserta \$\{documents\.join\(", "\)\}/);
   assert.match(actionSource, /export async function deleteProspectAction/);
   assert.match(actionSource, /const actor = await requireActor\(CRM_OPERATOR_ROLES\);/);
   assert.match(actionSource, /deleteProspectRecord\(tx, parsed\.data\)/);

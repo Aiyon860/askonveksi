@@ -57,6 +57,22 @@ function sortHref(state: TableState, sort: ProspectSort) {
   return tableHref(state, { sort, direction, page: 1 });
 }
 
+function deleteConfirmation(item: {
+  opportunityNo: string;
+  customer: { name: string };
+  _count: { purchaseOrders: number; invoices: number; salesOrders: number };
+}) {
+  const documents = [
+    item._count.purchaseOrders ? `${item._count.purchaseOrders} PO` : null,
+    item._count.invoices ? `${item._count.invoices} invoice` : null,
+    item._count.salesOrders ? `${item._count.salesOrders} sales order` : null,
+  ].filter((value): value is string => Boolean(value));
+  if (!documents.length) {
+    return `Prospek ${item.opportunityNo} (${item.customer.name}) akan dihapus permanen beserta customer prospeknya.`;
+  }
+  return `Prospek ${item.opportunityNo} (${item.customer.name}) akan dihapus permanen beserta ${documents.join(", ")} dan seluruh datanya. Penghapusan ditolak bila sudah ada pembayaran, deposit, produksi, atau pengeluaran.`;
+}
+
 async function ProspectsTable({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const query = (first(params.q) ?? "").trim().slice(0, 80);
@@ -104,7 +120,7 @@ async function ProspectsTable({ searchParams }: { searchParams: SearchParams }) 
                                 size="sm"
                                 pendingLabel="Menghapus..."
                                 confirmTitle="Hapus prospek?"
-                                confirmDescription={`Prospek ${item.opportunityNo} (${item.customer.name}) akan dihapus permanen. Prospek yang sudah memiliki order tidak dapat dihapus.`}
+                                confirmDescription={deleteConfirmation(item)}
                                 confirmLabel="Ya, hapus"
                               >
                                 <Trash2 data-icon="inline-start" aria-hidden="true" />

@@ -466,6 +466,7 @@ export async function getProspects({
       where,
       select: {
         id: true, opportunityNo: true, stage: true, version: true, createdAt: true,
+        _count: { select: { purchaseOrders: true, invoices: true, salesOrders: true } },
         customer: {
           select: {
             id: true, customerNo: true, name: true, companyName: true, whatsapp: true, email: true, instagram: true,

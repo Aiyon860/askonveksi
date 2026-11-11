@@ -12,6 +12,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   OPPORTUNITY_UPDATED: "Ubah peluang",
   OPPORTUNITY_STAGE_CHANGED: "Pindah tahap peluang",
   OPPORTUNITY_DELETED: "Hapus prospek",
+  PURCHASE_ORDER_DELETED_WITH_PROSPECT: "Hapus PO bersama prospek",
+  INVOICE_DELETED_WITH_PROSPECT: "Hapus invoice bersama prospek",
   FOLLOW_UP_RECORDED: "Catat hasil follow up",
   FOLLOW_UP_BROADCAST_QUEUED: "Antre broadcast follow up",
   CUSTOMER_CREATED: "Buat customer",
