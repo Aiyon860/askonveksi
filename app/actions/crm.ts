@@ -35,6 +35,7 @@ import {
   createCustomerSchema,
   createProspectCustomerSchema,
   createOpportunitySchema,
+  deleteProspectSchema,
   entityIdSchema,
   firstValidationMessage,
   moveOpportunitySchema,
@@ -57,6 +58,7 @@ import {
   validateOpenOpportunitySchedule,
   voidPaymentTransactionSchema,
 } from "@/lib/crm/validation";
+import { deleteProspectRecord } from "@/lib/crm/prospect-delete";
 import { getPrismaClient } from "@/lib/prisma";
 import { proofRequired, uploadPaymentProof, type PaymentProof } from "@/lib/payment-proof";
 import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
@@ -1411,6 +1413,42 @@ export async function createProspectAction(formData: FormData) {
     revalidatePath("/dashboard");
     revalidateCustomerReminders();
     return flashMessagePath("/crm/prospek", "notice", "Prospek berhasil dibuat.");
+  });
+}
+
+/**
+ * Hapus prospek dari halaman Prospek. Prospek yang sudah menjadi Deal atau
+ * sudah memiliki PO, invoice, atau Sales Order ditolak oleh aturan
+ * `prospectDeleteBlockReason`.
+ */
+export async function deleteProspectAction(formData: FormData) {
+  const returnTo = prospekReturnPath(formData.get("returnTo"));
+  return runRedirectingAction(returnTo, async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = deleteProspectSchema.safeParse({
+      opportunityId: formValue(formData, "opportunityId"),
+      version: formValue(formData, "version"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+
+    const deleted = await getPrismaClient().$transaction(async (tx) => {
+      const result = await deleteProspectRecord(tx, parsed.data);
+      await audit(tx, actor, "Opportunity", parsed.data.opportunityId, "OPPORTUNITY_DELETED", ["stage", "customerId"], {
+        opportunityNo: result.opportunityNo,
+        customerRemoved: result.customerRemoved,
+      });
+      if (result.customerRemoved) {
+        await audit(tx, actor, "Customer", result.customerId, "CUSTOMER_DELETED", ["lifecycle"]);
+      }
+      return result;
+    }, DEAL_TRANSACTION_OPTIONS);
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/prospek");
+    revalidatePath("/customers");
+    revalidatePath("/dashboard");
+    revalidateCustomerReminders();
+    return flashMessagePath(returnTo, "notice", `Prospek ${deleted.opportunityNo} dihapus.`);
   });
 }
 

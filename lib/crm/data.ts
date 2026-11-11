@@ -465,7 +465,7 @@ export async function getProspects({
     prisma.opportunity.findMany({
       where,
       select: {
-        id: true, opportunityNo: true, stage: true, createdAt: true,
+        id: true, opportunityNo: true, stage: true, version: true, createdAt: true,
         customer: {
           select: {
             id: true, customerNo: true, name: true, companyName: true, whatsapp: true, email: true, instagram: true,
