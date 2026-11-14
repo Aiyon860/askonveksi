@@ -66,10 +66,18 @@ test("parse filter menerima array parameter dan membatasi panjang pencarian", ()
   assert.equal(parseProductionBoardFilters({ q: "x".repeat(200) }).q.length, 80);
 });
 
-test("tanpa param bulan berarti semua bulan dan tidak dianggap aktif", () => {
+test("tanpa param bulan berarti bulan berjalan, bukan semua bulan", () => {
   assert.equal(ALL_PRODUCTION_CATEGORIES, "all");
   assert.equal(ALL_PRODUCTION_MONTHS, "all");
   const filters = parseProductionBoardFilters({}, NOW);
+  assert.equal(filters.month, jakartaCurrentMonth(NOW));
+  assert.equal(filters.month, "2026-10");
+  assert.equal(hasActiveProductionBoardFilters(filters), true);
+  assert.deepEqual(productionBoardFilterParams(filters), { bulan: "2026-10" });
+});
+
+test("bulan=all melepas default dan menampilkan semua bulan", () => {
+  const filters = parseProductionBoardFilters({ bulan: ALL_PRODUCTION_MONTHS }, NOW);
   assert.equal(filters.month, "");
   assert.equal(hasActiveProductionBoardFilters(filters), false);
   assert.deepEqual(productionBoardFilterParams(filters), { bulan: ALL_PRODUCTION_MONTHS });

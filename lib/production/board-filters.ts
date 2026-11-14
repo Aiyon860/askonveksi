@@ -26,7 +26,7 @@ export type ProductionBoardFilters = {
   pic: string;
   /**
    * Bulan kalender Jakarta (`YYYY-MM`) untuk `stageEnteredAt`.
-   * String kosong = semua bulan (default / `bulan=all`).
+   * Default bulan berjalan; string kosong = semua bulan (`bulan=all`).
    */
   month: string;
   deadline: ProductionDeadlinePreset | "";
@@ -100,7 +100,7 @@ export const EMPTY_PRODUCTION_BOARD_FILTERS: ProductionBoardFilters = {
 };
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-/** Sentinel URL: tampilkan semua bulan (bukan default bulan ini). */
+/** Sentinel URL: tampilkan semua bulan, melepas default bulan berjalan. */
 export const ALL_PRODUCTION_MONTHS = "all";
 
 export function isProductionMonth(value: string) {
@@ -225,14 +225,14 @@ export function parseProductionBoardFilters(
   const requestedPenanda = firstValue(input.penanda).toLowerCase().split(",").map((value) => value.trim());
   const penanda = PENANDA_OPTIONS.map((option) => option.value).filter((value) => requestedPenanda.includes(value));
 
-  // Bulan Masuk: kosong/`all`/tanpa param → semua bulan; `YYYY-MM` → bulan itu.
-  // Default semua supaya arsip (bulan lama) tetap terlihat; user bisa ketatkan sendiri.
+  // Bulan Masuk: tanpa param/rusak → bulan berjalan; `all` → semua bulan.
+  // Default bulan ini supaya papan tidak penuh arsip; user bisa melonggarkan sendiri.
   const rawMonth = firstValue(input.bulan).trim();
-  const month = rawMonth === ALL_PRODUCTION_MONTHS || !rawMonth
+  const month = rawMonth === ALL_PRODUCTION_MONTHS
     ? ""
     : isProductionMonth(rawMonth)
       ? rawMonth
-      : "";
+      : jakartaCurrentMonth(reference);
 
   return { q, pic, month, deadline, status, penanda };
 }
@@ -242,7 +242,7 @@ export function productionBoardFilterParams(filters: ProductionBoardFilters) {
   const params: Record<string, string> = {};
   if (filters.q) params.q = filters.q;
   if (filters.pic) params.pic = filters.pic;
-  // Selalu tulis bulan: kosong → `all` supaya parse tidak kembali ke default bulan ini.
+  // Selalu tulis bulan: kosong → `all` supaya parse tidak kembali ke bulan berjalan.
   params.bulan = filters.month || ALL_PRODUCTION_MONTHS;
   if (filters.deadline) params.deadline = filters.deadline;
   if (filters.status) params.status = filters.status;

@@ -13,6 +13,11 @@ export type PipelineFilters = {
 
 export const EMPTY_PIPELINE_FILTERS: PipelineFilters = { customerId: "", month: "", categoryId: "" };
 
+/** Bulan kalender Jakarta saat ini (`YYYY-MM`); default filter papan. */
+export function currentPipelineMonth(reference: Date = new Date()) {
+  return jakartaMonthKey(reference.toISOString());
+}
+
 /** Nilai filter khusus untuk peluang yang belum punya kategori produk. */
 export const NO_PRODUCT_CATEGORY = "none";
 
