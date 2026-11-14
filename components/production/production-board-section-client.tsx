@@ -123,7 +123,12 @@ export function ProductionBoardSectionClient({
   }
 
   function resetFilters() {
-    const params = new URLSearchParams({ jalur: group, ...(categoryParam ? { kategori: categoryParam } : {}) });
+    // Bulan harus ditulis `all`: tanpa param, parse akan kembali ke bulan berjalan.
+    const params = new URLSearchParams({
+      jalur: group,
+      ...(categoryParam ? { kategori: categoryParam } : {}),
+      ...productionBoardFilterParams(EMPTY_PRODUCTION_BOARD_FILTERS),
+    });
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   EMPTY_PIPELINE_FILTERS,
   NO_PRODUCT_CATEGORY,
+  currentPipelineMonth,
   filterPipelineOpportunities,
   formatPipelineMonth,
   hasActivePipelineFilters,
@@ -42,6 +43,14 @@ test("bulan pipeline memakai kalender Jakarta, bukan UTC", () => {
   assert.equal(jakartaMonthKey("2026-03-01T00:00:00.000Z"), "2026-03");
   assert.equal(jakartaMonthKey(null), "");
   assert.equal(jakartaMonthKey("bukan tanggal"), "");
+});
+
+test("default papan hanya bulan berjalan menurut kalender Jakarta", () => {
+  // 31 Okt 2026 18:00 UTC sudah 1 Nov 2026 01:00 WIB.
+  const now = new Date("2026-10-31T18:00:00.000Z");
+  assert.equal(currentPipelineMonth(now), "2026-11");
+  assert.equal(currentPipelineMonth(new Date("2026-10-31T16:59:59.000Z")), "2026-10");
+  assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, month: currentPipelineMonth(now) }), true);
 });
 
 test("format bulan hanya menerima YYYY-MM yang valid", () => {

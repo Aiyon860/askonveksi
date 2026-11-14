@@ -44,10 +44,13 @@ type CustomerOption = { id: string; customerNo: string; name: string; companyNam
 const BOARD_STAGES = new Set<OpportunityStage>(PIPELINE_STAGES);
 
 export function PipelineBoardSectionClient({
+  defaultMonth,
   initialData,
   initialCustomers,
   initialCategories,
 }: {
+  /** Bulan Jakarta dari server, supaya render awal tidak beda dengan hidrasi. */
+  defaultMonth: string;
   initialData: PipelineData;
   initialCustomers: CustomerOption[];
   initialCategories: PipelineCategoryOption[];
@@ -60,7 +63,8 @@ export function PipelineBoardSectionClient({
     refreshInterval: 60000,
     dedupingInterval: 10000,
   });
-  const [filters, setFilters] = useState<PipelineFilters>(EMPTY_PIPELINE_FILTERS);
+  // Default hanya bulan berjalan; reset mengosongkan semua filter (semua bulan).
+  const [filters, setFilters] = useState<PipelineFilters>(() => ({ ...EMPTY_PIPELINE_FILTERS, month: defaultMonth }));
   const [filterResetKey, setFilterResetKey] = useState(0);
 
   // Data server (RSC) selalu paling baru setelah aksi + `router.refresh()`. Tanpa ini, cache SWR
