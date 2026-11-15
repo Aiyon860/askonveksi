@@ -79,3 +79,43 @@ export function activityStatusFromSchedule(
   if (reactivation && reactivation.dueAt <= reference) return "TIDAK_AKTIF";
   return "AKTIF";
 }
+
+/**
+ * Status aktivitas cadangan saat customer punya order tetapi belum punya baris
+ * CustomerReminder (mis. order hasil impor arsip). Tanggal order terakhir
+ * diperlakukan seperti acceptedAt pada scheduleCustomerReminders.
+ */
+export function activityStatusFromSalesHistory({
+  latestOrderAt,
+  intervals,
+  reference = new Date(),
+  hasOpenOpportunity = false,
+}: {
+  latestOrderAt: Date | null;
+  intervals: readonly number[];
+  reference?: Date;
+  hasOpenOpportunity?: boolean;
+}): CustomerActivityStatus {
+  if (!latestOrderAt) return "BELUM_ORDER";
+  if (hasOpenOpportunity) return "AKTIF";
+  const activeIntervals = intervals.length ? intervals : DEFAULT_REPEAT_ORDER_INTERVALS;
+  return repeatOrderDueAt(latestOrderAt, activeIntervals, 1) <= reference ? "TIDAK_AKTIF" : "AKTIF";
+}
+
+export function resolveCustomerActivityStatus({
+  reminders,
+  latestOrderAt,
+  intervals,
+  reference = new Date(),
+  hasOpenOpportunity = false,
+}: {
+  reminders: Array<{ type: CustomerReminderType; dueAt: Date }>;
+  latestOrderAt: Date | null;
+  intervals: readonly number[];
+  reference?: Date;
+  hasOpenOpportunity?: boolean;
+}): CustomerActivityStatus {
+  const fromSchedule = activityStatusFromSchedule(reminders, reference, hasOpenOpportunity);
+  if (reminders.length || !latestOrderAt) return fromSchedule;
+  return activityStatusFromSalesHistory({ latestOrderAt, intervals, reference, hasOpenOpportunity });
+}

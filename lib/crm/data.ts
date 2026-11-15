@@ -19,7 +19,7 @@ import { formatPurchaseOrderNo, purchaseOrderCustomerCodeBase } from "@/lib/crm/
 import { allBrands, brandScopedClient } from "@/lib/brand/prisma-extension";
 import type { Brand } from "@/lib/brand/config";
 import { resolveRequestBrand } from "@/lib/brand/request-brand";
-import { activityStatusFromSchedule, CUSTOMER_ACTIVITY_LABELS } from "@/lib/crm/reminder-types";
+import { CUSTOMER_ACTIVITY_LABELS, DEFAULT_REPEAT_ORDER_INTERVALS, resolveCustomerActivityStatus } from "@/lib/crm/reminder-types";
 import { pageCountFor, sliceArgs } from "@/lib/pagination";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -240,6 +240,20 @@ function customerWhere(actor: { id: string; role: AppRole }, query: string, segm
   } satisfies Prisma.CustomerWhereInput;
 }
 
+async function getRepeatOrderIntervals(): Promise<readonly number[]> {
+  const profile = await getPrismaClient().businessProfile.findFirst({ select: { repeatOrderIntervals: true } });
+  return profile?.repeatOrderIntervals?.length ? profile.repeatOrderIntervals : DEFAULT_REPEAT_ORDER_INTERVALS;
+}
+
+function latestOrderByCustomer(orders: Array<{ acceptedAt: Date; opportunity: { customerId: string } }>) {
+  const latest = new Map<string, Date>();
+  for (const order of orders) {
+    const customerId = order.opportunity.customerId;
+    if (!latest.has(customerId)) latest.set(customerId, order.acceptedAt);
+  }
+  return latest;
+}
+
 function customerOrderBy(sort: CustomerSort, direction: SortDirection) {
   return (
     sort === "opportunities"
@@ -317,16 +331,39 @@ export async function getCustomers({
     prisma.customer.count({ where }),
   ]);
   const customerIds = items.map((item) => item.id);
-  const openOpportunities = customerIds.length
-    ? await prisma.opportunity.findMany({
-        where: { customerId: { in: customerIds }, stage: { in: OPEN_STAGES } },
-        select: { customerId: true },
-        distinct: ["customerId"],
-      })
-    : [];
+  const [openOpportunities, latestOrders, intervals] = customerIds.length
+    ? await Promise.all([
+        prisma.opportunity.findMany({
+          where: { customerId: { in: customerIds }, stage: { in: OPEN_STAGES } },
+          select: { customerId: true },
+          distinct: ["customerId"],
+        }),
+        prisma.salesOrder.findMany({
+          where: { status: "ACTIVE", opportunity: { customerId: { in: customerIds } } },
+          select: { acceptedAt: true, opportunity: { select: { customerId: true } } },
+          orderBy: { acceptedAt: "desc" },
+        }),
+        getRepeatOrderIntervals(),
+      ])
+    : [[], [], DEFAULT_REPEAT_ORDER_INTERVALS];
   const openCustomerIds = new Set(openOpportunities.map((item) => item.customerId));
+  const latestOrderDates = latestOrderByCustomer(latestOrders);
   return {
-    items: items.map((item) => ({ ...item, hasOpenOpportunity: openCustomerIds.has(item.id) })),
+    items: items.map((item) => {
+      const latestOrderAt = item.reminders[0]?.sourceSalesOrder?.acceptedAt ?? latestOrderDates.get(item.id) ?? null;
+      const hasOpenOpportunity = openCustomerIds.has(item.id);
+      return {
+        ...item,
+        hasOpenOpportunity,
+        latestOrderAt,
+        activityStatus: resolveCustomerActivityStatus({
+          reminders: item.reminders,
+          latestOrderAt,
+          intervals,
+          hasOpenOpportunity,
+        }),
+      };
+    }),
     total,
     pageCount: pageCountFor(total, pageSize),
   };
@@ -383,14 +420,24 @@ export async function getCustomersForExport({
     take: limit,
   }), offset === 0 ? getPrismaClient().customer.count({ where }) : Promise.resolve(null)]);
   const customerIds = items.map((item) => item.id);
-  const openOpportunities = customerIds.length
-    ? await getPrismaClient().opportunity.findMany({
-        where: { customerId: { in: customerIds }, stage: { in: OPEN_STAGES } },
-        select: { customerId: true },
-        distinct: ["customerId"],
-      })
-    : [];
+  const prisma = getPrismaClient();
+  const [openOpportunities, latestOrders, intervals] = customerIds.length
+    ? await Promise.all([
+        prisma.opportunity.findMany({
+          where: { customerId: { in: customerIds }, stage: { in: OPEN_STAGES } },
+          select: { customerId: true },
+          distinct: ["customerId"],
+        }),
+        prisma.salesOrder.findMany({
+          where: { status: "ACTIVE", opportunity: { customerId: { in: customerIds } } },
+          select: { acceptedAt: true, opportunity: { select: { customerId: true } } },
+          orderBy: { acceptedAt: "desc" },
+        }),
+        getRepeatOrderIntervals(),
+      ])
+    : [[], [], DEFAULT_REPEAT_ORDER_INTERVALS];
   const openCustomerIds = new Set(openOpportunities.map((item) => item.customerId));
+  const latestOrderDates = latestOrderByCustomer(latestOrders);
   return { rows: items.map((item) => ({
     customerNo: item.customerNo,
     name: item.name,
@@ -405,8 +452,15 @@ export async function getCustomersForExport({
     address: item.address ?? "",
     notes: item.notes ?? "",
     archivedAt: item.archivedAt,
-    activityStatus: item.archivedAt ? "Diarsipkan" : CUSTOMER_ACTIVITY_LABELS[activityStatusFromSchedule(item.reminders, new Date(), openCustomerIds.has(item.id))],
-    lastOrderAt: item.reminders[0]?.sourceSalesOrder?.acceptedAt ?? null,
+    activityStatus: item.archivedAt
+      ? "Diarsipkan"
+      : CUSTOMER_ACTIVITY_LABELS[resolveCustomerActivityStatus({
+          reminders: item.reminders,
+          latestOrderAt: item.reminders[0]?.sourceSalesOrder?.acceptedAt ?? latestOrderDates.get(item.id) ?? null,
+          intervals,
+          hasOpenOpportunity: openCustomerIds.has(item.id),
+        })],
+    lastOrderAt: item.reminders[0]?.sourceSalesOrder?.acceptedAt ?? latestOrderDates.get(item.id) ?? null,
     opportunityCount: item._count.opportunities,
     updatedAt: item.opportunities[0]?.updatedAt ?? item.updatedAt,
   })), total };
@@ -546,58 +600,69 @@ export async function getCustomerPopupDetail(customerId: string) {
 
 export async function getCustomerDetail(customerId: string) {
   await requireActor(CRM_VIEW_ROLES);
-  return getPrismaClient().customer.findUnique({
-    where: { id: customerId },
-    select: {
-      id: true,
-      customerNo: true,
-      name: true,
-      companyName: true,
-      whatsapp: true,
-      email: true,
-      instagram: true,
-      address: true,
-      city: true,
-      notes: true,
-      orderReminderEnabled: true,
-      customerTypeId: true,
-      leadSourceId: true,
-      salesPicId: true,
-      customerType: { select: { id: true, name: true } },
-      leadSource: { select: { id: true, name: true } },
-      salesPic: { select: { id: true, name: true, isActive: true } },
-      archivedAt: true,
-      version: true,
-      updatedAt: true,
-      whatsappConversations: {
-        select: { id: true, unreadCount: true, lastMessageAt: true, lastMessagePreview: true, account: { select: { status: true } } },
-        orderBy: { lastMessageAt: "desc" },
-        take: 1,
-      },
-      opportunities: {
-        select: {
-          id: true,
-          opportunityNo: true,
-          title: true,
-          stage: true,
+  const prisma = getPrismaClient();
+  const [customer, latestOrder, intervals] = await Promise.all([
+    prisma.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        customerNo: true,
+        name: true,
+        companyName: true,
+        whatsapp: true,
+        email: true,
+        instagram: true,
+        address: true,
+        city: true,
+        notes: true,
+        orderReminderEnabled: true,
+        customerTypeId: true,
+        leadSourceId: true,
+        salesPicId: true,
+        customerType: { select: { id: true, name: true } },
+        leadSource: { select: { id: true, name: true } },
+        salesPic: { select: { id: true, name: true, isActive: true } },
+        archivedAt: true,
+        version: true,
+        updatedAt: true,
+        whatsappConversations: {
+          select: { id: true, unreadCount: true, lastMessageAt: true, lastMessagePreview: true, account: { select: { status: true } } },
+          orderBy: { lastMessageAt: "desc" },
+          take: 1,
         },
-        orderBy: { updatedAt: "desc" },
-      },
-      reminders: {
-        where: { resolvedAt: null, type: "REACTIVATION" },
-        select: {
-          id: true,
-          type: true,
-          dueAt: true,
-          sourceSalesOrder: {
-            select: { id: true, salesOrderNo: true, acceptedAt: true, total: true },
+        opportunities: {
+          select: {
+            id: true,
+            opportunityNo: true,
+            title: true,
+            stage: true,
           },
+          orderBy: { updatedAt: "desc" },
         },
-        orderBy: { dueAt: "asc" },
-        take: 1,
+        reminders: {
+          where: { resolvedAt: null, type: "REACTIVATION" },
+          select: {
+            id: true,
+            type: true,
+            dueAt: true,
+            sourceSalesOrder: {
+              select: { id: true, salesOrderNo: true, acceptedAt: true, total: true },
+            },
+          },
+          orderBy: { dueAt: "asc" },
+          take: 1,
+        },
       },
-    },
-  });
+    }),
+    prisma.salesOrder.findFirst({
+      where: { status: "ACTIVE", opportunity: { customerId } },
+      select: { acceptedAt: true },
+      orderBy: { acceptedAt: "desc" },
+    }),
+    getRepeatOrderIntervals(),
+  ]);
+  if (!customer) return null;
+  return { ...customer, latestOrderAt: latestOrder?.acceptedAt ?? null, repeatOrderIntervals: intervals };
 }
 
 export type CustomerCommunicationFilter = "all" | "COMMUNICATION" | "INTERNAL_NOTE" | "SYSTEM" | "WHATSAPP" | "INSTAGRAM" | "PHONE" | "EMAIL" | "MEETING" | "OTHER";
