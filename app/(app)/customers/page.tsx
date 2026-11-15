@@ -54,7 +54,6 @@ import {
 import { getCustomerFormOptions } from "@/lib/master-data";
 import { formatDate } from "@/lib/crm/format";
 import { numericCellClass } from "@/lib/table-alignment";
-import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
 import {
   DATA_PAGE_SIZE,
   DATA_PAGE_SIZES,
@@ -324,12 +323,8 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                     customer.email,
                     customer.instagram ? `@${customer.instagram}` : null,
                   ].filter((contact): contact is string => Boolean(contact));
-                  const activityStatus = activityStatusFromSchedule(
-                    customer.reminders,
-                    new Date(),
-                    customer.hasOpenOpportunity,
-                  );
-                  const latestOrder = customer.reminders[0]?.sourceSalesOrder;
+                  const activityStatus = customer.activityStatus;
+                  const latestOrderAt = customer.latestOrderAt;
 
                   return (
                     <CustomerTableRowLink key={customer.id} href={customerDetailHref(customer.id, state)}>
@@ -353,7 +348,7 @@ async function CustomersTableSection({ searchParams }: { searchParams: CustomerS
                         <CustomerActivityBadge status={activityStatus} archived={Boolean(customer.archivedAt)} />
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {latestOrder ? formatDate(latestOrder.acceptedAt) : "Belum ada"}
+                        {latestOrderAt ? formatDate(latestOrderAt) : "Belum ada"}
                       </TableCell>
                       <TableCell className="whitespace-normal">
                         <p className="text-sm">{contacts[0] ?? "-"}</p>

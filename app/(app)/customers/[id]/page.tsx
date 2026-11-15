@@ -24,7 +24,7 @@ import { getCurrentActor } from "@/lib/auth/session";
 import { getCustomerCommunicationHistory, getCustomerDetail, getCustomerOpportunities, getCustomerOrderSummary, getCustomerSalesOrders, type CustomerCommunicationFilter, type CustomerOrderStatus } from "@/lib/crm/data";
 import { OPEN_STAGES, PIPELINE_STAGES } from "@/lib/crm/constants";
 import { formatCurrency, formatDate, toDateTimeLocalValue } from "@/lib/crm/format";
-import { activityStatusFromSchedule } from "@/lib/crm/reminder-types";
+import { resolveCustomerActivityStatus } from "@/lib/crm/reminder-types";
 import { getCustomerFormOptions } from "@/lib/master-data";
 import { parseDocumentDateRange } from "@/lib/crm/document-list-filters";
 import { normalizeCustomerHistoryPageSize } from "@/lib/crm/customer-history";
@@ -97,7 +97,13 @@ export default async function CustomerDetailPage({
   const customerFieldsDisabled = Boolean(customer.archivedAt) || !canOperate;
   const canArchive = canOperate && !customer.archivedAt;
   const hasOpenOpportunity = customer.opportunities.some((opportunity) => OPEN_STAGES.includes(opportunity.stage));
-  const activityStatus = activityStatusFromSchedule(customer.reminders, new Date(), hasOpenOpportunity);
+  const latestOrderAt = customer.reminders[0]?.sourceSalesOrder?.acceptedAt ?? customer.latestOrderAt;
+  const activityStatus = resolveCustomerActivityStatus({
+    reminders: customer.reminders,
+    latestOrderAt,
+    intervals: customer.repeatOrderIntervals,
+    hasOpenOpportunity,
+  });
   const reactivationSchedule = customer.reminders.find((reminder) => reminder.type === "REACTIVATION");
   const recentConversation = customer.whatsappConversations[0];
   return (
