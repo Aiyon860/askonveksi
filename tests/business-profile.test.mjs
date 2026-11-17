@@ -141,5 +141,8 @@ test("simpan profil menulis ke baris yang ditampilkan form, bukan hasil pencaria
   assert.match(action, /formData\.get\("profileId"\)/);
   assert.match(action, /allBrands\(/, "pembacaan baris profil tidak boleh terkurung brand request");
   assert.match(action, /forBrand\(current\.brand/, "update & audit mengikuti brand baris yang disimpan");
+  assert.match(action, /updateMany\(\s*forBrand\(current\.brand/, "forBrand membungkus argumen query, bukan hanya where");
+  assert.doesNotMatch(action, /where: forBrand\(/, "penanda scope di dalam where ditolak Prisma");
+  assert.match(action, /invoiceNotes: parsed\.data\.invoiceNotes \?\? null/, "mengosongkan catatan harus menulis NULL");
   assert.doesNotMatch(action, /sudah berubah\. Muat ulang halaman/, "versi berubah tidak boleh membatalkan simpan");
 });
