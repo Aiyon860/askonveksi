@@ -1075,30 +1075,36 @@ export async function updateBusinessProfileAction(formData: FormData) {
           allBrands({ where: profileId ? { id: profileId } : {}, select: { id: true, brand: true } }),
         );
         if (!current) throw new UserFacingError("Profil perusahaan belum tersedia. Jalankan migrasi terbaru.");
+        // Kolom opsional yang dikosongkan user harus benar-benar menjadi NULL.
+        // `optionalText` mengubah "" menjadi undefined, dan Prisma mengabaikan
+        // nilai undefined sehingga nilai lama tetap tersimpan.
         const profileUpdate = {
           name: parsed.data.name,
-          phone: parsed.data.phone,
-          email: parsed.data.email?.toLowerCase(),
-          address: parsed.data.address,
-          signatureName: parsed.data.signatureName,
-          signatureTitle: parsed.data.signatureTitle,
-          invoiceNotes: parsed.data.invoiceNotes,
+          phone: parsed.data.phone ?? null,
+          email: parsed.data.email?.toLowerCase() ?? null,
+          address: parsed.data.address ?? null,
+          signatureName: parsed.data.signatureName ?? null,
+          signatureTitle: parsed.data.signatureTitle ?? null,
+          invoiceNotes: parsed.data.invoiceNotes ?? null,
           ...(uploadedLogoPath ? { logoPath: uploadedLogoPath } : {}),
           ...(uploadedSignaturePath ? { signaturePath: uploadedSignaturePath } : {}),
           ...(removeSignature ? { signaturePath: null } : {}),
           version: { increment: 1 },
         };
-        let updated = await tx.businessProfile.updateMany({
-          where: forBrand(current.brand, { id: current.id, version: parsed.data.version }),
-          data: profileUpdate,
-        });
+        // `forBrand` membungkus SELURUH argumen query (bukan hanya `where`):
+        // penanda scope dibaca ekstensi di level argumen, bukan di dalam where.
+        let updated = await tx.businessProfile.updateMany(
+          forBrand(current.brand, {
+            where: { id: current.id, version: parsed.data.version },
+            data: profileUpdate,
+          }),
+        );
         if (updated.count !== 1) {
           // Versi bisa sudah berubah (tab lain atau pengaturan lain). Form ini
           // mengirim seluruh isi profil, jadi simpan terakhir tetap dijalankan.
-          updated = await tx.businessProfile.updateMany({
-            where: forBrand(current.brand, { id: current.id }),
-            data: profileUpdate,
-          });
+          updated = await tx.businessProfile.updateMany(
+            forBrand(current.brand, { where: { id: current.id }, data: profileUpdate }),
+          );
         }
         if (updated.count !== 1) throw new UserFacingError("Profil perusahaan tidak ditemukan. Muat ulang halaman.");
         await tx.auditEvent.create(
