@@ -134,3 +134,12 @@ test("template kwitansi mengikuti referensi (slip 28,5 x 9 cm, kop, tiga baris)"
     assert.match(receiptRouteSource, new RegExp(field), `route kwitansi harus memilih ${field}`);
   }
 });
+
+test("simpan profil menulis ke baris yang ditampilkan form, bukan hasil pencarian ulang brand", () => {
+  assert.match(pageSource, /name="profileId"/, "form harus mengirim id profil yang sedang diedit");
+  const action = block(actionSource, "export async function updateBusinessProfileAction");
+  assert.match(action, /formData\.get\("profileId"\)/);
+  assert.match(action, /allBrands\(/, "pembacaan baris profil tidak boleh terkurung brand request");
+  assert.match(action, /forBrand\(current\.brand/, "update & audit mengikuti brand baris yang disimpan");
+  assert.doesNotMatch(action, /sudah berubah\. Muat ulang halaman/, "versi berubah tidak boleh membatalkan simpan");
+});

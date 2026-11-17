@@ -7,6 +7,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { flashMessagePath, runRedirectingAction, UserFacingError } from "@/lib/actions/response";
 import { CRM_OPERATOR_ROLES, GARMENT_SIZE_ROLES, MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
+import { allBrands, forBrand } from "@/lib/brand/prisma-extension";
 import { groupProductCategories } from "@/lib/crm/constants";
 import { compareGarmentSizeNames, normalizeGarmentSizeName, sortGarmentSizeRows } from "@/lib/crm/size-aliases";
 import {
@@ -1062,30 +1063,49 @@ export async function updateBusinessProfileAction(formData: FormData) {
     }
     const removeSignature = formData.get("removeSignature") === "1" && !uploadedSignaturePath;
 
+    // Id baris profil yang tadi ditampilkan form. Pencarian ulang per brand bisa
+    // menunjuk baris brand lain (ASKONVEKSI vs SAGA) sehingga simpan terlihat
+    // berhasil padahal halaman tetap membaca baris lama.
+    const submittedProfileId = formData.get("profileId");
+    const profileId = typeof submittedProfileId === "string" && submittedProfileId.trim() ? submittedProfileId.trim() : null;
+
     try {
       await getPrismaClient().$transaction(async (tx) => {
-        const current = await tx.businessProfile.findFirst({ where: {}, select: { id: true } });
+        const current = await tx.businessProfile.findFirst(
+          allBrands({ where: profileId ? { id: profileId } : {}, select: { id: true, brand: true } }),
+        );
         if (!current) throw new UserFacingError("Profil perusahaan belum tersedia. Jalankan migrasi terbaru.");
-        const updated = await tx.businessProfile.updateMany({
-          where: { id: current.id, version: parsed.data.version },
-          data: {
-            name: parsed.data.name,
-            phone: parsed.data.phone,
-            email: parsed.data.email?.toLowerCase(),
-            address: parsed.data.address,
-            signatureName: parsed.data.signatureName,
-            signatureTitle: parsed.data.signatureTitle,
-            invoiceNotes: parsed.data.invoiceNotes,
-            ...(uploadedLogoPath ? { logoPath: uploadedLogoPath } : {}),
-            ...(uploadedSignaturePath ? { signaturePath: uploadedSignaturePath } : {}),
-            ...(removeSignature ? { signaturePath: null } : {}),
-            version: { increment: 1 },
-          },
+        const profileUpdate = {
+          name: parsed.data.name,
+          phone: parsed.data.phone,
+          email: parsed.data.email?.toLowerCase(),
+          address: parsed.data.address,
+          signatureName: parsed.data.signatureName,
+          signatureTitle: parsed.data.signatureTitle,
+          invoiceNotes: parsed.data.invoiceNotes,
+          ...(uploadedLogoPath ? { logoPath: uploadedLogoPath } : {}),
+          ...(uploadedSignaturePath ? { signaturePath: uploadedSignaturePath } : {}),
+          ...(removeSignature ? { signaturePath: null } : {}),
+          version: { increment: 1 },
+        };
+        let updated = await tx.businessProfile.updateMany({
+          where: forBrand(current.brand, { id: current.id, version: parsed.data.version }),
+          data: profileUpdate,
         });
-        if (updated.count !== 1) throw new UserFacingError("Profil perusahaan sudah berubah. Muat ulang halaman.");
-        await tx.auditEvent.create({
-          data: { actorId: actor.id, entityType: "BusinessProfile", entityId: current.id, action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedLogoPath ? ["logoPath"] : []), ...(uploadedSignaturePath || removeSignature ? ["signaturePath"] : [])] },
-        });
+        if (updated.count !== 1) {
+          // Versi bisa sudah berubah (tab lain atau pengaturan lain). Form ini
+          // mengirim seluruh isi profil, jadi simpan terakhir tetap dijalankan.
+          updated = await tx.businessProfile.updateMany({
+            where: forBrand(current.brand, { id: current.id }),
+            data: profileUpdate,
+          });
+        }
+        if (updated.count !== 1) throw new UserFacingError("Profil perusahaan tidak ditemukan. Muat ulang halaman.");
+        await tx.auditEvent.create(
+          forBrand(current.brand, {
+            data: { actorId: actor.id, entityType: "BusinessProfile", entityId: current.id, action: "BUSINESS_PROFILE_UPDATED", changedFields: ["name", "phone", "email", "address", "signatureName", "signatureTitle", "invoiceNotes", ...(uploadedLogoPath ? ["logoPath"] : []), ...(uploadedSignaturePath || removeSignature ? ["signaturePath"] : [])] },
+          }),
+        );
       }, MASTER_DATA_TRANSACTION_OPTIONS);
     } catch (error) {
       if (uploadedLogoPath) await erpStorage(BUSINESS_ASSETS_BUCKET).remove([uploadedLogoPath]);
