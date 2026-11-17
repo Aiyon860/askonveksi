@@ -34,6 +34,10 @@ export type PipelineOpportunity = {
   nextAction: string | null;
   nextActionAt: string | null;
   cancelReason: string | null;
+  /** ISO timestamp kapan kartu masuk tahap sekarang; null untuk data lama. */
+  stageEnteredAt: string | null;
+  /** ISO timestamp saat kartu di-pin; null berarti tidak di-pin. */
+  pinnedAt: string | null;
   createdAt: string;
   updatedAt: string;
   productCategory: { id: string; name: string } | null;
@@ -83,6 +87,8 @@ const opportunitySummarySelect = {
   nextAction: true,
   nextActionAt: true,
   cancelReason: true,
+  stageEnteredAt: true,
+  pinnedAt: true,
   createdAt: true,
   updatedAt: true,
   customer: {
@@ -148,6 +154,8 @@ const getCachedPipelineData = unstable_cache(
     nextAction: row.nextAction,
     nextActionAt: row.nextActionAt?.toISOString() ?? null,
     cancelReason: row.cancelReason,
+    stageEnteredAt: row.stageEnteredAt?.toISOString() ?? null,
+    pinnedAt: row.pinnedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     productCategory: row.productCategory,

@@ -51,6 +51,14 @@ export const PIPELINE_STAGES = [
   "LOST",
 ] as const satisfies readonly OpportunityStage[];
 
+/**
+ * Pin kanban hanya untuk tahap yang masih digodok (Follow Up & Negosiasi).
+ * Deal dan Lost sudah final, jadi kartunya tidak bisa disematkan.
+ */
+export function canPinOpportunity(stage: string) {
+  return stage === "FOLLOW_UP" || stage === "NEGOSIASI";
+}
+
 export const STAGE_LABEL: Record<OpportunityStage, string> = {
   LEAD_BARU: "Prospek",
   FOLLOW_UP: "Follow Up",

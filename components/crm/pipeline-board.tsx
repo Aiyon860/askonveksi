@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { CalendarClock, FilePlus2, NotebookText } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Clock, FilePlus2, NotebookText, Star } from "lucide-react";
 import type { AppRole, OpportunityStage } from "@prisma/client";
 
-import { moveOpportunityStageOptimisticAction } from "@/app/actions/crm";
-import { STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/crm/stage-theme";
-import { OpportunityStatusBadge } from "@/components/status-badge";
+import { moveOpportunityStageOptimisticAction, setOpportunityPinAction } from "@/app/actions/crm";
+import { STAGE_ICON, STAGE_SURFACE_CLASS, STAGE_TEXT_CLASS } from "@/components/crm/stage-theme";
+import { InvoiceStatusBadge, PurchaseOrderStatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,13 +22,16 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
 import { CRM_OPERATOR_ROLES, DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
-import { canOpenOpportunityDetail, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
+import { canOpenOpportunityDetail, canPinOpportunity, PIPELINE_STAGES, STAGE_LABEL } from "@/lib/crm/constants";
 import type { PipelineOpportunity } from "@/lib/crm/data";
 import { formatDate } from "@/lib/crm/format";
 import { cn } from "@/lib/utils";
 
 type PendingMove = { opportunity: PipelineOpportunity; stage: OpportunityStage };
 type RecentMove = { id: string; stage: OpportunityStage };
+type BoardAction =
+  | { type: "move"; opportunityId: string; stage: OpportunityStage }
+  | { type: "pin"; opportunityId: string; pinnedAt: string | null };
 
 const DROP_ANIMATION = { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
 
@@ -47,18 +50,40 @@ function isForwardMove(from: OpportunityStage, to: OpportunityStage) {
   return STAGE_ORDER[to] > STAGE_ORDER[from];
 }
 
+// Kartu yang di-pin naik ke atas (yang paling lama di-pin lebih dulu), sisanya
+// FIFO berdasarkan kapan kartu masuk tahap sekarang.
+function compareStageItems(a: PipelineOpportunity, b: PipelineOpportunity) {
+  if (a.pinnedAt && b.pinnedAt) return a.pinnedAt < b.pinnedAt ? -1 : a.pinnedAt > b.pinnedAt ? 1 : 0;
+  if (a.pinnedAt !== b.pinnedAt) return a.pinnedAt ? -1 : 1;
+  const aEntered = a.stageEnteredAt ?? a.createdAt;
+  const bEntered = b.stageEnteredAt ?? b.createdAt;
+  return aEntered < bEntered ? -1 : aEntered > bEntered ? 1 : 0;
+}
+
+function stageAgeLabel(opportunity: PipelineOpportunity) {
+  const enteredAt = opportunity.stageEnteredAt ?? opportunity.createdAt;
+  const elapsed = Date.now() - new Date(enteredAt).getTime();
+  const days = Number.isNaN(elapsed) ? 0 : Math.max(0, Math.floor(elapsed / 86_400_000));
+  return `${days} hari di ${STAGE_LABEL[opportunity.stage]}`;
+}
+
 export function PipelineBoard({ opportunities, actorRole }: { opportunities: PipelineOpportunity[]; actorRole: AppRole }) {
   const router = useRouter();
-  const [boardOpportunities, moveOptimistically] = useOptimistic(
+  const [boardOpportunities, applyBoardAction] = useOptimistic(
     opportunities,
-    (current, move: { opportunityId: string; stage: OpportunityStage }) =>
-      current.map((item) => item.id === move.opportunityId ? { ...item, stage: move.stage } : item),
+    (current, action: BoardAction) => current.map((item) => {
+      if (item.id !== action.opportunityId) return item;
+      return action.type === "move" ? { ...item, stage: action.stage } : { ...item, pinnedAt: action.pinnedAt };
+    }),
   );
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [previewMove, setPreviewMove] = useState<PendingMove | null>(null);
   const [isMoving, startMoving] = useTransition();
+  const [, startPinning] = useTransition();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
+  // Semua kolom terbuka saat pertama dibuka; hanya tahap yang ditekan yang tertutup.
+  const [collapsedStages, setCollapsedStages] = useState<Set<OpportunityStage>>(() => new Set());
   const reducedMotion = useReducedMotion();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -74,10 +99,19 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
     return () => window.clearTimeout(timeout);
   }, [recentMove]);
 
+  function toggleStage(stage: OpportunityStage) {
+    setCollapsedStages((current) => {
+      const next = new Set(current);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
+
   function executeMove(opportunity: PipelineOpportunity, stage: OpportunityStage, formData: FormData) {
     startMoving(async () => {
       setRecentMove({ id: opportunity.id, stage });
-      moveOptimistically({ opportunityId: opportunity.id, stage });
+      applyBoardAction({ type: "move", opportunityId: opportunity.id, stage });
       setPreviewMove(null);
       const result = await moveOpportunityStageOptimisticAction(formData);
       if (!result.ok) {
@@ -108,6 +142,23 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
     }
     if (preview) setPreviewMove({ opportunity, stage });
     setPendingMove({ opportunity, stage });
+  }
+
+  function togglePin(opportunity: PipelineOpportunity) {
+    if (!canOperate || !canPinOpportunity(opportunity.stage)) return;
+    const nextPinnedAt = opportunity.pinnedAt ? null : new Date().toISOString();
+    startPinning(async () => {
+      applyBoardAction({ type: "pin", opportunityId: opportunity.id, pinnedAt: nextPinnedAt });
+      const formData = new FormData();
+      formData.set("opportunityId", opportunity.id);
+      formData.set("pinned", nextPinnedAt ? "true" : "false");
+      const result = await setOpportunityPinAction(formData);
+      if (!result.ok) {
+        toast.add({ title: "Sematan tidak berubah", description: result.message, type: result.kind });
+        return;
+      }
+      router.refresh();
+    });
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -146,104 +197,142 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
           onDragEnd={handleDragEnd}
           accessibility={{ screenReaderInstructions: { draggable: "Tekan spasi untuk mengambil kartu. Gunakan tombol panah untuk memilih kolom tujuan, lalu tekan spasi lagi untuk meletakkan." } }}
         >
-        <div className="grid auto-cols-[minmax(20rem,1fr)] snap-x snap-proximity grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3">
+        <div className="flex snap-x snap-proximity items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-3">
           {PIPELINE_STAGES.map((stage) => {
-            const items = boardOpportunities.filter((opportunity) => (previewMove?.opportunity.id === opportunity.id ? previewMove.stage : opportunity.stage) === stage);
+            const items = boardOpportunities
+              .filter((opportunity) => (previewMove?.opportunity.id === opportunity.id ? previewMove.stage : opportunity.stage) === stage)
+              .sort(compareStageItems);
+            const collapsed = collapsedStages.has(stage);
             return (
               <PipelineStageColumn
                 key={stage}
                 stage={stage}
                 canDrop={Boolean(activeOpportunity && activeOpportunity.stage !== stage)}
+                collapsed={collapsed}
+                count={items.length}
+                onToggle={() => toggleStage(stage)}
               >
-                <div className="flex shrink-0 items-center justify-between gap-3 px-2 py-2">
-                  <h2 id={`stage-${stage}`} className={cn("text-sm font-bold tracking-tight", STAGE_TEXT_CLASS[stage])}>{stage === "DEAL" ? "Deal (SO)" : STAGE_LABEL[stage]}</h2>
-                  <span key={items.length} className="animate-in fade-in-0 duration-150 font-mono text-xs font-bold tabular-nums text-foreground/80">{items.length}</span>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-                  <div className="flex flex-col gap-2">
-                  {items.length ? items.map((opportunity) => {
-                    const canOpenDetail = canOpenOpportunityDetail(opportunity.stage);
-                    return (
-                    <DraggablePipelineCard
-                      key={opportunity.id}
-                      opportunity={opportunity}
-                      draggable={canOperate && !isMoving && !previewMove && opportunity.stage !== "DEAL"}
-                      entering={recentMove?.id === opportunity.id && recentMove.stage === stage}
-                      previewing={previewMove?.opportunity.id === opportunity.id}
-                    >
-                      {(drag) => <Card size="sm" className={cn("relative border shadow-xs transition-colors", drag.draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", canOpenDetail ? "hover:border-primary/40" : "border-muted-foreground/25 bg-muted/60")}>
-                      {drag.draggable ? (
-                        // Area geser transparan di 1/3 atas kartu: tidak menutupi isi
-                        // mana pun, tetapi seluruh bagian atas bisa dipakai menggeser.
-                        <div
-                          ref={drag.setActivatorNodeRef}
-                          {...drag.attributes}
-                          {...drag.listeners}
-                          aria-label={`Geser kartu ${opportunity.customer.name}`}
-                          className="absolute inset-x-0 top-0 z-10 h-1/3 touch-none cursor-grab select-none bg-transparent active:cursor-grabbing"
-                        />
-                      ) : null}
-                      <CardHeader className="gap-1">
-                        <CardTitle className="font-bold text-base leading-tight">
-                          {canOpenDetail ? (
-                            <Link href={`/crm/peluang/${opportunity.id}`} className="relative z-20 font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-                              {opportunity.customer.name}
-                            </Link>
-                          ) : (
-                            <span className="text-muted-foreground">{opportunity.customer.name}</span>
-                          )}
-                        </CardTitle>
-                        <CardDescription className="font-semibold text-foreground/70">{opportunity.title}{opportunity.customer.companyName ? ` · ${opportunity.customer.companyName}` : ""}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {opportunity.stage === "DEAL" ? <Badge variant="success" className="font-bold">Deal (SO)</Badge> : <OpportunityStatusBadge stage={opportunity.stage} />}
-                          {opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info" className="font-bold">Prospek</Badge> : null}
-                          <span className="font-mono text-xs font-bold text-muted-foreground">{opportunity.opportunityNo}</span>
-                        </div>
-                        <dl className="grid gap-2 text-xs text-muted-foreground">
-                          {opportunity.nextActionAt ? (
-                            <div className="flex items-start gap-2">
-                              <CalendarClock aria-hidden="true" className="size-3.5" />
-                              <dd>{opportunity.nextAction} · {formatDate(opportunity.nextActionAt, true)}</dd>
-                            </div>
-                          ) : null}
-                          {opportunity.salesPic ? <div className="flex justify-between gap-3"><dt>PIC</dt><dd>{opportunity.salesPic.name}</dd></div> : null}
-                          <div className="flex items-center gap-2">
-                            <NotebookText aria-hidden="true" className="size-3.5" />
-                            <dd>{opportunity.activityCount} aktivitas</dd>
+                <div className="flex flex-col gap-2">
+                {items.length ? items.map((opportunity) => {
+                  const canOpenDetail = canOpenOpportunityDetail(opportunity.stage);
+                  const pinnable = canOperate && canPinOpportunity(opportunity.stage);
+                  return (
+                  <DraggablePipelineCard
+                    key={opportunity.id}
+                    opportunity={opportunity}
+                    draggable={canOperate && !isMoving && !previewMove && opportunity.stage !== "DEAL"}
+                    entering={recentMove?.id === opportunity.id && recentMove.stage === stage}
+                    previewing={previewMove?.opportunity.id === opportunity.id}
+                  >
+                    {(drag) => <Card size="sm" className={cn("relative border shadow-xs transition-colors", drag.draggable ? "cursor-grab active:cursor-grabbing" : "cursor-default", canOpenDetail ? "hover:border-primary/40" : "border-muted-foreground/25 bg-muted/60")}>
+                    {drag.draggable ? (
+                      // Area geser transparan di 1/3 atas kartu: tidak menutupi isi
+                      // mana pun, tetapi seluruh bagian atas bisa dipakai menggeser.
+                      <div
+                        ref={drag.setActivatorNodeRef}
+                        {...drag.attributes}
+                        {...drag.listeners}
+                        aria-label={`Geser kartu ${opportunity.customer.name}`}
+                        className="absolute inset-x-0 top-0 z-10 h-1/3 touch-none cursor-grab select-none bg-transparent active:cursor-grabbing"
+                      />
+                    ) : null}
+                    {pinnable ? (
+                      <button
+                        type="button"
+                        onClick={() => togglePin(opportunity)}
+                        aria-pressed={Boolean(opportunity.pinnedAt)}
+                        aria-label={opportunity.pinnedAt ? `Lepas sematan ${opportunity.customer.name}` : `Sematkan ${opportunity.customer.name}`}
+                        title={opportunity.pinnedAt ? "Lepas sematan" : "Sematkan di atas kolom"}
+                        className="absolute top-1.5 right-1.5 z-30 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-warning focus-visible:ring-3 focus-visible:ring-ring/50"
+                      >
+                        <Star aria-hidden="true" className={cn("size-4 transition-colors", opportunity.pinnedAt ? "fill-warning text-warning" : "hover:text-warning")} />
+                      </button>
+                    ) : null}
+                    <CardHeader className={cn("gap-1", pinnable && "pr-9")}>
+                      <CardTitle className="font-bold text-base leading-tight">
+                        {canOpenDetail ? (
+                          <Link href={`/crm/peluang/${opportunity.id}`} className="relative z-20 font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                            {opportunity.customer.name}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">{opportunity.customer.name}</span>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="font-semibold text-foreground/70">{opportunity.title}{opportunity.customer.companyName ? ` · ${opportunity.customer.companyName}` : ""}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info" className="font-bold">Prospek</Badge> : null}
+                        <span className="font-mono text-xs font-bold text-muted-foreground">{opportunity.opportunityNo}</span>
+                      </div>
+                      <dl className="grid gap-2 text-xs text-muted-foreground">
+                        {opportunity.nextActionAt ? (
+                          <div className="flex items-start gap-2">
+                            <CalendarClock aria-hidden="true" className="size-3.5" />
+                            <dd>{opportunity.nextAction} · {formatDate(opportunity.nextActionAt, true)}</dd>
                           </div>
-                          {opportunity.stage === "NEGOSIASI" || opportunity.stage === "DEAL" ? (
-                            <div className="grid gap-1 border-t pt-2">
-                              <div className="flex justify-between gap-3"><dt>PO</dt><dd className="text-right text-foreground">{opportunity.purchaseOrder ? `${opportunity.purchaseOrder.purchaseOrderNo} · ${opportunity.purchaseOrder.status === "AGREED" ? "Disepakati" : opportunity.purchaseOrder.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
-                              <div className="flex justify-between gap-3"><dt>Invoice</dt><dd className="text-right text-foreground">{opportunity.invoice ? `${opportunity.invoice.invoiceNo} · ${opportunity.invoice.status === "ISSUED" ? "Terbit" : opportunity.invoice.status === "DRAFT" ? "Draft" : "Diganti"}` : "Belum ada"}</dd></div>
-                              {opportunity.invoice?.pendingPayment ? <div className="flex justify-between gap-3"><dt>{opportunity.invoice.pendingPayment.initialDueAt && new Date(opportunity.invoice.pendingPayment.initialDueAt).getTime() < new Date(new Date().toDateString()).getTime() ? `Deadline ${opportunity.invoice.pendingPayment.kind} terlewat` : `Menunggu ${opportunity.invoice.pendingPayment.kind}`}</dt><dd className="text-right text-foreground">{opportunity.invoice.pendingPayment.initialDueAt ? formatDate(opportunity.invoice.pendingPayment.initialDueAt) : "-"}</dd></div> : null}
-                              {opportunity.salesOrder ? <div className="flex justify-between gap-3"><dt>Pembayaran</dt><dd className="text-foreground">{opportunity.salesOrder.paymentKind ?? "-"}</dd></div> : null}
+                        ) : null}
+                        {opportunity.salesPic ? <div className="flex justify-between gap-3"><dt>PIC</dt><dd>{opportunity.salesPic.name}</dd></div> : null}
+                        <div className="flex items-center gap-2">
+                          <NotebookText aria-hidden="true" className="size-3.5" />
+                          <dd>{opportunity.activityCount} aktivitas</dd>
+                        </div>
+                        {canPinOpportunity(opportunity.stage) ? (
+                          <div className="flex items-center gap-2">
+                            <Clock aria-hidden="true" className="size-3.5" />
+                            <dd>{stageAgeLabel(opportunity)}</dd>
+                          </div>
+                        ) : null}
+                        {opportunity.stage === "NEGOSIASI" || opportunity.stage === "DEAL" ? (
+                          <div className="grid gap-1.5 border-t pt-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <dt>PO</dt>
+                              <dd className="flex min-w-0 items-center gap-1.5">
+                                {opportunity.purchaseOrder ? (
+                                  <>
+                                    <span className="truncate font-mono text-[0.7rem] text-foreground">{opportunity.purchaseOrder.purchaseOrderNo}</span>
+                                    <PurchaseOrderStatusBadge status={opportunity.purchaseOrder.status} />
+                                  </>
+                                ) : <Badge variant="outline">Belum ada</Badge>}
+                              </dd>
                             </div>
-                          ) : null}
-                        </dl>
-                        {canOperate && opportunity.stage === "NEGOSIASI" && !opportunity.purchaseOrder ? (
-                          <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}?tab=po`} />} nativeButton={false}>
-                            <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah PO
-                          </Button>
+                            <div className="flex items-center justify-between gap-3">
+                              <dt>Invoice</dt>
+                              <dd className="flex min-w-0 items-center gap-1.5">
+                                {opportunity.invoice ? (
+                                  <>
+                                    <span className="truncate font-mono text-[0.7rem] text-foreground">{opportunity.invoice.invoiceNo}</span>
+                                    <InvoiceStatusBadge status={opportunity.invoice.status} />
+                                  </>
+                                ) : <Badge variant="outline">Belum ada</Badge>}
+                              </dd>
+                            </div>
+                            {opportunity.invoice?.pendingPayment ? <div className="flex justify-between gap-3"><dt>{opportunity.invoice.pendingPayment.initialDueAt && new Date(opportunity.invoice.pendingPayment.initialDueAt).getTime() < new Date(new Date().toDateString()).getTime() ? `Deadline ${opportunity.invoice.pendingPayment.kind} terlewat` : `Menunggu ${opportunity.invoice.pendingPayment.kind}`}</dt><dd className="text-right text-foreground">{opportunity.invoice.pendingPayment.initialDueAt ? formatDate(opportunity.invoice.pendingPayment.initialDueAt) : "-"}</dd></div> : null}
+                            {opportunity.salesOrder ? <div className="flex justify-between gap-3"><dt>Pembayaran</dt><dd className="text-foreground">{opportunity.salesOrder.paymentKind ?? "-"}</dd></div> : null}
+                          </div>
                         ) : null}
-                        {canOperate && opportunity.stage === "NEGOSIASI" && opportunity.purchaseOrder?.status === "AGREED" && (!opportunity.invoice || opportunity.invoice.status === "SUPERSEDED") ? (
-                          <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}?tab=invoice`} />} nativeButton={false}>
-                            <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah invoice
-                          </Button>
-                        ) : null}
-                      </CardContent>
-                    </Card>}</DraggablePipelineCard>
-                    );
-                  }) : (
-                    <Empty className="min-h-32 p-4">
-                      <EmptyHeader>
-                        <EmptyTitle className="text-sm">Belum ada peluang</EmptyTitle>
-                        <EmptyDescription>Tarik kartu ke kolom ini untuk memindahkan status.</EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  )}
-                  </div>
+                      </dl>
+                      {canOperate && opportunity.stage === "NEGOSIASI" && !opportunity.purchaseOrder ? (
+                        <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}?tab=po`} />} nativeButton={false}>
+                          <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah PO
+                        </Button>
+                      ) : null}
+                      {canOperate && opportunity.stage === "NEGOSIASI" && opportunity.purchaseOrder?.status === "AGREED" && (!opportunity.invoice || opportunity.invoice.status === "SUPERSEDED") ? (
+                        <Button variant="outline" size="sm" className="w-full" render={<Link href={`/crm/peluang/${opportunity.id}?tab=invoice`} />} nativeButton={false}>
+                          <FilePlus2 data-icon="inline-start" aria-hidden="true" />Tambah invoice
+                        </Button>
+                      ) : null}
+                    </CardContent>
+                  </Card>}</DraggablePipelineCard>
+                  );
+                }) : (
+                  <Empty className="min-h-32 p-4">
+                    <EmptyHeader>
+                      <EmptyTitle className="text-sm">Belum ada peluang</EmptyTitle>
+                      <EmptyDescription>Tarik kartu ke kolom ini untuk memindahkan status.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )}
                 </div>
               </PipelineStageColumn>
             );
@@ -334,9 +423,83 @@ export function PipelineBoard({ opportunities, actorRole }: { opportunities: Pip
   );
 }
 
-function PipelineStageColumn({ stage, canDrop, children }: { stage: OpportunityStage; canDrop: boolean; children: React.ReactNode }) {
+function PipelineStageColumn({
+  stage,
+  canDrop,
+  collapsed,
+  count,
+  onToggle,
+  children,
+}: {
+  stage: OpportunityStage;
+  canDrop: boolean;
+  collapsed: boolean;
+  count: number;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
   const { isOver, setNodeRef } = useDroppable({ id: stage, disabled: !canDrop });
-  return <section ref={setNodeRef} aria-labelledby={`stage-${stage}`} className={cn("flex h-[clamp(24rem,calc(100svh-18rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2", STAGE_SURFACE_CLASS[stage], isOver && "bg-primary/5 ring-2 ring-primary/20")}>{children}</section>;
+  const Icon = STAGE_ICON[stage];
+  const title = stage === "DEAL" ? "Deal (SO)" : STAGE_LABEL[stage];
+
+  return (
+    <section
+      ref={setNodeRef}
+      aria-label={`${title}, ${count} peluang`}
+      data-collapsed={collapsed || undefined}
+      className={cn(
+        "flex h-[clamp(24rem,calc(100svh-18rem),44rem)] snap-start flex-col overflow-hidden rounded-lg border p-2 transition-[width] duration-200",
+        collapsed ? "w-12 shrink-0" : "min-w-[20rem] flex-1",
+        STAGE_SURFACE_CLASS[stage],
+        isOver && "bg-primary/5 ring-2 ring-primary/20",
+      )}
+    >
+      {collapsed ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={false}
+          aria-label={`Buka kolom ${title}`}
+          className={cn(
+            "flex h-full flex-col items-center gap-2 rounded-md py-1 outline-none transition-colors hover:bg-foreground/5 focus-visible:ring-3 focus-visible:ring-ring/50",
+            STAGE_TEXT_CLASS[stage],
+          )}
+        >
+          <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
+          <Icon aria-hidden="true" className="size-4 shrink-0" />
+          <span className="font-mono text-xs font-bold tabular-nums">{count}</span>
+          <span className="mt-1 text-sm font-bold tracking-tight" style={{ writingMode: "vertical-rl" }}>{title}</span>
+        </button>
+      ) : (
+        <>
+          <div className="flex shrink-0 items-center justify-between gap-2 px-2 py-2">
+            <h2 id={`stage-${stage}`} className={cn("flex min-w-0 items-center gap-2 text-sm font-bold tracking-tight", STAGE_TEXT_CLASS[stage])}>
+              <Icon aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate">{title}</span>
+            </h2>
+            <div className="flex shrink-0 items-center gap-1">
+              <span key={count} className="animate-in fade-in-0 duration-150 font-mono text-xs font-bold tabular-nums text-foreground/80">{count}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={onToggle}
+                aria-expanded
+                aria-label={`Tutup kolom ${title}`}
+                title={`Tutup kolom ${title}`}
+                className="text-muted-foreground"
+              >
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+            {children}
+          </div>
+        </>
+      )}
+    </section>
+  );
 }
 
 function DraggablePipelineCard({ opportunity, draggable, entering, previewing, children }: { opportunity: PipelineOpportunity; draggable: boolean; entering: boolean; previewing: boolean; children: (drag: Pick<ReturnType<typeof useDraggable>, "attributes" | "listeners" | "setActivatorNodeRef"> & { draggable: boolean }) => React.ReactNode }) {
@@ -345,7 +508,7 @@ function DraggablePipelineCard({ opportunity, draggable, entering, previewing, c
 }
 
 function PipelineDragPreview({ opportunity }: { opportunity: PipelineOpportunity }) {
-  return <Card size="sm" className="w-[20rem] scale-[1.02] shadow-lg"><CardHeader><CardTitle>{opportunity.customer.name}</CardTitle><CardDescription>{opportunity.title}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2"><OpportunityStatusBadge stage={opportunity.stage} />{opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info">Prospek</Badge> : null}<span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span></div></CardContent></Card>;
+  return <Card size="sm" className="w-[20rem] scale-[1.02] shadow-lg"><CardHeader><CardTitle>{opportunity.customer.name}</CardTitle><CardDescription>{opportunity.title}</CardDescription></CardHeader><CardContent><div className="flex flex-wrap gap-2">{opportunity.origin === "PROSPEK_FORM" ? <Badge variant="info">Prospek</Badge> : null}<span className="font-mono text-xs text-muted-foreground">{opportunity.opportunityNo}</span></div></CardContent></Card>;
 }
 
 function useReducedMotion() {

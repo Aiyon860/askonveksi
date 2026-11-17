@@ -183,6 +183,11 @@ export const moveOpportunitySchema = z
     }
   });
 
+export const setOpportunityPinSchema = z.object({
+  opportunityId: entityIdSchema,
+  pinned: z.enum(["true", "false"]),
+});
+
 export const recordFollowUpResultSchema = z.object({
   opportunityId: entityIdSchema,
   version: requiredVersion,

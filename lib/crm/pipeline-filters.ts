@@ -4,14 +4,18 @@
  */
 
 export type PipelineFilters = {
-  customerId: string;
+  /**
+   * Kata kunci tunggal. Dicocokkan ke nama/nomor/company customer, nomor
+   * peluang, judul peluang, nomor PO, dan nomor invoice.
+   */
+  query: string;
   /** Format `YYYY-MM`, zona Jakarta. String kosong berarti semua bulan. */
   month: string;
   /** ID kategori produk, nilai `none`, atau string kosong untuk semua kategori. */
   categoryId: string;
 };
 
-export const EMPTY_PIPELINE_FILTERS: PipelineFilters = { customerId: "", month: "", categoryId: "" };
+export const EMPTY_PIPELINE_FILTERS: PipelineFilters = { query: "", month: "", categoryId: "" };
 
 /** Bulan kalender Jakarta saat ini (`YYYY-MM`); default filter papan. */
 export function currentPipelineMonth(reference: Date = new Date()) {
@@ -22,12 +26,28 @@ export function currentPipelineMonth(reference: Date = new Date()) {
 export const NO_PRODUCT_CATEGORY = "none";
 
 type PipelineFilterItem = {
+  opportunityNo?: string;
+  title?: string;
   createdAt: string;
-  customer: { id: string };
+  customer: { id: string; customerNo?: string; name?: string; companyName?: string | null };
   productCategory: { id: string } | null;
   /** PO terakhir jadi fallback untuk peluang lama yang kategorinya belum terisi. */
-  purchaseOrder?: { productCategory: { id: string } | null } | null;
+  purchaseOrder?: { purchaseOrderNo?: string; productCategory: { id: string } | null } | null;
+  invoice?: { invoiceNo?: string } | null;
 };
+
+/** Semua teks yang boleh dicocokkan pencarian global papan. */
+function searchableText(item: PipelineFilterItem) {
+  return [
+    item.opportunityNo,
+    item.title,
+    item.customer.name,
+    item.customer.customerNo,
+    item.customer.companyName,
+    item.purchaseOrder?.purchaseOrderNo,
+    item.invoice?.invoiceNo,
+  ];
+}
 
 const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -54,21 +74,21 @@ export function formatPipelineMonth(month: string) {
 }
 
 export function hasActivePipelineFilters(filters: PipelineFilters) {
-  return Boolean(filters.customerId || filters.month || filters.categoryId);
+  return Boolean(filters.query.trim() || filters.month || filters.categoryId);
 }
 
 export function filterPipelineOpportunities<T extends PipelineFilterItem>(
   items: T[],
   filters: PipelineFilters,
 ): T[] {
-  const customerId = filters.customerId.trim();
+  const query = filters.query.trim().toLocaleLowerCase("id");
   const month = isPipelineMonth(filters.month) ? filters.month : "";
   const categoryId = filters.categoryId.trim();
 
-  if (!customerId && !month && !categoryId) return items;
+  if (!query && !month && !categoryId) return items;
 
   return items.filter((item) => {
-    if (customerId && item.customer.id !== customerId) return false;
+    if (query && !searchableText(item).some((text) => text?.toLocaleLowerCase("id").includes(query))) return false;
     if (month && jakartaMonthKey(item.createdAt) !== month) return false;
     const category = item.productCategory ?? item.purchaseOrder?.productCategory ?? null;
     if (categoryId === NO_PRODUCT_CATEGORY) return !category;

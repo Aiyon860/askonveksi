@@ -16,23 +16,31 @@ const rows = [
   {
     id: "a",
     stage: "FOLLOW_UP",
+    opportunityNo: "OPP-001",
+    title: "Jersey PBPI",
     createdAt: "2026-01-31T17:30:00.000Z",
-    customer: { id: "cust-1" },
+    customer: { id: "cust-1", customerNo: "CUS-001", name: "Andi", companyName: "PT Andi Jaya" },
     productCategory: { id: "cat-jersey" },
   },
   {
     id: "b",
     stage: "NEGOSIASI",
+    opportunityNo: "OPP-002",
+    title: "Kaos Komunitas",
     createdAt: "2026-02-10T03:00:00.000Z",
-    customer: { id: "cust-2" },
+    customer: { id: "cust-2", customerNo: "CUS-002", name: "Budi", companyName: null },
     productCategory: null,
   },
   {
     id: "c",
     stage: "DEAL",
+    opportunityNo: "OPP-003",
+    title: "Jaket Aksesori",
     createdAt: "2026-02-28T16:59:59.000Z",
-    customer: { id: "cust-1" },
+    customer: { id: "cust-1", customerNo: "CUS-001", name: "Andi", companyName: "PT Andi Jaya" },
     productCategory: { id: "cat-aksesori" },
+    purchaseOrder: { purchaseOrderNo: "PO-900", productCategory: { id: "cat-aksesori" } },
+    invoice: { invoiceNo: "INV-777" },
   },
 ];
 
@@ -75,9 +83,32 @@ test("filter bulan menyaring peluang menurut tanggal dibuat", () => {
   assert.deepEqual(january, []);
 });
 
-test("filter customer hanya mencocokkan id customer", () => {
-  const result = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, customerId: "cust-1" });
-  assert.deepEqual(result.map((row) => row.id), ["a", "c"]);
+test("pencarian global mencocokkan nama, nomor customer, dan company", () => {
+  const byName = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "andi" });
+  assert.deepEqual(byName.map((row) => row.id), ["a", "c"]);
+
+  const byCompany = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "  pt andi  " });
+  assert.deepEqual(byCompany.map((row) => row.id), ["a", "c"]);
+
+  const byCustomerNo = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "cus-002" });
+  assert.deepEqual(byCustomerNo.map((row) => row.id), ["b"]);
+});
+
+test("pencarian global mencocokkan kode peluang, judul, nomor PO, dan invoice", () => {
+  const byOpportunityNo = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "opp-002" });
+  assert.deepEqual(byOpportunityNo.map((row) => row.id), ["b"]);
+
+  const byTitle = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "komunitas" });
+  assert.deepEqual(byTitle.map((row) => row.id), ["b"]);
+
+  const byPo = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "po-900" });
+  assert.deepEqual(byPo.map((row) => row.id), ["c"]);
+
+  const byInvoice = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "inv-777" });
+  assert.deepEqual(byInvoice.map((row) => row.id), ["c"]);
+
+  const unknown = filterPipelineOpportunities(rows, { ...EMPTY_PIPELINE_FILTERS, query: "tidak-ada" });
+  assert.deepEqual(unknown, []);
 });
 
 test("filter kategori produk mendukung opsi tanpa kategori", () => {
@@ -162,14 +193,14 @@ test("kategori peluang tetap menang saat kategori PO berbeda", () => {
 
 test("tiga filter digabung dengan AND", () => {
   const result = filterPipelineOpportunities(rows, {
-    customerId: "cust-1",
+    query: "andi",
     month: "2026-02",
     categoryId: "cat-aksesori",
   });
   assert.deepEqual(result.map((row) => row.id), ["c"]);
 
   const empty = filterPipelineOpportunities(rows, {
-    customerId: "cust-1",
+    query: "andi",
     month: "2026-01",
     categoryId: "cat-aksesori",
   });
@@ -181,11 +212,12 @@ test("filter tidak membatasi tahap: semua kolom pipeline ikut disaring", () => {
     id: `stage-${index}`,
     stage,
     createdAt: "2026-08-15T03:00:00.000Z",
-    customer: { id: "cust-sama" },
+    opportunityNo: `OPP-STAGE-${index}`,
+    customer: { id: "cust-sama", customerNo: "CUS-SAMA", name: "Customer Sama", companyName: null },
     productCategory: { id: "cat-jersey" },
   }));
 
-  const byCustomer = filterPipelineOpportunities(allStages, { ...EMPTY_PIPELINE_FILTERS, customerId: "cust-sama" });
+  const byCustomer = filterPipelineOpportunities(allStages, { ...EMPTY_PIPELINE_FILTERS, query: "customer sama" });
   assert.equal(byCustomer.length, 4);
   assert.deepEqual([...new Set(byCustomer.map((row) => row.stage))], ["FOLLOW_UP", "NEGOSIASI", "DEAL", "LOST"]);
 
@@ -202,8 +234,10 @@ test("filter kosong atau bulan tidak valid mengembalikan semua peluang", () => {
 });
 
 test("penanda filter aktif mengikuti isi ketiga kontrol", () => {
+  assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, query: "" }), false);
   assert.equal(hasActivePipelineFilters(EMPTY_PIPELINE_FILTERS), false);
   assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, month: "2026-02" }), true);
-  assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, customerId: "cust-1" }), true);
+  assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, query: "andi" }), true);
+  assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, query: "   " }), false);
   assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, categoryId: NO_PRODUCT_CATEGORY }), true);
 });

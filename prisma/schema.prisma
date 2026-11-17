@@ -604,6 +604,10 @@ model Opportunity {
   publicSubmissionKey     String?                 @unique @db.Uuid
   cancelReason            String?                 @db.Text
   version                 Int                     @default(1)
+  // Kapan kartu pindah ke tahap yang ditempatinya sekarang, untuk label umur kartu kanban.
+  stageEnteredAt          DateTime?               @db.Timestamptz(3)
+  // Diisi saat kartu disematkan di kanban Follow Up/Negosiasi; kosong berarti tidak di-pin.
+  pinnedAt                DateTime?               @db.Timestamptz(3)
   customer                Customer                @relation(fields: [customerId], references: [id], onDelete: Restrict)
   leadSource              LeadSource?             @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
   salesPic                AppUser?                @relation("OpportunitySalesPic", fields: [salesPicId], references: [id], onDelete: SetNull)
