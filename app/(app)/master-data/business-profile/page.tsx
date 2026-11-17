@@ -26,6 +26,9 @@ export default async function BusinessProfilePage() {
         </CardHeader>
         <CardContent>
           <form action={updateBusinessProfileAction}>
+            {/* Baris yang diedit dikirim eksplisit: dengan dua profil (ASKONVEKSI & SAGA)
+                pencarian ulang di server bisa menunjuk baris brand lain. */}
+            <input type="hidden" name="profileId" value={profile.id} />
             <input type="hidden" name="version" value={profile.version} />
             <FieldGroup>
               <div className="grid gap-4 sm:grid-cols-2">
