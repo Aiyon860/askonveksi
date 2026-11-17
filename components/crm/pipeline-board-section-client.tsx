@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RepeatOrderForm } from "@/components/crm/repeat-order-form";
-import { PipelineFiltersBar, type PipelineCategoryOption, type PipelineCustomerOption } from "@/components/crm/pipeline-filters";
+import { PipelineFiltersBar, type PipelineCategoryOption } from "@/components/crm/pipeline-filters";
 import { PipelineSummary } from "@/components/crm/pipeline-summary";
 import {
   EMPTY_PIPELINE_FILTERS,
@@ -65,7 +65,6 @@ export function PipelineBoardSectionClient({
   });
   // Default hanya bulan berjalan; reset mengosongkan semua filter (semua bulan).
   const [filters, setFilters] = useState<PipelineFilters>(() => ({ ...EMPTY_PIPELINE_FILTERS, month: defaultMonth }));
-  const [filterResetKey, setFilterResetKey] = useState(0);
 
   // Data server (RSC) selalu paling baru setelah aksi + `router.refresh()`. Tanpa ini, cache SWR
   // menahan snapshot lama (mis. status PO/invoice pada kartu) sampai polling 60 detik berikutnya.
@@ -75,21 +74,6 @@ export function PipelineBoardSectionClient({
 
   const pipeline = data ?? initialData;
   const isFiltering = hasActivePipelineFilters(filters);
-
-  // Opsi customer diambil dari kartu yang termuat supaya setiap pilihan pasti punya peluang.
-  const customerOptions = useMemo(() => {
-    const byId = new Map<string, PipelineCustomerOption>();
-    for (const opportunity of pipeline.opportunities) {
-      if (!byId.has(opportunity.customer.id)) {
-        byId.set(opportunity.customer.id, {
-          id: opportunity.customer.id,
-          name: opportunity.customer.name,
-          customerNo: opportunity.customer.customerNo,
-        });
-      }
-    }
-    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "id"));
-  }, [pipeline.opportunities]);
 
   const filteredOpportunities = useMemo(
     () => filterPipelineOpportunities(pipeline.opportunities, filters),
@@ -105,10 +89,7 @@ export function PipelineBoardSectionClient({
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     if (filters.month) labels.push(formatPipelineMonth(filters.month));
-    if (filters.customerId) {
-      const customer = customerOptions.find((option) => option.id === filters.customerId);
-      if (customer) labels.push(customer.name);
-    }
+    if (filters.query.trim()) labels.push(`Cari: ${filters.query.trim()}`);
     if (filters.categoryId) {
       const category = filters.categoryId === NO_PRODUCT_CATEGORY
         ? "Tanpa kategori"
@@ -116,7 +97,7 @@ export function PipelineBoardSectionClient({
       if (category) labels.push(category);
     }
     return labels;
-  }, [customerOptions, filters, initialCategories]);
+  }, [filters, initialCategories]);
 
   function updateFilters(patch: Partial<PipelineFilters>) {
     setFilters((current) => ({ ...current, ...patch }));
@@ -124,7 +105,6 @@ export function PipelineBoardSectionClient({
 
   function resetFilters() {
     setFilters(EMPTY_PIPELINE_FILTERS);
-    setFilterResetKey((key) => key + 1);
   }
 
   return (
@@ -144,10 +124,8 @@ export function PipelineBoardSectionClient({
 
         <PipelineFiltersBar
           filters={filters}
-          customers={customerOptions}
           categories={initialCategories}
           active={isFiltering}
-          resetKey={filterResetKey}
           onChange={updateFilters}
           onReset={resetFilters}
         />

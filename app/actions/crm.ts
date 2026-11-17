@@ -9,7 +9,7 @@ import { flashKindForError, flashMessagePath, messageForError, UserFacingError, 
 import { auditFieldLabel, type AuditDiffEntry } from "@/lib/audit/labels";
 import { ARCHIVE_ROLES, CRM_OPERATOR_ROLES, CUSTOMER_REMINDER_SETTING_ROLES, DEAL_ROLES, GATE_OVERRIDE_ROLES, OWNER_ACTION_ROLES, REVERSE_DEAL_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor, requireDeveloperActor, type Actor } from "@/lib/auth/session";
-import { DECORATION_METHOD_LABEL, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, OPEN_STAGES, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { canPinOpportunity, DECORATION_METHOD_LABEL, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, OPEN_STAGES, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, STAGE_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { findImportCustomer, importCustomerLookupKeys, indexCustomers, normalizeImportText, upsertImportCustomerIndex } from "@/lib/crm/customer-import";
 import { mergeCustomerAcrossBrands } from "@/lib/crm/customer-scope";
@@ -39,6 +39,7 @@ import {
   entityIdSchema,
   firstValidationMessage,
   moveOpportunitySchema,
+  setOpportunityPinSchema,
   invoiceDraftSchema,
   invoiceIdSchema,
   paymentDeadlineUpdateSchema,
@@ -1262,6 +1263,7 @@ export async function createOpportunityAction(formData: FormData) {
             specification: parsed.data.specification,
             nextAction: parsed.data.nextAction,
             nextActionAt: jakartaDateTime(parsed.data.nextActionAt),
+            stageEnteredAt: new Date(),
           },
           select: { id: true },
         });
@@ -1398,6 +1400,7 @@ export async function createProspectAction(formData: FormData) {
           origin: "PROSPEK_FORM",
           leadSourceId,
           salesPicId,
+          stageEnteredAt: new Date(),
         },
         select: { id: true },
       });
@@ -1629,6 +1632,7 @@ export async function createRepeatOrderAction(formData: FormData) {
           origin: "REPEAT_ORDER",
           leadSourceId: customer.leadSourceId,
           salesPicId,
+          stageEnteredAt: new Date(),
         },
         select: { id: true },
       });
@@ -1737,6 +1741,7 @@ async function moveOpportunityStage(formData: FormData) {
       where: { id: parsed.data.opportunityId, version: parsed.data.version, stage: { not: "DEAL" } },
       data: {
         stage: parsed.data.stage,
+        stageEnteredAt: new Date(),
         nextAction: parsed.data.stage === "LOST" ? null : undefined,
         nextActionAt: parsed.data.stage === "LOST" ? null : undefined,
         cancelReason: parsed.data.stage === "LOST" ? parsed.data.cancelReason : null,
@@ -1770,6 +1775,7 @@ async function moveOpportunityStage(formData: FormData) {
   revalidatePath("/crm");
   revalidatePath(`/crm/peluang/${parsed.data.opportunityId}`);
   revalidatePath(`/customers/${customerId}`);
+  revalidateTag("pipeline-data", { expire: 0 });
   revalidateCustomerReminders();
   return { ...parsed.data, customerId };
 }
@@ -1786,6 +1792,39 @@ export async function moveOpportunityStageOptimisticAction(formData: FormData) {
   try {
     const moved = await moveOpportunityStage(formData);
     return { ok: true as const, opportunityId: moved.opportunityId, version: moved.version + 1 };
+  } catch (error) {
+    return { ok: false as const, kind: flashKindForError(error), message: messageForError(error) };
+  }
+}
+
+export async function setOpportunityPinAction(formData: FormData) {
+  try {
+    await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = setOpportunityPinSchema.safeParse({
+      opportunityId: formValue(formData, "opportunityId"),
+      pinned: formValue(formData, "pinned"),
+    });
+    if (!parsed.success) throw new UserFacingError(firstValidationMessage(parsed.error));
+    const pinned = parsed.data.pinned === "true";
+
+    const opportunity = await getPrismaClient().opportunity.findUnique({
+      where: { id: parsed.data.opportunityId },
+      select: { stage: true, pinnedAt: true },
+    });
+    if (!opportunity) throw new UserFacingError("Peluang tidak ditemukan.");
+    if (pinned && !canPinOpportunity(opportunity.stage)) {
+      throw new UserFacingError("Hanya kartu Follow Up dan Negosiasi yang bisa disematkan.");
+    }
+
+    const nextPinnedAt = pinned ? opportunity.pinnedAt ?? new Date() : null;
+    await getPrismaClient().opportunity.update({
+      where: { id: parsed.data.opportunityId },
+      data: { pinnedAt: nextPinnedAt },
+    });
+
+    revalidatePath("/crm");
+    revalidateTag("pipeline-data", { expire: 0 });
+    return { ok: true as const, opportunityId: parsed.data.opportunityId, pinnedAt: nextPinnedAt?.toISOString() ?? null };
   } catch (error) {
     return { ok: false as const, kind: flashKindForError(error), message: messageForError(error) };
   }
@@ -1880,7 +1919,7 @@ export async function recordFollowUpResultAction(formData: FormData) {
     const customerId = await getPrismaClient().$transaction(async (tx) => {
       const current = await tx.opportunity.findUnique({
         where: { id: parsed.data.opportunityId },
-        select: { customerId: true, customer: { select: { archivedAt: true } } },
+        select: { customerId: true, stage: true, customer: { select: { archivedAt: true } } },
       });
       if (!current) throw new UserFacingError("Peluang tidak ditemukan.");
       if (current.customer.archivedAt) throw new UserFacingError("Pulihkan customer sebelum mencatat follow-up.");
@@ -1889,6 +1928,7 @@ export async function recordFollowUpResultAction(formData: FormData) {
         where: { id: parsed.data.opportunityId, version: parsed.data.version, stage: { notIn: ["DEAL", "LOST"] } },
         data: {
           stage: parsed.data.stage,
+          ...(current.stage !== parsed.data.stage ? { stageEnteredAt: contactedAt } : {}),
           lastContactedAt: contactedAt,
           nextAction: parsed.data.stage === "LOST" ? null : parsed.data.nextAction,
           nextActionAt,
@@ -3538,7 +3578,7 @@ async function finalizeDeal(tx: Tx, actor: Actor, invoiceId: string, initialPaym
 
   const opportunityUpdated = await tx.opportunity.updateMany({
     where: { id: invoice.opportunityId, stage: "NEGOSIASI" },
-    data: { stage: "DEAL", nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } },
+    data: { stage: "DEAL", stageEnteredAt: new Date(), nextAction: null, nextActionAt: null, cancelReason: null, version: { increment: 1 } },
   });
   if (opportunityUpdated.count !== 1) throw new UserFacingError("Peluang sudah berubah. Muat ulang halaman.");
   if (invoice.opportunity.customer.lifecycle === "PROSPEK") {
@@ -4027,7 +4067,7 @@ async function cancelSalesOrderForRevision(tx: Tx, actor: Actor, order: SalesOrd
   // pembatalan deal yang sudah berjalan (lihat reverseSalesOrderAction).
   const opportunity = await tx.opportunity.updateMany({
     where: { id: order.opportunityId, stage: "DEAL", version: order.opportunity.version },
-    data: { stage: "NEGOSIASI", cancelReason: null, version: { increment: 1 } },
+    data: { stage: "NEGOSIASI", stageEnteredAt: new Date(), cancelReason: null, version: { increment: 1 } },
   });
   if (opportunity.count !== 1) throw new UserFacingError("Peluang sudah berubah.");
 
@@ -4270,7 +4310,7 @@ export async function reverseSalesOrderAction(formData: FormData) {
         if (cancelled.count !== 1) throw new UserFacingError("Sales Order sudah berubah.");
         const opportunity = await tx.opportunity.updateMany({
           where: { id: order.opportunityId, stage: "DEAL", version: order.opportunity.version },
-          data: { stage: "LOST", cancelReason: parsed.data.cancelReason, version: { increment: 1 } },
+          data: { stage: "LOST", stageEnteredAt: new Date(), cancelReason: parsed.data.cancelReason, version: { increment: 1 } },
         });
         if (opportunity.count !== 1) throw new UserFacingError("Peluang sudah berubah.");
 
