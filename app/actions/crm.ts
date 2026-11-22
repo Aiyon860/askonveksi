@@ -2087,7 +2087,7 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
         // Snapshot sebelum perubahan menjadi sisi "sebelum" pada riwayat revisi.
         const beforeSnapshot = await purchaseOrderSnapshot(tx, purchaseOrderId);
         const updated = await tx.purchaseOrder.updateMany({
-          where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, opportunity: { purchaseOrders: { none: { status: "AGREED" } }, invoices: { none: { status: "ISSUED" } } } },
+          where: { id: purchaseOrderId, opportunityId: parsed.data.opportunityId, status: "DRAFT", version: parsed.data.version, opportunity: { purchaseOrders: { none: { status: "AGREED" } }, invoices: { none: { status: "ISSUED" } } } },
           data: {
             garmentType: category.garmentType,
             productCategoryId: category.productCategoryId,
@@ -2639,9 +2639,6 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           },
         });
         if (!source || (source.status !== "DRAFT" && source.status !== "AGREED" && source.status !== "CANCELLED")) throw new UserFacingError("Revisi hanya dapat dibuat dari PO draft, disepakati, atau dibatalkan.");
-        // Batas 3 revisi mengunci dokumen yang masih hidup. PO batal sudah tidak bisa disepakati,
-        // jadi rantai berikutnya tetap dibuka — tanpa ini peluang mati permanen tanpa jalan keluar.
-        if (source.status !== "CANCELLED" && source.revision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi PO sudah tercapai.");
         if (source.opportunityId !== parsed.data.opportunityId) throw new UserFacingError("PO sumber tidak sesuai dengan peluang.");
         if (source.opportunity.stage !== "NEGOSIASI") throw new UserFacingError("Revisi PO hanya dapat dibuat saat Negosiasi.");
         const otherActivePo = source.opportunity.purchaseOrders.find((purchaseOrder) => purchaseOrder.id !== source.id);
@@ -2972,7 +2969,7 @@ export async function updateInvoiceDraftAction(_prevState: FormActionState, form
       async (tx) => {
         const beforeSnapshot = await invoiceSnapshot(tx, invoiceId);
         const updated = await tx.invoice.updateMany({
-          where: { id: invoiceId, opportunityId: parsed.data.opportunityId, status: "DRAFT", revision: { lt: 4 }, version: parsed.data.version, purchaseOrder: { is: { id: parsed.data.purchaseOrderId, status: "AGREED" } }, opportunity: { invoices: { none: { status: "ISSUED" } } } },
+          where: { id: invoiceId, opportunityId: parsed.data.opportunityId, status: "DRAFT", version: parsed.data.version, purchaseOrder: { is: { id: parsed.data.purchaseOrderId, status: "AGREED" } }, opportunity: { invoices: { none: { status: "ISSUED" } } } },
           data: {
             purchaseOrderId: parsed.data.purchaseOrderId,
             discountType: calculated.discountType,
@@ -3248,9 +3245,6 @@ export async function createInvoiceRevisionAction(_prevState: FormActionState, f
         if (isCancelled && latestRevision > source.revision) {
           throw new UserFacingError("Hanya invoice terakhir pada rantai yang dapat dilanjutkan. Gunakan tombol Buat revisi pada invoice terbaru.");
         }
-        // Batas 3 revisi mengunci dokumen yang masih hidup. Invoice batal tetap boleh
-        // dilanjutkan agar peluang tidak menjadi jalan buntu.
-        if (!isCancelled && latestRevision >= 4) throw new UserFacingError("Batas maksimal 3 kali revisi invoice sudah tercapai.");
         const calculated = calculateInvoiceForPurchaseOrder(source.purchaseOrder, parsed.data.items, { type: parsed.data.discountType, percent: parsed.data.discountPercent, nominal: parsed.data.discountNominal }, parsed.data.taxPercent, parsed.data.addons);
         // Snapshot sebelum draft sumber ditandai SUPERSEDED dan jadwalnya dilepas.
         const sourceSnapshot = await invoiceSnapshot(tx, source.id);

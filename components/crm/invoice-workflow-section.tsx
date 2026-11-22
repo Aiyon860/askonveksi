@@ -71,7 +71,6 @@ type InvoiceWorkflowSectionProps = {
   hasCancelledSalesOrder?: boolean;
   /** Revisi yang lebih baru sudah ada; invoice lama tidak boleh bercabang. */
   hasNewerActiveRevision: boolean;
-  revisionLimitReached: boolean;
   draftValues: InvoiceDraftValues;
   salesOrderHref?: string;
   salesOrderLabel?: string;
@@ -95,7 +94,6 @@ export function InvoiceWorkflowSection({
   hasSalesOrder,
   hasCancelledSalesOrder = false,
   hasNewerActiveRevision,
-  revisionLimitReached,
   draftValues,
   salesOrderHref,
   salesOrderLabel,
@@ -128,9 +126,7 @@ export function InvoiceWorkflowSection({
   // Invoice disepakati/terbit boleh dibatalkan selama belum ada DP/Lunas masuk. SO aktif
   // tanpa pembayaran akan ikut dibatalkan server agar PO dapat direvisi.
   const canCancelInvoice = invoiceStatus === "DRAFT" || invoiceStatus === "ISSUED";
-  // Dokumen batal dikecualikan dari batas 3 revisi agar peluang tidak menjadi jalan buntu.
-  const revisionLimitBlocks = invoiceStatus !== "CANCELLED" && revisionLimitReached;
-  const showCreateRevision = canReviseStatus && !hasNewerActiveRevision && !revisionLimitBlocks && canOperate && inNegotiation && !isCreatingRevision && Boolean(purchaseOrder);
+  const showCreateRevision = canReviseStatus && !hasNewerActiveRevision && canOperate && inNegotiation && !isCreatingRevision && Boolean(purchaseOrder);
   // Saat revisi masih draft, invoice terbit lama hanya boleh dilihat PDF-nya, bukan dikirim ulang.
   const showDeliveryActions = invoiceStatus === "ISSUED" && !hasNewerActiveRevision;
 

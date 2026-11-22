@@ -148,7 +148,6 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
   const invoiceDraft = opportunity.invoices.find((item) => item.status === "DRAFT");
   const cancelledInvoice = opportunity.invoices.find((item) => item.status === "CANCELLED");
   const issuedInvoice = opportunity.invoices.find((item) => item.status === "ISSUED" && item.purchaseOrderId === agreedPo?.id);
-  const latestInvoiceRevision = opportunity.invoices.reduce((latest, invoice) => Math.max(latest, invoice.revision), 0);
   const scheduledPayment = invoiceDraft ? undefined : issuedInvoice?.pendingPayment;
   const readyForDeal = Boolean(agreedPo && issuedInvoice && !poDraft && !invoiceDraft);
   const poRevisionCount = Math.max(0, opportunity.purchaseOrders.length - 1);
@@ -259,7 +258,6 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                     opportunityId={opportunity.id}
                     purchaseOrderId={purchaseOrder.id}
                     purchaseOrderVersion={purchaseOrder.version}
-                    purchaseOrderRevision={purchaseOrder.revision}
                     purchaseOrderStatus={purchaseOrder.status}
                     title={`${purchaseOrder.purchaseOrderNo} · ${documentRevisionLabel(purchaseOrder.revision)}`}
                     description={`Dibuat ${formatDate(purchaseOrder.createdAt, true)} oleh ${purchaseOrder.createdBy.name}`}
@@ -459,7 +457,6 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                       hasSalesOrder={invoice.salesOrder?.status === "ACTIVE"}
                       hasCancelledSalesOrder={invoice.salesOrder?.status === "CANCELLED"}
                       hasNewerActiveRevision={hasNewerActiveRevision}
-                      revisionLimitReached={latestInvoiceRevision >= 4}
                       draftValues={invoiceDraftValues}
                       salesOrderHref={invoice.salesOrder ? `/sales-orders/${invoice.salesOrder.id}` : undefined}
                       salesOrderLabel={invoice.salesOrder ? `Lihat ${invoice.salesOrder.salesOrderNo}${invoice.salesOrder.status === "CANCELLED" ? " (dibatalkan)" : ""}` : undefined}

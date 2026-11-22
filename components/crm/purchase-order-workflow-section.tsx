@@ -49,7 +49,6 @@ type PurchaseOrderWorkflowSectionProps = {
   opportunityId: string;
   purchaseOrderId: string;
   purchaseOrderVersion: number;
-  purchaseOrderRevision: number;
   purchaseOrderStatus: "DRAFT" | "AGREED" | "SUPERSEDED" | "CANCELLED";
   title: string;
   description: string;
@@ -76,7 +75,6 @@ export function PurchaseOrderWorkflowSection({
   opportunityId,
   purchaseOrderId,
   purchaseOrderVersion,
-  purchaseOrderRevision,
   purchaseOrderStatus,
   title,
   description,
@@ -96,13 +94,12 @@ export function PurchaseOrderWorkflowSection({
 }: PurchaseOrderWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
   // Draft yang sudah tersimpan bersifat readonly; perubahan hanya lewat "Buat versi revisi".
-  // PO yang sudah disepakati bisa direvisi untuk mitigasi perubahan (mis. tambah qty H-1);
+  // PO yang sudah disepakati bisa direvisi berkali-kali (mis. tambah qty H-1);
   // server menolak bila invoice sudah terbit atau Sales Order sudah terbentuk.
   // PO batal juga bisa dilanjutkan sebagai "Buat PO baru": tanpa jalur ini peluang yang PO-nya
   // dibatalkan tidak akan pernah punya PO lagi (server tetap menolak bila masih ada PO aktif).
   const canCreateRevision =
     (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED" || (purchaseOrderStatus === "CANCELLED" && latestInChain))
-    && (purchaseOrderStatus === "CANCELLED" || purchaseOrderRevision < 4)
     && canOperate && inNegotiation && !isCreatingRevision;
   // PO disepakati boleh dibatalkan sebelum ada invoice aktif dan sebelum DP/Lunas masuk.
   // Setelah batal, tombol "Buat PO baru" di atas menjadi jalur revisi dokumen.
