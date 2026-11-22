@@ -1105,21 +1105,23 @@ test("revisi invoice dapat dibuat dari draft, invoice terbit, atau invoice yang 
   assert.match(actionSource, /\(source\.status === "ISSUED" \|\| isCancelled\) && !parsed\.data\.schedule/);
   // Nomor revisi diambil dari revisi terbesar agar celah dokumen batal tidak bentrok.
   assert.match(actionSource, /const latestRevision = aggregate\._max\.revision \?\? source\.revision/);
-  assert.match(actionSource, /if \(!isCancelled && latestRevision >= 4\)/);
+  // Batas jumlah revisi invoice tidak ada; dokumen terakhir tetap dicek untuk rantai batal.
+  assert.doesNotMatch(actionSource, /latestRevision >= 4/);
+  assert.doesNotMatch(actionSource, /Batas maksimal 3 kali revisi invoice/);
   // Invoice batal tetap CANCELLED (hanya versinya naik) agar bukti pembatalan tidak hilang.
   assert.match(actionSource, /source\.status === "CANCELLED"[\s\S]{0,800}data: \{ version: \{ increment: 1 \} \}/);
   // Invoice terbit lama tetap ISSUED sampai revisi baru diterbitkan, lalu digantikan.
   assert.match(actionSource, /const previousIssued = invoice\.opportunity\.invoices\.filter/);
   assert.match(actionSource, /data: \{ status: "SUPERSEDED", version: \{ increment: 1 \} \}/);
-  // UI menampilkan revisi pada invoice draft/terbit/batal; batas revisi tidak mengunci dokumen batal.
+  // UI menampilkan revisi pada invoice draft/terbit/batal tanpa batas jumlah revisi.
   assert.match(workflowSource, /invoiceStatus === "CANCELLED"[\s\S]{0,200}!hasCancelledSalesOrder/);
-  assert.match(workflowSource, /const revisionLimitBlocks = invoiceStatus !== "CANCELLED" && revisionLimitReached/);
-  assert.match(workflowSource, /!hasNewerActiveRevision && !revisionLimitBlocks/);
+  assert.doesNotMatch(workflowSource, /revisionLimitReached/);
+  assert.match(workflowSource, /const showCreateRevision = canReviseStatus && !hasNewerActiveRevision && canOperate/);
   // Sales Order yang sudah dibatalkan tidak lagi mengunci invoice (revisi/batal tetap tersedia);
   // hanya SO aktif yang menutup jalur dokumen.
   assert.match(pageSource, /hasSalesOrder=\{invoice\.salesOrder\?\.status === "ACTIVE"\}/);
   assert.match(pageSource, /hasNewerActiveRevision=\{hasNewerActiveRevision\}/);
-  assert.match(pageSource, /revisionLimitReached=\{latestInvoiceRevision >= 4\}/);
+  assert.doesNotMatch(pageSource, /revisionLimitReached/);
 });
 
 test("migration follow up menyimpan tiga offset, switch customer, template bawaan, dan menutup job lama", async () => {
@@ -1625,13 +1627,15 @@ test("PO yang dibatalkan dapat dilanjutkan sebagai PO baru", async () => {
   // Tanpa jalur ini, PO batal memblokir PO baru (draft action menolak selama riwayat PO ada)
   // sekaligus memblokir revisi (hanya draft/disepakati) — peluang mati permanen.
   assert.match(actionSource, /source\.status !== "AGREED" && source\.status !== "CANCELLED"/);
-  // Batas 3 revisi mengunci dokumen hidup saja; dokumen terminal tidak boleh jadi jalan buntu.
-  assert.match(actionSource, /source\.status !== "CANCELLED" && source\.revision >= 4/);
+  // Batas 3 revisi PO dihapus: dokumen hidup boleh direvisi berkali-kali tanpa plafon.
+  assert.doesNotMatch(actionSource, /Batas maksimal 3 kali revisi PO/);
+  assert.doesNotMatch(actionSource, /source\.revision >= 4/);
+  assert.doesNotMatch(workflowSource, /purchaseOrderRevision < 4/);
+  assert.doesNotMatch(actionSource, /revision: \{ lt: 4 \}/);
   assert.match(actionSource, /Batalkan invoice tersebut terlebih dahulu sebelum membuat PO baru/);
   // Riwayat pembatalan tetap CANCELLED (hanya versinya naik untuk mengunci klik ganda).
   assert.match(actionSource, /source\.status === "CANCELLED"\s*\? await tx\.purchaseOrder\.updateMany/);
   assert.match(workflowSource, /purchaseOrderStatus === "CANCELLED" \? "Buat PO baru"/);
-  assert.match(workflowSource, /\(purchaseOrderStatus === "CANCELLED" \|\| purchaseOrderRevision < 4\)/);
   // Hanya dokumen terakhir yang boleh dilanjutkan agar nomor revisi unik tidak bentrok.
   assert.match(actionSource, /Hanya dokumen terakhir pada rantai PO yang dapat dilanjutkan/);
   assert.match(workflowSource, /purchaseOrderStatus === "CANCELLED" && latestInChain/);
