@@ -260,6 +260,16 @@ export const invoiceItemSchema = z.object({
   size: z.string().trim().max(40).default(""),
   sleeveLength: z.enum(["PENDEK", "PANJANG"]).nullable().default(null),
   description: z.string().trim().max(240),
+  quantity: z.preprocess(
+    (value) => {
+      if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+      return value;
+    },
+    z.number({ message: "Qty harus berupa bilangan bulat." })
+      .int("Qty harus berupa bilangan bulat.")
+      .min(1, "Qty minimal 1.")
+      .max(10_000_000, "Qty terlalu besar."),
+  ),
   unitPrice: z.string().trim().regex(/^\d{1,16}(?:\.\d{1,2})?$/, "Harga satuan tidak valid."),
   discountType: invoiceDiscountTypeSchema.default("PERCENTAGE"),
   discountPercent: z.preprocess(

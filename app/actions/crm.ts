@@ -16,7 +16,7 @@ import { mergeCustomerAcrossBrands } from "@/lib/crm/customer-scope";
 import { parseCustomerWorkbook } from "@/lib/crm/customer-excel";
 import { designImageContentType, designImageExtensionFor, designImageRejection, type DesignImageMime } from "@/lib/design/image";
 import { calculateInvoiceLines, roundInvoiceTotal, type InvoiceAddonInput, type InvoiceDiscountType, type InvoiceOrderDiscountInput, type InvoicePricingInput } from "@/lib/crm/invoice-calculation";
-import { groupPurchaseOrderInvoiceItems } from "@/lib/crm/invoice-grouping";
+import { groupPurchaseOrderInvoiceItems, resolveInvoiceProductRows } from "@/lib/crm/invoice-grouping";
 import { formatPurchaseOrderRevisionNo, nextCustomerNo, nextOpportunityNo, nextInvoiceNo, nextPurchaseOrderNo, nextSalesOrderNo } from "@/lib/crm/numbers";
 import { productCostSeeds } from "@/lib/finance/project-products";
 import { parseRosterFile, type ImportedRosterRow } from "@/lib/crm/roster-import";
@@ -449,16 +449,18 @@ function invoiceInput(formData: FormData) {
   const purchaseOrderItemIds = formData.getAll("itemPurchaseOrderItemId");
   const productNames = formData.getAll("itemProductName");
   const descriptions = formData.getAll("itemDescription");
+  const quantities = formData.getAll("itemQuantity");
   const unitPrices = formData.getAll("itemUnitPrice");
   const itemDiscounts = formData.getAll("itemDiscountPercent");
   const itemDiscountTypes = formData.getAll("itemDiscountType");
   const itemDiscountNominals = formData.getAll("itemDiscountNominal");
-  const length = Math.max(purchaseOrderItemIds.length, productNames.length, unitPrices.length);
+  const length = Math.max(purchaseOrderItemIds.length, productNames.length, quantities.length, unitPrices.length);
   const fallbackDiscount = formValue(formData, "discountPercent") || "0";
   const items = Array.from({ length }, (_, index) => ({
     purchaseOrderItemId: String(purchaseOrderItemIds[index] ?? ""),
     productName: productNames[index],
     description: descriptions[index],
+    quantity: quantities[index],
     unitPrice: unitPrices[index],
     discountType: (itemDiscountTypes[index] || "PERCENTAGE") as InvoiceDiscountType,
     discountPercent: itemDiscounts[index] || "0",
@@ -751,42 +753,34 @@ function calculateInvoiceForPurchaseOrder(
     items?: Array<{ id: string; name: string; garmentType?: "JERSEY" | "NON_JERSEY" | "AKSESORI" | null }>;
     sizes: Array<{ id: string; itemId: string; sizeId: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   },
-  submittedItems: Array<Omit<InvoicePricingInput, "quantity">>,
+  submittedItems: InvoicePricingInput[],
   orderDiscount: InvoiceOrderDiscountInput,
   taxPercent = "0",
   submittedAddons: InvoiceAddonInput[] = [],
 ) {
   const groups = groupPurchaseOrderInvoiceItems(purchaseOrder);
   if (!groups.length) throw new UserFacingError("PO belum memiliki baris ukuran yang dapat ditagihkan.");
-  const submittedById = new Map(submittedItems.map((item) => [item.purchaseOrderItemId || "__legacy__", item]));
-  if (submittedById.size !== groups.length || submittedItems.length !== groups.length) {
-    throw new UserFacingError("Item invoice harus sama dengan seluruh produk pada PO.");
-  }
-  const calculated = calculateInvoiceLines(groups.map((group) => {
-    const submitted = submittedById.get(group.key);
-    if (!submitted) throw new UserFacingError("Salah satu produk PO tidak tersedia pada invoice.");
-    const productName = String(submitted.productName || group.productName).trim() || group.productName;
+  const resolved = resolveInvoiceProductRows(groups, submittedItems);
+  const calculated = calculateInvoiceLines(resolved.map((item) => ({
+    purchaseOrderItemId: item.sourceKey,
+    productName: item.productName,
+    // Satu baris produk menampung semua ukuran/lengan, jadi identitas varian tidak disimpan.
+    size: "",
+    sleeveLength: null,
     // Deskripsi opsional: bila tidak diisi, simpan kosong (ditampilkan "-" di Detail & PDF).
-    const description = String(submitted.description || "").trim();
-    return {
-      purchaseOrderItemId: group.purchaseOrderItemId,
-      productName,
-      // Satu baris produk menampung semua ukuran/lengan, jadi identitas varian tidak disimpan.
-      size: "",
-      sleeveLength: null,
-      description,
-      quantity: group.quantity,
-      unitPrice: String(submitted.unitPrice),
-      discountType: submitted.discountType,
-      discountPercent: String(submitted.discountPercent ?? "0"),
-      discountNominal: String(submitted.discountNominal ?? "0"),
-    };
-  }), orderDiscount, taxPercent, submittedAddons);
+    description: String(item.description || "").trim(),
+    quantity: item.quantity,
+    unitPrice: String(item.unitPrice),
+    discountType: item.discountType,
+    discountPercent: String(item.discountPercent ?? "0"),
+    discountNominal: String(item.discountNominal ?? "0"),
+  })), orderDiscount, taxPercent, submittedAddons);
   return {
     ...calculated,
-    // Hanya kirim kolom InvoiceItem; purchaseOrderItemId adalah kunci form, bukan kolom DB.
+    // Hanya kirim kolom InvoiceItem; kunci sumber PO disimpan untuk revisi & larangan hapus.
     items: calculated.items.map((item) => ({
       position: item.position,
+      purchaseOrderItemId: item.purchaseOrderItemId || null,
       productName: item.productName,
       size: item.size,
       sleeveLength: item.sleeveLength,

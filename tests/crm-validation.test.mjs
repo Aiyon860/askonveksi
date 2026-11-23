@@ -361,11 +361,28 @@ test("password tidak dibatasi kompleksitas dan item invoice divalidasi pada boun
   assert.match(actionSource, /taxPercent: formValue\(formData, "taxPercent"\)/);
 });
 
+test("qty invoice wajib bilangan bulat minimal 1", () => {
+  const base = {
+    opportunityId: "cm123456789012",
+    purchaseOrderId: "cm123456789013",
+    dueAt: "2026-11-15",
+    discountPercent: "0",
+    taxPercent: "0",
+  };
+  const item = (quantity) => ({ productName: "Kaos", description: "", unitPrice: "50000", quantity });
+  assert.equal(invoiceDraftSchema.safeParse({ ...base, items: [item("3")] }).success, true);
+  assert.equal(invoiceDraftSchema.safeParse({ ...base, items: [item("1.5")] }).success, false);
+  assert.equal(invoiceDraftSchema.safeParse({ ...base, items: [item("0")] }).success, false);
+  assert.equal(invoiceDraftSchema.safeParse({ ...base, items: [item("-1")] }).success, false);
+  assert.equal(invoiceDraftSchema.safeParse({ ...base, items: [item("abc")] }).success, false);
+});
+
 test("Add On invoice berdiri sendiri: parse form, validasi, dan UI global", async () => {
   const itemBase = {
     purchaseOrderItemId: "cm123456789012",
     productName: "Jaket Polirevo",
     description: "",
+    quantity: 1,
     unitPrice: "100000",
     discountPercent: "0",
   };
@@ -439,7 +456,9 @@ test("Add On invoice berdiri sendiri: parse form, validasi, dan UI global", asyn
   assert.match(invoiceFormSource, /name="addonLabel"/);
   assert.match(invoiceFormSource, /name="addonAmount"/);
   assert.match(invoiceFormSource, /MAX_ADDONS/);
-  assert.doesNotMatch(invoiceFormSource, /name="itemQuantity"/);
+  assert.match(invoiceFormSource, /name="itemQuantity"/);
+  assert.match(invoiceFormSource, /Tambah Produk/);
+  assert.match(invoiceFormSource, /useSortable/);
   assert.doesNotMatch(invoiceFormSource, /name="itemSleeveLength"/);
   assert.doesNotMatch(invoiceFormSource, /item-\$\{rowIndex\}-addon/);
   assert.match(actionSource, /formData\.getAll\("addonLabel"\)/);
@@ -1643,9 +1662,10 @@ test("PO yang dibatalkan dapat dilanjutkan sebagai PO baru", async () => {
 });
 
 test("form revisi PO dan invoice membawa isian dokumen lama", async () => {
-  const [orderFormSource, invoiceFormSource, pageSource] = await Promise.all([
+  const [orderFormSource, invoiceFormSource, groupingSource, pageSource] = await Promise.all([
     readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/crm/invoice-grouping.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
   ]);
   // Matriks ukuran direvisi: sel lama dipertahankan, ukuran tanpa pasangan di master dilaporkan.
@@ -1654,10 +1674,10 @@ test("form revisi PO dan invoice membawa isian dokumen lama", async () => {
   assert.match(orderFormSource, /Sebagian jumlah ukuran tidak terbawa/);
   // Data lama menyimpan ukuran sebagai nama; revisi memetakannya lewat nama sebelum menyerah.
   assert.match(pageSource, /const sizeId = row\.sizeId \?\? findGarmentSizeByName\(sizeIdByName, row\.size\)/);
-  // Harga/deskripsi baris invoice dicocokkan per nama lalu per urutan, bukan dikosongkan.
-  assert.match(invoiceFormSource, /function savedRowsFor\(group: \{ productName: string \}, index: number\)/);
-  assert.match(invoiceFormSource, /if \(values\?\.items\.length === groups\.length\) return \[values\.items\[index\]\]/);
-  assert.match(invoiceFormSource, /const saved = savedRowsFor\(group, rowIndex\)\[0\]/);
+  // Harga/deskripsi baris invoice dicocokkan per id/nama lalu per urutan, bukan dikosongkan.
+  assert.match(groupingSource, /export function buildInvoiceProductRows\(groups: InvoiceProductGroup\[\], savedItems: InvoiceSavedRow\[\]\)/);
+  assert.match(groupingSource, /const byOrder = !byName && savedItems\.length === groups\.length \? groups\[index\] : undefined/);
+  assert.match(invoiceFormSource, /buildInvoiceProductRows\(groups, values\?\.items \?\? \[\]\)/);
 });
 
 test("PDF PO punya varian customer dan penjahit dengan deadline merah", async () => {
@@ -2317,8 +2337,9 @@ test("R4/R6: form invoice pakai toggle Rp/%, default 0 lewat placeholder, add on
   assert.match(form, /<Badge variant="info">Opsional<\/Badge>/);
   assert.match(form, /bg-info-surface\/40 hover:bg-info-surface\/60/);
   assert.match(form, /text-info-surface-foreground/);
-  // Qty produk dan Add On memakai garis kanan yang sama; spinner bawaan browser dihilangkan.
-  assert.match(form, /<div className="flex h-9 items-center justify-center font-mono tabular-nums">\{group\.quantity\}<\/div>/);
+  // Qty produk (kini editable) dan Add On memakai gaya input yang sama; spinner bawaan browser dihilangkan.
+  assert.match(form, /name="itemQuantity"[\s\S]{0,600}className="text-center font-mono tabular-nums/);
+  assert.equal((form.match(/className="text-center font-mono tabular-nums/g) ?? []).length, 2);
   assert.match(form, /name="addonQty"[\s\S]{0,100}type="number"/);
   assert.match(form, /inputMode="numeric"/);
   assert.match(form, /function preventNonIntegerQtyKeys/);
@@ -2326,6 +2347,22 @@ test("R4/R6: form invoice pakai toggle Rp/%, default 0 lewat placeholder, add on
   assert.match(form, /className="text-center font-mono tabular-nums \[appearance:textfield\]/);
   assert.match(form, /\[&::-webkit-inner-spin-button\]:appearance-none/);
   assert.match(form, /\[&::-webkit-outer-spin-button\]:appearance-none/);
+});
+
+test("drag urutan produk invoice: vertikal saja, gagang di kiri, id DnD stabil", async () => {
+  const form = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
+  assert.match(form, /const verticalOnly: Modifier = \(\{ transform \}\) => \(\{ \.\.\.transform, x: 0 \}\)/);
+  assert.match(form, /modifiers=\{\[verticalOnly\]\}/);
+  assert.match(form, /verticalListSortingStrategy/);
+  // id stabil menghindari aria-describedby berubah saat hydrasi (SSR "0" vs client "1").
+  assert.match(form, /id=\{`invoice-products-\$\{fieldKey\}`\}/);
+  // Gagang ada di sel pertama; tombol hapus tetap di sel terakhir dan hanya untuk produk tambahan.
+  const handleIndex = form.indexOf("{...listeners}");
+  const deleteIndex = form.indexOf("onRemove(row.key)");
+  const productInputIndex = form.indexOf('name="itemProductName"');
+  assert.ok(handleIndex < productInputIndex && productInputIndex < deleteIndex);
+  assert.match(form, /colSpan=\{7\}/);
+  assert.match(form, /<Move aria-hidden="true" \/>/);
 });
 
 test("R4 lanjutan: add on punya deskripsi opsional, tersimpan & tampil", async () => {
@@ -2382,7 +2419,7 @@ test("R13 revisi: PDF Disc memakai nominal, deskripsi kosong jadi '-'", async ()
   assert.match(detail, /item\.description \|\| "-"/);
   assert.match(detail, /addon\.description\?\.trim\(\) \|\| "-"/);
   // Deskripsi produk tidak lagi diisi otomatis oleh server.
-  assert.match(crm, /const description = String\(submitted\.description \|\| ""\)\.trim\(\);/);
+  assert.match(crm, /description: String\(item\.description \|\| ""\)\.trim\(\)/);
   assert.doesNotMatch(crm, /defaultInvoiceItemDescription/);
 });
 

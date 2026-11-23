@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { calculateInvoiceLines, defaultInvoiceItemDescription } from "../lib/crm/invoice-calculation.ts";
-import { groupPurchaseOrderInvoiceItems } from "../lib/crm/invoice-grouping.ts";
+import { buildInvoiceProductRows, groupPurchaseOrderInvoiceItems, resolveInvoiceProductRows } from "../lib/crm/invoice-grouping.ts";
 
 function line(overrides = {}) {
   return {
@@ -202,4 +202,103 @@ test("PO lama tanpa itemId tetap dapat dibuatkan satu baris invoice", () => {
     quantity: 2,
     isAccessory: false,
   }]);
+});
+
+const invoiceGroups = [
+  { key: "item-1", purchaseOrderItemId: "item-1", productName: "Kemeja", quantity: 3, isAccessory: false },
+  { key: "item-2", purchaseOrderItemId: "item-2", productName: "Topi", quantity: 1, isAccessory: true },
+];
+
+function submittedRow(overrides = {}) {
+  return {
+    purchaseOrderItemId: "",
+    productName: "Produk tambahan",
+    description: "",
+    quantity: 1,
+    unitPrice: "10000",
+    ...overrides,
+  };
+}
+
+test("produk tambahan invoice diterima dan urutan drag dipertahankan", () => {
+  const rows = resolveInvoiceProductRows(invoiceGroups, [
+    submittedRow({ productName: "Kemeja", quantity: 5, unitPrice: "90000", purchaseOrderItemId: "item-1" }),
+    submittedRow({ productName: "Jasa bordir", quantity: 2, unitPrice: "25000" }),
+    submittedRow({ productName: "Topi", quantity: 1, unitPrice: "30000", purchaseOrderItemId: "item-2" }),
+  ]);
+  assert.deepEqual(rows.map((row) => [row.productName, row.sourceKey, row.quantity]), [
+    ["Kemeja", "item-1", 5],
+    ["Jasa bordir", "", 2],
+    ["Topi", "item-2", 1],
+  ]);
+});
+
+test("produk PO yang hilang atau duplikat ditolak", () => {
+  assert.throws(
+    () => resolveInvoiceProductRows(invoiceGroups, [submittedRow({ purchaseOrderItemId: "item-1" })]),
+    /Seluruh produk PO wajib ada/,
+  );
+  assert.throws(
+    () => resolveInvoiceProductRows(invoiceGroups, [
+      submittedRow({ purchaseOrderItemId: "item-1" }),
+      submittedRow({ purchaseOrderItemId: "item-1" }),
+      submittedRow({ purchaseOrderItemId: "item-2" }),
+    ]),
+    /lebih dari satu baris/,
+  );
+  assert.throws(
+    () => resolveInvoiceProductRows(invoiceGroups, [
+      submittedRow({ purchaseOrderItemId: "item-1" }),
+      submittedRow({ purchaseOrderItemId: "item-2" }),
+      submittedRow({ purchaseOrderItemId: "item-lain" }),
+    ]),
+    /tidak berasal dari PO ini/,
+  );
+});
+
+test("PO lama memakai kunci __legacy__ dan tetap menerima produk tambahan", () => {
+  const legacyGroups = [{ key: "__legacy__", purchaseOrderItemId: "", productName: "Kaos Lama", quantity: 2, isAccessory: false }];
+  const rows = resolveInvoiceProductRows(legacyGroups, [
+    submittedRow({ productName: "Kaos Lama", quantity: 2, purchaseOrderItemId: "__legacy__" }),
+    submittedRow({ productName: "Jasa sablon", quantity: 3 }),
+  ]);
+  assert.deepEqual(rows.map((row) => [row.sourceKey, row.quantity]), [["__legacy__", 2], ["", 3]]);
+});
+
+test("baris revisi mengikuti urutan tersimpan dan memakai nama/harga yang sudah diedit", () => {
+  const rows = buildInvoiceProductRows(invoiceGroups, [
+    { purchaseOrderItemId: "item-2", productName: "Topi custom", description: "Bordir", quantity: 4, unitPrice: "35000" },
+    { purchaseOrderItemId: "", productName: "Jasa bordir", quantity: 2, unitPrice: "10000" },
+    { purchaseOrderItemId: "item-1", productName: "Kemeja custom", quantity: 3, unitPrice: "80000" },
+  ]);
+  assert.deepEqual(rows.map((row) => [row.sourceKey, row.productName, row.quantity, row.unitPrice]), [
+    ["item-2", "Topi custom", "4", "35000"],
+    ["", "Jasa bordir", "2", "10000"],
+    ["item-1", "Kemeja custom", "3", "80000"],
+  ]);
+  assert.equal(rows[1].description, "");
+});
+
+test("dokumen lama tanpa kunci sumber tetap cocok lewat nama/urutan", () => {
+  const rows = buildInvoiceProductRows(invoiceGroups, [
+    { productName: "Topi", unitPrice: "25000", quantity: 1 },
+    { productName: "Kemeja", unitPrice: "90000", quantity: 3 },
+  ]);
+  assert.deepEqual(rows.map((row) => [row.sourceKey, row.unitPrice, row.quantity]), [
+    ["item-2", "25000", "1"],
+    ["item-1", "90000", "3"],
+  ]);
+});
+
+test("produk PO yang tersimpan per ukuran dirata-ratakan agar total revisi tidak melompat", () => {
+  const rows = buildInvoiceProductRows(
+    [{ key: "item-1", purchaseOrderItemId: "item-1", productName: "Kemeja", quantity: 4, isAccessory: false }],
+    [
+      { productName: "Kemeja", unitPrice: "100000", quantity: 1 },
+      { productName: "Kemeja", unitPrice: "80000", quantity: 3 },
+    ],
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].unitPrice, "85000");
+  assert.equal(rows[0].quantity, "4");
 });
