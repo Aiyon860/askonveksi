@@ -873,7 +873,7 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           createdAt: true,
           items: {
             select: {
-              id: true, position: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
+              id: true, position: true, purchaseOrderItemId: true, productName: true, size: true, sleeveLength: true, description: true, quantity: true,
               unitPrice: true, grossAmount: true, discountType: true, discountPercent: true, discountCapAmount: true,
               discountAmount: true, profitPercent: true, profitAmount: true, total: true, subtotal: true,
               addons: { select: { label: true, description: true, unitAmount: true, qty: true }, orderBy: { position: "asc" } },

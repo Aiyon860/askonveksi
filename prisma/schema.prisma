@@ -972,6 +972,8 @@ model InvoiceItem {
   id                String             @id @default(cuid())
   invoiceId         String
   position          Int
+  /// Sumber baris: id PurchaseOrderItem, "__legacy__" untuk PO lama tanpa item, null = produk tambahan invoice.
+  purchaseOrderItemId String?          @db.VarChar(64)
   productName       String?            @db.VarChar(120)
   sizeId            String?
   size              String             @db.VarChar(40)

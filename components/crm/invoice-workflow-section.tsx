@@ -40,6 +40,7 @@ type InvoiceDraftValues = {
   taxPercent?: string;
   addons?: Array<{ label?: string; description?: string; amount?: string; qty?: number }>;
   items: Array<{
+    purchaseOrderItemId?: string;
     productName?: string;
     description?: string;
     size?: string;

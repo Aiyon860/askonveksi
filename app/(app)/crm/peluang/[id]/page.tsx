@@ -429,6 +429,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                     ...invoice.items.flatMap((item) => item.addons.map((addon) => ({ label: addon.label, description: addon.description ?? "", amount: addon.unitAmount.toString(), qty: addon.qty }))),
                   ],
                   items: invoice.items.map((item) => ({
+                    purchaseOrderItemId: item.purchaseOrderItemId ?? "",
                     productName: item.productName ?? "",
                     description: item.description,
                     size: item.size,
