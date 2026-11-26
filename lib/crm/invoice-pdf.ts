@@ -337,7 +337,8 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   rightY -= 6;
   page.drawLine({ start: { x: customerX, y: rightY }, end: { x: customerX + infoWidth, y: rightY }, thickness: 1, color: RULE_LINE });
   rightY -= 16;
-  const customerName = invoice.snapshotCompanyName ?? invoice.snapshotCustomerName;
+  // Tagihan ditujukan ke nama customer; perusahaan dipakai hanya sebagai fallback data lama.
+  const customerName = invoice.snapshotCustomerName ?? invoice.snapshotCompanyName;
   page.drawText(clipPdfText(safeText(customerName), bold, MIN_FONT_SIZE, infoWidth), { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold, color: accent });
   rightY -= 18;
   rightY = infoLines([`Telp: ${invoice.snapshotWhatsapp ?? "-"}`], customerX, rightY) - 4;
