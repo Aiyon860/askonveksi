@@ -2337,7 +2337,7 @@ export async function recordPurchaseOrderDepositAction(_prevState: CrmActionStat
  * Aksi terpisah dari form PO supaya data customer tidak ikut tersentuh dan alur
  * revisi PO tidak terpicu.
  * Kunci form per item: `deadline-<itemId>` ("" = kosong), `designs-<itemId>` (0..n file),
- * `sampleQty-<itemId>` (minimal 1, default 1), `sampleSize-<itemId>` (maks 40 karakter).
+ * `sampleQty-<itemId>` (minimal 1, default 1), `sampleSize-<itemId>` (wajib, maks 40 karakter).
  * Hapus per gambar: `removeDesign-<designId>` = "1".
  */
 const PENJAHIT_DESIGN_MAX_PER_ITEM = 10;
@@ -2411,7 +2411,11 @@ export async function savePenjahitPlanAction(_prevState: CrmActionState, formDat
         sampleQtys.set(item.id, Math.min(qty, 9999));
       }
       const rawSampleSize = formData.get(`sampleSize-${item.id}`);
-      if (typeof rawSampleSize === "string") sampleSizes.set(item.id, rawSampleSize.trim().slice(0, 40) || null);
+      if (typeof rawSampleSize === "string") {
+        const size = rawSampleSize.trim().slice(0, 40);
+        if (!size) throw new UserFacingError(`Ukuran sample ${item.name} wajib diisi.`);
+        sampleSizes.set(item.id, size);
+      }
 
       const files = formData.getAll(`designs-${item.id}`).filter((entry): entry is File => entry instanceof File && entry.size > 0);
       const existing = designsByItem.get(item.id) ?? [];

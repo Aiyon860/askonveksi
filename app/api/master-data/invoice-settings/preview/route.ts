@@ -1,0 +1,115 @@
+import { MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
+import { requireActor } from "@/lib/auth/session";
+import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
+import { createInvoicePdf } from "@/lib/crm/invoice-pdf";
+import { invoiceSettingsSchema } from "@/lib/crm/validation";
+
+export const runtime = "nodejs";
+
+// Pratinjau PDF invoice memakai data contoh dan isian form yang belum disimpan,
+// supaya admin bisa melihat pengaruh ukuran font tanpa menyimpan dulu.
+export async function POST(request: Request) {
+  try {
+    await requireActor(MASTER_DATA_ADMIN_ROLES);
+  } catch {
+    return Response.json({ ok: false, message: "Anda tidak memiliki akses." }, { status: 403 });
+  }
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return Response.json({ ok: false, message: "Data pratinjau tidak terbaca." }, { status: 400 });
+  }
+  const parsed = invoiceSettingsSchema.safeParse(payload);
+  if (!parsed.success) {
+    return Response.json({ ok: false, message: "Isian Keterangan, S&K, atau ukuran font tidak valid." }, { status: 422 });
+  }
+
+  const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
+  const settingPoints = [
+    ...parsed.data.keterangan.map((point) => ({ section: "KETERANGAN" as const, text: point.text })),
+    ...parsed.data.syarat.map((point) => ({ section: "SYARAT_KETENTUAN" as const, text: point.text })),
+  ];
+  const issuedAt = new Date("2026-11-26T09:00:00.000Z");
+  const dueAt = new Date("2026-12-03T09:00:00.000Z");
+  const dummyInvoice = {
+    invoiceNo: "INV-CONTOH-001",
+    revision: 1,
+    status: "ISSUED",
+    snapshotCustomerName: "Budi Santoso",
+    snapshotCompanyName: "PT Contoh Abadi",
+    snapshotWhatsapp: "0812-3456-7890",
+    snapshotEmail: "budi@contoh.co.id",
+    snapshotInstagram: "@contoh.abadi",
+    snapshotAddress: "Jl. Contoh No. 12, Jakarta Selatan",
+    snapshotBusinessName: actor.brand === "SAGA" ? "SAGA" : "AS Konveksi",
+    snapshotBusinessPhone: "(021) 1234-5678",
+    snapshotBusinessEmail: "halo@askonveksi.co.id",
+    snapshotBusinessAddress: "Jakarta, Indonesia",
+    snapshotBusinessLogoPath: null,
+    snapshotBankName: null,
+    snapshotBankAccountNumber: null,
+    snapshotBankAccountHolder: null,
+    snapshotSignatureName: "ADMIN CONTOH",
+    snapshotSignatureTitle: "Admin",
+    snapshotSignaturePath: null,
+    subtotal: 1_500_000,
+    totalDiscount: 0,
+    taxPercent: 0,
+    taxAmount: 0,
+    totalProfit: 0,
+    total: 1_500_000,
+    createdAt: issuedAt,
+    issuedAt,
+    dueAt,
+    purchaseOrder: { purchaseOrderNo: "PO-CONTOH-001" },
+    items: [
+      {
+        productName: "Jersey Tim Contoh",
+        size: "L",
+        description: "Sablon logo depan",
+        quantity: 20,
+        unitPrice: 50_000,
+        grossAmount: 1_000_000,
+        discountType: "NOMINAL",
+        discountPercent: 0,
+        discountAmount: 0,
+        profitPercent: 0,
+        profitAmount: 0,
+        total: 1_000_000,
+        subtotal: 1_000_000,
+        addons: [],
+      },
+      {
+        productName: "Kaos Komunitas",
+        size: "M",
+        description: "Bordir dada",
+        quantity: 10,
+        unitPrice: 50_000,
+        grossAmount: 500_000,
+        discountType: "NOMINAL",
+        discountPercent: 0,
+        discountAmount: 0,
+        profitPercent: 0,
+        profitAmount: 0,
+        total: 500_000,
+        subtotal: 500_000,
+        addons: [],
+      },
+    ],
+    addons: [],
+    salesOrder: { payment: { kind: "FULL", transactions: [] } },
+  };
+
+  const logo = await readDefaultBrandLogoPng(actor.brand);
+  const pdf = await createInvoicePdf(dummyInvoice, { brand: actor.brand, logo, settingPoints, pointFontSize: parsed.data.pointFontSize });
+  return new Response(Buffer.from(pdf), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": 'inline; filename="pratinjau-invoice.pdf"',
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}

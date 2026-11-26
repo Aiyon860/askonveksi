@@ -94,10 +94,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     orderBy: [{ section: "asc" as const }, { position: "asc" as const }],
     select: { section: true, text: true },
   };
-  const [currentBusiness, paymentMethods, settingPoints] = await Promise.all([
+  const [currentBusiness, paymentMethods, settingPoints, invoiceSetting] = await Promise.all([
     prisma.businessProfile.findFirst(forBrand(invoice.brand, { where: {} })),
     prisma.paymentMethod.findMany(forBrand(invoice.brand, paymentMethodQuery)),
     prisma.invoiceSettingPoint.findMany(forBrand(invoice.brand, settingPointQuery)),
+    prisma.invoiceSetting.findUnique({ where: { brand: invoice.brand }, select: { pointFontSize: true } }),
   ]);
 
   // Kop mengikuti profil brand dokumen. Snapshot logo/nama brand lain (mis. invoice
@@ -137,7 +138,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     snapshotBusinessAddress: businessAddress ?? null,
     snapshotSignatureName: invoice.snapshotSignatureName ?? currentBusiness?.signatureName ?? null,
     snapshotSignatureTitle: invoice.snapshotSignatureTitle ?? currentBusiness?.signatureTitle ?? null,
-  }, { brand: invoice.brand, logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints });
+  }, { brand: invoice.brand, logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints, pointFontSize: invoiceSetting?.pointFontSize ?? 12 });
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",

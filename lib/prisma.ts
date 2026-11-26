@@ -10,7 +10,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaVersion: string | undefined;
 };
 
-const PRISMA_SCHEMA_VERSION = "purchase-order-item-material";
+const PRISMA_SCHEMA_VERSION = "invoice-setting-font-size";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;

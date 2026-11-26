@@ -86,7 +86,11 @@ test("PDF invoice mengikuti template: tanpa blok rekening, dengan gambar tanda t
   assert.doesNotMatch(pdf, /Metode pembayaran/, "blok metode pembayaran dihapus mengikuti template");
   assert.doesNotMatch(pdf, /Rekening pembayaran/, "blok snapshot rekening dihapus mengikuti template");
   assert.match(pdf, /assets\.signature/);
-  assert.match(pdf, /scaleToFit\(450, 138\)/, "gambar tanda tangan diskalakan tetap di atas nama");
+  assert.match(pdf, /scaleToFit\(220, 64\)/, "gambar tanda tangan diperkecil dan tetap di atas nama");
+  assert.match(pdf, /y -= 24; \/\/ geser blok TTD sedikit lebih rendah/);
+  // "Tagihan Untuk" wajib menampilkan nama customer, bukan nama perusahaan.
+  assert.match(pdf, /const customerName = invoice\.snapshotCustomerName \?\? invoice\.snapshotCompanyName;/);
+  assert.doesNotMatch(pdf, /const customerName = invoice\.snapshotCompanyName \?\? invoice\.snapshotCustomerName;/);
 });
 
 test("PDF kwitansi menampilkan gambar tanda tangan dari snapshot invoice", () => {

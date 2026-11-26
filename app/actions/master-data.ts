@@ -901,6 +901,15 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
           data: { actorId: actor.id, entityType: "InvoiceSettingPoint", entityId: row.id, action: "INVOICE_SETTING_POINT_DELETED", changedFields: ["section", "text", "position"] },
         });
       }
+
+      await tx.invoiceSetting.upsert({
+        where: { brand: actor.brand },
+        create: { brand: actor.brand, pointFontSize: parsed.data.pointFontSize },
+        update: { pointFontSize: parsed.data.pointFontSize },
+      });
+      await tx.auditEvent.create({
+        data: { actorId: actor.id, entityType: "InvoiceSetting", entityId: actor.brand, action: "INVOICE_SETTING_FONT_SIZE_UPDATED", changedFields: ["pointFontSize"] },
+      });
     }, { ...MASTER_DATA_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     revalidatePath("/master-data/invoice-settings");

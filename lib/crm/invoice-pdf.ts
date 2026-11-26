@@ -180,6 +180,8 @@ type InvoiceAssets = {
   paymentMethods?: Array<{ name: string; description: string | null }>;
   /** Poin master "Pengaturan invoice": blok Keterangan & Syarat/Ketentuan, selalu mengikuti data terkini. */
   settingPoints?: PdfInvoiceSettingPoint[];
+  /** Ukuran font bersama Keterangan & S&K dari master data (default 12 pt). */
+  pointFontSize?: number;
 };
 
 export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAssets = {}) {
@@ -337,7 +339,8 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   rightY -= 6;
   page.drawLine({ start: { x: customerX, y: rightY }, end: { x: customerX + infoWidth, y: rightY }, thickness: 1, color: RULE_LINE });
   rightY -= 16;
-  const customerName = invoice.snapshotCompanyName ?? invoice.snapshotCustomerName;
+  // Tagihan ditujukan ke nama customer; perusahaan dipakai hanya sebagai fallback data lama.
+  const customerName = invoice.snapshotCustomerName ?? invoice.snapshotCompanyName;
   page.drawText(clipPdfText(safeText(customerName), bold, MIN_FONT_SIZE, infoWidth), { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold, color: accent });
   rightY -= 18;
   rightY = infoLines([`Telp: ${invoice.snapshotWhatsapp ?? "-"}`], customerX, rightY) - 4;
@@ -461,8 +464,8 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     y = rowTop - rowHeight;
   });
 
-  // Halaman ringkasan: angka kanan, Keterangan dan Syarat di kiri. Font kedua blok
-  // lebih kecil dari badan invoice (maks. 10pt) dan tidak pindah halaman.
+  // Halaman ringkasan: angka kanan, Keterangan dan Syarat di kiri. Ukuran font kedua
+  // blok mengikuti master data; bila tidak muat, blok dilanjutkan ke halaman baru.
   addPage();
   const summaryWidth = 218;
   const summaryX = A4.width - margin - summaryWidth;
@@ -491,42 +494,35 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   rightText(templateMoney(amountDue), tableRight, MIN_FONT_SIZE, bold);
   y -= 26;
   // Tanda tangan di tengah kolom angka: tanggal, gambar, nama terang.
+  y -= 24; // geser blok TTD sedikit lebih rendah
   const signCenter = summaryX + summaryWidth / 2;
   const signDate = signatureDate(issueDate);
   page.drawText(signDate, { x: signCenter - regular.widthOfTextAtSize(signDate, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: regular });
   y -= 14;
   if (signature) {
-    const scaled = signature.scaleToFit(450, 138);
+    const scaled = signature.scaleToFit(220, 64);
     page.drawImage(signature, { x: signCenter - scaled.width / 2, y: y - scaled.height, width: scaled.width, height: scaled.height });
     y -= scaled.height + 12;
   } else {
-    y -= 34;
+    y -= 64 + 12;
   }
   if (invoice.snapshotSignatureName) {
     const signName = safeText(invoice.snapshotSignatureName).toUpperCase();
     page.drawText(signName, { x: signCenter - bold.widthOfTextAtSize(signName, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: bold });
     y -= 16;
   }
-  const signatureBottom = y;
-  // shortcut: di bawah 5pt tidak diperkecil lagi; poin yang lebih panjang dari itu bisa melewati footer.
-  const pointSizes = [10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5.5, 5];
-  let pointSize = pointSizes[pointSizes.length - 1];
-  for (const size of pointSizes) {
-    const keteranganDrop = pointListDrop(keteranganPoints, listWidth, size);
-    const syaratDrop = pointListDrop(syaratPoints, listWidth, size);
-    const used = syaratPoints.length
-      ? Math.max(keteranganDrop, summaryTop - signatureBottom) + 10 + syaratDrop
-      : keteranganDrop;
-    if (used <= summaryTop - pageBottom) {
-      pointSize = size;
-      break;
-    }
-  }
+  // Ukuran blok berasal dari master data; tidak ada lagi pengecilan diam-diam.
+  // Bila tidak muat, blok lanjut ke halaman baru (kolom kiri terpisah dari TTD di kanan).
+  const pointSize = assets.pointFontSize ?? 12;
   y = summaryTop;
+  if (keteranganPoints.length && y - pointListDrop(keteranganPoints, listWidth, pointSize) < pageBottom) addPage();
   drawPointList("Keterangan", keteranganPoints, margin, listWidth, pointSize);
-  y = Math.min(signatureBottom, y) - 10;
+  y -= 10;
   // Syarat & Ketentuan selebar kolom kiri saja (separuh halaman) seperti template.
-  drawPointList("Syarat & Ketentuan", syaratPoints, margin, listWidth, pointSize);
+  if (syaratPoints.length) {
+    if (y - pointListDrop(syaratPoints, listWidth, pointSize) < pageBottom) addPage();
+    drawPointList("Syarat & Ketentuan", syaratPoints, margin, listWidth, pointSize);
+  }
 
   document.setTitle(`Invoice ${invoice.invoiceNo}`);
   document.setAuthor(invoice.snapshotBusinessName ?? "AS Konveksi");

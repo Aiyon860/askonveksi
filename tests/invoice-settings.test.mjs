@@ -11,7 +11,9 @@ const [
   schemaSource,
   migrationSource,
   richMigrationSource,
+  fontMigrationSource,
   actionSource,
+  previewRouteSource,
   masterDataSource,
   pageSource,
   editorSource,
@@ -25,7 +27,9 @@ const [
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20261015000000_invoice_setting_points/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20261022030000_invoice_setting_point_rich_text/migration.sql", import.meta.url), "utf8"),
+  readFile(new URL("../prisma/migrations/20261126030000_invoice_setting_font_size/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../app/actions/master-data.ts", import.meta.url), "utf8"),
+  readFile(new URL("../app/api/master-data/invoice-settings/preview/route.ts", import.meta.url), "utf8"),
   readFile(new URL("../lib/master-data.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/master-data/invoice-settings/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/invoice-settings-editor.tsx", import.meta.url), "utf8"),
@@ -178,12 +182,40 @@ test("PDF invoice mencetak poin bergaya tebal/miring/garis bawah sebagai ganti b
   assert.doesNotMatch(invoiceRouteSource, /isBold/);
 });
 
-test("Keterangan dan Syarat & Ketentuan memakai font lebih kecil dan tidak pindah halaman", () => {
+test("Keterangan dan S&K memakai ukuran font dari master data dan bisa lanjut halaman", () => {
   const drawPointList = invoicePdfSource.slice(invoicePdfSource.indexOf("function drawPointList"), invoicePdfSource.indexOf("const issueDate"));
   assert.doesNotMatch(drawPointList, /ensure\(|addPage\(/);
-  assert.match(invoicePdfSource, /const pointSizes = \[10, 9\.5, 9/);
+  assert.match(invoicePdfSource, /pointFontSize\?: number;/);
+  assert.match(invoicePdfSource, /const pointSize = assets\.pointFontSize \?\? 12;/);
+  assert.doesNotMatch(invoicePdfSource, /pointSizes\s*=/);
   assert.match(invoicePdfSource, /pointListDrop\(keteranganPoints/);
-  assert.match(invoicePdfSource, /drawPointList\("Syarat & Ketentuan", syaratPoints/);
+  assert.match(invoicePdfSource, /if \(syaratPoints\.length\) \{[\s\S]*addPage\(\)[\s\S]*drawPointList\("Syarat & Ketentuan", syaratPoints/);
+  // S&K tidak lagi dikunci oleh posisi TTD di kolom kanan.
+  assert.doesNotMatch(invoicePdfSource, /signatureBottom/);
+});
+
+test("ukuran font S&K tersedia dari master sampai PDF invoice", () => {
+  // Field bebas: tanpa rentang 8–12, hanya pengaman 1–72 pt.
+  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 13 }).success, true);
+  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 7 }).success, true);
+  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 0 }).success, false);
+  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 100 }).success, false);
+  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [] }).success, true);
+  const model = schemaSource.slice(schemaSource.indexOf("model InvoiceSetting {"));
+  assert.match(model, /brand\s+Brand\s+@unique/);
+  assert.match(model, /pointFontSize\s+Int\s+@default\(12\)/);
+  assert.match(fontMigrationSource, /CREATE TABLE IF NOT EXISTS "InvoiceSetting"/);
+  assert.match(fontMigrationSource, /'ASKONVEKSI', 12, NOW\(\)\), \('invoice-setting-saga', 'SAGA', 12, NOW\(\)/);
+  assert.match(masterDataSource, /getInvoiceSettingFontSize/);
+  assert.match(pageSource, /initialFontSize=\{pointFontSize\}/);
+  assert.match(editorSource, /initialFontSize: number/);
+  assert.match(editorSource, /pointFontSize: Number\(fontSize\)/);
+  assert.match(editorSource, /type="number"/);
+  assert.doesNotMatch(editorSource, /min=\{8\}|max=\{12\}/);
+  assert.match(actionSource, /tx\.invoiceSetting\.upsert/);
+  assert.match(actionSource, /pointFontSize: parsed\.data\.pointFontSize/);
+  assert.match(invoiceRouteSource, /invoiceSetting\.findUnique\(\{ where: \{ brand: invoice\.brand \}/);
+  assert.match(invoiceRouteSource, /pointFontSize: invoiceSetting\?\.pointFontSize \?\? 12/);
 });
 
 test("tiga dokumen cetak memakai ukuran font minimum 16 px (12 pt)", () => {
@@ -195,4 +227,23 @@ test("tiga dokumen cetak memakai ukuran font minimum 16 px (12 pt)", () => {
       assert.ok(Number(size) >= MIN_FONT_SIZE, `${name} memakai ukuran font ${size} pt (minimum ${MIN_FONT_SIZE} pt)`);
     }
   }
+});
+
+test("pratinjau invoice memakai isian form yang belum disimpan", () => {
+  // Endpoint memvalidasi payload yang sama dengan form simpan, memakai data contoh.
+  assert.match(previewRouteSource, /export async function POST\(request: Request\)/);
+  assert.match(previewRouteSource, /requireActor\(MASTER_DATA_ADMIN_ROLES\)/);
+  assert.match(previewRouteSource, /invoiceSettingsSchema\.safeParse\(payload\)/);
+  assert.match(previewRouteSource, /invoiceNo: "INV-CONTOH-001"/);
+  assert.match(previewRouteSource, /createInvoicePdf\(dummyInvoice,/);
+  assert.match(previewRouteSource, /pointFontSize: parsed\.data\.pointFontSize/);
+  assert.match(previewRouteSource, /Content-Type": "application\/pdf"/);
+  assert.match(previewRouteSource, /Cache-Control": "private, no-store"/);
+  // Editor mengirim payload mentah dan menampilkan PDF di halaman yang sama.
+  assert.match(editorSource, /fetch\("\/api\/master-data\/invoice-settings\/preview"/);
+  assert.match(editorSource, /body: payload/);
+  assert.match(editorSource, /URL\.createObjectURL\(blob\)/);
+  assert.match(editorSource, /<iframe src=\{previewUrl\}/);
+  assert.match(editorSource, /Lihat pratinjau PDF/);
+  assert.match(editorSource, /URL\.revokeObjectURL/);
 });

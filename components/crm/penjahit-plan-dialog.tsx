@@ -205,11 +205,12 @@ export function PenjahitPlanDialog({
                         />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor={`penjahit-sample-size-${item.id}`}>Ukuran sample</FieldLabel>
+                        <FieldLabel htmlFor={`penjahit-sample-size-${item.id}`} required>Ukuran sample</FieldLabel>
                         <Input
                           id={`penjahit-sample-size-${item.id}`}
                           name={`sampleSize-${item.id}`}
                           type="text"
+                          required
                           maxLength={40}
                           value={sampleSizes[item.id] ?? ""}
                           onChange={(event) => setSampleSizes((prev) => ({ ...prev, [item.id]: event.target.value }))}

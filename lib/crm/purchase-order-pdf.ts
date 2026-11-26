@@ -436,8 +436,9 @@ export async function createPurchaseOrderPdf(
    * Size chart sesuai referensi: kolom label gelap (SIZE/PENDEK/PANJANG), kolom ukuran
    * di header gelap, total per baris, lalu baris NOTE dengan kotak total di kanan.
    */
-  function drawModelTable(rows: Array<{ size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>, note: string | null) {
-    const grandTotal = rows.reduce((sum, row) => sum + row.quantity, 0);
+  function drawModelTable(rows: Array<{ size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>, note: string | null, sampleQty = 0) {
+    // Hanya kotak TOTAL baris NOTE yang memuat sampel; total per lengan tetap angka order.
+    const grandTotal = rows.reduce((sum, row) => sum + row.quantity, 0) + sampleQty;
     const quantityFor = (size: string, sleeve: "PENDEK" | "PANJANG") =>
       rows.filter((row) => normalizeSize(row.size) === size && row.sleeveLength === sleeve).reduce((sum, row) => sum + row.quantity, 0);
 
@@ -501,7 +502,7 @@ export async function createPurchaseOrderPdf(
         page.drawText(noteText, { x: margin + 62, y: cellBaseline(rowTop, noteHeight), size: MIN_FONT_SIZE, font: bold, color: rgb(0.12, 0.12, 0.12) });
       }
       page.drawRectangle({ x: totalX, y: rowTop - noteHeight, width: SIZE_CHART_TOTAL_WIDTH, height: noteHeight, borderWidth: 0.8, borderColor: BORDER });
-      page.drawText(String(grandTotal), { x: totalX + (SIZE_CHART_TOTAL_WIDTH - bold.widthOfTextAtSize(String(grandTotal), 13)) / 2, y: cellBaseline(rowTop, noteHeight) - 1, size: 13, font: bold });
+      page.drawText(String(grandTotal), { x: totalX + (SIZE_CHART_TOTAL_WIDTH - bold.widthOfTextAtSize(String(grandTotal), MIN_FONT_SIZE)) / 2, y: cellBaseline(rowTop, noteHeight) - 1, size: MIN_FONT_SIZE, font: bold });
       y = rowTop - noteHeight - 12;
     }
   }
@@ -521,11 +522,17 @@ export async function createPurchaseOrderPdf(
     return designNote ? `${sampleNote} | ${designNote}` : sampleNote;
   }
 
+  /** QTY sampel hanya dihitung bila ukuran sampel terisi dan dokumen ini varian penjahit. */
+  function sampleQtyFor(item: PurchaseOrderPdfItem | undefined) {
+    if (variant !== "penjahit" || !item?.sampleSize?.trim()) return 0;
+    return item.sampleQty ?? 1;
+  }
+
   /**
    * Lembar aksesori hanya memuat jumlah produk. Catatan desain dicetak sebagai baris
    * NOTE tepat di bawah angka jumlah, mengikuti gaya baris NOTE pada size chart.
    */
-  function drawAccessoryTotal(quantity: number, label: string | null, note: string | null) {
+  function drawAccessoryTotal(quantity: number, label: string | null, note: string | null, sampleQty = 0) {
     // Sisakan ruang untuk bar judul, kotak jumlah, dan baris NOTE agar tidak
     // melewati dasar halaman.
     if (y < margin + (note ? 130 : 90)) addPage();
@@ -533,7 +540,7 @@ export async function createPurchaseOrderPdf(
     drawHeadingBar(label ?? "JUMLAH PRODUK");
     y -= 12;
     page.drawRectangle({ x: margin, y: y - TABLE_ROW_HEIGHT, width: CONTENT_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.5, borderColor: GRID });
-    page.drawText(String(quantity), { x: margin + 8, y: y - TABLE_ROW_HEIGHT + 8, size: MIN_FONT_SIZE, font: bold });
+    page.drawText(String(quantity + sampleQty), { x: margin + 8, y: y - TABLE_ROW_HEIGHT + 8, size: MIN_FONT_SIZE, font: bold });
     y -= TABLE_ROW_HEIGHT;
     if (note) {
       // Baris NOTE menempel langsung di bawah kotak jumlah produk.
@@ -554,13 +561,13 @@ export async function createPurchaseOrderPdf(
       // Aksesori tidak punya size chart, tapi desainnya tetap menempel di lembar produknya.
       // Desain penjahit sengaja dikecualikan: dicetak di halaman penuh tersendiri setelah lembar ini.
       drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== "PENJAHIT_DESIGN"), item.name);
-      drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`, noteFor(item));
+      drawAccessoryTotal(quantity, `JUMLAH PRODUK — ${item.name.toUpperCase()}${itemKind ? ` (${itemKind.toUpperCase()})` : ""}`, noteFor(item), sampleQtyFor(item));
       return;
     }
     const rows = data.sizes.filter((row) => row.itemId === item.id);
     // Size chart selalu ikut halaman gambar desain produk ini.
     drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== "PENJAHIT_DESIGN"), item.name, measureModelTable(rows));
-    drawModelTable(rows, noteFor(item));
+    drawModelTable(rows, noteFor(item), sampleQtyFor(item));
     // Lembar ringkasan lama (yang dulu memuat sampel) sudah dihapus, jadi ukuran sampel
     // dicetak ulang di tiap lembar produk penjahit — termasuk PO multi-produk.
     if (variant === "penjahit") drawSampleSizeLine();
@@ -694,7 +701,7 @@ export async function createPurchaseOrderPdf(
     drawSheetHeader(null, false);
     if (isAccessory) {
       drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null);
-      drawAccessoryTotal(totalQuantity, null, noteFor(data.items[0]));
+      drawAccessoryTotal(totalQuantity, null, noteFor(data.items[0]), sampleQtyFor(data.items[0]));
     } else {
       const aggregated = new Map<string, { size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>();
       for (const row of data.sizes) {
@@ -705,7 +712,7 @@ export async function createPurchaseOrderPdf(
       }
       const rows = [...aggregated.values()];
       drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null, measureModelTable(rows));
-      drawModelTable(rows, noteFor(data.items[0]));
+      drawModelTable(rows, noteFor(data.items[0]), sampleQtyFor(data.items[0]));
       // Revisi: ukuran sampel hanya dicetak di PDF penjahit — dokumen customer tidak memuatnya.
       if (variant === "penjahit") drawSampleSizeLine();
     }
