@@ -51,13 +51,11 @@ function isForwardMove(from: OpportunityStage, to: OpportunityStage) {
 }
 
 // Kartu yang di-pin naik ke atas (yang paling lama di-pin lebih dulu), sisanya
-// FIFO berdasarkan kapan kartu masuk tahap sekarang.
+// diurutkan dari peluang yang paling baru dibuat (createdAt menurun).
 function compareStageItems(a: PipelineOpportunity, b: PipelineOpportunity) {
   if (a.pinnedAt && b.pinnedAt) return a.pinnedAt < b.pinnedAt ? -1 : a.pinnedAt > b.pinnedAt ? 1 : 0;
   if (a.pinnedAt !== b.pinnedAt) return a.pinnedAt ? -1 : 1;
-  const aEntered = a.stageEnteredAt ?? a.createdAt;
-  const bEntered = b.stageEnteredAt ?? b.createdAt;
-  return aEntered < bEntered ? -1 : aEntered > bEntered ? 1 : 0;
+  return a.createdAt > b.createdAt ? -1 : a.createdAt < b.createdAt ? 1 : 0;
 }
 
 function stageAgeLabel(opportunity: PipelineOpportunity) {

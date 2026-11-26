@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -240,4 +241,13 @@ test("penanda filter aktif mengikuti isi ketiga kontrol", () => {
   assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, query: "andi" }), true);
   assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, query: "   " }), false);
   assert.equal(hasActivePipelineFilters({ ...EMPTY_PIPELINE_FILTERS, categoryId: NO_PRODUCT_CATEGORY }), true);
+});
+
+test("kartu pipeline: peluang terbaru di atas, kartu di-pin tetap menang", async () => {
+  const board = await readFile(new URL("../components/crm/pipeline-board.tsx", import.meta.url), "utf8");
+  const comparator = board.slice(board.indexOf("function compareStageItems"), board.indexOf("function stageAgeLabel"));
+  assert.match(comparator, /if \(a\.pinnedAt !== b\.pinnedAt\) return a\.pinnedAt \? -1 : 1;/);
+  assert.match(comparator, /return a\.createdAt > b\.createdAt \? -1 : a\.createdAt < b\.createdAt \? 1 : 0;/);
+  // Urutan lama FIFO berdasarkan kapan masuk tahap sudah tidak dipakai.
+  assert.doesNotMatch(comparator, /stageEnteredAt/);
 });

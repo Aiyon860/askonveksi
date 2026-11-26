@@ -368,6 +368,8 @@ const purchaseOrderItemSchema = z.object({
   name: z.string().trim().min(2, "Nama produk wajib diisi.").max(120),
   // Revisi: Pola per produk (sebelumnya global di header PO).
   pola: z.string().trim().min(2, "Pola wajib diisi.").max(120),
+  // Revisi: Bahan per produk (sebelumnya global di header PO).
+  material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
   // Revisi: warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
   // Warna dasar wajib per produk; warna variasi (list) tetap opsional.
   baseColor: z.string().trim().min(1, "Warna dasar wajib diisi.").max(120),

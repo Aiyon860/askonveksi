@@ -36,6 +36,8 @@ export type PurchaseOrderItemValues = {
   name: string;
   // Revisi: Pola per produk (wajib) — sebelumnya satu isian global di header PO.
   pola: string;
+  // Revisi: Bahan per produk — satu PO boleh memuat beberapa bahan berbeda.
+  material: string;
   // Revisi: warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
   // Warna dasar wajib; warna variasi (list) opsional.
   baseColor: string;
@@ -80,7 +82,7 @@ function emptyMatrix(sizeOptions: SizeOption[]) {
 
 function newItem(key: string, sizeOptions: SizeOption[], name = ""): PurchaseOrderItemValues {
   const customSize = defaultPoCustomSize(sizeOptions);
-  return { key, name, pola: "", baseColor: "", variationColor: "", productCategoryId: "", decorationMethods: [], designNotes: "", matrix: emptyMatrix(poSizeColumns(sizeOptions, customSize, {})), customSize, rosterMode: "none", roster: [], accessoryQuantity: "" };
+  return { key, name, pola: "", material: "", baseColor: "", variationColor: "", productCategoryId: "", decorationMethods: [], designNotes: "", matrix: emptyMatrix(poSizeColumns(sizeOptions, customSize, {})), customSize, rosterMode: "none", roster: [], accessoryQuantity: "" };
 }
 
 /**
@@ -146,7 +148,7 @@ function reconcileRoster(prev: RosterRow[], desired: Array<{ sizeId: string; sle
   });
 }
 
-const AUTOSAVE_VERSION = 7;
+const AUTOSAVE_VERSION = 8;
 
 export function PurchaseOrderForm({
   opportunityId,
@@ -190,8 +192,9 @@ export function PurchaseOrderForm({
         const customSize = item.customSize ?? savedPoCustomSize(sizeOptions, item.matrix);
         return {
           ...item,
-          // PO lama: warna masih tersimpan di header. Pindahkan ke produk pertama supaya
-          // form lama tetap terisi (produk lain boleh diberi warna sendiri).
+          // PO lama: bahan & warna masih tersimpan di header. Pindahkan ke produk pertama
+          // supaya form lama tetap terisi (produk lain boleh diberi isi sendiri).
+          material: item.material || (index === 0 ? values.material ?? "" : ""),
           baseColor: item.baseColor || (index === 0 ? values.baseColor ?? "" : ""),
           variationColor: item.variationColor || (index === 0 ? values.variationColor ?? "" : ""),
           customSize,
@@ -205,7 +208,6 @@ export function PurchaseOrderForm({
   const [restoredDraft, setRestoredDraft] = useState(false);
   const [header, setHeader] = useState(() => ({
     instansi: values?.instansi ?? defaultInstansi ?? "",
-    material: values?.material ?? "",
     sampleSize: values?.sampleSize ?? "",
     notes: values?.notes ?? "",
   }));
@@ -493,6 +495,8 @@ export function PurchaseOrderForm({
   return (
     <form ref={formRef} action={formAction} onSubmit={(event) => { failedSubmissionRef.current = new FormData(event.currentTarget); }} className="min-w-0 max-w-full">
       <input type="hidden" name="opportunityId" value={opportunityId} />
+      {/* Header tetap mengikuti bahan produk pertama untuk konsumsi data lama; isiannya ada di tiap produk. */}
+      <input type="hidden" name="material" value={items[0]?.material ?? ""} />
       {sourcePurchaseOrderId ? <input type="hidden" name="sourcePurchaseOrderId" value={sourcePurchaseOrderId} /> : null}
       <FieldGroup>
         {restoredDraft ? <Alert><AlertTitle>Draft tersimpan dipulihkan</AlertTitle><AlertDescription>Isian terakhir Anda dikembalikan otomatis. Lampirkan ulang file Excel bila memakai Impor Excel.</AlertDescription></Alert> : null}
@@ -517,7 +521,6 @@ export function PurchaseOrderForm({
               <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
             )}
             <Field><FieldLabel htmlFor={`po-instansi-${fieldKey}`} required>Perusahaan/Instansi</FieldLabel><Input id={`po-instansi-${fieldKey}`} name="instansi" required minLength={2} maxLength={160} value={header.instansi} onChange={(event) => setHeader((prev) => ({ ...prev, instansi: event.target.value }))} placeholder="Contoh: PT Maju / Dinas Pendidikan" /></Field>
-            <Field><FieldLabel htmlFor={`po-material-${fieldKey}`} required>Bahan</FieldLabel><Input id={`po-material-${fieldKey}`} name="material" required minLength={2} maxLength={120} value={header.material} onChange={(event) => setHeader((prev) => ({ ...prev, material: event.target.value }))} /></Field>
             <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" value={selectedOrderDate} onChange={(event) => { const nextOrderDate = event.currentTarget.value; setSelectedOrderDate(nextOrderDate); setDeadline(""); setDeadlineMode("PRESET"); setDesignDeadline((current) => current && current < nextOrderDate ? "" : current); setHasChangedOrderDate(true); }} /></Field>
             <Field>
               <FieldLabel htmlFor={`po-deadline-${fieldKey}`} required>Deadline produksi</FieldLabel>
@@ -603,6 +606,8 @@ export function PurchaseOrderForm({
                 {/* Revisi: isian global "Nama Produk" dihapus — nama + pola kini sebaris per produk. */}
                 <Field><FieldLabel htmlFor={`${prefix}name-${fieldKey}`} required>Nama produk</FieldLabel><Input id={`${prefix}name-${fieldKey}`} name={`${prefix}name`} required minLength={2} maxLength={120} value={item.name} onChange={(event) => updateItem(item.key, { name: event.target.value })} placeholder="Contoh: Jersey home" /></Field>
                 <Field><FieldLabel htmlFor={`${prefix}pola-${fieldKey}`} required>Pola</FieldLabel><Input id={`${prefix}pola-${fieldKey}`} name={`${prefix}pola`} required minLength={2} maxLength={120} value={item.pola} onChange={(event) => updateItem(item.key, { pola: event.target.value })} placeholder="Contoh: Jaket komunitas" /></Field>
+                {/* Revisi: bahan mengikuti produk — tiap produk boleh beda bahan dalam satu nomor PO. */}
+                <Field><FieldLabel htmlFor={`${prefix}material-${fieldKey}`} required>Bahan</FieldLabel><Input id={`${prefix}material-${fieldKey}`} name={`${prefix}material`} required minLength={2} maxLength={120} value={item.material} onChange={(event) => updateItem(item.key, { material: event.target.value })} placeholder="Contoh: Cotton Combed 30s" aria-label={`Bahan produk ${index + 1}`} /></Field>
                 {/* Revisi: warna mengikuti produk — tiap produk boleh beda warna dalam satu nomor PO. */}
                 <Field>
                   <FieldLabel htmlFor={`${prefix}base-color-${fieldKey}`} required>Warna dasar</FieldLabel>

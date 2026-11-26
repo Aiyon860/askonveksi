@@ -37,7 +37,7 @@ type PurchaseOrderPdfData = {
   snapshotBusinessEmail: string | null;
   snapshotBusinessAddress: string | null;
   opportunity: { customer: { name: string; companyName: string | null } };
-  items: Array<{ id: string; name: string; pola: string | null; baseColor: string | null; variationColor: string | null; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; productCategory: { name: string } | null }>;
+  items: Array<{ id: string; name: string; pola: string | null; material: string | null; baseColor: string | null; variationColor: string | null; garmentType: GarmentType | null; decorationMethods: string[]; designNotes: string | null; penjahitDeadline: Date | null; sampleQty: number; sampleSize: string | null; productCategory: { name: string } | null }>;
   sizes: Array<{ itemId: string; size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>;
   rosterEntries: Array<{ itemId: string; memberId: string; name: string; jabatan?: string | null; size: string; sleeveLength: "PENDEK" | "PANJANG" }>;
 };
@@ -236,9 +236,9 @@ export async function createPurchaseOrderPdf(
     const decoration = item?.decorationMethods.length ? item.decorationMethods : poDecoration;
     // Warna mengikuti produk: satu PO boleh memuat beberapa warna berbeda.
     // PO lama (item tanpa warna) jatuh ke kolom warna header supaya PDF lama tidak berubah.
-    const colorItem = item ?? (data.items.length === 1 ? data.items[0] : null);
-    const baseColor = colorItem?.baseColor ?? data.baseColor ?? data.color;
-    const variationColor = colorItem?.variationColor ?? data.variationColor;
+    const sheetItem = item ?? (data.items.length === 1 ? data.items[0] : null);
+    const baseColor = sheetItem?.baseColor ?? data.baseColor ?? data.color;
+    const variationColor = sheetItem?.variationColor ?? data.variationColor;
     const baseColorBullets = (baseColor ?? "")
       .split(/[,;\r\n]+/)
       .map((entry) => entry.trim())
@@ -256,7 +256,7 @@ export async function createPurchaseOrderPdf(
     const rows: [HeaderCell, HeaderCell][] = [
       [
         { label: "Nama", value: data.opportunity.customer.name },
-        { label: "Bahan", value: data.material },
+        { label: "Bahan", value: sheetItem?.material?.trim() || data.material },
       ],
       [
         { label: "Tgl Order", value: formatDate(data.orderDate) },
@@ -498,7 +498,7 @@ export async function createPurchaseOrderPdf(
       page.drawText("NOTE:", { x: margin + 8, y: cellBaseline(rowTop, noteHeight), size: MIN_FONT_SIZE, font: bold });
       if (note) {
         const noteText = clipPdfText(safe(note), regular, MIN_FONT_SIZE, noteWidth - 70);
-        page.drawText(noteText, { x: margin + 62, y: cellBaseline(rowTop, noteHeight), size: MIN_FONT_SIZE, font: regular, color: rgb(0.28, 0.28, 0.28) });
+        page.drawText(noteText, { x: margin + 62, y: cellBaseline(rowTop, noteHeight), size: MIN_FONT_SIZE, font: bold, color: rgb(0.12, 0.12, 0.12) });
       }
       page.drawRectangle({ x: totalX, y: rowTop - noteHeight, width: SIZE_CHART_TOTAL_WIDTH, height: noteHeight, borderWidth: 0.8, borderColor: BORDER });
       page.drawText(String(grandTotal), { x: totalX + (SIZE_CHART_TOTAL_WIDTH - bold.widthOfTextAtSize(String(grandTotal), 13)) / 2, y: cellBaseline(rowTop, noteHeight) - 1, size: 13, font: bold });
@@ -509,9 +509,16 @@ export async function createPurchaseOrderPdf(
   /**
    * Catatan NOTE untuk satu produk: catatan produk selalu menang. Catatan desain umum
    * hanya dipakai sebagai fallback untuk data lama yang catatan produknya kosong.
+   * Sampel per produk (SAMPLE SIZE ... JML ...) hanya disisipkan pada PDF penjahit;
+   * dokumen customer tidak memuatnya sama sekali.
    */
   function noteFor(item: PurchaseOrderPdfItem | undefined) {
-    return item?.designNotes?.trim() || data.designNotes;
+    const designNote = item?.designNotes?.trim() || data.designNotes;
+    if (variant !== "penjahit") return designNote;
+    const sampleSize = item?.sampleSize?.trim() || "";
+    if (!sampleSize) return designNote;
+    const sampleNote = `SAMPLE SIZE ${sampleSize} JML ${item?.sampleQty ?? 1}`;
+    return designNote ? `${sampleNote} | ${designNote}` : sampleNote;
   }
 
   /**
@@ -534,7 +541,7 @@ export async function createPurchaseOrderPdf(
       page.drawRectangle({ x: margin, y: y - SIZE_CHART_NOTE_HEIGHT, width: CONTENT_WIDTH, height: SIZE_CHART_NOTE_HEIGHT, color: NOTE_BG, borderWidth: 0.8, borderColor: BORDER });
       page.drawText("NOTE:", { x: margin + 8, y: cellBaseline(y, SIZE_CHART_NOTE_HEIGHT), size: MIN_FONT_SIZE, font: bold });
       const noteText = clipPdfText(safe(note), regular, MIN_FONT_SIZE, CONTENT_WIDTH - 70);
-      page.drawText(noteText, { x: margin + 62, y: cellBaseline(y, SIZE_CHART_NOTE_HEIGHT), size: MIN_FONT_SIZE, font: regular, color: rgb(0.28, 0.28, 0.28) });
+      page.drawText(noteText, { x: margin + 62, y: cellBaseline(y, SIZE_CHART_NOTE_HEIGHT), size: MIN_FONT_SIZE, font: bold, color: rgb(0.12, 0.12, 0.12) });
       y -= SIZE_CHART_NOTE_HEIGHT;
     }
     y -= 10;
