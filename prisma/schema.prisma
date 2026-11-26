@@ -1610,6 +1610,14 @@ model SequenceCounter {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 }
 
+// Satu baris per brand: ukuran font bersama blok Keterangan & Syarat & Ketentuan di PDF.
+model InvoiceSetting {
+  id            String   @id @default(cuid()) @db.VarChar(64)
+  brand         Brand    @unique
+  pointFontSize Int      @default(12)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+}
+
 // Master "Pengaturan invoice": dua kolom (keterangan & syarat/ketentuan) berisi poin
 // yang dicetak pada PDF invoice, dengan urutan manual. Teks poin menyimpan fragmen
 // HTML ringan (strong, em, u, br) untuk tebal/miring/garis bawah.

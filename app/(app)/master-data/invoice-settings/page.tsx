@@ -3,19 +3,20 @@ import { InvoiceSettingsEditor } from "@/components/invoice-settings-editor";
 import { PageHeader } from "@/components/page-header";
 import { PageMessage } from "@/components/page-message";
 import { requireOwnerAreaPage } from "@/lib/auth/owner-area";
-import { getInvoiceSettingPoints } from "@/lib/master-data";
+import { getInvoiceSettingFontSize, getInvoiceSettingPoints } from "@/lib/master-data";
 
 export default async function InvoiceSettingsPage() {
   await requireOwnerAreaPage();
-  const points = await getInvoiceSettingPoints();
+  const [points, pointFontSize] = await Promise.all([getInvoiceSettingPoints(), getInvoiceSettingFontSize()]);
   return (
     <>
       <PageHeader
         title="Pengaturan invoice"
-        description="Poin Keterangan dan Syarat & Ketentuan yang dicetak pada PDF invoice. Enter membuat poin baru, Shift+Enter menambah baris dalam poin yang sama, dan teks bisa ditebalkan, dimiringkan, atau digarisbawahi."
+        description="Poin Keterangan dan Syarat & Ketentuan yang dicetak pada PDF invoice. Enter membuat poin baru, Shift+Enter menambah baris dalam poin yang sama, dan teks bisa ditebalkan, dimiringkan, atau digarisbawahi. Tombol Lihat pratinjau PDF menampilkan hasil dengan data contoh tanpa perlu menyimpan dulu."
       />
       <PageMessage />
       <InvoiceSettingsEditor
+        initialFontSize={pointFontSize}
         initialPoints={points.map((point) => ({
           id: point.id,
           section: point.section,

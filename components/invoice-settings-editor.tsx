@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Eye } from "lucide-react";
 
 import { InvoiceSettingRichEditor } from "@/components/invoice-setting-rich-editor";
+import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { invoicePointPlainText } from "@/lib/crm/invoice-setting-html";
 
 export type InvoiceSettingSection = "KETERANGAN" | "SYARAT_KETENTUAN";
@@ -49,20 +52,29 @@ const COLUMNS: ReadonlyArray<{
 
 export function InvoiceSettingsEditor({
   initialPoints,
+  initialFontSize,
   saveAction,
 }: {
   initialPoints: InvoiceSettingPointDraft[];
+  initialFontSize: number;
   saveAction: InvoiceSettingsSaveAction;
 }) {
   const [points, setPoints] = useState<Record<ColumnKey, string[]>>(() => ({
     keterangan: initialPoints.filter((point) => point.section === "KETERANGAN").map((point) => point.text),
     syarat: initialPoints.filter((point) => point.section === "SYARAT_KETENTUAN").map((point) => point.text),
   }));
+  const [fontSize, setFontSize] = useState(String(initialFontSize));
   const [error, setError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const previewUrlRef = useRef<string | null>(null);
+  useEffect(() => () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); }, []);
 
   const payload = JSON.stringify({
     keterangan: points.keterangan.map((text) => ({ id: null, text })),
     syarat: points.syarat.map((text) => ({ id: null, text })),
+    pointFontSize: Number(fontSize),
   });
 
   function updatePoints(key: ColumnKey, next: string[]) {
@@ -71,6 +83,12 @@ export function InvoiceSettingsEditor({
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const size = Number(fontSize);
+    if (!fontSize.trim() || !Number.isFinite(size) || size <= 0 || size > 72) {
+      event.preventDefault();
+      setError("Ukuran font Keterangan & S&K harus berupa angka antara 1 dan 72 pt.");
+      return;
+    }
     const allPoints = [...points.keterangan, ...points.syarat];
     const tooShort = allPoints.find((html) => invoicePointPlainText(html).length < MIN_POINT_TEXT);
     if (tooShort !== undefined) {
@@ -92,6 +110,31 @@ export function InvoiceSettingsEditor({
     setError(null);
   }
 
+  async function showPreview() {
+    setPreviewing(true);
+    setPreviewError(null);
+    try {
+      const response = await fetch("/api/master-data/invoice-settings/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(body?.message ?? "Pratinjau gagal dibuat.");
+      }
+      const blob = await response.blob();
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      previewUrlRef.current = url;
+      setPreviewUrl(url);
+    } catch (cause) {
+      setPreviewError(cause instanceof Error ? cause.message : "Pratinjau gagal dibuat.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   return (
     <form action={saveAction} onSubmit={handleSubmit} className="flex min-w-0 flex-col gap-4">
       <input type="hidden" name="points" value={payload} />
@@ -100,6 +143,19 @@ export function InvoiceSettingsEditor({
           {error}
         </p>
       ) : null}
+
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        Ukuran font Keterangan &amp; S&amp;K (pt)
+        <Input
+          type="number"
+          step="any"
+          className="w-24"
+          value={fontSize}
+          onChange={(event) => { setFontSize(event.currentTarget.value); setError(null); }}
+          aria-label="Ukuran font Keterangan dan Syarat & Ketentuan"
+        />
+        <span className="text-xs text-muted-foreground">Berlaku untuk kedua blok di PDF invoice.</span>
+      </label>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         {COLUMNS.map((column) => (
@@ -128,8 +184,29 @@ export function InvoiceSettingsEditor({
         <p className="text-xs text-muted-foreground">
           <strong className="font-medium text-foreground tabular-nums">{points.keterangan.length + points.syarat.length}</strong> poin akan dicetak pada PDF invoice.
         </p>
-        <SubmitButton pendingLabel="Menyimpan pengaturan...">Simpan pengaturan</SubmitButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={showPreview} disabled={previewing}>
+            <Eye data-icon="inline-start" aria-hidden="true" />
+            {previewing ? "Membuat pratinjau..." : "Lihat pratinjau PDF"}
+          </Button>
+          <SubmitButton pendingLabel="Menyimpan pengaturan...">Simpan pengaturan</SubmitButton>
+        </div>
       </div>
+
+      {previewError ? (
+        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {previewError}
+        </p>
+      ) : null}
+      {previewUrl ? (
+        <div className="flex min-w-0 flex-col gap-2 rounded-lg border bg-card p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium">Pratinjau invoice (data contoh)</p>
+            <p className="text-xs text-muted-foreground">Belum disimpan — ubah ukuran font lalu tekan pratinjau lagi.</p>
+          </div>
+          <iframe src={previewUrl} title="Pratinjau PDF invoice" className="h-[70vh] w-full rounded border bg-white" />
+        </div>
+      ) : null}
     </form>
   );
 }

@@ -119,6 +119,8 @@ const invoiceSettingPointSchema = z.object({
 export const invoiceSettingsSchema = z.object({
   keterangan: z.array(invoiceSettingPointSchema).max(INVOICE_SETTING_POINTS_MAX, `Maksimal ${INVOICE_SETTING_POINTS_MAX} poin keterangan.`),
   syarat: z.array(invoiceSettingPointSchema).max(INVOICE_SETTING_POINTS_MAX, `Maksimal ${INVOICE_SETTING_POINTS_MAX} poin syarat & ketentuan.`),
+  // Ukuran font Keterangan & S&K: bebas (tanpa rentang 8–12), hanya dibatasi agar PDF tidak rusak.
+  pointFontSize: z.number({ message: "Ukuran font harus berupa angka." }).finite().gt(0, "Ukuran font harus lebih dari 0.").lte(72, "Ukuran font maksimal 72 pt.").default(12),
 });
 
 export const productCategoryFieldsSchema = z.object({

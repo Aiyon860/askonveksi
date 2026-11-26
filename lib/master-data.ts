@@ -2,6 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
+import type { Brand } from "@/lib/brand/config";
 import { CRM_VIEW_ROLES, GARMENT_SIZE_ROLES, MASTER_DATA_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { sortProductCategoryRows } from "@/lib/crm/constants";
@@ -148,6 +149,16 @@ export async function getInvoiceSettingPoints() {
     select: { id: true, section: true, text: true, position: true },
     orderBy: [{ section: "asc" }, { position: "asc" }],
   });
+}
+
+/** Ukuran font bersama Keterangan & S&K untuk halaman editor (default 12 pt). */
+export async function getInvoiceSettingFontSize(brand: Brand = "ASKONVEKSI") {
+  await requireActor(MASTER_DATA_ROLES);
+  const setting = await getPrismaClient().invoiceSetting.findUnique({
+    where: { brand },
+    select: { pointFontSize: true },
+  });
+  return setting?.pointFontSize ?? 12;
 }
 
 export async function getBusinessProfile() {

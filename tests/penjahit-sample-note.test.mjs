@@ -53,8 +53,30 @@ test("NOTE sampel hanya dicetak di PDF penjahit", () => {
   assert.match(pdf, /const sampleNote = `SAMPLE SIZE \$\{sampleSize\} JML \$\{item\?\.sampleQty \?\? 1\}`/);
   assert.match(pdf, /return designNote \? `\$\{sampleNote\} \| \$\{designNote\}` : sampleNote/);
   // NOTE dipakai dua jalur (size chart & aksesori) lewat helper yang sama.
-  assert.match(pdf, /drawModelTable\(rows, noteFor\(item\)\)/);
+  assert.match(pdf, /drawModelTable\(rows, noteFor\(item\), sampleQtyFor\(item\)\)/);
   assert.match(pdf, /drawAccessoryTotal\(quantity, `JUMLAH PRODUK/);
+});
+
+test("ukuran sample wajib diisi di dialog dan di action", () => {
+  assert.match(dialog, /htmlFor={`penjahit-sample-size-\$\{item\.id\}`} required/);
+  assert.match(dialog, /name={`sampleSize-\$\{item\.id\}`}/);
+  const input = dialog.slice(dialog.indexOf('name={`sampleSize-${item.id}`}'), dialog.indexOf('placeholder="Mis. M"'));
+  assert.match(input, /required/);
+  assert.match(actions, /if \(!size\) throw new UserFacingError\(`Ukuran sample \$\{item\.name\} wajib diisi\.`\)/);
+});
+
+test("TOTAL baris NOTE = order + sampel hanya di PDF penjahit", () => {
+  assert.match(pdf, /function sampleQtyFor\(item: PurchaseOrderPdfItem \| undefined\)/);
+  assert.match(pdf, /if \(variant !== "penjahit" \|\| !item\?\.sampleSize\?\.trim\(\)\) return 0;/);
+  // Hanya grand total NOTE yang berubah; total PENDEK/PANJANG tetap dari baris order.
+  assert.match(pdf, /const grandTotal = rows\.reduce\(\(sum, row\) => sum \+ row\.quantity, 0\) \+ sampleQty/);
+  assert.match(pdf, /const quantity = quantityFor\(size, sleeve\)/);
+  assert.match(pdf, /String\(quantity \+ sampleQty\)/);
+  assert.match(pdf, /drawModelTable\(rows, noteFor\(data\.items\[0\]\), sampleQtyFor\(data\.items\[0\]\)\)/);
+  assert.match(pdf, /drawAccessoryTotal\(totalQuantity, null, noteFor\(data\.items\[0\]\), sampleQtyFor\(data\.items\[0\]\)\)/);
+  // Angka grad total memakai ukuran font minimum yang sama dengan teks lain.
+  assert.match(pdf, /widthOfTextAtSize\(String\(grandTotal\), MIN_FONT_SIZE\)/);
+  assert.match(pdf, /String\(grandTotal\), \{[^\n]*size: MIN_FONT_SIZE/);
 });
 
 test("teks NOTE dicetak bold hitam (bukan abu-abu)", () => {
