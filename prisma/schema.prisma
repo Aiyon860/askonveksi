@@ -811,6 +811,8 @@ model PurchaseOrderItem {
   name               String                    @db.VarChar(120)
   // Revisi: Pola pindah dari header PO ke tiap produk (wajib di form; kolom global PO.legacy tetap untuk data lama).
   pola               String?                   @db.VarChar(120)
+  // Revisi: Bahan mengikuti produk — satu PO boleh memuat beberapa bahan berbeda.
+  material           String?                   @db.VarChar(120)
   // Revisi: Warna mengikuti produk — satu PO boleh memuat beberapa warna berbeda.
   // Kolom warna di header PO tetap ada sebagai data lama/fallback dokumen lama.
   baseColor          String?                   @db.VarChar(120)
@@ -821,6 +823,9 @@ model PurchaseOrderItem {
   designNotes        String?                   @db.Text
   // Sprint 11 (R3): deadline penjahit per produk.
   penjahitDeadline   DateTime?                 @db.Date
+  // Sampel per produk: hanya dipakai PDF penjahit (baris NOTE); qty selalu minimal 1.
+  sampleQty          Int                       @default(1)
+  sampleSize         String?                   @db.VarChar(40)
   // Legacy: desain penjahit tunggal (maks 1 gambar). Data baru disimpan di PurchaseOrderItemDesign.
   penjahitDesignPath String?                   @db.VarChar(500)
   penjahitDesignName String?                   @db.VarChar(255)

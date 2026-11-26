@@ -22,6 +22,9 @@ export type PenjahitPlanItem = {
   deadline: string | null;
   /** Revisi: satu produk boleh punya beberapa gambar (maks 10); tiap gambar = 1 halaman PDF. */
   designs: PenjahitPlanDesign[];
+  /** Sampel per produk — hanya tampil di NOTE PDF penjahit. */
+  sampleQty: number;
+  sampleSize: string | null;
 };
 
 /** Batas gambar desain penjahit per produk — sinkron dengan `PENJAHIT_DESIGN_MAX_PER_ITEM` di action. */
@@ -57,6 +60,8 @@ export function PenjahitPlanDialog({
   const [open, setOpen] = useState(false);
   const [openTick, setOpenTick] = useState(0);
   const [deadlines, setDeadlines] = useState<Record<string, string>>({});
+  const [sampleQtys, setSampleQtys] = useState<Record<string, string>>({});
+  const [sampleSizes, setSampleSizes] = useState<Record<string, string>>({});
   const [fileNames, setFileNames] = useState<Record<string, string[]>>({});
 
   const [state, formAction, pending] = useActionState(async (prevState: { error: string | null; success: boolean }, formData: FormData) => {
@@ -65,7 +70,7 @@ export function PenjahitPlanDialog({
     const toastId = toast.add({
       type: "loading",
       title: "Menyimpan perubahan penjahit…",
-      description: "Menunggu deadline dan desain selesai disimpan.",
+      description: "Menunggu deadline, sampel, dan desain selesai disimpan.",
       timeout: 0,
     });
     try {
@@ -74,7 +79,7 @@ export function PenjahitPlanDialog({
         toast.update(toastId, {
           type: "success",
           title: "Perubahan penjahit tersimpan",
-          description: "Deadline dan desain penjahit sudah diperbarui.",
+          description: "Deadline, sampel, dan desain penjahit sudah diperbarui.",
           timeout: 6000,
         });
         // Sukses: tutup dialog + muat ulang data server (deadline & thumbnail ikut segar).
@@ -102,6 +107,8 @@ export function PenjahitPlanDialog({
 
   function openDialog() {
     setDeadlines(Object.fromEntries(items.map((item) => [item.id, item.deadline ?? ""])));
+    setSampleQtys(Object.fromEntries(items.map((item) => [item.id, String(item.sampleQty ?? 1)])));
+    setSampleSizes(Object.fromEntries(items.map((item) => [item.id, item.sampleSize ?? ""])));
     setFileNames({});
     setOpenTick((tick) => tick + 1);
     setOpen(true);
@@ -126,7 +133,7 @@ export function PenjahitPlanDialog({
             <DialogHeader>
               <DialogTitle>{purchaseOrderNo ? `Edit PDF Penjahit ${purchaseOrderNo}` : "Edit PDF Penjahit"}</DialogTitle>
               <DialogDescription>
-                Isi deadline penjahit tiap produk (berbeda dari deadline customer; kosong tampil &quot;-&quot;) dan unggah desain penjahit. Satu produk boleh memuat beberapa gambar (maksimal {MAX_DESIGNS_PER_ITEM}), dan setiap gambar dicetak sebagai satu halaman PDF.
+                Isi deadline penjahit tiap produk (berbeda dari deadline customer; kosong tampil &quot;-&quot;), ukuran &amp; QTY sample, dan unggah desain penjahit. Satu produk boleh memuat beberapa gambar (maksimal {MAX_DESIGNS_PER_ITEM}), dan setiap gambar dicetak sebagai satu halaman PDF.
               </DialogDescription>
             </DialogHeader>
             <form key={openTick} action={formAction}>
@@ -185,6 +192,32 @@ export function PenjahitPlanDialog({
                         <p className="text-xs text-muted-foreground">PNG atau JPG, maksimal 5 MB per gambar. Gambar baru ditambahkan, bukan menimpa.</p>
                       </Field>
                     </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor={`penjahit-sample-qty-${item.id}`}>QTY sample</FieldLabel>
+                        <Input
+                          id={`penjahit-sample-qty-${item.id}`}
+                          name={`sampleQty-${item.id}`}
+                          type="number"
+                          min={1}
+                          value={sampleQtys[item.id] ?? "1"}
+                          onChange={(event) => setSampleQtys((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor={`penjahit-sample-size-${item.id}`}>Ukuran sample</FieldLabel>
+                        <Input
+                          id={`penjahit-sample-size-${item.id}`}
+                          name={`sampleSize-${item.id}`}
+                          type="text"
+                          maxLength={40}
+                          value={sampleSizes[item.id] ?? ""}
+                          onChange={(event) => setSampleSizes((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                          placeholder="Mis. M"
+                        />
+                      </Field>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Sampel tampil di NOTE PDF penjahit sebagai &quot;SAMPLE SIZE ... JML ...&quot; dan tidak dicetak di PDF customer.</p>
                     {item.designs.length ? (
                       <div className="mt-3 flex flex-wrap items-start gap-3">
                         {item.designs.map((design, index) => {

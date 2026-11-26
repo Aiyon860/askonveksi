@@ -273,6 +273,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                         position: 0,
                         name: purchaseOrder.productName,
                         pola: purchaseOrder.pola ?? "",
+                        material: purchaseOrder.material ?? "",
                         baseColor: purchaseOrder.baseColor ?? purchaseOrder.color,
                         variationColor: purchaseOrder.variationColor,
                         productCategoryId: purchaseOrder.productCategoryId,
@@ -314,6 +315,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                             key: poItem.id || `saved-${itemIndex}`,
                             name: poItem.name,
                             pola: poItem.pola ?? purchaseOrder.pola ?? "",
+                            material: poItem.material ?? "",
                             baseColor: poItem.baseColor ?? "",
                             variationColor: poItem.variationColor ?? "",
                             productCategoryId: poItem.productCategoryId ?? "",
@@ -343,6 +345,8 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                       id: item.id,
                       name: item.name,
                       deadline: dateInputValue(item.penjahitDeadline) || null,
+                      sampleQty: item.sampleQty,
+                      sampleSize: item.sampleSize ?? null,
                       // Revisi: beberapa gambar per produk; fallback ke kolom tunggal lama.
                       designs: item.designs.length
                         ? item.designs.map((design) => ({ id: design.id, name: design.originalName }))

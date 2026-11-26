@@ -502,6 +502,7 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
     key: "item-1",
     name: "Jersey home",
     pola: "Jersey home",
+    material: "Dry fit",
     baseColor: "Navy",
     decorationMethods: ["NONE"],
     sizes: [
@@ -532,7 +533,8 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   assert.equal(missingDeadline.success, false);
   assert.equal(missingDeadline.error.issues[0]?.message, "Deadline produksi wajib dipilih.");
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, designDeadline: "" }).success, false);
-  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, material: "" }).success, false);
+  // Bahan kini wajib per produk; header tetap diisi otomatis dari produk pertama.
+  assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, material: "" }] }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, instansi: "" }).success, false);
   // Revisi: isian global "Nama Produk" dihapus dari schema/form — key asing diabaikan zod
   // (kolom DB productName diisi server dari nama produk item pertama).
@@ -689,6 +691,7 @@ test("matriks PO mewajibkan bilangan bulat nol atau lebih dan minimal satu pesan
     key: "item-1",
     name: "Kaos home",
     pola: "Kaos komunitas",
+    material: "Cotton combed",
     baseColor: "Hitam",
     decorationMethods: ["SABLON_PLASTISOL"],
     rosterMode: "none",
@@ -723,6 +726,7 @@ test("PO hanya menerima metode dekorasi yang tersedia", () => {
     key: "item-1",
     name: "Jersey tim",
     pola: "Jersey tim",
+    material: "Dry fit",
     baseColor: "Merah",
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
     rosterMode: "none",
@@ -1587,6 +1591,7 @@ test("PO multi-produk: instansi, pola per produk, dekorasi multi, dan item", () 
     key: "item-1",
     name: "Jersey home",
     pola: "Jersey home",
+    material: "Dry fit",
     baseColor: "Navy",
     decorationMethods: ["SABLON_DTF"],
     sizes: [{ sizeId: "garment-size-m", sleeveLength: "PANJANG", quantity: 2 }],
@@ -1735,8 +1740,11 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.doesNotMatch(pdfSource, /drawParagraph\("Catatan"/);
   assert.doesNotMatch(pdfSource, /data\.notes/);
   // Catatan NOTE memakai catatan produk; catatan desain umum lama hanya fallback.
+  // Sampel per produk (SAMPLE SIZE ... JML ...) hanya masuk ke varian penjahit.
   assert.match(pdfSource, /function noteFor\(item: PurchaseOrderPdfItem \| undefined\)/);
-  assert.match(pdfSource, /return item\?\.designNotes\?\.trim\(\) \|\| data\.designNotes;/);
+  assert.match(pdfSource, /const designNote = item\?\.designNotes\?\.trim\(\) \|\| data\.designNotes;/);
+  assert.match(pdfSource, /if \(variant !== "penjahit"\) return designNote;/);
+  assert.match(pdfSource, /SAMPLE SIZE \$\{sampleSize\} JML \$\{item\?\.sampleQty \?\? 1\}/);
   assert.match(pdfSource, /function drawAccessoryTotal\(quantity: number, label: string \| null, note: string \| null\)/);
   assert.match(pdfSource, /drawAccessoryTotal\(quantity, .*noteFor\(item\)\)/);
   assert.match(pdfSource, /drawAccessoryTotal\(totalQuantity, null, noteFor\(data\.items\[0\]\)\)/);
@@ -1872,13 +1880,13 @@ test("Revisi PO: warna per produk, kategori Lainnya, multi desain penjahit, PDF 
   assert.match(formSource, /name=\{`\$\{prefix\}variationColor`\}/);
   assert.doesNotMatch(formSource, /name="baseColor"/);
   assert.doesNotMatch(formSource, /name="variationColor"/);
-  assert.match(formSource, /const AUTOSAVE_VERSION = 7;/);
+  assert.match(formSource, /const AUTOSAVE_VERSION = 8;/);
   assert.match(formSource, /Tambah produk\s*</);
   assert.doesNotMatch(formSource, /Tambah produk \(warna sama\)/);
   assert.match(formSource, /Setiap produk punya warna sendiri/);
   // PDF mencetak warna produk masing-masing, fallback kolom header untuk PO lama.
-  assert.match(pdfSource, /const colorItem = item \?\? \(data\.items\.length === 1 \? data\.items\[0\] : null\);/);
-  assert.match(pdfSource, /const baseColor = colorItem\?\.baseColor \?\? data\.baseColor \?\? data\.color;/);
+  assert.match(pdfSource, /const sheetItem = item \?\? \(data\.items\.length === 1 \? data\.items\[0\] : null\);/);
+  assert.match(pdfSource, /const baseColor = sheetItem\?\.baseColor \?\? data\.baseColor \?\? data\.color;/);
 });
 
 test("pratinjau roster mengisi matriks otomatis", async () => {

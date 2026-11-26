@@ -278,7 +278,7 @@ async function purchaseOrderSnapshot(tx: Tx, purchaseOrderId: string): Promise<D
       designSentAt: true,
       customerConfirmedAt: true,
       designTask: { select: { deadline: true } },
-      items: { orderBy: { position: "asc" }, select: { name: true, baseColor: true, variationColor: true, decorationMethods: true } },
+      items: { orderBy: { position: "asc" }, select: { name: true, material: true, baseColor: true, variationColor: true, decorationMethods: true } },
       sizes: { select: { size: true, quantity: true } },
     },
   });
@@ -309,7 +309,7 @@ async function purchaseOrderSnapshot(tx: Tx, purchaseOrderId: string): Promise<D
           .map((item, index) => {
             // Warna ikut produk: perubahan warna per produk muncul di riwayat revisi.
             const color = item.variationColor ? `${item.baseColor ?? "-"} / ${item.variationColor}` : item.baseColor;
-            const parts = [color, item.decorationMethods.length ? item.decorationMethods.join(", ") : null].filter(Boolean);
+            const parts = [item.material, color, item.decorationMethods.length ? item.decorationMethods.join(", ") : null].filter(Boolean);
             return `${index + 1}. ${item.name}${parts.length ? ` (${parts.join(" · ")})` : ""}`;
           })
           .join("; ")
@@ -531,6 +531,7 @@ function purchaseOrderInput(formData: FormData) {
       key,
       name: formValue(formData, `${prefix}name`),
       pola: formValue(formData, `${prefix}pola`),
+      material: formValue(formData, `${prefix}material`),
       baseColor: formValue(formData, `${prefix}baseColor`),
       variationColor: formValue(formData, `${prefix}variationColor`),
       productCategoryId: formValue(formData, `${prefix}productCategoryId`) || undefined,
@@ -606,6 +607,8 @@ type ParsedPoItem = {
   key: string;
   name: string;
   pola: string;
+  // Revisi: bahan per produk.
+  material: string;
   // Revisi: warna per produk (wajib dasar, variasi opsional).
   baseColor: string;
   variationColor?: string | null;
@@ -2032,6 +2035,7 @@ export async function createPurchaseOrderDraftAction(_prevState: FormActionState
                 position,
                 name: item.name,
                 pola: item.pola,
+                material: item.material,
                 baseColor: item.baseColor,
                 variationColor: item.variationColor ?? null,
                 productCategoryId: itemCategories[position]?.productCategoryId ?? null,
@@ -2113,6 +2117,8 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
           select: {
             position: true,
             penjahitDeadline: true,
+            sampleQty: true,
+            sampleSize: true,
             designs: { orderBy: { position: "asc" }, select: { position: true, path: true, originalName: true, contentType: true, sizeBytes: true } },
           },
         });
@@ -2126,9 +2132,12 @@ export async function updatePurchaseOrderDraftAction(_prevState: FormActionState
             position,
             name: item.name,
             pola: item.pola,
+            material: item.material,
             baseColor: item.baseColor,
             variationColor: item.variationColor ?? null,
             penjahitDeadline: previousItems[position]?.penjahitDeadline ?? null,
+            sampleQty: previousItems[position]?.sampleQty ?? 1,
+            sampleSize: previousItems[position]?.sampleSize ?? null,
             productCategoryId: itemCategories[position]?.productCategoryId ?? null,
             garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
             decorationMethods: [...new Set(item.decorationMethods)],
@@ -2327,7 +2336,8 @@ export async function recordPurchaseOrderDepositAction(_prevState: CrmActionStat
  * `PENJAHIT_DESIGN_MAX_PER_ITEM`); tiap gambar dicetak sebagai satu halaman PDF.
  * Aksi terpisah dari form PO supaya data customer tidak ikut tersentuh dan alur
  * revisi PO tidak terpicu.
- * Kunci form per item: `deadline-<itemId>` ("" = kosong), `designs-<itemId>` (0..n file).
+ * Kunci form per item: `deadline-<itemId>` ("" = kosong), `designs-<itemId>` (0..n file),
+ * `sampleQty-<itemId>` (minimal 1, default 1), `sampleSize-<itemId>` (maks 40 karakter).
  * Hapus per gambar: `removeDesign-<designId>` = "1".
  */
 const PENJAHIT_DESIGN_MAX_PER_ITEM = 10;
@@ -2381,6 +2391,8 @@ export async function savePenjahitPlanAction(_prevState: CrmActionState, formDat
     if (purchaseOrder.version !== parsed.data.version) throw new UserFacingError("PO sudah berubah di tab lain. Muat ulang halaman lalu coba lagi.");
 
     const deadlines = new Map<string, Date | null>();
+    const sampleQtys = new Map<string, number>();
+    const sampleSizes = new Map<string, string | null>();
     const uploads: PenjahitDesignUpload[] = [];
     // Desain yang dihapus per id (bukan per item) karena satu item boleh punya banyak gambar.
     const removals: Array<{ designId: string; itemId: string; oldPath: string }> = [];
@@ -2391,6 +2403,15 @@ export async function savePenjahitPlanAction(_prevState: CrmActionState, formDat
       const rawDeadline = formData.get(`deadline-${item.id}`);
       // Kunci selalu ada di dialog; "" berarti mengosongkan deadline, kehilangan kunci = tidak diubah.
       if (typeof rawDeadline === "string") deadlines.set(item.id, optionalDate(rawDeadline.trim() || undefined));
+
+      const rawSampleQty = formData.get(`sampleQty-${item.id}`);
+      if (typeof rawSampleQty === "string") {
+        const qty = Number(rawSampleQty);
+        if (!Number.isInteger(qty) || qty < 1) throw new UserFacingError(`QTY sample ${item.name} harus berupa bilangan bulat minimal 1.`);
+        sampleQtys.set(item.id, Math.min(qty, 9999));
+      }
+      const rawSampleSize = formData.get(`sampleSize-${item.id}`);
+      if (typeof rawSampleSize === "string") sampleSizes.set(item.id, rawSampleSize.trim().slice(0, 40) || null);
 
       const files = formData.getAll(`designs-${item.id}`).filter((entry): entry is File => entry instanceof File && entry.size > 0);
       const existing = designsByItem.get(item.id) ?? [];
@@ -2414,7 +2435,7 @@ export async function savePenjahitPlanAction(_prevState: CrmActionState, formDat
       }
       for (const file of files) uploads.push(await preparePenjahitDesign(file, item.id));
     }
-    if (!deadlines.size && !uploads.length && !removals.length && !legacyRemovals.length) throw new UserFacingError("Tidak ada perubahan untuk disimpan.");
+    if (!deadlines.size && !sampleQtys.size && !sampleSizes.size && !uploads.length && !removals.length && !legacyRemovals.length) throw new UserFacingError("Tidak ada perubahan untuk disimpan.");
 
     const storage = erpStorage(PO_DESIGNS_BUCKET);
     try {
@@ -2451,6 +2472,8 @@ export async function savePenjahitPlanAction(_prevState: CrmActionState, formDat
         }
         for (const item of purchaseOrder.items) {
           const hasDeadline = deadlines.has(item.id);
+          const hasSampleQty = sampleQtys.has(item.id);
+          const hasSampleSize = sampleSizes.has(item.id);
           const uploadedHere = uploads.filter((upload) => upload.itemId === item.id);
           const removedLegacy = legacyRemovals.some((removal) => removal.itemId === item.id)
             || removals.some((removal) => removal.itemId === item.id && removal.oldPath === item.penjahitDesignPath);
@@ -2465,18 +2488,22 @@ export async function savePenjahitPlanAction(_prevState: CrmActionState, formDat
             : removedLegacy
               ? { penjahitDesignPath: null, penjahitDesignName: null, penjahitDesignType: null }
               : {};
-          if (!hasDeadline && !uploadedHere.length && !removedLegacy) continue;
+          if (!hasDeadline && !hasSampleQty && !hasSampleSize && !uploadedHere.length && !removedLegacy) continue;
           await tx.purchaseOrderItem.update({
             where: { id: item.id },
             data: {
               ...(hasDeadline ? { penjahitDeadline: deadlines.get(item.id) ?? null } : {}),
+              ...(hasSampleQty ? { sampleQty: sampleQtys.get(item.id)! } : {}),
+              ...(hasSampleSize ? { sampleSize: sampleSizes.get(item.id) ?? null } : {}),
               ...designFields,
             },
           });
         }
-        await audit(tx, actor, "PurchaseOrder", purchaseOrder.id, "PENJAHIT_PLAN_UPDATED", ["penjahitDeadline", "penjahitDesign"], {
+        await audit(tx, actor, "PurchaseOrder", purchaseOrder.id, "PENJAHIT_PLAN_UPDATED", ["penjahitDeadline", "sampleQty", "sampleSize", "penjahitDesign"], {
           purchaseOrderNo: purchaseOrder.purchaseOrderNo,
           deadlineCount: deadlines.size,
+          sampleQtyCount: sampleQtys.size,
+          sampleSizeCount: sampleSizes.size,
           uploadCount: uploads.length,
           removalCount: removals.length + legacyRemovals.length,
         });
@@ -2604,6 +2631,8 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
               select: {
                 id: true,
                 penjahitDeadline: true,
+                sampleQty: true,
+                sampleSize: true,
                 designs: { orderBy: { position: "asc" }, select: { position: true, path: true, originalName: true, contentType: true, sizeBytes: true } },
               },
             },
@@ -2729,9 +2758,12 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
                 position,
                 name: item.name,
                 pola: item.pola,
+                material: item.material,
                 baseColor: item.baseColor,
                 variationColor: item.variationColor ?? null,
                 penjahitDeadline: source.items[position]?.penjahitDeadline ?? null,
+                sampleQty: source.items[position]?.sampleQty ?? 1,
+                sampleSize: source.items[position]?.sampleSize ?? null,
                 productCategoryId: itemCategories[position]?.productCategoryId ?? null,
                 garmentType: itemCategories[position]?.garmentType ?? category.garmentType,
                 decorationMethods: [...new Set(item.decorationMethods)],
