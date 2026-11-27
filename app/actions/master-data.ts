@@ -904,11 +904,18 @@ export async function saveInvoiceSettingsAction(formData: FormData) {
 
       await tx.invoiceSetting.upsert({
         where: { brand: actor.brand },
-        create: { brand: actor.brand, pointFontSize: parsed.data.pointFontSize },
-        update: { pointFontSize: parsed.data.pointFontSize },
+        create: {
+          brand: actor.brand,
+          signatureWidth: parsed.data.signatureWidth,
+          signatureHeight: parsed.data.signatureHeight,
+        },
+        update: {
+          signatureWidth: parsed.data.signatureWidth,
+          signatureHeight: parsed.data.signatureHeight,
+        },
       });
       await tx.auditEvent.create({
-        data: { actorId: actor.id, entityType: "InvoiceSetting", entityId: actor.brand, action: "INVOICE_SETTING_FONT_SIZE_UPDATED", changedFields: ["pointFontSize"] },
+        data: { actorId: actor.id, entityType: "InvoiceSetting", entityId: actor.brand, action: "INVOICE_SETTING_UPDATED", changedFields: ["signatureWidth", "signatureHeight"] },
       });
     }, { ...MASTER_DATA_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 

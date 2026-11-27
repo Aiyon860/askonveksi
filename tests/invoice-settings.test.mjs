@@ -12,6 +12,8 @@ const [
   migrationSource,
   richMigrationSource,
   fontMigrationSource,
+  signatureMigrationSource,
+  dropFontSizeMigrationSource,
   actionSource,
   previewRouteSource,
   masterDataSource,
@@ -28,6 +30,8 @@ const [
   readFile(new URL("../prisma/migrations/20261015000000_invoice_setting_points/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20261022030000_invoice_setting_point_rich_text/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20261126030000_invoice_setting_font_size/migration.sql", import.meta.url), "utf8"),
+  readFile(new URL("../prisma/migrations/20261126040000_invoice_setting_signature_size/migration.sql", import.meta.url), "utf8"),
+  readFile(new URL("../prisma/migrations/20261126050000_invoice_setting_drop_point_font_size/migration.sql", import.meta.url), "utf8"),
   readFile(new URL("../app/actions/master-data.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/api/master-data/invoice-settings/preview/route.ts", import.meta.url), "utf8"),
   readFile(new URL("../lib/master-data.ts", import.meta.url), "utf8"),
@@ -65,7 +69,7 @@ test("poin pengaturan invoice menyimpan fragmen HTML, bukan flag bold", () => {
   assert.match(richMigrationSource, /ALTER TABLE "InvoiceSettingPoint" DROP COLUMN "isBold"/);
 });
 
-test("halaman pengaturan invoice memakai editor WYSIWYG dengan tepat tiga tombol format", () => {
+test("halaman pengaturan invoice memakai editor WYSIWYG dengan format dan ukuran teks per bagian", () => {
   assert.match(masterDataSource, /export async function getInvoiceSettingPoints/);
   assert.match(masterDataSource, /requireActor\(MASTER_DATA_ROLES\)/);
   assert.doesNotMatch(masterDataSource, /isBold/);
@@ -91,6 +95,14 @@ test("halaman pengaturan invoice memakai editor WYSIWYG dengan tepat tiga tombol
   assert.match(richEditorSource, /orderedList: false/);
   assert.match(richEditorSource, /strike: false/);
   assert.match(richEditorSource, /Placeholder\.configure/);
+  // Ukuran teks per fragmen (seperti blok di Word): dropdown preset + input bebas.
+  assert.match(richEditorSource, /const FontSize = Mark\.create/);
+  assert.match(richEditorSource, /\["fs", mergeAttributes/);
+  assert.match(richEditorSource, /setMark\("fontSize"/);
+  assert.match(richEditorSource, /unsetMark\("fontSize"\)/);
+  assert.match(richEditorSource, /Ukuran asli/);
+  assert.match(richEditorSource, /Ukuran teks bebas/);
+  assert.match(richEditorSource, /INVOICE_POINT_FONT_MAX/);
 });
 
 test("action menyimpan dua kolom sekaligus dan menghapus poin yang dibuang user", () => {
@@ -116,6 +128,12 @@ test("sanitizer poin hanya mengizinkan strong/em/u/br dan membuang tag lain", ()
   assert.equal(sanitizeInvoicePointHtml('<img src="x" onerror="y">Halo'), "Halo");
   assert.match(sanitizeInvoicePointHtml("<p>Satu</p><p>Dua</p>"), /^(?!.*<p>)/, "paragraf luar tidak disimpan");
   assert.equal(sanitizeInvoicePointHtml("baris satu<br>baris dua"), "baris satu<br>baris dua");
+  // Ukuran per fragmen hanya menyimpan angka pt yang sah; gaya tampilan editor dibuang.
+  assert.equal(sanitizeInvoicePointHtml('<fs pt="18">Besar</fs>'), '<fs pt="18">Besar</fs>');
+  assert.equal(sanitizeInvoicePointHtml('<fs style="font-size:18pt" pt="18">Besar</fs>'), '<fs pt="18">Besar</fs>');
+  assert.equal(sanitizeInvoicePointHtml('<fs pt="0">Nol</fs>'), "Nol");
+  assert.equal(sanitizeInvoicePointHtml('<fs pt="500">Besar</fs>'), "Besar");
+  assert.equal(sanitizeInvoicePointHtml('<fs pt="abc">Besar</fs>'), "Besar");
 });
 
 test("parser run membaca campuran tebal/miring/garis bawah untuk PDF", () => {
@@ -130,7 +148,12 @@ test("parser run membaca campuran tebal/miring/garis bawah untuk PDF", () => {
     ],
   );
   const nested = parseInvoicePointRuns("<strong><em><u>Semua</u></em></strong>");
-  assert.deepEqual(nested, [{ text: "Semua", bold: true, italic: true, underline: true }]);
+  assert.deepEqual(nested, [{ text: "Semua", bold: true, italic: true, underline: true, size: null }]);
+  // Ukuran per fragmen bisa digabung dengan gaya lain dan kembali ke ukuran dasar.
+  const sized = parseInvoicePointRuns('A <fs pt="24"><strong>B</strong></fs> C');
+  assert.deepEqual(sized.map((run) => [run.text, run.bold, run.size]), [["A ", false, null], ["B", true, 24], [" C", false, null]]);
+  assert.equal(parseInvoicePointRuns('<fs pt="18">X</fs>')[0].size, 18);
+  assert.equal(parseInvoicePointRuns('<fs pt="0">X</fs>')[0].size, null, "ukuran di luar batas diabaikan");
   assert.equal(parseInvoicePointRuns("A<br>B")[0].text, "A\nB");
   assert.equal(parseInvoicePointRuns("Harga &lt; 1jt &amp; aman")[0].text, "Harga < 1jt & aman");
   assert.equal(invoicePointPlainText("<strong>Halo</strong> <em>dunia</em><br>baris"), "Halo dunia baris");
@@ -173,6 +196,11 @@ test("PDF invoice mencetak poin bergaya tebal/miring/garis bawah sebagai ganti b
   assert.match(invoicePdfSource, /layoutPointLines/);
   // Garis bawah digambar manual karena font standar PDF tidak punya dekorasi.
   assert.match(invoicePdfSource, /if \(token\.underline\) \{[\s\S]*page\.drawLine\(\{ start: \{ x: cursorX/);
+  // Ukuran diambil per token, tinggi baris mengikuti token terbesar.
+  assert.match(invoicePdfSource, /type PointToken = \{ text: string; font: PDFFont; underline: boolean; size: number \}/);
+  assert.match(invoicePdfSource, /const size = run\.size \?\? baseSize;/);
+  assert.match(invoicePdfSource, /size: token\.size, font: token\.font/);
+  assert.match(invoicePdfSource, /function lineMaxSize/);
   assert.doesNotMatch(invoicePdfSource, /point\.isBold/);
   assert.doesNotMatch(invoicePdfSource, /invoice\.notes/, "blok Catatan lama tidak dicetak lagi");
   assert.match(invoiceRouteSource, /settingPointQuery/);
@@ -182,40 +210,57 @@ test("PDF invoice mencetak poin bergaya tebal/miring/garis bawah sebagai ganti b
   assert.doesNotMatch(invoiceRouteSource, /isBold/);
 });
 
-test("Keterangan dan S&K memakai ukuran font dari master data dan bisa lanjut halaman", () => {
+test("Keterangan dan S&K memakai ukuran per fragmen dan bisa lanjut halaman", () => {
   const drawPointList = invoicePdfSource.slice(invoicePdfSource.indexOf("function drawPointList"), invoicePdfSource.indexOf("const issueDate"));
-  assert.doesNotMatch(drawPointList, /ensure\(|addPage\(/);
-  assert.match(invoicePdfSource, /pointFontSize\?: number;/);
-  assert.match(invoicePdfSource, /const pointSize = assets\.pointFontSize \?\? 12;/);
+  // Blok yang tidak muat dilanjutkan per poin ke halaman baru, bukan meluber ke footer.
+  assert.match(drawPointList, /if \(baseline - pointDrop\(sizes\) < bottom\) \{[\s\S]*addPage\(\)/);
+  assert.doesNotMatch(drawPointList, /ensure\(/);
+  // Ukuran global dari master data sudah tidak ada; ukuran datang dari tiap fragmen.
+  assert.doesNotMatch(invoicePdfSource, /pointFontSize/);
   assert.doesNotMatch(invoicePdfSource, /pointSizes\s*=/);
-  assert.match(invoicePdfSource, /pointListDrop\(keteranganPoints/);
+  assert.match(invoicePdfSource, /pointListDrop\(keteranganPoints, listWidth\)/);
   assert.match(invoicePdfSource, /if \(syaratPoints\.length\) \{[\s\S]*addPage\(\)[\s\S]*drawPointList\("Syarat & Ketentuan", syaratPoints/);
   // S&K tidak lagi dikunci oleh posisi TTD di kolom kanan.
   assert.doesNotMatch(invoicePdfSource, /signatureBottom/);
 });
 
-test("ukuran font S&K tersedia dari master sampai PDF invoice", () => {
-  // Field bebas: tanpa rentang 8–12, hanya pengaman 1–72 pt.
-  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 13 }).success, true);
-  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 7 }).success, true);
-  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 0 }).success, false);
-  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 100 }).success, false);
+test("ukuran tanda tangan tersedia dari master sampai PDF invoice", () => {
+  // Ukuran tanda tangan bebas, hanya dibatasi agar PDF tidak rusak.
+  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], signatureWidth: 300, signatureHeight: 80 }).success, true);
+  assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], signatureWidth: 0 }).success, false);
   assert.equal(invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [] }).success, true);
+  // Field ukuran font global sudah dihapus; payload lama yang masih mengirimnya diabaikan.
+  const legacy = invoiceSettingsSchema.safeParse({ keterangan: [], syarat: [], pointFontSize: 13 });
+  assert.equal(legacy.success, true);
+  assert.equal("pointFontSize" in (legacy.data ?? {}), false);
   const model = schemaSource.slice(schemaSource.indexOf("model InvoiceSetting {"));
   assert.match(model, /brand\s+Brand\s+@unique/);
-  assert.match(model, /pointFontSize\s+Int\s+@default\(12\)/);
+  assert.doesNotMatch(model, /pointFontSize/);
+  assert.match(model, /signatureWidth\s+Int\s+@default\(220\)/);
+  assert.match(model, /signatureHeight\s+Int\s+@default\(64\)/);
   assert.match(fontMigrationSource, /CREATE TABLE IF NOT EXISTS "InvoiceSetting"/);
   assert.match(fontMigrationSource, /'ASKONVEKSI', 12, NOW\(\)\), \('invoice-setting-saga', 'SAGA', 12, NOW\(\)/);
-  assert.match(masterDataSource, /getInvoiceSettingFontSize/);
-  assert.match(pageSource, /initialFontSize=\{pointFontSize\}/);
-  assert.match(editorSource, /initialFontSize: number/);
-  assert.match(editorSource, /pointFontSize: Number\(fontSize\)/);
-  assert.match(editorSource, /type="number"/);
-  assert.doesNotMatch(editorSource, /min=\{8\}|max=\{12\}/);
+  assert.match(signatureMigrationSource, /ADD COLUMN IF NOT EXISTS "signatureWidth" INTEGER NOT NULL DEFAULT 220/);
+  assert.match(signatureMigrationSource, /ADD COLUMN IF NOT EXISTS "signatureHeight" INTEGER NOT NULL DEFAULT 64/);
+  assert.match(dropFontSizeMigrationSource, /DROP COLUMN IF EXISTS "pointFontSize"/);
+  assert.match(masterDataSource, /export async function getInvoiceSetting\(/);
+  assert.match(masterDataSource, /signatureWidth: setting\?\.signatureWidth \?\? 220/);
+  assert.doesNotMatch(masterDataSource, /pointFontSize/);
+  assert.doesNotMatch(pageSource, /initialFontSize/);
+  assert.match(pageSource, /initialSignatureWidth=\{setting\.signatureWidth\}/);
+  assert.match(pageSource, /initialSignatureHeight=\{setting\.signatureHeight\}/);
+  assert.doesNotMatch(editorSource, /pointFontSize/);
+  assert.match(editorSource, /signatureWidth: Number\(signatureWidth\)/);
+  assert.match(editorSource, /signatureHeight: Number\(signatureHeight\)/);
   assert.match(actionSource, /tx\.invoiceSetting\.upsert/);
-  assert.match(actionSource, /pointFontSize: parsed\.data\.pointFontSize/);
+  assert.doesNotMatch(actionSource, /pointFontSize/);
+  assert.match(actionSource, /signatureWidth: parsed\.data\.signatureWidth/);
+  assert.match(actionSource, /INVOICE_SETTING_UPDATED/);
   assert.match(invoiceRouteSource, /invoiceSetting\.findUnique\(\{ where: \{ brand: invoice\.brand \}/);
-  assert.match(invoiceRouteSource, /pointFontSize: invoiceSetting\?\.pointFontSize \?\? 12/);
+  assert.match(invoiceRouteSource, /signatureWidth: true, signatureHeight: true/);
+  assert.match(invoiceRouteSource, /signatureMaxWidth: invoiceSetting\?\.signatureWidth \?\? 220/);
+  assert.match(invoicePdfSource, /signatureMaxWidth\?: number/);
+  assert.match(invoicePdfSource, /scaleToFit\(assets\.signatureMaxWidth \?\? 220, assets\.signatureMaxHeight \?\? 64\)/);
 });
 
 test("tiga dokumen cetak memakai ukuran font minimum 16 px (12 pt)", () => {
@@ -236,7 +281,12 @@ test("pratinjau invoice memakai isian form yang belum disimpan", () => {
   assert.match(previewRouteSource, /invoiceSettingsSchema\.safeParse\(payload\)/);
   assert.match(previewRouteSource, /invoiceNo: "INV-CONTOH-001"/);
   assert.match(previewRouteSource, /createInvoicePdf\(dummyInvoice,/);
-  assert.match(previewRouteSource, /pointFontSize: parsed\.data\.pointFontSize/);
+  assert.doesNotMatch(previewRouteSource, /pointFontSize/);
+  // Tanda tangan contoh dibuat supaya perubahan ukuran terlihat di pratinjau.
+  assert.match(previewRouteSource, /import sharp from "sharp"/);
+  assert.match(previewRouteSource, /signatureSvg/);
+  assert.match(previewRouteSource, /signatureMaxWidth: parsed\.data\.signatureWidth/);
+  assert.match(previewRouteSource, /signatureMaxHeight: parsed\.data\.signatureHeight/);
   assert.match(previewRouteSource, /Content-Type": "application\/pdf"/);
   assert.match(previewRouteSource, /Cache-Control": "private, no-store"/);
   // Editor mengirim payload mentah dan menampilkan PDF di halaman yang sama.

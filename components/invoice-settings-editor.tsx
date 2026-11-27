@@ -52,18 +52,21 @@ const COLUMNS: ReadonlyArray<{
 
 export function InvoiceSettingsEditor({
   initialPoints,
-  initialFontSize,
+  initialSignatureWidth,
+  initialSignatureHeight,
   saveAction,
 }: {
   initialPoints: InvoiceSettingPointDraft[];
-  initialFontSize: number;
+  initialSignatureWidth: number;
+  initialSignatureHeight: number;
   saveAction: InvoiceSettingsSaveAction;
 }) {
   const [points, setPoints] = useState<Record<ColumnKey, string[]>>(() => ({
     keterangan: initialPoints.filter((point) => point.section === "KETERANGAN").map((point) => point.text),
     syarat: initialPoints.filter((point) => point.section === "SYARAT_KETENTUAN").map((point) => point.text),
   }));
-  const [fontSize, setFontSize] = useState(String(initialFontSize));
+  const [signatureWidth, setSignatureWidth] = useState(String(initialSignatureWidth));
+  const [signatureHeight, setSignatureHeight] = useState(String(initialSignatureHeight));
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -74,7 +77,8 @@ export function InvoiceSettingsEditor({
   const payload = JSON.stringify({
     keterangan: points.keterangan.map((text) => ({ id: null, text })),
     syarat: points.syarat.map((text) => ({ id: null, text })),
-    pointFontSize: Number(fontSize),
+    signatureWidth: Number(signatureWidth),
+    signatureHeight: Number(signatureHeight),
   });
 
   function updatePoints(key: ColumnKey, next: string[]) {
@@ -83,10 +87,11 @@ export function InvoiceSettingsEditor({
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    const size = Number(fontSize);
-    if (!fontSize.trim() || !Number.isFinite(size) || size <= 0 || size > 72) {
+    const width = Number(signatureWidth);
+    const height = Number(signatureHeight);
+    if (!signatureWidth.trim() || !signatureHeight.trim() || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 500 || height > 500) {
       event.preventDefault();
-      setError("Ukuran font Keterangan & S&K harus berupa angka antara 1 dan 72 pt.");
+      setError("Ukuran tanda tangan harus berupa angka antara 1 dan 500 pt.");
       return;
     }
     const allPoints = [...points.keterangan, ...points.syarat];
@@ -145,16 +150,25 @@ export function InvoiceSettingsEditor({
       ) : null}
 
       <label className="flex flex-wrap items-center gap-2 text-sm">
-        Ukuran font Keterangan &amp; S&amp;K (pt)
+        Ukuran maksimal tanda tangan (pt)
         <Input
           type="number"
           step="any"
           className="w-24"
-          value={fontSize}
-          onChange={(event) => { setFontSize(event.currentTarget.value); setError(null); }}
-          aria-label="Ukuran font Keterangan dan Syarat & Ketentuan"
+          value={signatureWidth}
+          onChange={(event) => { setSignatureWidth(event.currentTarget.value); setError(null); }}
+          aria-label="Lebar maksimal tanda tangan"
         />
-        <span className="text-xs text-muted-foreground">Berlaku untuk kedua blok di PDF invoice.</span>
+        <span className="text-muted-foreground">×</span>
+        <Input
+          type="number"
+          step="any"
+          className="w-24"
+          value={signatureHeight}
+          onChange={(event) => { setSignatureHeight(event.currentTarget.value); setError(null); }}
+          aria-label="Tinggi maksimal tanda tangan"
+        />
+        <span className="text-xs text-muted-foreground">Lebar × tinggi; hasil pratinjau menyesuaikan.</span>
       </label>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-2">
@@ -174,7 +188,7 @@ export function InvoiceSettingsEditor({
                 initialPoints={points[column.key]}
                 onChange={(next) => updatePoints(column.key, next)}
               />
-              <p className="text-xs text-muted-foreground">Enter membuat poin baru. Shift+Enter menambah baris dalam poin yang sama.</p>
+              <p className="text-xs text-muted-foreground">Enter membuat poin baru. Shift+Enter menambah baris dalam poin yang sama. Blok teks lalu pilih ukuran untuk memperbesar bagian itu saja.</p>
             </CardContent>
           </Card>
         ))}
@@ -202,7 +216,7 @@ export function InvoiceSettingsEditor({
         <div className="flex min-w-0 flex-col gap-2 rounded-lg border bg-card p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium">Pratinjau invoice (data contoh)</p>
-            <p className="text-xs text-muted-foreground">Belum disimpan — ubah ukuran font lalu tekan pratinjau lagi.</p>
+            <p className="text-xs text-muted-foreground">Belum disimpan — ubah ukuran teks atau tanda tangan lalu tekan pratinjau lagi.</p>
           </div>
           <iframe src={previewUrl} title="Pratinjau PDF invoice" className="h-[70vh] w-full rounded border bg-white" />
         </div>

@@ -151,14 +151,17 @@ export async function getInvoiceSettingPoints() {
   });
 }
 
-/** Ukuran font bersama Keterangan & S&K untuk halaman editor (default 12 pt). */
-export async function getInvoiceSettingFontSize(brand: Brand = "ASKONVEKSI") {
+/** Ukuran maksimal gambar tanda tangan untuk halaman editor. */
+export async function getInvoiceSetting(brand: Brand = "ASKONVEKSI") {
   await requireActor(MASTER_DATA_ROLES);
   const setting = await getPrismaClient().invoiceSetting.findUnique({
     where: { brand },
-    select: { pointFontSize: true },
+    select: { signatureWidth: true, signatureHeight: true },
   });
-  return setting?.pointFontSize ?? 12;
+  return {
+    signatureWidth: setting?.signatureWidth ?? 220,
+    signatureHeight: setting?.signatureHeight ?? 64,
+  };
 }
 
 export async function getBusinessProfile() {

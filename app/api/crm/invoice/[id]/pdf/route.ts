@@ -98,7 +98,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     prisma.businessProfile.findFirst(forBrand(invoice.brand, { where: {} })),
     prisma.paymentMethod.findMany(forBrand(invoice.brand, paymentMethodQuery)),
     prisma.invoiceSettingPoint.findMany(forBrand(invoice.brand, settingPointQuery)),
-    prisma.invoiceSetting.findUnique({ where: { brand: invoice.brand }, select: { pointFontSize: true } }),
+    prisma.invoiceSetting.findUnique({ where: { brand: invoice.brand }, select: { signatureWidth: true, signatureHeight: true } }),
   ]);
 
   // Kop mengikuti profil brand dokumen. Snapshot logo/nama brand lain (mis. invoice
@@ -138,7 +138,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     snapshotBusinessAddress: businessAddress ?? null,
     snapshotSignatureName: invoice.snapshotSignatureName ?? currentBusiness?.signatureName ?? null,
     snapshotSignatureTitle: invoice.snapshotSignatureTitle ?? currentBusiness?.signatureTitle ?? null,
-  }, { brand: invoice.brand, logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints, pointFontSize: invoiceSetting?.pointFontSize ?? 12 });
+  }, {
+    brand: invoice.brand,
+    logo: logoBytes,
+    signature: signatureBytes,
+    paymentMethods,
+    settingPoints,
+    signatureMaxWidth: invoiceSetting?.signatureWidth ?? 220,
+    signatureMaxHeight: invoiceSetting?.signatureHeight ?? 64,
+  });
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",

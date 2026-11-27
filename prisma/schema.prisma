@@ -1610,12 +1610,14 @@ model SequenceCounter {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 }
 
-// Satu baris per brand: ukuran font bersama blok Keterangan & Syarat & Ketentuan di PDF.
+// Satu baris per brand: ukuran maksimal gambar tanda tangan di PDF invoice.
+// Ukuran font Keterangan & S&K diatur per fragmen teks di editor, bukan di sini.
 model InvoiceSetting {
-  id            String   @id @default(cuid()) @db.VarChar(64)
-  brand         Brand    @unique
-  pointFontSize Int      @default(12)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  id              String   @id @default(cuid()) @db.VarChar(64)
+  brand           Brand    @unique
+  signatureWidth  Int      @default(220)
+  signatureHeight Int      @default(64)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
 }
 
 // Master "Pengaturan invoice": dua kolom (keterangan & syarat/ketentuan) berisi poin

@@ -1,3 +1,5 @@
+import sharp from "sharp";
+
 import { MASTER_DATA_ADMIN_ROLES } from "@/lib/auth/permissions";
 import { requireActor } from "@/lib/auth/session";
 import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
@@ -7,7 +9,7 @@ import { invoiceSettingsSchema } from "@/lib/crm/validation";
 export const runtime = "nodejs";
 
 // Pratinjau PDF invoice memakai data contoh dan isian form yang belum disimpan,
-// supaya admin bisa melihat pengaruh ukuran font tanpa menyimpan dulu.
+// supaya admin bisa melihat pengaruh ukuran teks tanpa menyimpan dulu.
 export async function POST(request: Request) {
   try {
     await requireActor(MASTER_DATA_ADMIN_ROLES);
@@ -23,7 +25,7 @@ export async function POST(request: Request) {
   }
   const parsed = invoiceSettingsSchema.safeParse(payload);
   if (!parsed.success) {
-    return Response.json({ ok: false, message: "Isian Keterangan, S&K, atau ukuran font tidak valid." }, { status: 422 });
+    return Response.json({ ok: false, message: "Isian Keterangan, S&K, atau ukuran tanda tangan tidak valid." }, { status: 422 });
   }
 
   const actor = await requireActor(MASTER_DATA_ADMIN_ROLES);
@@ -103,7 +105,17 @@ export async function POST(request: Request) {
   };
 
   const logo = await readDefaultBrandLogoPng(actor.brand);
-  const pdf = await createInvoicePdf(dummyInvoice, { brand: actor.brand, logo, settingPoints, pointFontSize: parsed.data.pointFontSize });
+  // Tanda tangan contoh dibuat dari SVG supaya perubahan ukuran maksimal terlihat di pratinjau.
+  const signatureSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="100" viewBox="0 0 320 100"><path d="M12 72 C40 20, 55 86, 78 55 S115 16, 132 62 C150 96, 166 26, 188 58 S225 78, 246 40 C262 12, 282 70, 308 48" fill="none" stroke="#1f2a44" stroke-width="4" stroke-linecap="round"/></svg>';
+  const signature = new Uint8Array(await sharp(Buffer.from(signatureSvg)).png().toBuffer());
+  const pdf = await createInvoicePdf(dummyInvoice, {
+    brand: actor.brand,
+    logo,
+    signature,
+    settingPoints,
+    signatureMaxWidth: parsed.data.signatureWidth,
+    signatureMaxHeight: parsed.data.signatureHeight,
+  });
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",
