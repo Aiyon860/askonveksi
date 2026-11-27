@@ -159,8 +159,8 @@ export async function getInvoiceSetting(brand: Brand = "ASKONVEKSI") {
     select: { signatureWidth: true, signatureHeight: true },
   });
   return {
-    signatureWidth: setting?.signatureWidth ?? 220,
-    signatureHeight: setting?.signatureHeight ?? 64,
+    signatureWidth: setting?.signatureWidth ?? 57,
+    signatureHeight: setting?.signatureHeight ?? 50,
   };
 }
 

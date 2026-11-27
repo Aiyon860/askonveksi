@@ -218,10 +218,11 @@ test("Keterangan dan S&K memakai ukuran per fragmen dan bisa lanjut halaman", ()
   // Ukuran global dari master data sudah tidak ada; ukuran datang dari tiap fragmen.
   assert.doesNotMatch(invoicePdfSource, /pointFontSize/);
   assert.doesNotMatch(invoicePdfSource, /pointSizes\s*=/);
-  assert.match(invoicePdfSource, /pointListDrop\(keteranganPoints, listWidth\)/);
+  assert.match(invoicePdfSource, /pointListDrop\(keteranganPoints, LEFT_COLUMN\.width\)/);
   assert.match(invoicePdfSource, /if \(syaratPoints\.length\) \{[\s\S]*addPage\(\)[\s\S]*drawPointList\("Syarat & Ketentuan", syaratPoints/);
-  // S&K tidak lagi dikunci oleh posisi TTD di kolom kanan.
-  assert.doesNotMatch(invoicePdfSource, /signatureBottom/);
+  // S&K melanjutkan di bawah kolom yang paling tinggi (Keterangan vs tanda tangan),
+  // bukan dipaksa sejajar di dalam kolom kanan.
+  assert.match(invoicePdfSource, /const blockBottom = Math\.min\(y, signatureBottom - 10\.35\);/);
 });
 
 test("ukuran tanda tangan tersedia dari master sampai PDF invoice", () => {
@@ -236,15 +237,15 @@ test("ukuran tanda tangan tersedia dari master sampai PDF invoice", () => {
   const model = schemaSource.slice(schemaSource.indexOf("model InvoiceSetting {"));
   assert.match(model, /brand\s+Brand\s+@unique/);
   assert.doesNotMatch(model, /pointFontSize/);
-  assert.match(model, /signatureWidth\s+Int\s+@default\(220\)/);
-  assert.match(model, /signatureHeight\s+Int\s+@default\(64\)/);
+  assert.match(model, /signatureWidth\s+Int\s+@default\(57\)/);
+  assert.match(model, /signatureHeight\s+Int\s+@default\(50\)/);
   assert.match(fontMigrationSource, /CREATE TABLE IF NOT EXISTS "InvoiceSetting"/);
   assert.match(fontMigrationSource, /'ASKONVEKSI', 12, NOW\(\)\), \('invoice-setting-saga', 'SAGA', 12, NOW\(\)/);
   assert.match(signatureMigrationSource, /ADD COLUMN IF NOT EXISTS "signatureWidth" INTEGER NOT NULL DEFAULT 220/);
   assert.match(signatureMigrationSource, /ADD COLUMN IF NOT EXISTS "signatureHeight" INTEGER NOT NULL DEFAULT 64/);
   assert.match(dropFontSizeMigrationSource, /DROP COLUMN IF EXISTS "pointFontSize"/);
   assert.match(masterDataSource, /export async function getInvoiceSetting\(/);
-  assert.match(masterDataSource, /signatureWidth: setting\?\.signatureWidth \?\? 220/);
+  assert.match(masterDataSource, /signatureWidth: setting\?\.signatureWidth \?\? 57/);
   assert.doesNotMatch(masterDataSource, /pointFontSize/);
   assert.doesNotMatch(pageSource, /initialFontSize/);
   assert.match(pageSource, /initialSignatureWidth=\{setting\.signatureWidth\}/);
@@ -258,20 +259,39 @@ test("ukuran tanda tangan tersedia dari master sampai PDF invoice", () => {
   assert.match(actionSource, /INVOICE_SETTING_UPDATED/);
   assert.match(invoiceRouteSource, /invoiceSetting\.findUnique\(\{ where: \{ brand: invoice\.brand \}/);
   assert.match(invoiceRouteSource, /signatureWidth: true, signatureHeight: true/);
-  assert.match(invoiceRouteSource, /signatureMaxWidth: invoiceSetting\?\.signatureWidth \?\? 220/);
+  assert.match(invoiceRouteSource, /signatureMaxWidth: invoiceSetting\?\.signatureWidth \?\? 57/);
   assert.match(invoicePdfSource, /signatureMaxWidth\?: number/);
-  assert.match(invoicePdfSource, /scaleToFit\(assets\.signatureMaxWidth \?\? 220, assets\.signatureMaxHeight \?\? 64\)/);
+  assert.match(invoicePdfSource, /scaleToFit\(assets\.signatureMaxWidth \?\? SIGNATURE_BOX\.width, assets\.signatureMaxHeight \?\? SIGNATURE_BOX\.height\)/);
 });
 
-test("tiga dokumen cetak memakai ukuran font minimum 16 px (12 pt)", () => {
+test("dokumen PO dan kwitansi tetap memakai ukuran font minimum 16 px (12 pt)", () => {
   assert.equal(PRINT_MIN_FONT_PX, 16);
   assert.equal(MIN_FONT_SIZE, 12);
-  for (const [name, source] of Object.entries(PDF_SOURCES)) {
+  for (const name of ["purchase-order-pdf.ts", "receipt-pdf.ts"]) {
+    const source = PDF_SOURCES[name];
     assert.match(source, /MIN_FONT_SIZE/, `${name} memakai konstanta font minimum bersama`);
     for (const [, size] of source.matchAll(/size:\s*(\d+(?:\.\d+)?)/g)) {
       assert.ok(Number(size) >= MIN_FONT_SIZE, `${name} memakai ukuran font ${size} pt (minimum ${MIN_FONT_SIZE} pt)`);
     }
   }
+});
+
+test("PDF invoice memakai skala template klien: 9 pt untuk semua teks dan 16,5 pt untuk judul", () => {
+  assert.match(invoicePdfSource, /const FONT = 9;/);
+  assert.match(invoicePdfSource, /const TITLE_FONT = 16\.5;/);
+  // 82 pt hanya stempel DRAFT di latar; seluruh teks dokumen memakai 9/16,5 pt.
+  for (const [, size] of invoicePdfSource.matchAll(/size:\s*(\d+(?:\.\d+)?)/g)) {
+    assert.ok([9, 16.5, 82].includes(Number(size)), `ukuran ${size} pt di luar skala template invoice`);
+  }
+  // Ukuran, warna, dan jarak berasal dari satu blok token hasil ukur template .docx.
+  assert.match(invoicePdfSource, /title: rgb\(51 \/ 255, 102 \/ 255, 153 \/ 255\)/);
+  assert.match(invoicePdfSource, /const TABLE = \{ x: MARGIN\.x \+ 6\.05, width: 527\.1, headerHeight: 25\.05, rowHeight: 22\.05 \};/);
+  assert.match(invoicePdfSource, /width: 103\.15, align: "left" as const, indent: 7\.5/);
+  assert.match(invoicePdfSource, /width: 40\.1, align: "center" as const/);
+  assert.match(invoicePdfSource, /const SIGNATURE_BOX = \{ width: 56\.75, height: 49\.72 \};/);
+  // Dua kolom halaman 2 mengikuti section Word: 232,35 pt | 56,15 pt | 250,4 pt.
+  assert.match(invoicePdfSource, /const LEFT_COLUMN = \{ x: MARGIN\.x, width: 232\.35 \};/);
+  assert.match(invoicePdfSource, /const SUMMARY = \{ x: MARGIN\.x \+ 232\.35 \+ 56\.15, width: 250\.4 \};/);
 });
 
 test("pratinjau invoice memakai isian form yang belum disimpan", () => {

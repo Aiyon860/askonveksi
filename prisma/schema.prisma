@@ -1611,12 +1611,13 @@ model SequenceCounter {
 }
 
 // Satu baris per brand: ukuran maksimal gambar tanda tangan di PDF invoice.
+// Default mengikuti template klien 76 × 66 px (57 × 49,5 pt; kolom Int dibulatkan ke 50).
 // Ukuran font Keterangan & S&K diatur per fragmen teks di editor, bukan di sini.
 model InvoiceSetting {
   id              String   @id @default(cuid()) @db.VarChar(64)
   brand           Brand    @unique
-  signatureWidth  Int      @default(220)
-  signatureHeight Int      @default(64)
+  signatureWidth  Int      @default(57)
+  signatureHeight Int      @default(50)
   updatedAt       DateTime @updatedAt @db.Timestamptz(3)
 }
 
