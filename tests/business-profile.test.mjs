@@ -81,7 +81,7 @@ test("PDF invoice mengikuti template: tanpa blok rekening, dengan gambar tanda t
   assert.match(route, /brand: invoice\.brand,/);
   assert.match(route, /logo: logoBytes,/);
   assert.match(route, /signature: signatureBytes,/);
-  assert.match(route, /signatureMaxWidth: invoiceSetting\?\.signatureWidth \?\? 220/);
+  assert.match(route, /signatureMaxWidth: invoiceSetting\?\.signatureWidth \?\? 57/);
   assert.ok(!route.includes("profile?.bankName"), "tidak ada lagi fallback rekening dari profil");
 
   const pdf = invoicePdfSource;
@@ -89,8 +89,8 @@ test("PDF invoice mengikuti template: tanpa blok rekening, dengan gambar tanda t
   assert.doesNotMatch(pdf, /Metode pembayaran/, "blok metode pembayaran dihapus mengikuti template");
   assert.doesNotMatch(pdf, /Rekening pembayaran/, "blok snapshot rekening dihapus mengikuti template");
   assert.match(pdf, /assets\.signature/);
-  assert.match(pdf, /scaleToFit\(assets\.signatureMaxWidth \?\? 220, assets\.signatureMaxHeight \?\? 64\)/, "ukuran tanda tangan mengikuti pengaturan");
-  assert.match(pdf, /y -= 24; \/\/ geser blok TTD sedikit lebih rendah/);
+  assert.match(pdf, /scaleToFit\(assets\.signatureMaxWidth \?\? SIGNATURE_BOX\.width, assets\.signatureMaxHeight \?\? SIGNATURE_BOX\.height\)/, "ukuran tanda tangan mengikuti pengaturan");
+  assert.match(pdf, /const signDateY = y - 27\.65;/);
   // "Tagihan Untuk" wajib menampilkan nama customer, bukan nama perusahaan.
   assert.match(pdf, /const customerName = invoice\.snapshotCustomerName \?\? invoice\.snapshotCompanyName;/);
   assert.doesNotMatch(pdf, /const customerName = invoice\.snapshotCompanyName \?\? invoice\.snapshotCustomerName;/);

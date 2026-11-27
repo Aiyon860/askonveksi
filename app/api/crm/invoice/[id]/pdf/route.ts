@@ -144,8 +144,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     signature: signatureBytes,
     paymentMethods,
     settingPoints,
-    signatureMaxWidth: invoiceSetting?.signatureWidth ?? 220,
-    signatureMaxHeight: invoiceSetting?.signatureHeight ?? 64,
+    signatureMaxWidth: invoiceSetting?.signatureWidth ?? 57,
+    signatureMaxHeight: invoiceSetting?.signatureHeight ?? 50,
   });
   return new Response(Buffer.from(pdf), {
     headers: {

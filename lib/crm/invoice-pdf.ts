@@ -5,7 +5,7 @@ import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } 
 import type { Brand } from "@/lib/brand/config";
 import { DEFAULT_BRAND } from "@/lib/brand/config";
 import { readDefaultBrandLogoPng } from "@/lib/crm/brand-logo";
-import { MIN_FONT_SIZE, clipPdfText } from "@/lib/crm/pdf-typography";
+import { clipPdfText } from "@/lib/crm/pdf-typography";
 import { parseInvoicePointRuns, type InvoicePointRun } from "@/lib/crm/invoice-setting-html";
 
 type PdfInvoiceSettingPoint = { section: "KETERANGAN" | "SYARAT_KETENTUAN"; text: string };
@@ -57,24 +57,99 @@ type PdfInvoice = {
   salesOrder: { payment: { kind?: string; transactions: Array<{ amount: { toString(): string }; status: string }> } | null } | null;
 };
 
-const A4 = { width: 595.28, height: 841.89 };
-const margin = 48;
-const CONTENT_WIDTH = A4.width - margin * 2;
+/* ------------------------------------------------------------------------- *
+ * Token tampilan template invoice.
+ *
+ * Semua angka diambil dari file template klien (INV_SAL_INV_...docx) setelah
+ * dikonversi twip → pt (1 pt = 20 twip). Ukuran, warna, dan jarak hanya boleh
+ * berasal dari blok ini supaya PDF tetap mengikuti template Word-nya.
+ * ------------------------------------------------------------------------- */
+const PAGE = { width: 595.28, height: 841.89 };
+const MARGIN = { top: 58, topNext: 39, bottom: 14, x: 28.3 };
+const TEXT_RIGHT = PAGE.width - MARGIN.x;
 
-/** Askonveksi: navy. SAGA: hijau army. */
-const BRAND_PDF_THEME = {
-  ASKONVEKSI: {
-    accent: rgb(0.12, 0.32, 0.64),
-    tableHead: rgb(0.18, 0.24, 0.3),
-  },
-  SAGA: {
-    accent: rgb(0.29, 0.4, 0.24),
-    tableHead: rgb(0.22, 0.3, 0.18),
-  },
+/** Ukuran teks: 9 pt untuk seluruh teks, 16,5 pt hanya judul "Invoice". */
+const FONT = 9;
+const TITLE_FONT = 16.5;
+/** Line-height tabel yang teksnya wrap (302/240). */
+const ROW_LINE_HEIGHT = FONT * 1.258;
+/** Line-height daftar poin & alamat (254/240). */
+const TEXT_LINE_HEIGHT = FONT * 1.058;
+/** Word memakai line-height tunggal Arial ≈ 1,15 × ukuran font. */
+const LINE_FACTOR = 1.15;
+/** jarak baseline dari puncak baris (ascent Arial). */
+const ASCENT_FACTOR = 0.905;
+
+const COLOR = {
+  title: rgb(51 / 255, 102 / 255, 153 / 255), // #336699
+  meta: rgb(45 / 255, 61 / 255, 78 / 255), // #2D3D4E
+  heading: rgb(45 / 255, 61 / 255, 78 / 255), // #2D3D4E
+  name: rgb(48 / 255, 125 / 255, 172 / 255), // #307DAC
+  body: rgb(84 / 255, 84 / 255, 84 / 255), // #545454
+  tableHeadBg: rgb(45 / 255, 61 / 255, 78 / 255), // #2D3D4E
+  tableRowBg: rgb(240 / 255, 240 / 255, 240 / 255), // #F0F0F0
+  rule: rgb(86 / 255, 102 / 255, 118 / 255), // #566676
+  white: rgb(1, 1, 1),
+  black: rgb(0, 0, 0),
 } as const;
-const ZEBRA_BG = rgb(0.95, 0.96, 0.97);
-const GRID_LINE = rgb(0.84, 0.84, 0.84);
-const RULE_LINE = rgb(0.25, 0.25, 0.25);
+
+/** Kop: gambar 131,25 × 63,26 pt di x 34,77. */
+const LOGO = { x: 34.77, width: 131.25, height: 63.26 };
+/** Tanda tangan 56,75 × 49,72 pt (dari master data bila diatur lain). */
+const SIGNATURE_BOX = { width: 56.75, height: 49.72 };
+/** Judul & meta kanan atas: indent kanan dari batas teks halaman. */
+const TITLE_RIGHT = TEXT_RIGHT - 43.1;
+const META_RIGHT = TEXT_RIGHT - 43.85;
+
+/** Tabel item: tblInd 6,05 pt dari margin, total 527,1 pt. */
+const TABLE = { x: MARGIN.x + 6.05, width: 527.1, headerHeight: 25.05, rowHeight: 22.05 };
+/** Dua kolom info halaman 1: 151,55 pt | 112,05 pt | 275,3 pt. */
+const INFO = {
+  textIndent: 6.45,
+  leftX: MARGIN.x + 6.45,
+  leftWidth: 151.55 - 6.45,
+  rightX: MARGIN.x + 151.55 + 112.05 + 6.45,
+  rightWidth: 275.3 - 6.45,
+  leftRuleX: 34.77,
+  leftRuleWidth: 209.4,
+  rightRuleX: 298.39,
+  rightRuleWidth: 262.15,
+};
+
+/** Halaman 2: kolom kiri 232,35 pt | 56,15 pt | kanan 250,4 pt. */
+const LEFT_COLUMN = { x: MARGIN.x, width: 232.35 };
+const SUMMARY = { x: MARGIN.x + 232.35 + 56.15, width: 250.4 };
+/** Indentasi blok total dari batas teks kanan (262 twip). */
+const VALUES_RIGHT = TEXT_RIGHT - 13.1;
+/** Tanggal & nama tanda tangan: rata tengah pada kolom kanan (indent kanan 1072 twip). */
+const SIGN_CENTER = (SUMMARY.x + TEXT_RIGHT - 53.6) / 2;
+/** Judul seksi di halaman 2 (indent 264 twip) serta garisnya. */
+const LIST_HEADING_INDENT = 13.2;
+const LIST_RULE_WIDTH = 222.3;
+/** Daftar poin: indent kiri 43,2 pt (864 twip), hanging 12,7 pt. */
+const POINT_INDENT = 43.2;
+const POINT_HANGING = 12.7;
+/** Garis di atas "Jumlah Tertagih": 367 px. */
+const TOTAL_RULE_WIDTH = (367 * 3) / 4;
+
+/**
+ * Kursor vertikal gaya Word: tiap paragraf turun sebesar `before` + line-height,
+ * dan baseline berada satu ascent di bawah puncak baris.
+ */
+function makeFlow(startTop: number) {
+  let top = startTop;
+  return {
+    line(size: number, before = 0, factor = LINE_FACTOR) {
+      top -= before;
+      const baseline = top - size * ASCENT_FACTOR;
+      top -= size * factor;
+      return baseline;
+    },
+    get top() {
+      return top;
+    },
+  };
+}
 
 function safeText(value: string) {
   return value.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\x7e\xa0-\xff]/g, "?");
@@ -98,11 +173,11 @@ function slashDate(value: Date | null) {
   return `${pick("day")}/${pick("month")}/${pick("year")}`;
 }
 
-/** Tanggal tanda tangan gaya template: 19 Sep, 2026. */
+/** Tanggal tanda tangan gaya template: 19 Okt 2026. */
 function signatureDate(value: Date) {
-  const parts = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).formatToParts(value);
+  const parts = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).formatToParts(value);
   const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return `${pick("day")} ${pick("month")}, ${pick("year")}`;
+  return `${pick("day")} ${pick("month")} ${pick("year")}`;
 }
 
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number) {
@@ -186,16 +261,13 @@ type InvoiceAssets = {
   paymentMethods?: Array<{ name: string; description: string | null }>;
   /** Poin master "Pengaturan invoice": blok Keterangan & Syarat/Ketentuan, selalu mengikuti data terkini. */
   settingPoints?: PdfInvoiceSettingPoint[];
-  /** Batas ukuran gambar tanda tangan dari master data (default 220 × 64 pt). */
+  /** Batas ukuran gambar tanda tangan dari master data (default 56,75 × 49,72 pt). */
   signatureMaxWidth?: number;
   signatureMaxHeight?: number;
 };
 
 export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAssets = {}) {
   const brand = assets.brand ?? DEFAULT_BRAND;
-  const theme = BRAND_PDF_THEME[brand];
-  const accent = theme.accent;
-  const tableHeadBg = theme.tableHead;
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
@@ -215,36 +287,46 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   let y!: number;
 
   function addPage() {
-    page = document.addPage([A4.width, A4.height]);
-    y = A4.height - margin;
-    page.drawText(safeText(invoice.snapshotBusinessName ?? "AS Konveksi"), { x: margin, y: 26, size: MIN_FONT_SIZE, font: regular, color: rgb(0.45, 0.45, 0.45) });
-    const footerInvoice = `Invoice ${safeText(invoice.invoiceNo)}`;
-    page.drawText(footerInvoice, {
-      x: A4.width - margin - regular.widthOfTextAtSize(footerInvoice, MIN_FONT_SIZE),
-      y: 26,
-      size: MIN_FONT_SIZE,
-      font: regular,
-      color: rgb(0.45, 0.45, 0.45),
-    });
+    page = document.addPage([PAGE.width, PAGE.height]);
+    // Halaman 1 memakai margin atas 58 pt; halaman berikutnya 39 pt.
+    y = document.getPageCount() === 1 ? PAGE.height - MARGIN.top : PAGE.height - MARGIN.topNext;
   }
 
   function ensure(height: number) {
-    if (y - height < margin + 20) addPage();
+    if (y - height < MARGIN.bottom + 8) addPage();
   }
 
-  function rightText(value: string, right: number, size = MIN_FONT_SIZE, font = regular, color = rgb(0.12, 0.12, 0.12)) {
+  function rightText(value: string, right: number, size = FONT, font = regular, color: ReturnType<typeof rgb> = COLOR.body) {
     const safeValue = safeText(value);
     page.drawText(safeValue, { x: right - font.widthOfTextAtSize(safeValue, size), y, size, font, color });
   }
 
-  /** Tinggi satu poin dari baseline baris pertamanya sampai bawah poin. */
+  /** Jarak antar-baris mengikuti ukuran teks terbesar di baris itu (line-height template). */
+  function textStep(previous: number, next: number) {
+    return Math.max(previous, next) * 1.058;
+  }
+
+  /** Tinggi satu poin dari baseline baris pertamanya sampai bawah baris terakhir. */
   function pointDrop(sizes: number[]) {
-    let drop = sizes[sizes.length - 1] + 2 + 3;
+    let drop = sizes[sizes.length - 1] * 1.058;
     for (let index = 1; index < sizes.length; index += 1) {
-      // Jarak mengikuti baris terbesar di antara dua baris supaya teks besar tidak menimpa.
-      drop += Math.max(sizes[index - 1], sizes[index]) + 2;
+      drop += textStep(sizes[index - 1], sizes[index]);
     }
     return drop;
+  }
+
+  /** Judul seksi ke baseline poin pertama: baris kosong + garis 1,5 pt + jarak 9,35 pt. */
+  const POINT_HEADING_DROP = 32.3;
+  /** Jarak antar poin pada template (0–1 px). */
+  const POINT_GAP = 0.05;
+
+  /**
+   * Jarak nomor ke teks poin: 12,7 pt, melebar bila nomornya dua digit
+   * ("10.") supaya nomor tidak menimpa teks poin.
+   */
+  function pointTextIndent(points: PdfInvoiceSettingPoint[]) {
+    const numberWidth = regular.widthOfTextAtSize(`${points.length}.`, FONT);
+    return Math.max(POINT_HANGING, numberWidth + 2.25);
   }
 
   /**
@@ -254,16 +336,16 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   function pointListDrop(points: PdfInvoiceSettingPoint[], width: number) {
     if (!points.length) return 0;
     const fonts = { regular, bold, italic, boldItalic };
+    const wrapWidth = width - POINT_INDENT - pointTextIndent(points);
     const sizesPerPoint = points.map((point) =>
-      layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, MIN_FONT_SIZE)
-        .map((tokens) => lineMaxSize(tokens, MIN_FONT_SIZE)),
+      layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, wrapWidth, FONT)
+        .map((tokens) => lineMaxSize(tokens, FONT)),
     );
-    let drop = 4 + (Math.max(MIN_FONT_SIZE, sizesPerPoint[0][0]) + 2) + 4;
+    let drop = POINT_HEADING_DROP;
     sizesPerPoint.forEach((sizes, pointIndex) => {
       if (pointIndex > 0) {
         const previousSizes = sizesPerPoint[pointIndex - 1];
-        // Jarak antar-poin mengikuti baris terbesar dari kedua sisi.
-        drop += Math.max(previousSizes[previousSizes.length - 1], sizes[0]) + 2 + 3;
+        drop += textStep(previousSizes[previousSizes.length - 1], sizes[0]) + POINT_GAP;
       }
       drop += pointDrop(sizes);
     });
@@ -279,53 +361,56 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   function drawPointList(title: string, points: PdfInvoiceSettingPoint[], x: number, width: number) {
     if (!points.length) return;
     const fonts = { regular, bold, italic, boldItalic };
+    const headingX = x + LIST_HEADING_INDENT;
+    const numberX = x + POINT_INDENT;
+    const textIndent = pointTextIndent(points);
+    const textX = numberX + textIndent;
+    const wrapWidth = width - POINT_INDENT - textIndent;
     const prepared = points.map((point) => {
-      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, MIN_FONT_SIZE);
-      return { lines, sizes: lines.map((tokens) => lineMaxSize(tokens, MIN_FONT_SIZE)) };
+      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, wrapWidth, FONT);
+      return { lines, sizes: lines.map((tokens) => lineMaxSize(tokens, FONT)) };
     });
-    const bottom = margin + 20;
-    const drawTitle = (firstSize: number) => {
-      page.drawText(safeText(title), { x, y, size: MIN_FONT_SIZE, font: bold, color: rgb(0.12, 0.12, 0.12) });
-      y -= 4;
-      page.drawLine({ start: { x, y }, end: { x: x + width, y }, thickness: 1, color: RULE_LINE });
-      y -= Math.max(MIN_FONT_SIZE, firstSize) + 2;
+    const bottom = MARGIN.bottom + 8;
+    const drawTitle = () => {
+      page.drawText(safeText(title), { x: headingX, y, size: FONT, font: bold, color: COLOR.heading });
+      const ruleY = y - 14.1;
+      page.drawLine({ start: { x: headingX, y: ruleY }, end: { x: headingX + LIST_RULE_WIDTH, y: ruleY }, thickness: 1.5, color: COLOR.rule });
+      y = ruleY;
     };
 
-    drawTitle(prepared[0].sizes[0]);
-    let baseline = y;
-    let lastBaseline = y;
-    let lastMax = MIN_FONT_SIZE;
+    drawTitle();
+    let baseline = y - 18.2;
+    let lastBaseline = baseline;
     prepared.forEach(({ lines, sizes }, pointIndex) => {
       if (pointIndex > 0) {
+        // Turun satu baris dari baseline terakhir poin sebelumnya, lalu jarak antar poin.
         const previousSizes = prepared[pointIndex - 1].sizes;
-        baseline -= Math.max(previousSizes[previousSizes.length - 1], sizes[0]) + 2 + 3;
+        baseline -= textStep(previousSizes[previousSizes.length - 1], sizes[0]) + POINT_GAP;
       }
       if (baseline - pointDrop(sizes) < bottom) {
         addPage();
-        drawTitle(sizes[0]);
-        baseline = y;
+        drawTitle();
+        baseline = y - 18.2;
       }
-      page.drawText(`${pointIndex + 1}.`, { x, y: baseline, size: MIN_FONT_SIZE, font: regular, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText(`${pointIndex + 1}.`, { x: numberX, y: baseline, size: FONT, font: regular, color: COLOR.black });
       let lineY = baseline;
       lines.forEach((tokens, lineIndex) => {
-        if (lineIndex > 0) lineY -= Math.max(sizes[lineIndex - 1], sizes[lineIndex]) + 2;
-        let cursorX = x + 22;
+        if (lineIndex > 0) lineY -= textStep(sizes[lineIndex - 1], sizes[lineIndex]);
+        let cursorX = textX;
         for (const token of tokens) {
           if (!token.text) continue;
-          page.drawText(token.text, { x: cursorX, y: lineY, size: token.size, font: token.font, color: rgb(0.12, 0.12, 0.12) });
+          page.drawText(token.text, { x: cursorX, y: lineY, size: token.size, font: token.font, color: COLOR.black });
           const tokenWidth = token.font.widthOfTextAtSize(token.text, token.size);
           if (token.underline) {
-            page.drawLine({ start: { x: cursorX, y: lineY - 2 }, end: { x: cursorX + tokenWidth, y: lineY - 2 }, thickness: 0.8, color: rgb(0.12, 0.12, 0.12) });
+            page.drawLine({ start: { x: cursorX, y: lineY - 2 }, end: { x: cursorX + tokenWidth, y: lineY - 2 }, thickness: 0.8, color: COLOR.black });
           }
           cursorX += tokenWidth;
         }
       });
       lastBaseline = lineY;
       baseline = lineY;
-      lastMax = sizes[sizes.length - 1];
     });
-    y = lastBaseline - (lastMax + 2) - 3;
-    y -= 4;
+    y = lastBaseline - TEXT_LINE_HEIGHT - 8;
   }
 
   const issueDate = invoice.issuedAt ?? invoice.createdAt;
@@ -335,113 +420,128 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   addPage();
   if (invoice.status === "DRAFT") page.drawText("DRAFT", { x: 150, y: 370, size: 82, font: bold, color: rgb(0.9, 0.9, 0.9), rotate: degrees(35), opacity: 0.45 });
 
-  // Kop: logo kiri, judul + blok referensi kanan.
-  const scaledLogo = logo.scaleToFit(150, 52);
-  const headerTop = y;
-  page.drawImage(logo, { x: margin, y: y - scaledLogo.height, width: scaledLogo.width, height: scaledLogo.height });
-  const headerRight = A4.width - margin;
-  page.drawText("Invoice", { x: headerRight - bold.widthOfTextAtSize("Invoice", 20), y: y - 18, size: 20, font: bold, color: accent });
-  y -= 34;
+  // Kop: logo di kiri, judul + meta di kanan mengikuti tab template.
+  const header = makeFlow(PAGE.height - MARGIN.top);
+  const titleBaseline = header.line(TITLE_FONT, 3.95);
+  page.drawImage(logo, { x: LOGO.x, y: PAGE.height - 58.49 - LOGO.height, width: LOGO.width, height: LOGO.height });
+  page.drawText("Invoice", { x: TITLE_RIGHT - bold.widthOfTextAtSize("Invoice", TITLE_FONT), y: titleBaseline, size: TITLE_FONT, font: bold, color: COLOR.title });
+
   const metaRows: Array<[string, string]> = [
     ["Referensi", safeText(invoice.invoiceNo)],
     ["Tanggal", slashDate(issueDate)],
     ["Tgl. Jatuh Tempo", slashDate(invoice.dueAt)],
   ];
-  const metaValueWidth = Math.max(...metaRows.map(([, value]) => regular.widthOfTextAtSize(value, MIN_FONT_SIZE)));
-  for (const [label, value] of metaRows) {
-    rightText(value, headerRight, MIN_FONT_SIZE);
-    const labelWidth = regular.widthOfTextAtSize(label, MIN_FONT_SIZE);
-    page.drawText(safeText(label), { x: headerRight - metaValueWidth - 16 - labelWidth, y, size: MIN_FONT_SIZE, font: regular, color: rgb(0.35, 0.35, 0.35) });
-    y -= 18;
-  }
-  y = Math.min(y, headerTop - scaledLogo.height) - 22;
+  const metaValueWidth = Math.max(...metaRows.map(([, value]) => regular.widthOfTextAtSize(value, FONT)));
+  const metaBaselines = [header.line(9, 15.3), header.line(9, 2.15), header.line(9, 2.15)];
+  metaRows.forEach(([label, value], index) => {
+    const metaY = metaBaselines[index];
+    page.drawText(safeText(value), { x: META_RIGHT - regular.widthOfTextAtSize(value, FONT), y: metaY, size: FONT, font: regular, color: COLOR.meta });
+    const labelWidth = regular.widthOfTextAtSize(label, FONT);
+    page.drawText(safeText(label), { x: META_RIGHT - metaValueWidth - 8 - labelWidth, y: metaY, size: FONT, font: regular, color: COLOR.meta });
+  });
+  header.line(9, 0);
+  header.line(9, 7.9);
+  const infoHeadingBaseline = header.line(9, 0);
+  header.line(9.5, 3);
+  header.line(6.5, 2);
+  const columnsTop = header.top;
 
-  // Dua kolom info: perusahaan kiri, customer kanan.
-  const infoGap = 24;
-  const infoWidth = (CONTENT_WIDTH - infoGap) / 2;
-  const customerX = margin + infoWidth + infoGap;
-  const infoTop = y;
-  let leftY = y;
-  let rightY = y;
-  const infoLines = (lines: string[], x: number, fromY: number, color = rgb(0.3, 0.3, 0.3)) => {
-    let cursor = fromY;
-    for (const line of lines) {
-      page.drawText(line, { x, y: cursor, size: MIN_FONT_SIZE, font: regular, color });
-      cursor -= 16;
-    }
-    return cursor;
-  };
-  page.drawText("Info Perusahaan", { x: margin, y: leftY, size: MIN_FONT_SIZE, font: bold });
-  leftY -= 6;
-  page.drawLine({ start: { x: margin, y: leftY }, end: { x: margin + infoWidth, y: leftY }, thickness: 1, color: RULE_LINE });
-  leftY -= 16;
-  page.drawText(clipPdfText(safeText(invoice.snapshotBusinessName ?? "AS Konveksi"), bold, MIN_FONT_SIZE, infoWidth), { x: margin, y: leftY, size: MIN_FONT_SIZE, font: bold, color: accent });
-  leftY -= 18;
-  const businessLines = [
-    ...wrap(invoice.snapshotBusinessAddress ?? "-", regular, MIN_FONT_SIZE, infoWidth),
-    `Telp: ${invoice.snapshotBusinessPhone ?? "-"}`,
-    `Email: ${invoice.snapshotBusinessEmail ?? "-"}`,
-  ];
-  leftY = infoLines(businessLines, margin, leftY) - 4;
-  page.drawText("Tagihan Untuk", { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold });
-  rightY -= 6;
-  page.drawLine({ start: { x: customerX, y: rightY }, end: { x: customerX + infoWidth, y: rightY }, thickness: 1, color: RULE_LINE });
-  rightY -= 16;
+  // Dua kolom info: perusahaan (151,55 pt) | customer (275,3 pt), dipisah kolom Word.
+  const infoRuleY = infoHeadingBaseline - 17.5;
+  page.drawText("Info Perusahaan", { x: INFO.leftX, y: infoHeadingBaseline, size: FONT, font: bold, color: COLOR.heading });
+  page.drawText("Tagihan Untuk", { x: INFO.rightX, y: infoHeadingBaseline, size: FONT, font: bold, color: COLOR.heading });
+  page.drawLine({ start: { x: INFO.leftRuleX, y: infoRuleY }, end: { x: INFO.leftRuleX + INFO.leftRuleWidth, y: infoRuleY }, thickness: 1.5, color: COLOR.rule });
+  page.drawLine({ start: { x: INFO.rightRuleX, y: infoRuleY }, end: { x: INFO.rightRuleX + INFO.rightRuleWidth, y: infoRuleY }, thickness: 1.5, color: COLOR.rule });
+
+  const businessFlow = makeFlow(columnsTop);
+  const customerFlow = makeFlow(columnsTop);
+  const businessNameY = businessFlow.line(9, 4.75);
+  page.drawText(clipPdfText(safeText(invoice.snapshotBusinessName ?? "AS Konveksi"), bold, FONT, INFO.leftWidth), { x: INFO.leftX, y: businessNameY, size: FONT, font: bold, color: COLOR.name });
+  const businessAddressLines = wrap(invoice.snapshotBusinessAddress ?? "-", regular, FONT, INFO.leftWidth);
+  businessAddressLines.forEach((line, index) => {
+    const lineY = businessFlow.line(9, index === 0 ? 2.25 : 0.6, 1.058);
+    page.drawText(line, { x: INFO.leftX, y: lineY, size: FONT, font: regular, color: COLOR.body });
+  });
+  const businessPhoneY = businessFlow.line(9, 0.6);
+  page.drawText(safeText(`Telp: ${invoice.snapshotBusinessPhone ?? "-"}`), { x: INFO.leftX, y: businessPhoneY, size: FONT, font: regular, color: COLOR.body });
+  const businessEmailY = businessFlow.line(9, 0.65);
+  page.drawText(safeText(`Email: ${invoice.snapshotBusinessEmail ?? "-"}`), { x: INFO.leftX, y: businessEmailY, size: FONT, font: regular, color: COLOR.body });
+
   // Tagihan ditujukan ke nama customer; perusahaan dipakai hanya sebagai fallback data lama.
   const customerName = invoice.snapshotCustomerName ?? invoice.snapshotCompanyName;
-  page.drawText(clipPdfText(safeText(customerName), bold, MIN_FONT_SIZE, infoWidth), { x: customerX, y: rightY, size: MIN_FONT_SIZE, font: bold, color: accent });
-  rightY -= 18;
-  rightY = infoLines([`Telp: ${invoice.snapshotWhatsapp ?? "-"}`], customerX, rightY) - 4;
-  void infoTop;
-  y = Math.min(leftY, rightY) - 16;
+  const customerNameY = customerFlow.line(9, 4.75);
+  page.drawText(clipPdfText(safeText(customerName), bold, FONT, INFO.rightWidth), { x: INFO.rightX, y: customerNameY, size: FONT, font: bold, color: COLOR.name });
+  customerFlow.line(9, 2.25);
+  const customerPhoneY = customerFlow.line(9, 0);
+  const customerLines = [`Telp: ${invoice.snapshotWhatsapp ?? "-"}`];
+  customerLines.forEach((line, index) => {
+    page.drawText(safeText(line), { x: INFO.rightX, y: customerPhoneY - index * LINE_FACTOR * FONT, size: FONT, font: regular, color: COLOR.body });
+  });
+  y = Math.min(businessFlow.top, customerFlow.top) - 10.35;
 
-  // Tabel barang gaya template: kepala navy, baris zebra, garis antar kolom.
+  // Tabel barang: kepala navy, baris abu #F0F0F0, pemisah sel putih 2 px.
   // Teks panjang dibungkus ke bawah (wrap), bukan dipotong "...".
-  const tableRight = A4.width - margin;
   const tableColumns = [
-    { key: "product", label: "Produk", width: 80, align: "left" as const },
-    { key: "description", label: "Deskripsi", width: 90, align: "left" as const },
-    { key: "qty", label: "Qty", width: 32, align: "center" as const },
-    { key: "price", label: "Harga", width: 80, align: "right" as const },
-    { key: "disc", label: "Disc", width: 82, align: "center" as const },
-    { key: "tax", label: "Pajak", width: 40, align: "center" as const },
-    { key: "total", label: "Jumlah", width: CONTENT_WIDTH - 80 - 90 - 32 - 80 - 82 - 40, align: "right" as const },
+    { key: "product", label: "Produk", width: 103.15, align: "left" as const, indent: 7.5 },
+    { key: "description", label: "Deskripsi", width: 103.15, align: "left" as const, indent: 6.75 },
+    { key: "qty", label: "Qty", width: 40.1, align: "center" as const, indent: 0 },
+    { key: "price", label: "Harga", width: 80.2, align: "right" as const, indent: 7.5 },
+    { key: "disc", label: "Disc", width: 80.2, align: "center" as const, indent: 0 },
+    { key: "tax", label: "Pajak", width: 40.1, align: "center" as const, indent: 0 },
+    { key: "total", label: "Jumlah", width: 80.2, align: "right" as const, indent: 7.5 },
   ];
-  const TABLE_HEADER_HEIGHT = 24;
-  const TABLE_ROW_MIN = 24;
+  const tableRight = TABLE.x + TABLE.width;
   function columnX(index: number) {
-    return margin + tableColumns.slice(0, index).reduce((sum, column) => sum + column.width, 0);
+    return TABLE.x + tableColumns.slice(0, index).reduce((sum, column) => sum + column.width, 0);
   }
-  function drawTableGridlines(rowTop: number, rowHeight: number) {
-    tableColumns.forEach((column, index) => {
-      if (index === 0) return;
-      const lineX = columnX(index);
-      page.drawLine({ start: { x: lineX, y: rowTop }, end: { x: lineX, y: rowTop - rowHeight }, thickness: 0.5, color: GRID_LINE });
-    });
-  }
-  function drawTableHeader() {
-    ensure(TABLE_HEADER_HEIGHT + 8);
-    page.drawRectangle({ x: margin, y: y - TABLE_HEADER_HEIGHT, width: CONTENT_WIDTH, height: TABLE_HEADER_HEIGHT, color: tableHeadBg });
-    tableColumns.forEach((column, index) => {
-      const cellX = columnX(index);
-      const label = clipPdfText(column.label, bold, MIN_FONT_SIZE, column.width - 8);
-      const textWidth = bold.widthOfTextAtSize(label, MIN_FONT_SIZE);
-      const textX = column.align === "left" ? cellX + 6 : column.align === "right" ? cellX + column.width - 6 - textWidth : cellX + (column.width - textWidth) / 2;
-      page.drawText(label, { x: textX, y: y - TABLE_HEADER_HEIGHT + 6, size: MIN_FONT_SIZE, font: bold, color: rgb(1, 1, 1) });
-    });
-    y -= TABLE_HEADER_HEIGHT;
-  }
-  function drawTableCell(index: number, value: string, baselineY: number, font: PDFFont, color = rgb(0.12, 0.12, 0.12)) {
+  function cellTextX(index: number, textWidth: number) {
     const column = tableColumns[index];
     const cellX = columnX(index);
-    const clipped = clipPdfText(safeText(value), font, MIN_FONT_SIZE, column.width - 10);
-    const textWidth = font.widthOfTextAtSize(clipped, MIN_FONT_SIZE);
-    const textX = column.align === "left" ? cellX + 6 : column.align === "right" ? cellX + column.width - 6 - textWidth : cellX + (column.width - textWidth) / 2;
-    page.drawText(clipped, { x: textX, y: baselineY, size: MIN_FONT_SIZE, font, color });
+    if (column.align === "left") return cellX + column.indent;
+    if (column.align === "right") return cellX + column.width - column.indent - textWidth;
+    return cellX + (column.width - textWidth) / 2;
   }
-  type TableRow = { cells: string[][]; lines: number; addon: boolean };
+  /** Pemisah antar sel: putih 2 px, vertikal di tiap batas kolom + horizontal di bawah baris. */
+  function drawCellSeparators(rowTop: number, rowHeight: number) {
+    page.drawLine({
+      start: { x: TABLE.x, y: rowTop - rowHeight },
+      end: { x: tableRight, y: rowTop - rowHeight },
+      thickness: 1.5,
+      color: COLOR.white,
+    });
+    tableColumns.forEach((_, index) => {
+      if (index === 0) return;
+      const lineX = columnX(index);
+      page.drawLine({ start: { x: lineX, y: rowTop }, end: { x: lineX, y: rowTop - rowHeight }, thickness: 1.5, color: COLOR.white });
+    });
+  }
+  function headerBaseline(rowTop: number) {
+    return rowTop - TABLE.headerHeight + 8.9;
+  }
+  function drawTableHeader() {
+    ensure(TABLE.headerHeight + 4);
+    const rowTop = y;
+    page.drawRectangle({ x: TABLE.x, y: rowTop - TABLE.headerHeight, width: TABLE.width, height: TABLE.headerHeight, color: COLOR.tableHeadBg });
+    tableColumns.forEach((column, index) => {
+      const label = clipPdfText(column.label, bold, FONT, column.width - column.indent - 3);
+      const textWidth = bold.widthOfTextAtSize(label, FONT);
+      // Di template, judul Qty/Harga/Disc/Pajak/Jumlah rata tengah; Produk & Deskripsi kiri.
+      const labelX = index <= 1 ? cellTextX(index, textWidth) : columnX(index) + (column.width - textWidth) / 2;
+      page.drawText(label, { x: labelX, y: headerBaseline(rowTop), size: FONT, font: bold, color: COLOR.white });
+    });
+    drawCellSeparators(rowTop, TABLE.headerHeight);
+    y -= TABLE.headerHeight;
+  }
+  function drawTableCell(index: number, value: string, baselineY: number, font: PDFFont) {
+    const column = tableColumns[index];
+    const clipped = clipPdfText(safeText(value), font, FONT, column.width - column.indent - 3);
+    const textWidth = font.widthOfTextAtSize(clipped, FONT);
+    page.drawText(clipped, { x: cellTextX(index, textWidth), y: baselineY, size: FONT, font, color: COLOR.body });
+  }
+  type TableRow = { cells: string[][]; lines: number };
   const tableRows: TableRow[] = [];
-  const wrapCell = (value: string, columnIndex: number) => wrap(value || "-", regular, MIN_FONT_SIZE, tableColumns[columnIndex].width - 12);
+  const wrapCell = (value: string, columnIndex: number) =>
+    wrap(value || "-", regular, FONT, tableColumns[columnIndex].width - tableColumns[columnIndex].indent - 3);
   for (const item of invoice.items) {
     const productLines = wrapCell(item.productName ?? "-", 0);
     const descLines = wrapCell(item.description || "-", 1);
@@ -459,7 +559,6 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
         [templateNumber(Number(item.total.toString()) - legacyAddonTotal)],
       ],
       lines: Math.max(productLines.length, descLines.length),
-      addon: false,
     });
   }
   const addonRows = [
@@ -482,93 +581,100 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
         [templateNumber(addonTotal)],
       ],
       lines: Math.max(addonProductLines.length, addonDescLines.length),
-      addon: true,
     });
   }
   drawTableHeader();
-  tableRows.forEach((row, rowIndex) => {
-    const rowHeight = Math.max(TABLE_ROW_MIN, row.lines * 16 + 8);
-    if (y - rowHeight < margin + 20) {
+  tableRows.forEach((row) => {
+    // Baris satu baris 22,05 pt; tiap baris tambahan menambah line-height 1,258.
+    const rowHeight = row.lines > 1 ? 35.15 + (row.lines - 2) * ROW_LINE_HEIGHT : TABLE.rowHeight;
+    if (y - rowHeight < MARGIN.bottom + 8) {
       addPage();
       drawTableHeader();
     }
     const rowTop = y;
-    if (rowIndex % 2 === 1) page.drawRectangle({ x: margin, y: rowTop - rowHeight, width: CONTENT_WIDTH, height: rowHeight, color: ZEBRA_BG });
-    page.drawRectangle({ x: margin, y: rowTop - rowHeight, width: CONTENT_WIDTH, height: rowHeight, borderWidth: 0.5, borderColor: GRID_LINE });
-    drawTableGridlines(rowTop, rowHeight);
-    const topPad = Math.max(4, (rowHeight - row.lines * 16) / 2);
-    const firstBaseline = rowTop - topPad - 12;
-    const middleBaseline = rowTop - rowHeight / 2 - 4;
-    const gray = row.addon ? rgb(0.35, 0.35, 0.35) : undefined;
+    page.drawRectangle({ x: TABLE.x, y: rowTop - rowHeight, width: TABLE.width, height: rowHeight, color: COLOR.tableRowBg });
+    // Teks diposisikan vertikal rata tengah pada barisnya.
+    const blockTop = rowTop - (rowHeight - row.lines * ROW_LINE_HEIGHT) / 2;
+    const firstBaseline = blockTop - (ROW_LINE_HEIGHT + FONT * 0.72) / 2;
     row.cells.forEach((cellLines, cellIndex) => {
-      if (cellIndex <= 1) {
-        cellLines.forEach((line, lineIndex) => {
-          drawTableCell(cellIndex, line, firstBaseline - lineIndex * 16, regular, gray);
-        });
-        return;
-      }
-      drawTableCell(cellIndex, cellLines[0] ?? "", middleBaseline, regular, gray);
+      cellLines.forEach((line, lineIndex) => {
+        drawTableCell(cellIndex, line, firstBaseline - lineIndex * ROW_LINE_HEIGHT, regular);
+      });
     });
+    drawCellSeparators(rowTop, rowHeight);
     y = rowTop - rowHeight;
   });
 
-  // Halaman ringkasan: angka kanan, Keterangan dan Syarat di kiri. Teks tanpa
-  // ukuran khusus memakai 12 pt; fragmen berukuran besar bisa memaksa pindah halaman.
+  // Halaman 2: kolom kiri Keterangan (dan S&K di bawahnya), kolom kanan blok total + tanda tangan.
   addPage();
-  const summaryWidth = 218;
-  const summaryX = A4.width - margin - summaryWidth;
-  const listWidth = summaryX - margin - 20;
-  const summaryTop = y;
-  const pageBottom = margin + 20;
+  const pageTop = PAGE.height - MARGIN.topNext;
+  const listFlow = makeFlow(pageTop);
+  const listHeadingBaseline = listFlow.line(9, 0);
+  const summaryFlow = makeFlow(pageTop);
+  const summaryBaselines = [
+    summaryFlow.line(9, 4.05),
+    summaryFlow.line(9, 4.75),
+    summaryFlow.line(9, 4.75),
+    summaryFlow.line(9, 4.8),
+    summaryFlow.line(9, 5),
+  ];
+
   const settingPoints = assets.settingPoints ?? [];
   const keteranganPoints = settingPoints.filter((point) => point.section === "KETERANGAN");
   const syaratPoints = settingPoints.filter((point) => point.section === "SYARAT_KETENTUAN");
-  const summaryRows: Array<{ label: string; value: string; bold?: boolean }> = [
+  const summaryRows: Array<{ label: string; value: string }> = [
     { label: "Subtotal", value: templateMoney(invoice.subtotal.toString()) },
     { label: "Pajak", value: templateMoney(invoice.taxAmount.toString()) },
     { label: "Total", value: templateMoney(invoice.total.toString()) },
     { label: "Lunas", value: totalPaid > 0 ? `Rp (${templateNumber(totalPaid)})` : templateMoney(0) },
   ];
-  for (const row of summaryRows) {
-    page.drawText(safeText(row.label), { x: summaryX, y, size: MIN_FONT_SIZE, font: row.bold ? bold : regular });
-    rightText(row.value, tableRight, MIN_FONT_SIZE, row.bold ? bold : regular);
-    y -= 18;
-  }
-  // Garis di atas baris total dengan jeda cukup supaya tidak menimpa huruf.
-  y -= 4;
-  page.drawLine({ start: { x: summaryX, y }, end: { x: tableRight, y }, thickness: 1, color: RULE_LINE });
-  y -= 18;
-  page.drawText("Jumlah Tertagih:", { x: summaryX, y, size: MIN_FONT_SIZE, font: bold });
-  rightText(templateMoney(amountDue), tableRight, MIN_FONT_SIZE, bold);
-  y -= 26;
-  // Tanda tangan di tengah kolom angka: tanggal, gambar, nama terang.
-  y -= 24; // geser blok TTD sedikit lebih rendah
-  const signCenter = summaryX + summaryWidth / 2;
+  // Label rata kanan tepat di kiri kolom nilai, jadi lebar nilai diukur dulu.
+  const valueWidth = Math.max(
+    ...summaryRows.map((row) => bold.widthOfTextAtSize(row.value, FONT)),
+    bold.widthOfTextAtSize(templateMoney(amountDue), FONT),
+  );
+  const labelsRight = VALUES_RIGHT - valueWidth - 7.5;
+  summaryRows.forEach((row, index) => {
+    y = summaryBaselines[index];
+    page.drawText(safeText(row.label), { x: labelsRight - bold.widthOfTextAtSize(row.label, FONT), y, size: FONT, font: bold, color: COLOR.body });
+    rightText(row.value, VALUES_RIGHT, FONT, bold, COLOR.body);
+  });
+  // Garis di atas baris total: hitam 367 px, 1 px, rata kanan blok nilai.
+  y = summaryBaselines[3] - 17;
+  page.drawLine({ start: { x: VALUES_RIGHT - TOTAL_RULE_WIDTH, y }, end: { x: VALUES_RIGHT, y }, thickness: 0.75, color: COLOR.black });
+  y = summaryBaselines[4];
+  page.drawText("Jumlah Tertagih:", { x: labelsRight - bold.widthOfTextAtSize("Jumlah Tertagih:", FONT), y, size: FONT, font: bold, color: COLOR.body });
+  rightText(templateMoney(amountDue), VALUES_RIGHT, FONT, bold, COLOR.body);
+
+  // Tanggal, gambar, dan nama tanda tangan.
   const signDate = signatureDate(issueDate);
-  page.drawText(signDate, { x: signCenter - regular.widthOfTextAtSize(signDate, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: regular });
-  y -= 14;
+  const signDateY = y - 27.65;
+  page.drawText(signDate, { x: SIGN_CENTER - bold.widthOfTextAtSize(signDate, FONT) / 2, y: signDateY, size: FONT, font: bold, color: COLOR.body });
+  const signatureTop = signDateY - 17.2;
+  let signatureBottom = signatureTop;
   if (signature) {
-    const scaled = signature.scaleToFit(assets.signatureMaxWidth ?? 220, assets.signatureMaxHeight ?? 64);
-    page.drawImage(signature, { x: signCenter - scaled.width / 2, y: y - scaled.height, width: scaled.width, height: scaled.height });
-    y -= scaled.height + 12;
+    const scaled = signature.scaleToFit(assets.signatureMaxWidth ?? SIGNATURE_BOX.width, assets.signatureMaxHeight ?? SIGNATURE_BOX.height);
+    page.drawImage(signature, { x: SIGN_CENTER - scaled.width / 2, y: signatureTop - scaled.height, width: scaled.width, height: scaled.height });
+    signatureBottom = signatureTop - scaled.height;
   } else {
-    y -= 64 + 12;
+    signatureBottom = signatureTop - SIGNATURE_BOX.height;
   }
   if (invoice.snapshotSignatureName) {
     const signName = safeText(invoice.snapshotSignatureName).toUpperCase();
-    page.drawText(signName, { x: signCenter - bold.widthOfTextAtSize(signName, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: bold });
-    y -= 16;
+    page.drawText(signName, { x: SIGN_CENTER - bold.widthOfTextAtSize(signName, FONT) / 2, y: signatureBottom - 17.3, size: FONT, font: bold, color: COLOR.body });
   }
-  // Ukuran tiap fragmen berasal dari poin itu sendiri. Bila blok tidak muat,
-  // blok lanjut ke halaman baru (kolom kiri terpisah dari TTD di kanan).
-  y = summaryTop;
-  if (keteranganPoints.length && y - pointListDrop(keteranganPoints, listWidth) < pageBottom) addPage();
-  drawPointList("Keterangan", keteranganPoints, margin, listWidth);
-  y -= 10;
-  // Syarat & Ketentuan selebar kolom kiri saja (separuh halaman) seperti template.
+
+  // Blok Keterangan di kolom kiri, dimulai sejajar baris Subtotal di kolom kanan.
+  y = listHeadingBaseline;
+  if (keteranganPoints.length && y - pointListDrop(keteranganPoints, LEFT_COLUMN.width) < MARGIN.bottom + 8) addPage();
+  drawPointList("Keterangan", keteranganPoints, LEFT_COLUMN.x, LEFT_COLUMN.width);
+  // Syarat & Ketentuan melanjutkan di bawah kedua kolom, selebar kolom kiri.
+  const blockBottom = Math.min(y, signatureBottom - 10.35);
+  y = keteranganPoints.length ? blockBottom : listHeadingBaseline;
   if (syaratPoints.length) {
-    if (y - pointListDrop(syaratPoints, listWidth) < pageBottom) addPage();
-    drawPointList("Syarat & Ketentuan", syaratPoints, margin, listWidth);
+    y -= 10.35;
+    if (y - pointListDrop(syaratPoints, LEFT_COLUMN.width) < MARGIN.bottom + 8) addPage();
+    drawPointList("Syarat & Ketentuan", syaratPoints, LEFT_COLUMN.x, LEFT_COLUMN.width);
   }
 
   document.setTitle(`Invoice ${invoice.invoiceNo}`);
