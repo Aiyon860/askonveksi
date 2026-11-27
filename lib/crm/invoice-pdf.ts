@@ -121,14 +121,19 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number) {
   return lines.length ? lines : [""];
 }
 
-type PointToken = { text: string; font: PDFFont; underline: boolean };
+type PointToken = { text: string; font: PDFFont; underline: boolean; size: number };
+
+/** Ukuran terbesar pada satu baris; jarak antar-baris mengikuti angka ini. */
+function lineMaxSize(tokens: PointToken[], baseSize: number) {
+  return tokens.reduce((largest, token) => Math.max(largest, token.size), baseSize);
+}
 
 /** Bungkus run bergaya menjadi baris token sesuai lebar kolom; `\n` paksa baris baru. */
 function layoutPointLines(
   runs: InvoicePointRun[],
   fonts: { regular: PDFFont; bold: PDFFont; italic: PDFFont; boldItalic: PDFFont },
   maxWidth: number,
-  size: number,
+  baseSize: number,
 ) {
   const lines: PointToken[][] = [];
   let line: PointToken[] = [];
@@ -142,15 +147,16 @@ function layoutPointLines(
     lineWidth = 0;
     pendingSpace = false;
   };
-  const append = (text: string, font: PDFFont, underline: boolean) => {
+  const append = (text: string, font: PDFFont, underline: boolean, size: number) => {
     const tokenWidth = font.widthOfTextAtSize(text, size);
     if (lineWidth > 0 && lineWidth + tokenWidth > maxWidth) newLine();
-    line.push({ text, font, underline: underline && text.trim().length > 0 });
+    line.push({ text, font, underline: underline && text.trim().length > 0, size });
     lineWidth += tokenWidth;
   };
 
   for (const run of runs) {
     const font = run.bold ? (run.italic ? fonts.boldItalic : fonts.bold) : run.italic ? fonts.italic : fonts.regular;
+    const size = run.size ?? baseSize;
     for (const part of run.text.split(/(\s+)/)) {
       if (!part) continue;
       if (/^\s+$/.test(part)) {
@@ -162,10 +168,10 @@ function layoutPointLines(
         if (line.length) newLine();
         pendingBreak = false;
       } else if (pendingSpace && line.length) {
-        append(" ", fonts.regular, false);
+        append(" ", fonts.regular, false, size);
       }
       pendingSpace = false;
-      append(safeText(part), font, run.underline);
+      append(safeText(part), font, run.underline, size);
     }
   }
   if (line.length || !lines.length) lines.push(line);
@@ -180,8 +186,9 @@ type InvoiceAssets = {
   paymentMethods?: Array<{ name: string; description: string | null }>;
   /** Poin master "Pengaturan invoice": blok Keterangan & Syarat/Ketentuan, selalu mengikuti data terkini. */
   settingPoints?: PdfInvoiceSettingPoint[];
-  /** Ukuran font bersama Keterangan & S&K dari master data (default 12 pt). */
-  pointFontSize?: number;
+  /** Batas ukuran gambar tanda tangan dari master data (default 220 × 64 pt). */
+  signatureMaxWidth?: number;
+  signatureMaxHeight?: number;
 };
 
 export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAssets = {}) {
@@ -230,53 +237,94 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     page.drawText(safeValue, { x: right - font.widthOfTextAtSize(safeValue, size), y, size, font, color });
   }
 
-  /**
-   * Tinggi blok Keterangan / Syarat. Rumus ini harus sama dengan penurunan `y`
-   * di `drawPointList` supaya pilihan font benar-benar muat satu halaman.
-   */
-  function pointListDrop(points: PdfInvoiceSettingPoint[], width: number, size: number) {
-    if (!points.length) return 0;
-    const leading = size + 2;
-    const fonts = { regular, bold, italic, boldItalic };
-    let drop = 4 + leading + 4;
-    for (const point of points) {
-      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, size);
-      drop += lines.length * leading + 3;
+  /** Tinggi satu poin dari baseline baris pertamanya sampai bawah poin. */
+  function pointDrop(sizes: number[]) {
+    let drop = sizes[sizes.length - 1] + 2 + 3;
+    for (let index = 1; index < sizes.length; index += 1) {
+      // Jarak mengikuti baris terbesar di antara dua baris supaya teks besar tidak menimpa.
+      drop += Math.max(sizes[index - 1], sizes[index]) + 2;
     }
     return drop;
   }
 
   /**
-   * Blok poin dari master "Pengaturan invoice". Tiap poin bisa memuat campuran
-   * tebal/miring/garis bawah (fragmen HTML) dan baris baru di dalam poin.
-   * Tidak pindah halaman: font sudah dipilih supaya blok ini muat di halaman ringkasan.
+   * Tinggi blok Keterangan / Syarat. Rumus ini harus sama dengan penurunan `y`
+   * di `drawPointList` supaya pilihan pindah halaman benar-benar cocok.
    */
-  function drawPointList(title: string, points: PdfInvoiceSettingPoint[], x: number, width: number, size: number) {
-    if (!points.length) return;
-    const leading = size + 2;
+  function pointListDrop(points: PdfInvoiceSettingPoint[], width: number) {
+    if (!points.length) return 0;
     const fonts = { regular, bold, italic, boldItalic };
-    page.drawText(safeText(title), { x, y, size, font: bold, color: rgb(0.12, 0.12, 0.12) });
-    y -= 4;
-    page.drawLine({ start: { x, y }, end: { x: x + width, y }, thickness: 1, color: RULE_LINE });
-    y -= leading;
-    points.forEach((point, index) => {
-      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, size);
-      page.drawText(`${index + 1}.`, { x, y, size, font: regular, color: rgb(0.4, 0.4, 0.4) });
+    const sizesPerPoint = points.map((point) =>
+      layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, MIN_FONT_SIZE)
+        .map((tokens) => lineMaxSize(tokens, MIN_FONT_SIZE)),
+    );
+    let drop = 4 + (Math.max(MIN_FONT_SIZE, sizesPerPoint[0][0]) + 2) + 4;
+    sizesPerPoint.forEach((sizes, pointIndex) => {
+      if (pointIndex > 0) {
+        const previousSizes = sizesPerPoint[pointIndex - 1];
+        // Jarak antar-poin mengikuti baris terbesar dari kedua sisi.
+        drop += Math.max(previousSizes[previousSizes.length - 1], sizes[0]) + 2 + 3;
+      }
+      drop += pointDrop(sizes);
+    });
+    return drop;
+  }
+
+  /**
+   * Blok poin dari master "Pengaturan invoice". Tiap poin bisa memuat campuran
+   * tebal/miring/garis bawah, baris baru, dan ukuran teks per fragmen.
+   * Pemanggil sudah berusaha memuat seluruh blok; bila tetap tidak muat,
+   * blok dilanjutkan per poin di halaman baru (judul diulang).
+   */
+  function drawPointList(title: string, points: PdfInvoiceSettingPoint[], x: number, width: number) {
+    if (!points.length) return;
+    const fonts = { regular, bold, italic, boldItalic };
+    const prepared = points.map((point) => {
+      const lines = layoutPointLines(parseInvoicePointRuns(point.text ?? ""), fonts, width - 22, MIN_FONT_SIZE);
+      return { lines, sizes: lines.map((tokens) => lineMaxSize(tokens, MIN_FONT_SIZE)) };
+    });
+    const bottom = margin + 20;
+    const drawTitle = (firstSize: number) => {
+      page.drawText(safeText(title), { x, y, size: MIN_FONT_SIZE, font: bold, color: rgb(0.12, 0.12, 0.12) });
+      y -= 4;
+      page.drawLine({ start: { x, y }, end: { x: x + width, y }, thickness: 1, color: RULE_LINE });
+      y -= Math.max(MIN_FONT_SIZE, firstSize) + 2;
+    };
+
+    drawTitle(prepared[0].sizes[0]);
+    let baseline = y;
+    let lastBaseline = y;
+    let lastMax = MIN_FONT_SIZE;
+    prepared.forEach(({ lines, sizes }, pointIndex) => {
+      if (pointIndex > 0) {
+        const previousSizes = prepared[pointIndex - 1].sizes;
+        baseline -= Math.max(previousSizes[previousSizes.length - 1], sizes[0]) + 2 + 3;
+      }
+      if (baseline - pointDrop(sizes) < bottom) {
+        addPage();
+        drawTitle(sizes[0]);
+        baseline = y;
+      }
+      page.drawText(`${pointIndex + 1}.`, { x, y: baseline, size: MIN_FONT_SIZE, font: regular, color: rgb(0.4, 0.4, 0.4) });
+      let lineY = baseline;
       lines.forEach((tokens, lineIndex) => {
-        const lineY = y - lineIndex * leading;
+        if (lineIndex > 0) lineY -= Math.max(sizes[lineIndex - 1], sizes[lineIndex]) + 2;
         let cursorX = x + 22;
         for (const token of tokens) {
           if (!token.text) continue;
-          page.drawText(token.text, { x: cursorX, y: lineY, size, font: token.font, color: rgb(0.12, 0.12, 0.12) });
-          const tokenWidth = token.font.widthOfTextAtSize(token.text, size);
+          page.drawText(token.text, { x: cursorX, y: lineY, size: token.size, font: token.font, color: rgb(0.12, 0.12, 0.12) });
+          const tokenWidth = token.font.widthOfTextAtSize(token.text, token.size);
           if (token.underline) {
             page.drawLine({ start: { x: cursorX, y: lineY - 2 }, end: { x: cursorX + tokenWidth, y: lineY - 2 }, thickness: 0.8, color: rgb(0.12, 0.12, 0.12) });
           }
           cursorX += tokenWidth;
         }
       });
-      y -= lines.length * leading + 3;
+      lastBaseline = lineY;
+      baseline = lineY;
+      lastMax = sizes[sizes.length - 1];
     });
+    y = lastBaseline - (lastMax + 2) - 3;
     y -= 4;
   }
 
@@ -464,8 +512,8 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     y = rowTop - rowHeight;
   });
 
-  // Halaman ringkasan: angka kanan, Keterangan dan Syarat di kiri. Ukuran font kedua
-  // blok mengikuti master data; bila tidak muat, blok dilanjutkan ke halaman baru.
+  // Halaman ringkasan: angka kanan, Keterangan dan Syarat di kiri. Teks tanpa
+  // ukuran khusus memakai 12 pt; fragmen berukuran besar bisa memaksa pindah halaman.
   addPage();
   const summaryWidth = 218;
   const summaryX = A4.width - margin - summaryWidth;
@@ -500,7 +548,7 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
   page.drawText(signDate, { x: signCenter - regular.widthOfTextAtSize(signDate, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: regular });
   y -= 14;
   if (signature) {
-    const scaled = signature.scaleToFit(220, 64);
+    const scaled = signature.scaleToFit(assets.signatureMaxWidth ?? 220, assets.signatureMaxHeight ?? 64);
     page.drawImage(signature, { x: signCenter - scaled.width / 2, y: y - scaled.height, width: scaled.width, height: scaled.height });
     y -= scaled.height + 12;
   } else {
@@ -511,17 +559,16 @@ export async function createInvoicePdf(invoice: PdfInvoice, assets: InvoiceAsset
     page.drawText(signName, { x: signCenter - bold.widthOfTextAtSize(signName, MIN_FONT_SIZE) / 2, y, size: MIN_FONT_SIZE, font: bold });
     y -= 16;
   }
-  // Ukuran blok berasal dari master data; tidak ada lagi pengecilan diam-diam.
-  // Bila tidak muat, blok lanjut ke halaman baru (kolom kiri terpisah dari TTD di kanan).
-  const pointSize = assets.pointFontSize ?? 12;
+  // Ukuran tiap fragmen berasal dari poin itu sendiri. Bila blok tidak muat,
+  // blok lanjut ke halaman baru (kolom kiri terpisah dari TTD di kanan).
   y = summaryTop;
-  if (keteranganPoints.length && y - pointListDrop(keteranganPoints, listWidth, pointSize) < pageBottom) addPage();
-  drawPointList("Keterangan", keteranganPoints, margin, listWidth, pointSize);
+  if (keteranganPoints.length && y - pointListDrop(keteranganPoints, listWidth) < pageBottom) addPage();
+  drawPointList("Keterangan", keteranganPoints, margin, listWidth);
   y -= 10;
   // Syarat & Ketentuan selebar kolom kiri saja (separuh halaman) seperti template.
   if (syaratPoints.length) {
-    if (y - pointListDrop(syaratPoints, listWidth, pointSize) < pageBottom) addPage();
-    drawPointList("Syarat & Ketentuan", syaratPoints, margin, listWidth, pointSize);
+    if (y - pointListDrop(syaratPoints, listWidth) < pageBottom) addPage();
+    drawPointList("Syarat & Ketentuan", syaratPoints, margin, listWidth);
   }
 
   document.setTitle(`Invoice ${invoice.invoiceNo}`);

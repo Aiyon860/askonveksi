@@ -1,13 +1,16 @@
 "use client";
 
 import { Bold, Italic, Underline } from "lucide-react";
+import { Mark, mergeAttributes } from "@tiptap/core";
 import { Placeholder } from "@tiptap/extensions";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useReducer, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { invoicePointPlainText } from "@/lib/crm/invoice-setting-html";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { INVOICE_POINT_FONT_MAX, INVOICE_POINT_FONT_MIN, invoicePointPlainText } from "@/lib/crm/invoice-setting-html";
 
 const EDITOR_CLASS = [
   "invoice-point-editor min-h-40 w-full rounded-b-md border border-t-0 border-input bg-transparent px-3 py-2 text-sm leading-6 outline-none",
@@ -24,6 +27,30 @@ const PLACEHOLDER_STYLE = `
   pointer-events: none;
 }
 `;
+
+const FONT_SIZES = [12, 14, 16, 18, 24, 32, 48, 72];
+
+/** Ukuran teks per fragmen (seperti blok di Word/Canva), disimpan sebagai `<fs pt="18">`. */
+const FontSize = Mark.create({
+  name: "fontSize",
+  addAttributes() {
+    return {
+      pt: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("pt"),
+        renderHTML: (attributes) => (attributes.pt ? { pt: attributes.pt } : {}),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "fs[pt]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    const pt = Number(HTMLAttributes.pt);
+    // style hanya untuk tampilan editor; server menyimpan atribut pt saja.
+    return ["fs", mergeAttributes(HTMLAttributes, pt > 0 ? { style: `font-size:${pt}pt` } : {}), 0];
+  },
+});
 
 /** HTML editor per kolom: satu paragraf = satu poin, Shift+Enter = <br> dalam poin. */
 function readPoints(html: string) {
@@ -45,6 +72,7 @@ export function InvoiceSettingRichEditor({
   onChange: (points: string[]) => void;
 }) {
   const [tick, bump] = useReducer((value: number) => value + 1, 0);
+  const [customSize, setCustomSize] = useState("");
   // Konten awal dibekukan: perubahan poin dari parent tidak boleh me-reset dokumen.
   const [initialContent] = useState(() =>
     initialPoints.length ? initialPoints.map((point) => `<p>${point.replace(/\r?\n/g, "<br>")}</p>`).join("") : "<p></p>",
@@ -65,6 +93,7 @@ export function InvoiceSettingRichEditor({
         strike: false,
         trailingNode: false,
       }),
+      FontSize,
       Placeholder.configure({ placeholder }),
     ],
     content: initialContent,
@@ -98,6 +127,18 @@ export function InvoiceSettingRichEditor({
     { label: "Garis bawah", icon: Underline, active: editor.isActive("underline"), run: () => editor.chain().focus().toggleUnderline().run() },
   ];
 
+  const activeSize = (editor.getAttributes("fontSize").pt as string | undefined) ?? "";
+  const sizes = activeSize && !FONT_SIZES.includes(Number(activeSize)) ? [...FONT_SIZES, Number(activeSize)] : FONT_SIZES;
+  const customValue = Number(customSize);
+  const customValid = customSize.trim() !== "" && Number.isFinite(customValue)
+    && customValue >= INVOICE_POINT_FONT_MIN && customValue <= INVOICE_POINT_FONT_MAX;
+
+  function applySize(value: string) {
+    const size = Number(value);
+    if (!Number.isFinite(size) || size < INVOICE_POINT_FONT_MIN || size > INVOICE_POINT_FONT_MAX) return;
+    editor?.chain().focus().setMark("fontSize", { pt: String(size) }).run();
+  }
+
   return (
     <div data-tick={tick}>
       <style>{PLACEHOLDER_STYLE}</style>
@@ -116,6 +157,48 @@ export function InvoiceSettingRichEditor({
             <tool.icon aria-hidden="true" />
           </Button>
         ))}
+        <NativeSelect
+          size="sm"
+          className="w-32"
+          value={activeSize}
+          aria-label="Ukuran teks"
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            if (value) applySize(value);
+            else editor.chain().focus().unsetMark("fontSize").run();
+          }}
+        >
+          <NativeSelectOption value="">Ukuran asli</NativeSelectOption>
+          {sizes.map((size) => (
+            <NativeSelectOption key={size} value={String(size)}>{size} pt</NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <Input
+          type="number"
+          min={INVOICE_POINT_FONT_MIN}
+          max={INVOICE_POINT_FONT_MAX}
+          step="any"
+          className="h-8 w-20"
+          placeholder="pt"
+          value={customSize}
+          aria-label="Ukuran teks bebas"
+          onChange={(event) => setCustomSize(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            if (customValid) applySize(customSize);
+          }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          title="Tekan Enter atau klik untuk menerapkan ukuran ke teks yang diblok"
+          disabled={!customValid}
+          onClick={() => applySize(customSize)}
+        >
+          Terapkan
+        </Button>
       </div>
       <EditorContent editor={editor} />
     </div>

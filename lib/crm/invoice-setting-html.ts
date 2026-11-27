@@ -3,7 +3,13 @@ export type InvoicePointRun = {
   bold: boolean;
   italic: boolean;
   underline: boolean;
+  /** Ukuran font khusus fragmen ini (pt); null = ukuran dasar dokumen. */
+  size: number | null;
 };
+
+/** Batas ukuran font per fragmen teks yang boleh disimpan dan dicetak (pt). */
+export const INVOICE_POINT_FONT_MIN = 1;
+export const INVOICE_POINT_FONT_MAX = 72;
 
 const NAMED_ENTITIES: Record<string, string> = {
   amp: "&",
@@ -26,21 +32,29 @@ export function decodeInvoicePointEntities(value: string) {
   });
 }
 
+/** Baca atribut `pt` pada tag `<fs pt="18">`; nilai di luar batas dianggap tidak ada. */
+function readFontSize(tag: string) {
+  const value = Number(/pt\s*=\s*["']?([0-9.]+)/i.exec(tag)?.[1]);
+  return Number.isFinite(value) && value >= INVOICE_POINT_FONT_MIN && value <= INVOICE_POINT_FONT_MAX ? value : null;
+}
+
 type Style = { bold: boolean; italic: boolean; underline: boolean };
 
 /**
  * Ubah fragmen HTML poin invoice menjadi run teks bergaya untuk PDF.
- * Hanya strong/b, em/i, u, br, p, dan div yang dikenali; tag lain dibuang
+ * Hanya strong/b, em/i, u, fs, br, p, dan div yang dikenali; tag lain dibuang
  * tetapi teksnya tetap dipertahankan. `\n` pada run menandai baris paksa.
  */
 export function parseInvoicePointRuns(html: string): InvoicePointRun[] {
   const runs: InvoicePointRun[] = [];
   const styles: Style = { bold: false, italic: false, underline: false };
+  const sizeStack: Array<number | null> = [];
+  let size: number | null = null;
   let buffer = "";
 
   function flush() {
     if (!buffer) return;
-    runs.push({ text: buffer, bold: styles.bold, italic: styles.italic, underline: styles.underline });
+    runs.push({ text: buffer, bold: styles.bold, italic: styles.italic, underline: styles.underline, size });
     buffer = "";
   }
 
@@ -66,6 +80,14 @@ export function parseInvoicePointRuns(html: string): InvoicePointRun[] {
     } else if (tag === "u") {
       flush();
       styles.underline = !closing;
+    } else if (tag === "fs") {
+      flush();
+      if (closing) {
+        size = sizeStack.pop() ?? null;
+      } else {
+        sizeStack.push(size);
+        size = readFontSize(match[0]) ?? size;
+      }
     } else if ((tag === "p" || tag === "div") && closing) {
       buffer += "\n";
     }

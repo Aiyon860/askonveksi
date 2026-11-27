@@ -78,7 +78,10 @@ test("PDF invoice mengikuti template: tanpa blok rekening, dengan gambar tanda t
   assert.match(route, /paymentMethodQuery/);
   assert.match(route, /where: \{ isActive: true \}/, "hanya metode pembayaran aktif");
   assert.match(route, /paymentMethod\.findMany\(forBrand\(invoice\.brand, paymentMethodQuery\)\)/);
-  assert.match(route, /brand: invoice\.brand, logo: logoBytes, signature: signatureBytes, paymentMethods, settingPoints/);
+  assert.match(route, /brand: invoice\.brand,/);
+  assert.match(route, /logo: logoBytes,/);
+  assert.match(route, /signature: signatureBytes,/);
+  assert.match(route, /signatureMaxWidth: invoiceSetting\?\.signatureWidth \?\? 220/);
   assert.ok(!route.includes("profile?.bankName"), "tidak ada lagi fallback rekening dari profil");
 
   const pdf = invoicePdfSource;
@@ -86,7 +89,7 @@ test("PDF invoice mengikuti template: tanpa blok rekening, dengan gambar tanda t
   assert.doesNotMatch(pdf, /Metode pembayaran/, "blok metode pembayaran dihapus mengikuti template");
   assert.doesNotMatch(pdf, /Rekening pembayaran/, "blok snapshot rekening dihapus mengikuti template");
   assert.match(pdf, /assets\.signature/);
-  assert.match(pdf, /scaleToFit\(220, 64\)/, "gambar tanda tangan diperkecil dan tetap di atas nama");
+  assert.match(pdf, /scaleToFit\(assets\.signatureMaxWidth \?\? 220, assets\.signatureMaxHeight \?\? 64\)/, "ukuran tanda tangan mengikuti pengaturan");
   assert.match(pdf, /y -= 24; \/\/ geser blok TTD sedikit lebih rendah/);
   // "Tagihan Untuk" wajib menampilkan nama customer, bukan nama perusahaan.
   assert.match(pdf, /const customerName = invoice\.snapshotCustomerName \?\? invoice\.snapshotCompanyName;/);
