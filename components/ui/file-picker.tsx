@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 
 type FilePickerProps = Omit<ComponentProps<"input">, "type" | "value"> & {
   emptyLabel?: string;
+  /** Label tombol pemicu; dipakai saat aksinya bukan sekadar memilih file baru. */
+  buttonLabel?: string;
 };
 
 export function FilePicker({
   id,
   emptyLabel = "Belum ada file",
+  buttonLabel = "Pilih file",
   disabled,
   onChange,
   ...props
@@ -42,7 +45,7 @@ export function FilePicker({
       />
       <Button ref={triggerRef} type="button" variant="outline" disabled={disabled} className="min-h-11 sm:min-h-9" onClick={() => inputRef.current?.click()}>
         <FileUp data-icon="inline-start" aria-hidden="true" />
-        Pilih file
+        {buttonLabel}
       </Button>
       <p className="min-w-0 truncate text-sm text-muted-foreground" title={fileName ?? emptyLabel} aria-live="polite">
         {fileName ?? emptyLabel}

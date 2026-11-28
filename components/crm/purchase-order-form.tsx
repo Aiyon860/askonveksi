@@ -2,10 +2,13 @@
 
 import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { FileDown, Plus, Trash2 } from "lucide-react";
+import { FileDown, ImageIcon, Plus, Trash2, XCircle } from "lucide-react";
 
 import { createPurchaseOrderDraftAction, createPurchaseOrderRevisionAction } from "@/app/actions/crm";
 import { ensureGarmentSizeAction } from "@/app/actions/master-data";
+import { updatePurchaseOrderInPlaceAction } from "@/app/actions/purchase-order-correction";
+import { ClearFormButton } from "@/components/crm/clear-form-button";
+import { PaymentProofPreview } from "@/components/payment-proof-preview";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { initialFormActionState } from "@/lib/actions/form-state";
@@ -45,6 +48,8 @@ export type PurchaseOrderItemValues = {
   productCategoryId: string;
   decorationMethods: string[];
   designNotes: string;
+  /** Gambar desain customer versi terakhir (dipakai PDF). Diisi saat Edit PO disepakati. */
+  designs?: Array<{ id: string; name: string }>;
   matrix: Record<string, number>;
   /** Kolom ukuran ke-8: 7 kolom lain tetap dari Data Master, kolom ini namanya boleh diganti. */
   customSize?: SizeOption | null;
@@ -160,6 +165,12 @@ export function PurchaseOrderForm({
   purchaseOrderNoPreview,
   defaultInstansi,
   canManageSizes = false,
+  inPlaceEdit = false,
+  customerDesignsEditable = false,
+  customerDesignTaskId = null,
+  onCancelEdit,
+  lockInvoiceQuantities = false,
+  purchaseOrderVersion,
 }: {
   opportunityId: string;
   sizeOptions: SizeOption[];
@@ -171,6 +182,17 @@ export function PurchaseOrderForm({
   defaultInstansi?: string;
   /** Role yang boleh membuka Data Master ukuran (Admin PO/Owner/Keuangan/Developer). */
   canManageSizes?: boolean;
+  /** Simpan langsung ke PO yang sama (tanpa membuat versi revisi baru). */
+  inPlaceEdit?: boolean;
+  /** Satu-satunya pintu ubah desain customer: dipakai saat PO draft maupun disepakati. */
+  customerDesignsEditable?: boolean;
+  /** Tugas desain PO ini; dipakai membuka pratinjau gambar yang sudah tersimpan. */
+  customerDesignTaskId?: string | null;
+  /** Menutup form edit tanpa menyimpan. */
+  onCancelEdit?: () => void;
+  /** Masih ada invoice aktif: qty/ukuran/struktur produk dikunci karena dipakai invoice. */
+  lockInvoiceQuantities?: boolean;
+  purchaseOrderVersion?: number;
 }) {
   const values = initialValues;
   const hasCategoryOptions = Boolean(categoryOptions?.length);
@@ -228,6 +250,8 @@ export function PurchaseOrderForm({
   // Checkbox Deposit: gate tombol Isi Deposit di tab PO; dapat dicentang sebelum draft terbuat.
   const [depositRequired, setDepositRequired] = useState(values?.depositRequired ?? false);
   const [hasChangedOrderDate, setHasChangedOrderDate] = useState(false);
+  // Naikkan untuk me-remount input file (uncontrolled) saat formulir dikosongkan.
+  const [clearVersion, setClearVersion] = useState(0);
   const [previewState, setPreviewState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
   // Status ganti nama kolom ukuran ke-8, satu entri per produk.
   const [sizeColumnState, setSizeColumnState] = useState<Record<string, { saving: boolean; error: string | null }>>({});
@@ -258,7 +282,7 @@ export function PurchaseOrderForm({
   );
   const formRef = useRef<HTMLFormElement>(null);
   const failedSubmissionRef = useRef<FormData | null>(null);
-  const serverAction = sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
+  const serverAction = inPlaceEdit ? updatePurchaseOrderInPlaceAction : sourcePurchaseOrderId ? createPurchaseOrderRevisionAction : createPurchaseOrderDraftAction;
   const [formState, formAction] = useActionState(serverAction, initialFormActionState);
 
   // C4: pulihkan draft tersimpan (hanya form PO baru, file Excel perlu dilampirkan ulang).
@@ -333,6 +357,39 @@ export function PurchaseOrderForm({
 
   function removeItem(key: string) {
     setItems((current) => (current.length > 1 ? current.filter((item) => item.key !== key) : current));
+  }
+
+  /**
+   * Kosongkan seluruh isian di layar (belum menyentuh server) supaya PO yang berubah
+   * total tidak perlu dihapus satu per satu. Saat invoice aktif, jumlah/ukuran tetap
+   * dipertahankan karena angka itu dipakai invoice dan dikunci oleh server.
+   */
+  function clearForm() {
+    setHeader({ instansi: "", sampleSize: "", notes: "" });
+    setGarmentType("");
+    setProductCategoryId("");
+    setSelectedOrderDate(jakartaToday());
+    setDeadline("");
+    setDeadlineMode("PRESET");
+    setDesignDeadline("");
+    setDepositRequired(false);
+    setHasChangedOrderDate(false);
+    setPreviewState({});
+    setPendingSizes({});
+    setSizeColumnState({});
+    setClearVersion((version) => version + 1);
+    setItems((current) => lockInvoiceQuantities
+      ? current.map((item) => ({
+          ...item,
+          name: "",
+          pola: "",
+          material: "",
+          baseColor: "",
+          variationColor: "",
+          designNotes: "",
+          designs: [],
+        }))
+      : [newItem(`item-${Date.now()}`, sizeOptions)]);
   }
 
   /** Kolom ukuran satu produk: 7 tetap dari master, kolom ke-8 pilihan admin, plus ukuran PO lama. */
@@ -497,8 +554,19 @@ export function PurchaseOrderForm({
       <input type="hidden" name="opportunityId" value={opportunityId} />
       {/* Header tetap mengikuti bahan produk pertama untuk konsumsi data lama; isiannya ada di tiap produk. */}
       <input type="hidden" name="material" value={items[0]?.material ?? ""} />
-      {sourcePurchaseOrderId ? <input type="hidden" name="sourcePurchaseOrderId" value={sourcePurchaseOrderId} /> : null}
+      {sourcePurchaseOrderId && !inPlaceEdit ? <input type="hidden" name="sourcePurchaseOrderId" value={sourcePurchaseOrderId} /> : null}
+      {inPlaceEdit && sourcePurchaseOrderId ? <input type="hidden" name="purchaseOrderId" value={sourcePurchaseOrderId} /> : null}
+      {inPlaceEdit && purchaseOrderVersion !== undefined ? <input type="hidden" name="version" value={purchaseOrderVersion} /> : null}
       <FieldGroup>
+        {lockInvoiceQuantities ? (
+          <Alert>
+            <AlertTitle>Qty &amp; ukuran produk dikunci</AlertTitle>
+            <AlertDescription>
+              Masih ada invoice aktif pada PO ini, jadi jumlah ukuran, jumlah produk, dan kategori produk tidak dapat diubah. Batalkan invoice tersebut
+              terlebih dahulu bila qty memang harus berubah. Isian lain tetap bisa disimpan tanpa membatalkan invoice.
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {restoredDraft ? <Alert><AlertTitle>Draft tersimpan dipulihkan</AlertTitle><AlertDescription>Isian terakhir Anda dikembalikan otomatis. Lampirkan ulang file Excel bila memakai Impor Excel.</AlertDescription></Alert> : null}
         <FieldSet>
           <FieldLegend>Informasi pesanan</FieldLegend>
@@ -507,7 +575,7 @@ export function PurchaseOrderForm({
             {hasCategoryOptions ? (
               <Field>
                 <FieldLabel htmlFor={`po-category-${fieldKey}`} required>Kategori produk</FieldLabel>
-                <NativeSelect id={`po-category-${fieldKey}`} name="productCategoryId" required value={productCategoryId} onChange={(event) => handleCategoryChange(event.currentTarget.value)}>
+                <NativeSelect id={`po-category-${fieldKey}`} name="productCategoryId" required disabled={lockInvoiceQuantities || undefined} value={productCategoryId} onChange={(event) => handleCategoryChange(event.currentTarget.value)}>
                   <NativeSelectOption value="" disabled>Pilih kategori produk</NativeSelectOption>
                   {categoryOptions?.map((category) => (
                     <NativeSelectOption key={category.id} value={category.id}>{category.name}</NativeSelectOption>
@@ -518,7 +586,7 @@ export function PurchaseOrderForm({
                 {legacyCategory ? <FieldDescription>Kategori sebelumnya tidak tersedia. Pilih ulang kategori produk untuk PO ini.</FieldDescription> : null}
               </Field>
             ) : (
-              <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
+              <Field><FieldLabel htmlFor={`po-garment-${fieldKey}`} required>Jenis pakaian</FieldLabel><NativeSelect id={`po-garment-${fieldKey}`} name="garmentType" required disabled={lockInvoiceQuantities || undefined} value={garmentType} onChange={(event) => setGarmentType(event.currentTarget.value)}><NativeSelectOption value="" disabled>Pilih jenis pakaian</NativeSelectOption><NativeSelectOption value="JERSEY">Jersey</NativeSelectOption><NativeSelectOption value="NON_JERSEY">Non-jersey</NativeSelectOption></NativeSelect></Field>
             )}
             <Field><FieldLabel htmlFor={`po-instansi-${fieldKey}`} required>Perusahaan/Instansi</FieldLabel><Input id={`po-instansi-${fieldKey}`} name="instansi" required minLength={2} maxLength={160} value={header.instansi} onChange={(event) => setHeader((prev) => ({ ...prev, instansi: event.target.value }))} placeholder="Contoh: PT Maju / Dinas Pendidikan" /></Field>
             <Field><FieldLabel htmlFor={`po-order-date-${fieldKey}`}>Tanggal order</FieldLabel><Input id={`po-order-date-${fieldKey}`} name="orderDate" type="date" value={selectedOrderDate} onChange={(event) => { const nextOrderDate = event.currentTarget.value; setSelectedOrderDate(nextOrderDate); setDeadline(""); setDeadlineMode("PRESET"); setDesignDeadline((current) => current && current < nextOrderDate ? "" : current); setHasChangedOrderDate(true); }} /></Field>
@@ -637,7 +705,7 @@ export function PurchaseOrderForm({
                 {hasCategoryOptions && items.length > 1 && index > 0 ? (
                   <Field>
                     <FieldLabel htmlFor={`${prefix}category-${fieldKey}`} required>Kategori Produk {index + 1}</FieldLabel>
-                    <NativeSelect id={`${prefix}category-${fieldKey}`} name={`${prefix}productCategoryId`} required value={item.productCategoryId} onChange={(event) => updateItem(item.key, { productCategoryId: event.target.value })} className="w-full">
+                    <NativeSelect id={`${prefix}category-${fieldKey}`} name={`${prefix}productCategoryId`} required disabled={lockInvoiceQuantities || undefined} value={item.productCategoryId} onChange={(event) => updateItem(item.key, { productCategoryId: event.target.value })} className="w-full">
                       <NativeSelectOption value="" disabled>Pilih kategori produk</NativeSelectOption>
                       {categoryOptions?.map((category) => (
                         <NativeSelectOption key={category.id} value={category.id}>{category.name}</NativeSelectOption>
@@ -676,6 +744,7 @@ export function PurchaseOrderForm({
                       step={1}
                       inputMode="numeric"
                       required
+                      disabled={lockInvoiceQuantities || undefined}
                       value={item.accessoryQuantity}
                       onFocus={(event) => event.currentTarget.select()}
                       onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }}
@@ -717,7 +786,7 @@ export function PurchaseOrderForm({
                                 defaultValue={size.name}
                                 maxLength={40}
                                 list={sizeNameListId}
-                                disabled={sizeColumn?.saving}
+                                disabled={sizeColumn?.saving || lockInvoiceQuantities || undefined}
                                 aria-label={`Nama ukuran kolom yang bisa diubah, produk ${index + 1}`}
                                 title="Ganti nama ukuran kolom ini"
                                 className="w-full min-w-0 text-center font-semibold"
@@ -736,7 +805,7 @@ export function PurchaseOrderForm({
                           <TableCell className="font-medium">{sleeveLength === "PENDEK" ? "Pendek" : "Panjang"}</TableCell>
                           {columns.map((size) => {
                             const key = `${sleeveLength}:${size.id}`;
-                            return <TableCell key={size.id} className="p-2"><input type="hidden" name={`${prefix}sizeId`} value={size.id} /><input type="hidden" name={`${prefix}sleeveLength`} value={sleeveLength} /><Input name={`${prefix}sizeQuantity`} type="number" min={0} max={10_000_000} step={1} inputMode="numeric" required value={item.matrix[key] ?? 0} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }} onChange={(event) => updateMatrixValue(item, key, event.currentTarget.value)} aria-label={`${sleeveLength === "PENDEK" ? "Pendek" : "Panjang"} ukuran ${size.name} produk ${index + 1}`} className="w-full min-w-0 text-center font-mono tabular-nums" /></TableCell>;
+                            return <TableCell key={size.id} className="p-2"><input type="hidden" name={`${prefix}sizeId`} value={size.id} /><input type="hidden" name={`${prefix}sleeveLength`} value={sleeveLength} /><Input name={`${prefix}sizeQuantity`} type="number" min={0} max={10_000_000} step={1} inputMode="numeric" required disabled={lockInvoiceQuantities || undefined} value={item.matrix[key] ?? 0} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => { if (["-", "+", ".", ",", "e", "E"].includes(event.key)) event.preventDefault(); }} onChange={(event) => updateMatrixValue(item, key, event.currentTarget.value)} aria-label={`${sleeveLength === "PENDEK" ? "Pendek" : "Panjang"} ukuran ${size.name} produk ${index + 1}`} className="w-full min-w-0 text-center font-mono tabular-nums" /></TableCell>;
                           })}
                           <TableCell className={numericCellClass(rowTotal(columns, item, sleeveLength), "text-right font-mono font-medium tabular-nums")}>{rowTotal(columns, item, sleeveLength)}</TableCell>
                         </TableRow>
@@ -767,7 +836,7 @@ export function PurchaseOrderForm({
                     <div className="mt-3 flex flex-wrap gap-1 rounded-md border bg-muted/40 p-1" role="radiogroup" aria-label={`Cara mengisi roster produk ${index + 1}`}>
                       {([["none", "Tanpa roster"], ["manual", "Ketik manual"], ["excel", "Impor Excel"]] as const).map(([value, label]) => (
                         <label key={value} className={cn("relative cursor-pointer rounded-sm px-3 py-2 text-sm font-medium transition-colors focus-within:ring-2 focus-within:ring-ring", item.rosterMode === value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-background hover:text-foreground")}>
-                          <input type="radio" name={`${prefix}rosterMode`} value={value} checked={item.rosterMode === value} onChange={() => handleRosterModeChange(item, value)} className="sr-only" />{label}
+                          <input type="radio" name={`${prefix}rosterMode`} value={value} checked={item.rosterMode === value} disabled={lockInvoiceQuantities || undefined} onChange={() => handleRosterModeChange(item, value)} className="sr-only" />{label}
                         </label>
                       ))}
                     </div>
@@ -784,7 +853,7 @@ export function PurchaseOrderForm({
                     </div> : null}
                     {item.rosterMode === "excel" ? <div className="mt-4 flex flex-col gap-3">
                       <Button size="sm" variant="outline" className="self-start" render={<a href="/api/crm/roster-template" download />} nativeButton={false}><FileDown data-icon="inline-start" aria-hidden="true" />Unduh template Excel</Button>
-                      <Field><FieldLabel htmlFor={`${prefix}roster-file-${fieldKey}`}>File roster</FieldLabel><FilePicker key={formState.ok ? "ready" : "validation-error"} id={`${prefix}roster-file-${fieldKey}`} name={`${prefix}rosterFile`} accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required onChange={(event) => handleRosterFileChange(item, event.currentTarget.files?.[0])} /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Matriks produk ini terisi otomatis sesuai isi file.</FieldDescription></Field>
+                      <Field><FieldLabel htmlFor={`${prefix}roster-file-${fieldKey}`}>File roster</FieldLabel><FilePicker key={formState.ok ? "ready" : "validation-error"} id={`${prefix}roster-file-${fieldKey}`} name={`${prefix}rosterFile`} accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required disabled={lockInvoiceQuantities || undefined} onChange={(event) => handleRosterFileChange(item, event.currentTarget.files?.[0])} /><FieldDescription>Maksimal 2 MB dan 5.000 baris. Matriks produk ini terisi otomatis sesuai isi file.</FieldDescription></Field>
                       {previewState[item.key]?.loading ? <FieldDescription> Membaca file Excel…</FieldDescription> : null}
                       {previewState[item.key]?.error ? <Alert variant="destructive"><AlertTitle>Pratinjau roster</AlertTitle><AlertDescription>{previewState[item.key]?.error}</AlertDescription></Alert> : null}
                     </div> : null}
@@ -796,12 +865,70 @@ export function PurchaseOrderForm({
                 <Field><FieldLabel htmlFor={`${prefix}design-${fieldKey}`}>Catatan desain{items.length > 1 ? ` produk ${index + 1}` : ""}</FieldLabel><Textarea id={`${prefix}design-${fieldKey}`} name={`${prefix}designNotes`} maxLength={4000} rows={3} value={item.designNotes} onChange={(event) => updateItem(item.key, { designNotes: event.target.value })} /></Field>
                 {items.length > 1 && index > 0 ? (
                   <div className="flex items-end">
-                    <Button type="button" variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => removeItem(item.key)}>
+                    <Button type="button" variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => removeItem(item.key)} disabled={lockInvoiceQuantities || undefined}>
                       <Trash2 data-icon="inline-start" aria-hidden="true" />Hapus produk ini
                     </Button>
                   </div>
                 ) : null}
               </div>
+
+              {customerDesignsEditable ? (
+                <FieldSet className="mt-4 rounded-lg border-2 border-dashed bg-muted/20 p-4">
+                  <FieldLegend>Desain customer{items.length > 1 ? ` produk ${index + 1}` : ""}</FieldLegend>
+                  <div className="-mt-3 flex flex-wrap items-start justify-between gap-3">
+                    <FieldDescription className="min-w-0 flex-1">
+                      Gambar ini dipakai pada PDF customer. Mengunggah gambar baru membuat versi desain baru tanpa mengubah qty, harga, atau invoice.
+                    </FieldDescription>
+                    <span className="shrink-0 rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
+                      {item.designs?.length ? `${item.designs.length} gambar tersimpan` : "Belum ada gambar"}
+                    </span>
+                  </div>
+                  {item.designs?.length ? (
+                    <ul className="mt-3 grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {item.designs.map((design) => (
+                        <li key={design.id} className="flex min-w-0 flex-col gap-2 rounded-md border bg-background p-2">
+                          {customerDesignTaskId ? (
+                            <PaymentProofPreview
+                              href={`/api/desain/${customerDesignTaskId}/attachments/${design.id}?inline=1`}
+                              label={`Desain customer ${design.name}`}
+                              thumbnailClassName="h-32 w-full bg-muted"
+                              imageClassName="object-contain"
+                              hoverLabel="Perbesar desain"
+                            />
+                          ) : (
+                            <div className="flex h-32 w-full items-center justify-center rounded bg-muted">
+                              <ImageIcon className="size-6 text-muted-foreground" aria-hidden="true" />
+                            </div>
+                          )}
+                          <span className="flex min-w-0 items-center gap-1.5 text-xs">
+                            <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 truncate" title={design.name}>{design.name}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">Belum ada gambar desain customer untuk produk ini. Unggah sekarang agar ikut di PDF customer.</p>
+                  )}
+                  <Field className="mt-4 w-full">
+                    <FieldLabel htmlFor={`${prefix}design-files-${fieldKey}`}>
+                      {item.designs?.length ? "Ubah desain (unggah versi baru)" : "Upload desain customer"}
+                    </FieldLabel>
+                    <div className="w-full rounded-md border bg-background p-3">
+                      <FilePicker
+                        key={`${item.key}-${clearVersion}`}
+                        id={`${prefix}design-files-${fieldKey}`}
+                        name={`designFiles-${item.key}`}
+                        multiple
+                        accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                        buttonLabel={item.designs?.length ? "Ubah Desain" : "Upload Desain"}
+                        emptyLabel="Belum ada file baru dipilih"
+                      />
+                    </div>
+                    <FieldDescription>PNG atau JPG, maksimal 5 file dan 5 MB per file. Gambar versi terbaru yang dipakai di PDF customer.</FieldDescription>
+                  </Field>
+                </FieldSet>
+              ) : null}
             </FieldSet>
             {index < items.length - 1 ? (
               <div className="flex items-center gap-3" aria-hidden="true">
@@ -814,7 +941,7 @@ export function PurchaseOrderForm({
           );
         })}
 
-        <Button type="button" variant="default" className="self-start" onClick={addItem} disabled={items.length >= 10}>
+        <Button type="button" variant="default" className="self-start" onClick={addItem} disabled={lockInvoiceQuantities || items.length >= 10}>
           <Plus data-icon="inline-start" aria-hidden="true" />Tambah produk
         </Button>
         <FieldDescription>Setiap produk punya warna sendiri, jadi satu nomor PO boleh memuat beberapa warna berbeda. Warna dasar wajib diisi; warna variasi opsional.</FieldDescription>
@@ -826,7 +953,29 @@ export function PurchaseOrderForm({
             <AlertDescription>{formState.message} Periksa jumlah produk, matriks ukuran, dan roster, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
-        <SubmitButton pendingLabel="Menyimpan PO...">{submitLabel ?? "Buat draft PO"}</SubmitButton>
+        {/* Tiga aksi ditumpuk penuh selebar form: Simpan, Kosongkan, Batalkan. */}
+        <div className="flex w-full flex-col gap-2">
+          <SubmitButton className="w-full" pendingLabel="Menyimpan PO...">{submitLabel ?? "Buat draft PO"}</SubmitButton>
+          {initialValues ? (
+            <ClearFormButton
+              className="w-full"
+              onClear={clearForm}
+              title="Kosongkan formulir PO?"
+              description="Seluruh isian di layar akan dikosongkan, termasuk produk, ukuran, roster, dan catatan. Data PO baru berubah setelah Anda menekan Simpan."
+            />
+          ) : null}
+          {onCancelEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={onCancelEdit}
+            >
+              <XCircle data-icon="inline-start" aria-hidden="true" />
+              Batalkan
+            </Button>
+          ) : null}
+        </div>
       </FieldGroup>
     </form>
   );

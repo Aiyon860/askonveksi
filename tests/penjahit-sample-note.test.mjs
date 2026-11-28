@@ -5,7 +5,7 @@ import test from "node:test";
 const [schema, migration, dialog, actions, data, page, pdfRoute, pdf] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20261126010000_purchase_order_item_sample/migration.sql", import.meta.url), "utf8"),
-  readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../components/crm/penjahit-plan-section.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
   readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
@@ -20,12 +20,14 @@ test("sampel per produk tersimpan di DB dengan qty default 1", () => {
   assert.match(migration, /ADD COLUMN IF NOT EXISTS "sampleSize" VARCHAR\(40\)/);
 });
 
-test("dialog Edit PDF Penjahit menyediakan QTY (number, default 1) dan Ukuran sample (text)", () => {
+test("section penjahit menyediakan QTY (number, default 1) dan Ukuran sample (text) berisi nilai lama", () => {
   assert.match(dialog, /name={`sampleQty-\$\{item\.id\}`}/);
   assert.match(dialog, /name={`sampleSize-\$\{item\.id\}`}/);
   assert.match(dialog, /type="number"/);
-  assert.match(dialog, /String\(item\.sampleQty \?\? 1\)/);
-  assert.match(dialog, /value=\{sampleSizes\[item\.id\] \?\? ""\}/);
+  // Nilai lama dipakai sebagai default, bukan state kosong saat dialog dibuka.
+  assert.match(dialog, /defaultValue=\{String\(item\.sampleQty \?\? 1\)\}/);
+  assert.match(dialog, /defaultValue=\{item\.sampleSize \?\? ""\}/);
+  assert.match(dialog, /defaultValue=\{item\.deadline \?\? ""\}/);
 });
 
 test("action menyimpan sampel dan menolak qty bukan bulat minimal 1", () => {

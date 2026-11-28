@@ -504,6 +504,47 @@ export const purchaseOrderCorrectionSchema = z.object({
   roster: z.array(purchaseOrderCorrectionRosterSchema).max(PURCHASE_ORDER_ROSTER_MAX_ROWS),
 });
 
+/**
+ * Edit PO inline saat masih ada invoice aktif. Qty/ukuran tidak ikut dikirim sebagai
+ * nilai yang boleh diubah: hanya identitas, tanggal, catatan, dan isi per produk yang
+ * bersifat deskriptif. Ukuran, jumlah, dan harga tetap seperti PO yang dipakai invoice.
+ */
+const purchaseOrderInPlaceRosterSchema = z.object({
+  memberId: z.string().trim().min(1, "ID anggota wajib diisi.").max(80),
+  name: z.string().trim().min(2, "Nama anggota minimal 2 karakter.").max(160),
+  jabatan: optionalText(80),
+});
+
+const purchaseOrderInPlaceItemSchema = z.object({
+  name: z.string().trim().min(2, "Nama produk wajib diisi.").max(120),
+  pola: z.string().trim().min(2, "Pola wajib diisi.").max(120),
+  material: z.string().trim().min(2, "Bahan wajib diisi.").max(120),
+  baseColor: z.string().trim().min(1, "Warna dasar wajib diisi.").max(120),
+  variationColor: optionalText(240),
+  designNotes: optionalText(4000),
+  roster: z.array(purchaseOrderInPlaceRosterSchema).max(PURCHASE_ORDER_ROSTER_MAX_ROWS),
+});
+
+export const purchaseOrderInPlaceEditSchema = z.object({
+  purchaseOrderId: entityIdSchema,
+  version: requiredVersion,
+  instansi: z.string().trim().min(2, "Instansi minimal 2 karakter.").max(160),
+  orderDate: optionalText(10),
+  deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
+  designDeadline: optionalDateText,
+  sampleSize: optionalText(40),
+  notes: optionalText(4000),
+  depositRequired: z.boolean(),
+  items: z.array(purchaseOrderInPlaceItemSchema).min(1, "Tambahkan minimal satu produk.").max(10),
+}).superRefine((value, context) => {
+  value.items.forEach((item, index) => {
+    const rosterIds = item.roster.map((row) => row.memberId.toLocaleLowerCase("id-ID"));
+    if (new Set(rosterIds).size !== rosterIds.length) {
+      context.addIssue({ code: "custom", path: ["items", index, "roster"], message: `ID anggota roster ${item.name || `produk ${index + 1}`} tidak boleh duplikat.` });
+    }
+  });
+});
+
 export const reverseSalesOrderSchema = z.object({
   salesOrderId: entityIdSchema,
   cancelReason: z.string().trim().min(5, "Alasan pembatalan minimal 5 karakter.").max(2000),

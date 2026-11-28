@@ -79,6 +79,9 @@ const CUSTOMER_IMPORT_TRANSACTION_OPTIONS = {
   maxWait: 20_000,
   timeout: 30_000,
 } as const;
+// Gambar desain customer dari form revisi PO (maks 5 file, 5 MB per file).
+const DESIGN_UPLOAD_MAX_FILES = 5;
+const DESIGN_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 const DEAL_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   // 6 query berurutan × ±450ms RTT + akuisisi antrean pool saat burst.
@@ -2618,7 +2621,46 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
     const rows = await preparePurchaseOrderRows(prisma, preparedItems);
     timer.mark("rows");
     const allDecorationMethods = [...new Set(preparedItems.flatMap((item) => item.decorationMethods))];
-    const opportunityId = await prisma.$transaction(async (tx) => {
+    // Desain customer yang diganti dari form revisi: divalidasi & diunggah sebelum transaksi,
+    // lalu ditempelkan sebagai versi berikutnya pada tugas desain PO revisi.
+    type RevisionDesignAttachment = { bytes: Uint8Array; path: string; originalName: string; contentType: DesignImageMime; sizeBytes: number };
+    const revisionDesignUploads: Array<{ position: number; attachments: RevisionDesignAttachment[] }> = [];
+    for (const [position, item] of parsed.data.items.entries()) {
+      const files = formData.getAll(`designFiles-${item.key}`).filter((value): value is File => value instanceof File && value.size > 0);
+      if (!files.length) continue;
+      if (files.length > DESIGN_UPLOAD_MAX_FILES) throw new UserFacingError(`Maksimal ${DESIGN_UPLOAD_MAX_FILES} gambar desain customer per produk.`);
+      const attachments: RevisionDesignAttachment[] = [];
+      for (const file of files) {
+        if (file.size > DESIGN_UPLOAD_MAX_BYTES) throw new UserFacingError(`Setiap gambar desain maksimal 5 MB (${file.name}).`);
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const contentType = designImageContentType(file.name, bytes);
+        if (!contentType) throw new UserFacingError(designImageRejection(file.name));
+        attachments.push({
+          bytes,
+          path: `design/${purchaseOrderId}/${randomUUID()}.${designImageExtensionFor(contentType)}`,
+          originalName: file.name.slice(0, 255),
+          contentType,
+          sizeBytes: file.size,
+        });
+      }
+      revisionDesignUploads.push({ position, attachments });
+    }
+    const designStorage = revisionDesignUploads.length ? erpStorage(PO_DESIGNS_BUCKET) : null;
+    const uploadedDesignPaths: string[] = [];
+    if (designStorage) {
+      for (const attachment of revisionDesignUploads.flatMap((upload) => upload.attachments)) {
+        const { error } = await designStorage.upload(attachment.path, attachment.bytes, { contentType: attachment.contentType, upsert: false });
+        if (error) {
+          console.error("Gagal mengunggah desain customer dari revisi PO.", { path: attachment.path, sizeBytes: attachment.bytes.length, status: error.status, statusCode: error.statusCode, message: error.message });
+          if (uploadedDesignPaths.length) await designStorage.remove(uploadedDesignPaths);
+          throw new UserFacingError("File desain belum dapat disimpan.");
+        }
+        uploadedDesignPaths.push(attachment.path);
+      }
+    }
+    let opportunityId: { opportunityId: string; replacedCancelled: boolean };
+    try {
+      opportunityId = await prisma.$transaction(async (tx) => {
         const source = await tx.purchaseOrder.findUnique({
           where: { id: sourcePurchaseOrderId.data },
           select: {
@@ -2628,6 +2670,9 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             status: true,
             revision: true,
             version: true,
+            // Desain dari form edit tetap menunggu deposit bila PO mencentang "Perlu deposit".
+            depositRequired: true,
+            deposit: { select: { id: true } },
             // Deadline & desain penjahit per posisi item disalin ke PO revisi supaya
             // dokumen baru tidak kehilangan gambar yang sudah diunggah.
             items: {
@@ -2691,6 +2736,10 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
           if (source.opportunity.invoices.some((invoice) => invoice.status === "ISSUED")) throw new UserFacingError("Masih ada invoice terbit. Batalkan invoice tersebut terlebih dahulu sebelum merevisi PO yang disepakati.");
           if (source.opportunity.invoices.length) throw new UserFacingError("Selesaikan invoice draft sebelum membuat revisi PO.");
         }
+        // Gate deposit desain tetap berlaku walau unggahan datang dari form edit PO.
+        if (revisionDesignUploads.length && source.depositRequired && !source.deposit && !hasRole(actor.role, GATE_OVERRIDE_ROLES)) {
+          throw new UserFacingError("Deposit desain belum dibayar. Isi Deposit pada tab PO terlebih dahulu.");
+        }
         const category = await resolveProductCategory(tx, parsed.data.productCategoryId, parsed.data.garmentType);
         const itemCategories = await Promise.all(preparedItems.map((item) => resolveProductCategory(tx, item.productCategoryId, category.garmentType)));
         // Sisi "sebelum" revisi diambil sebelum PO sumber dikunci menjadi SUPERSEDED.
@@ -2726,6 +2775,23 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             attachments: { create: design.attachments.map(({ path, originalName, contentType, sizeBytes }) => ({ path, originalName, contentType, sizeBytes })) },
           }];
         });
+        // Gambar baru dari form menjadi versi terbaru produk; versi lama tetap tersimpan.
+        const designRevisions = [...carriedDesignRevisions];
+        for (const upload of revisionDesignUploads) {
+          const item = preparedItems[upload.position];
+          if (!item) continue;
+          const sourceItemId = source.items[upload.position]?.id;
+          const carried = sourceItemId ? latestSourceDesign.get(sourceItemId) : undefined;
+          designRevisions.push({
+            itemId: item.itemId,
+            revision: carried && carried.attachments.length ? 2 : 1,
+            notes: null,
+            createdById: actor.id,
+            attachments: {
+              create: upload.attachments.map(({ path, originalName, contentType, sizeBytes }) => ({ path, originalName, contentType, sizeBytes })),
+            },
+          });
+        }
         const created = await tx.purchaseOrder.create({
           data: {
             id: purchaseOrderId,
@@ -2752,7 +2818,7 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
             designTask: {
               create: {
                 deadline: optionalDate(parsed.data.designDeadline)!,
-                ...(carriedDesignRevisions.length ? { revisions: { create: carriedDesignRevisions } } : {}),
+                ...(designRevisions.length ? { revisions: { create: designRevisions } } : {}),
               },
             },
             createdById: actor.id,
@@ -2792,9 +2858,18 @@ export async function createPurchaseOrderRevisionAction(_prevState: FormActionSt
         const snapshot = await purchaseOrderSnapshot(tx, created.id);
         await audit(tx, actor, "PurchaseOrder", created.id, "PURCHASE_ORDER_REVISION_CREATED", [
           "revision", "garmentType", "productCategoryId", "productName", "instansi", "material", "baseColor", "variationColor", "decorationMethods", "orderDate", "sampleSize", "designNotes", "notes", "deadline", "designDeadline", "depositRequired", "items", "sizes", "roster",
-        ], { sourcePurchaseOrderId: source.id, fromStatus: source.status }, diffSnapshots(sourceSnapshot, snapshot));
+        ], {
+          sourcePurchaseOrderId: source.id,
+          fromStatus: source.status,
+          uploadedDesignFiles: revisionDesignUploads.reduce((sum, upload) => sum + upload.attachments.length, 0),
+        }, diffSnapshots(sourceSnapshot, snapshot));
         return { opportunityId: source.opportunityId, replacedCancelled: source.status === "CANCELLED" };
-    }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      }, { ...DOCUMENT_DRAFT_TRANSACTION_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      // Jangan tinggalkan gambar yatim saat PO revisi gagal dibuat.
+      if (uploadedDesignPaths.length && designStorage) await designStorage.remove(uploadedDesignPaths);
+      throw error;
+    }
     timer.mark("transaction");
 
     revalidatePath("/crm");

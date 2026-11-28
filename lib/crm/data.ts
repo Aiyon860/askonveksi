@@ -844,7 +844,17 @@ export const getOpportunityDetail = cache(async function getOpportunityDetail(op
           rosterEntries: { select: { id: true, position: true, itemId: true, memberId: true, name: true, jabatan: true, sizeId: true, size: true, sleeveLength: true }, orderBy: { position: "asc" } },
           attachments: { select: { id: true, originalName: true, contentType: true, sizeBytes: true, kind: true, caption: true }, orderBy: { createdAt: "asc" } },
           // Desain diunggah per produk, jadi statusnya dihitung dari revisi tiap produk.
-          designTask: { select: { id: true, deadline: true, revisions: { select: { itemId: true, revision: true } } } },
+          // Attachments ikut diambil untuk menampilkan gambar desain customer di form Edit PO.
+          designTask: {
+            select: {
+              id: true,
+              deadline: true,
+              revisions: {
+                orderBy: [{ revision: "desc" }, { createdAt: "desc" }],
+                select: { itemId: true, revision: true, attachments: { select: { id: true, originalName: true }, orderBy: { createdAt: "asc" } } },
+              },
+            },
+          },
           depositRequired: true,
           deposit: { select: { amount: true, paidAt: true, paymentMethodId: true, reference: true, note: true, proofFileName: true, proofMimeType: true, paymentMethod: { select: { name: true } } } },
         },

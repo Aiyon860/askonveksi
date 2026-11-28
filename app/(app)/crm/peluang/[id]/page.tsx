@@ -9,7 +9,6 @@ import { InvoiceWorkflowSection } from "@/components/crm/invoice-workflow-sectio
 import { OpportunityProcessPanel, OpportunityProcessTabs } from "@/components/crm/opportunity-process-tabs";
 import { IssueInvoiceAction } from "@/components/crm/issue-invoice-action";
 import { PurchaseOrderAgreementAction } from "@/components/crm/purchase-order-agreement-action";
-import { PurchaseOrderCorrectionForm } from "@/components/crm/purchase-order-correction-form";
 import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderWorkflowSection } from "@/components/crm/purchase-order-workflow-section";
 import { PageHeader } from "@/components/page-header";
@@ -22,10 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, GARMENT_SIZE_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, GARMENT_SIZE_ROLES, OWNER_ACTION_ROLES, hasRole } from "@/lib/auth/permissions";
 import { getCurrentActor } from "@/lib/auth/session";
 import { getOpportunityDetail, getOpportunityDocumentHistory, getPurchaseOrderNoPreview } from "@/lib/crm/data";
-import { decorationMethodsLabel, DESIGN_REVISION_LIMIT, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
+import { decorationMethodsLabel, GARMENT_TYPE_LABEL, INVOICE_STATUS_LABEL, parseOpportunityDetailTab, PAYMENT_KIND_LABEL, PURCHASE_ORDER_STATUS_LABEL, type OpportunityDetailTab } from "@/lib/crm/constants";
 import { formatPurchaseOrderRevisionNo } from "@/lib/crm/document-numbers";
 import { formatCurrency, formatDate } from "@/lib/crm/format";
 import { findGarmentSizeByName } from "@/lib/crm/size-aliases";
@@ -126,8 +125,6 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
   const canOperate = hasRole(actor.role, CRM_OPERATOR_ROLES);
   // Admin PO boleh menambah ukuran langsung dari form PO; role lain hanya melihat tautan bila berhak.
   const canManageSizes = hasRole(actor.role, GARMENT_SIZE_ROLES);
-  // D1: Admin PO boleh mengunggah desain langsung (read-only CRM lainnya tetap).
-  const canUploadDesignRole = hasRole(actor.role, DESIGN_UPLOADER_ROLES);
   const canCancelDocuments = hasRole(actor.role, OWNER_ACTION_ROLES);
   const inNegotiation = opportunity.stage === "NEGOSIASI";
   const poDraft = opportunity.purchaseOrders.find((item) => item.status === "DRAFT");
@@ -177,15 +174,14 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
     : [];
   const designItems = designItemSources.map((item) => ({ ...item, revisionCount: designRevisionByItem.get(item.id) ?? 0 }));
   const designUploadedCount = designItems.filter((item) => item.revisionCount > 0).length;
+  // Desain diubah lewat Edit PO (satu pintu), bukan dialog di tab PO.
   const designMessage = !poDraft?.designTask
     ? "Tugas desain belum tersedia."
-    : designItems.length > 0 && designItems.every((item) => item.revisionCount >= DESIGN_REVISION_LIMIT)
-      ? `Batas ${DESIGN_REVISION_LIMIT} versi desain tercapai. Buat revisi PO untuk membuka versi baru.`
-      : designUploadedCount > 0 && designUploadedCount < designItems.length
-        ? `Desain terunggah untuk ${designUploadedCount}/${designItems.length} produk. Lengkapi sisanya bila sudah siap.`
-        : designUploadedCount === designItems.length && designItems.length > 0
-          ? "Desain tersimpan dan dipakai ulang. Gunakan Ubah Design hanya bila ingin mengganti gambar."
-          : "Unggah desain bila sudah tersedia.";
+    : designUploadedCount > 0 && designUploadedCount < designItems.length
+      ? `Desain terunggah untuk ${designUploadedCount}/${designItems.length} produk. Lengkapi sisanya lewat Edit PO.`
+      : designUploadedCount === designItems.length && designItems.length > 0
+        ? "Desain tersimpan dan dipakai ulang. Ubah dari Edit PO bila ingin mengganti gambar."
+        : "Unggah desain lewat Edit PO bila sudah tersedia.";
   const canAgreePurchaseOrderDraft = Boolean(poDraft?.garmentType && poDraft.deadline && poDraft.sizes.length && designItems.length > 0 && designUploadedCount === designItems.length);
   const depositForDraft = poDraft?.deposit
     ? {
@@ -225,13 +221,11 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                   designMessage={designMessage}
                   designSentAt={poDraft.designSentAt}
                   designSentByName={poDraft.designSentBy?.name ?? null}
-                  designTaskId={poDraft.designTask?.id ?? null}
                   designItems={designItems}
                   depositRequired={poDraft.depositRequired}
                   deposit={depositForDraft}
                   depositMethods={paymentMethods}
                   canEditDeposit={canOperate && poDraft.status === "DRAFT"}
-                  canUploadDesign={canUploadDesignRole}
                 />
               ) : (
                 <Button variant="outline" className="w-full sm:w-auto" disabled>
@@ -312,6 +306,8 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                           const accessoryQuantity = purchaseOrder.garmentType === "AKSESORI"
                             ? String(itemSizes.reduce((sum, row) => sum + Math.max(0, Math.trunc(row.quantity)), 0) || "")
                             : "";
+                          // Revisi desain diurutkan terbaru dulu; gambar acuan = versi terakhir produk ini.
+                          const latestDesign = (purchaseOrder.designTask?.revisions ?? []).find((revision) => revision.itemId === poItem.id);
                           return {
                             key: poItem.id || `saved-${itemIndex}`,
                             name: poItem.name,
@@ -322,6 +318,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                             productCategoryId: poItem.productCategoryId ?? "",
                             decorationMethods: poItem.decorationMethods,
                             designNotes: poItem.designNotes ?? "",
+                            designs: (latestDesign?.attachments ?? []).map((attachment) => ({ id: attachment.id, name: attachment.originalName })),
                             matrix,
                             rosterMode: (itemRoster.length ? "manual" : "none") as "none" | "manual" | "excel",
                             roster: itemRoster.map((entry, entryIndex) => ({
@@ -341,9 +338,12 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                     purchaseOrderNoPreview={purchaseOrder.status === "SUPERSEDED" ? purchaseOrderNoPreview : formatPurchaseOrderRevisionNo(purchaseOrder.purchaseOrderNo, purchaseOrder.revision + 1)}
                     defaultInstansi={opportunity.customer.companyName ?? undefined}
                     canManageSizes={canManageSizes}
-                    // Desain & catatan PO disepakati tetap bisa diubah walau invoice sudah terbit.
-                    canUploadDesign={canUploadDesignRole && Boolean(purchaseOrder.designTask)}
                     latestInChain={purchaseOrderIndex === 0}
+                    // Masih ada invoice aktif → qty & ukuran dikunci di form Edit PO.
+                    invoiceActive={opportunity.invoices.some(
+                      (invoice) => invoice.purchaseOrderId === purchaseOrder.id && (invoice.status === "DRAFT" || invoice.status === "ISSUED"),
+                    )}
+                    designTaskId={purchaseOrder.designTask?.id ?? null}
                     penjahitItems={purchaseOrder.items.map((item) => ({
                       id: item.id,
                       name: item.name,
@@ -358,36 +358,7 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                           : [],
                     }))}
                   >
-                    <div className="flex flex-col gap-4">
-                      <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
-                      {/* Koreksi data non-invoice: tetap tersedia walau invoice sudah terbit. */}
-                      {purchaseOrder.status === "AGREED" && canOperate ? (
-                        <PurchaseOrderCorrectionForm
-                          purchaseOrderId={purchaseOrder.id}
-                          purchaseOrderNo={purchaseOrder.purchaseOrderNo}
-                          version={purchaseOrder.version}
-                          instansi={purchaseOrder.instansi ?? ""}
-                          customerReference={purchaseOrder.customerReference ?? ""}
-                          deadline={dateInputValue(purchaseOrder.deadline)}
-                          designDeadline={purchaseOrder.designTask ? dateInputValue(purchaseOrder.designTask.deadline) : null}
-                          items={purchaseOrder.items.map((item) => ({
-                            id: item.id,
-                            name: item.name,
-                            pola: item.pola ?? purchaseOrder.pola ?? "",
-                          }))}
-                          roster={purchaseOrder.rosterEntries.map((entry) => ({
-                            id: entry.id,
-                            // Header kelompok hanya berguna saat PO memuat lebih dari satu produk.
-                            itemName: purchaseOrder.items.length > 1
-                              ? purchaseOrder.items.find((item) => item.id === entry.itemId)?.name ?? ""
-                              : "",
-                            memberId: entry.memberId,
-                            name: entry.name,
-                            jabatan: entry.jabatan ?? "",
-                          }))}
-                        />
-                      ) : null}
-                    </div>
+                    <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
                   </PurchaseOrderWorkflowSection>
                 </section>
               ))}

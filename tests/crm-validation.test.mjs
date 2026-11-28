@@ -1816,7 +1816,8 @@ test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desai
   const schema = await readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
   const migration = await readFile(new URL("../prisma/migrations/20261021010000_purchase_order_item_penjahit/migration.sql", import.meta.url), "utf8");
   const actionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
-  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8");
+  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-section.tsx", import.meta.url), "utf8");
+  const penjahitDialogSource = await readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8");
   const buttonSource = await readFile(new URL("../components/crm/purchase-order-pdf-download-button.tsx", import.meta.url), "utf8");
   const serveSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/items/[itemId]/penjahit-design/route.ts", import.meta.url), "utf8");
   // Skema per item: deadline penjahit + kolom desain (migrasi manual, tanpa backfill).
@@ -1828,16 +1829,19 @@ test("Sprint 11 (R3): form Edit PDF Penjahit — skema, aksi, dialog, rute desai
   assert.match(actionSource, /purchaseOrder\.status !== "DRAFT" && purchaseOrder\.status !== "AGREED"/);
   assert.match(actionSource, /where: \{ id: purchaseOrder\.id, version: parsed\.data\.version \}/);
   assert.match(actionSource, /PENJAHIT_PLAN_UPDATED/);
-  // Dialog khusus field penjahit (bukan form PO penuh) + tombol menempel di samping unduh.
-  assert.match(dialogSource, /Edit PDF Penjahit/);
+  // Field penjahit jadi satu section di dialog Edit PO; nilai lama dipakai sebagai default.
   assert.match(dialogSource, /savePenjahitPlanAction/);
   assert.match(dialogSource, /deadline-\$\{item\.id\}/);
   assert.match(dialogSource, /design-\$\{item\.id\}/);
+  assert.match(dialogSource, /defaultValue=\{item\.deadline \?\? ""\}/);
+  assert.match(dialogSource, /defaultValue=\{item\.sampleSize \?\? ""\}/);
+  assert.match(penjahitDialogSource, /PenjahitPlanSection/);
+  assert.match(penjahitDialogSource, /Edit PDF Penjahit/);
   // Notifikasi proses simpan: toast loading saat upload/aksi berjalan, lalu sukses/gagal.
   assert.match(dialogSource, /toast\.add\(\{\s*type: "loading",\s*title: "Menyimpan perubahan penjahit…"/);
   assert.match(dialogSource, /toast\.update\(toastId, \{[\s\S]*?type: "success"/);
   assert.match(dialogSource, /toast\.update\(toastId, \{[\s\S]*?type: "error"/);
-  assert.match(buttonSource, /PenjahitPlanDialog/);
+  assert.match(buttonSource, /PDF Penjahit/);
   // Rute preview desain penjahit per item (hanya pemilik PO yang boleh).
   assert.match(serveSource, /penjahitDesignPath/);
   assert.match(serveSource, /CRM_VIEW_ROLES/);
@@ -1853,7 +1857,7 @@ test("Revisi PO: warna per produk, kategori Lainnya, multi desain penjahit, PDF 
   const pdfSource = await readFile(new URL("../lib/crm/purchase-order-pdf.ts", import.meta.url), "utf8");
   const pdfRouteSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/pdf/route.ts", import.meta.url), "utf8");
   const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
-  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8");
+  const dialogSource = await readFile(new URL("../components/crm/penjahit-plan-section.tsx", import.meta.url), "utf8");
   const serveDesignSource = await readFile(new URL("../app/api/crm/purchase-order/[id]/items/[itemId]/penjahit-designs/[designId]/route.ts", import.meta.url), "utf8");
 
   // 1) Warna mengikuti produk: kolom per item + validasi wajib warna dasar.
@@ -1939,6 +1943,8 @@ test("pratinjau roster mengisi matriks otomatis", async () => {
 test("upload desain per produk menunggu deposit hanya bila PO memerlukannya", async () => {
   const designSource = await readFile(new URL("../app/actions/design.ts", import.meta.url), "utf8");
   const agreementSource = await readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8");
+  const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
+  const crmActionSource = await readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8");
   // Dropdown jenis pembayaran kini pada form invoice: Lunas/DP; Deposit hanya untuk prefill data lama.
   const invoiceFormSource = await readFile(new URL("../components/crm/invoice-form.tsx", import.meta.url), "utf8");
   assert.match(invoiceFormSource, /NativeSelectOption value="DP">DP</);
@@ -1947,19 +1953,17 @@ test("upload desain per produk menunggu deposit hanya bila PO memerlukannya", as
   assert.match(designSource, /assertDepositSettled\(task\.purchaseOrder, actor\.role\)/);
   assert.match(designSource, /if \(!purchaseOrder\.depositRequired \|\| purchaseOrder\.deposit \|\| hasRole\(role, GATE_OVERRIDE_ROLES\)\) return;/);
   assert.match(designSource, /Deposit desain belum dibayar\. Isi Deposit pada tab PO terlebih dahulu\./);
-  // Tombol Upload Desain di tab PO ikut menunggu deposit selama PO memerlukannya.
-  assert.match(agreementSource, /const depositSettled = !depositRequired \|\| depositPaid/);
-  assert.match(agreementSource, /!everyItemAtLimit && depositSettled/);
-  assert.match(agreementSource, /Menunggu deposit dibayar\. Klik Isi Deposit\./);
-  // Satu form unggah memuat field file dan catatan per produk PO.
+  // Upload desain hanya punya satu pintu: form Edit PO (tanpa dialog terpisah di tab PO).
   assert.match(designSource, /designFiles-\$\{itemId\}/);
   assert.match(designSource, /notes-\$\{itemId\}/);
-  assert.match(agreementSource, /name=\{`designFiles-\$\{item\.id\}`\}/);
-  assert.match(agreementSource, /name=\{`notes-\$\{item\.id\}`\}/);
-  // Tab PO: tombol Upload Desain sejajar Kirim 1 set PDF dan Sepakati; setelah desain ada
-  // labelnya berubah menjadi "Ubah Design" karena unggah ulang bersifat opsional.
-  assert.match(agreementSource, /Upload Desain/);
-  assert.match(agreementSource, /designUploaded \? "Ubah Design" : "Upload Desain"/);
+  assert.doesNotMatch(agreementSource, /uploadDesignRevisionAction/);
+  assert.doesNotMatch(agreementSource, /designFiles-/);
+  assert.match(formSource, /name={`designFiles-\$\{item\.key\}`}/);
+  // Gate deposit desain tetap dicek server walau unggahan datang dari form edit PO.
+  assert.match(crmActionSource, /if \(revisionDesignUploads\.length && source\.depositRequired && !source\.deposit && !hasRole\(actor\.role, GATE_OVERRIDE_ROLES\)\)/);
+  assert.match(crmActionSource, /Deposit desain belum dibayar\. Isi Deposit pada tab PO terlebih dahulu\./);
+  // Setelah ada desain, tombol unggah berubah menjadi "Ubah Desain".
+  assert.match(formSource, /item\.designs\?\.length \? "Ubah Desain" : "Upload Desain"/);
   assert.match(agreementSource, /Kirim 1 set PDF/);
   assert.match(agreementSource, /Sepakati PO terbaru/);
   // PDF boleh dikirim berulang: tombol kirim tidak disembunyikan setelah terkirim.
@@ -2072,12 +2076,13 @@ test("deposit PO: kolom tabel, tombol Isi Deposit, dan alur Upload Desain lalu K
   assert.match(actionSource, /export async function recordPurchaseOrderDepositAction/);
   assert.match(actionSource, /Deposit hanya dapat diubah saat PO masih draft/);
 
-  // Alur berurutan: tombol aktif satu per satu; Upload Desain tidak lagi menunggu deposit.
-  assert.match(agreementSource, /const canCreateRevision = canUploadDesign && designTaskId !== null && !everyItemAtLimit && depositSettled/);
+  // Alur berurutan: desain diunggah dari Edit PO (satu pintu), lalu Kirim PDF dan Sepakati.
+  assert.doesNotMatch(agreementSource, /uploadDesignRevisionAction/);
+  assert.match(actionSource, /revisionDesignUploads\.length && source\.depositRequired/);
   assert.match(agreementSource, /const designUploaded = designItemCount > 0 && designUploadedCount === designItemCount/);
   assert.match(agreementSource, /const canSendPdf = designUploaded;/);
   assert.match(agreementSource, /disabled=\{!canSendPdf \|\| undefined\}/);
-  assert.match(agreementSource, /Unggah desain dulu sebelum mengirim 1 set PDF/);
+  assert.match(agreementSource, /Unggah desain lewat Edit PO sebelum mengirim 1 set PDF/);
   // Status pills "Belum Depo" dihapus dari baris aksi; tombol Isi Deposit pengendali awal.
   assert.doesNotMatch(agreementSource, /DepositStatus/);
   assert.match(agreementSource, /Isi Deposit/);
@@ -2110,10 +2115,13 @@ test("revisi PO mewarisi desain lama dan tombolnya menjadi Ubah Design", async (
   assert.match(revisionSource, /designTask: \{\s*select: \{\s*revisions:/);
   assert.match(revisionSource, /const latestSourceDesign = new Map/);
   assert.match(revisionSource, /const carriedDesignRevisions = preparedItems\.flatMap/);
-  assert.match(revisionSource, /revisions: \{ create: carriedDesignRevisions \}/);
+  // Desain lama tetap dibawa; unggahan baru dari form edit menambah versi berikutnya.
+  assert.match(revisionSource, /const designRevisions = \[\.\.\.carriedDesignRevisions\]/);
+  assert.match(revisionSource, /revisions: \{ create: designRevisions \}/);
   assert.match(revisionSource, /attachments: \{ create: design\.attachments\.map/);
-  // Karena desain lama sudah terhitung, tombol tidak lagi menyuruh unggah ulang.
-  assert.match(agreementSource, /designUploaded \? "Ubah Design" : "Upload Desain"/);
+  // Karena desain lama sudah terhitung, tombol di Edit PO tidak menyuruh unggah ulang.
+  const formSource = await readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8");
+  assert.match(formSource, /item\.designs\?\.length \? "Ubah Desain" : "Upload Desain"/);
 });
 
 test("R1/R2: dialog deposit pakai useActionState, error inline, dan bukti punya route sendiri", async () => {
@@ -2601,10 +2609,10 @@ test("Riwayat revisi PO & Invoice menyimpan nilai sebelum→sesudah dari audit",
 });
 
 test("Desain customer & catatan PO tetap bisa diedit setelah PO disepakati/invoice terbit", async () => {
-  const [designAction, workflowSection, dialog, page, labels] = await Promise.all([
+  const [designAction, workflowSection, form, page, labels] = await Promise.all([
     readFile(new URL("../app/actions/design.ts", import.meta.url), "utf8"),
     readFile(new URL("../components/crm/purchase-order-workflow-section.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/crm/purchase-order-design-notes-dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/audit/labels.ts", import.meta.url), "utf8"),
   ]);
@@ -2625,14 +2633,12 @@ test("Desain customer & catatan PO tetap bisa diedit setelah PO disepakati/invoi
   assert.doesNotMatch(actionBody, /invoice\.find|INVOICE_|pendingPayment|salesOrder/);
   assert.match(labels, /PURCHASE_ORDER_DESIGN_NOTES_UPDATED: "Ubah desain & catatan PO"/);
 
-  // Tombol hanya untuk PO disepakati; dialog memuat catatan PO, catatan NOTE produk, dan gambar baru.
-  assert.match(workflowSection, /purchaseOrderStatus === "AGREED" && canOperate/);
-  assert.match(workflowSection, /<PurchaseOrderDesignNotesDialog/);
-  assert.match(page, /canUploadDesign=\{canUploadDesignRole && Boolean\(purchaseOrder\.designTask\)\}/);
-  assert.match(dialog, /updatePurchaseOrderDesignNotesAction/);
-  assert.match(dialog, /Edit desain &amp; catatan/);
-  assert.match(dialog, /name="designNotes"/);
-  assert.match(dialog, /name="notes"/);
-  assert.match(dialog, /name=\{`itemNotes-\$\{item\.id\}`\}/);
-  assert.match(dialog, /name=\{`designFiles-\$\{item\.id\}`\}/);
+  // Catatan PO/produk ada di form Edit PO yang sama dengan Revisi PO (bukan dialog terpisah).
+  assert.match(workflowSection, /<PurchaseOrderForm/);
+  assert.match(workflowSection, /lockInvoiceQuantities=\{inPlaceEdit\}/);
+  assert.match(workflowSection, /const inPlaceEdit = invoiceActive && purchaseOrderStatus === "AGREED"/);
+  assert.match(page, /invoiceActive=\{opportunity\.invoices\.some\(/);
+  assert.match(form, /name=\{`\$\{prefix\}designNotes`\}/);
+  assert.match(form, /name="notes"/);
+  assert.match(form, /lockInvoiceQuantities/);
 });
