@@ -473,6 +473,37 @@ export const PURCHASE_ORDER_ATTACHMENT_MAX_FILES = 5;
 export const PURCHASE_ORDER_ROSTER_MAX_BYTES = 2 * 1024 * 1024;
 export const PURCHASE_ORDER_ROSTER_MAX_ROWS = 5_000;
 
+/**
+ * Koreksi data PO setelah disepakati (termasuk saat invoice sudah terbit).
+ * Hanya field yang tidak dipakai perhitungan invoice: identitas dokumen, deadline
+ * produksi (disinkronkan ke Work Order), deadline desain, pola per produk, dan
+ * identitas roster. Ukuran, jumlah, dan harga tetap terkunci.
+ */
+const purchaseOrderCorrectionItemSchema = z.object({
+  id: entityIdSchema,
+  pola: optionalText(120),
+});
+
+const purchaseOrderCorrectionRosterSchema = z.object({
+  id: entityIdSchema,
+  memberId: z.string().trim().min(1, "ID anggota wajib diisi.").max(80),
+  name: z.string().trim().min(2, "Nama anggota minimal 2 karakter.").max(160),
+  jabatan: optionalText(80),
+});
+
+export const purchaseOrderCorrectionSchema = z.object({
+  purchaseOrderId: entityIdSchema,
+  version: requiredVersion,
+  instansi: z.string().trim().min(2, "Instansi minimal 2 karakter.").max(160),
+  customerReference: optionalText(120),
+  deadline: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Deadline produksi wajib dipilih."),
+  // PO yang belum punya tugas desain mengirim string kosong.
+  designDeadline: optionalDateText,
+  reason: optionalText(2000),
+  items: z.array(purchaseOrderCorrectionItemSchema).max(10),
+  roster: z.array(purchaseOrderCorrectionRosterSchema).max(PURCHASE_ORDER_ROSTER_MAX_ROWS),
+});
+
 export const reverseSalesOrderSchema = z.object({
   salesOrderId: entityIdSchema,
   cancelReason: z.string().trim().min(5, "Alasan pembatalan minimal 5 karakter.").max(2000),

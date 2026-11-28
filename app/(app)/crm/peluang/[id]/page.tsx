@@ -9,6 +9,7 @@ import { InvoiceWorkflowSection } from "@/components/crm/invoice-workflow-sectio
 import { OpportunityProcessPanel, OpportunityProcessTabs } from "@/components/crm/opportunity-process-tabs";
 import { IssueInvoiceAction } from "@/components/crm/issue-invoice-action";
 import { PurchaseOrderAgreementAction } from "@/components/crm/purchase-order-agreement-action";
+import { PurchaseOrderCorrectionForm } from "@/components/crm/purchase-order-correction-form";
 import { PurchaseOrderForm } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderWorkflowSection } from "@/components/crm/purchase-order-workflow-section";
 import { PageHeader } from "@/components/page-header";
@@ -340,6 +341,8 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                     purchaseOrderNoPreview={purchaseOrder.status === "SUPERSEDED" ? purchaseOrderNoPreview : formatPurchaseOrderRevisionNo(purchaseOrder.purchaseOrderNo, purchaseOrder.revision + 1)}
                     defaultInstansi={opportunity.customer.companyName ?? undefined}
                     canManageSizes={canManageSizes}
+                    // Desain & catatan PO disepakati tetap bisa diubah walau invoice sudah terbit.
+                    canUploadDesign={canUploadDesignRole && Boolean(purchaseOrder.designTask)}
                     latestInChain={purchaseOrderIndex === 0}
                     penjahitItems={purchaseOrder.items.map((item) => ({
                       id: item.id,
@@ -355,7 +358,36 @@ async function OpportunityContent({ id, initialTab, historyPage, documentId }: {
                           : [],
                     }))}
                   >
-                    <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
+                    <div className="flex flex-col gap-4">
+                      <PurchaseOrderSnapshot purchaseOrder={purchaseOrder} />
+                      {/* Koreksi data non-invoice: tetap tersedia walau invoice sudah terbit. */}
+                      {purchaseOrder.status === "AGREED" && canOperate ? (
+                        <PurchaseOrderCorrectionForm
+                          purchaseOrderId={purchaseOrder.id}
+                          purchaseOrderNo={purchaseOrder.purchaseOrderNo}
+                          version={purchaseOrder.version}
+                          instansi={purchaseOrder.instansi ?? ""}
+                          customerReference={purchaseOrder.customerReference ?? ""}
+                          deadline={dateInputValue(purchaseOrder.deadline)}
+                          designDeadline={purchaseOrder.designTask ? dateInputValue(purchaseOrder.designTask.deadline) : null}
+                          items={purchaseOrder.items.map((item) => ({
+                            id: item.id,
+                            name: item.name,
+                            pola: item.pola ?? purchaseOrder.pola ?? "",
+                          }))}
+                          roster={purchaseOrder.rosterEntries.map((entry) => ({
+                            id: entry.id,
+                            // Header kelompok hanya berguna saat PO memuat lebih dari satu produk.
+                            itemName: purchaseOrder.items.length > 1
+                              ? purchaseOrder.items.find((item) => item.id === entry.itemId)?.name ?? ""
+                              : "",
+                            memberId: entry.memberId,
+                            name: entry.name,
+                            jabatan: entry.jabatan ?? "",
+                          }))}
+                        />
+                      ) : null}
+                    </div>
                   </PurchaseOrderWorkflowSection>
                 </section>
               ))}

@@ -4,10 +4,11 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { flashMessagePath, UserFacingError, runRedirectingAction } from "@/lib/actions/response";
-import { DESIGN_UPLOADER_ROLES, GATE_OVERRIDE_ROLES, hasRole } from "@/lib/auth/permissions";
+import { CRM_OPERATOR_ROLES, DESIGN_UPLOADER_ROLES, GATE_OVERRIDE_ROLES, hasRole } from "@/lib/auth/permissions";
 import { requireActor, type Actor } from "@/lib/auth/session";
+import { auditFieldLabel } from "@/lib/audit/labels";
 import { DESIGN_REVISION_LIMIT } from "@/lib/crm/constants";
-import { entityIdSchema } from "@/lib/crm/validation";
+import { entityIdSchema, purchaseOrderIdSchema } from "@/lib/crm/validation";
 import { designImageContentType, designImageExtensionFor, designImageRejection } from "@/lib/design/image";
 import { getPrismaClient } from "@/lib/prisma";
 import { erpStorage, PO_DESIGNS_BUCKET } from "@/lib/storage/erp-storage";
@@ -49,6 +50,16 @@ function assertDepositSettled(purchaseOrder: { depositRequired: boolean; deposit
 function revisionNotes(formData: FormData, itemId: string) {
   const value = formData.get(`notes-${itemId}`);
   return typeof value === "string" ? value.trim().slice(0, 4000) || null : null;
+}
+
+/**
+ * Field catatan pada form edit desain & catatan. `undefined` berarti kunci tidak ada di
+ * form (field tidak disentuh), sedangkan string kosong berarti catatan dikosongkan.
+ */
+function optionalNotes(formData: FormData, field: string) {
+  const value = formData.get(field);
+  if (typeof value !== "string") return undefined;
+  return value.trim().slice(0, 4000) || null;
 }
 
 async function prepareAttachments(files: File[], designTaskId: string) {
@@ -181,5 +192,167 @@ export async function uploadDesignRevisionAction(formData: FormData) {
     }
 
     return flashMessagePath(`/crm/peluang/${opportunityId}?tab=po`, "notice", `Versi desain ${uploads.map((upload) => upload.itemName).join(", ")} berhasil diunggah.`);
+  });
+}
+
+/**
+ * Edit desain customer + catatan PO setelah PO disepakati — termasuk saat invoice sudah
+ * terbit. Invoice terbit mengunci ukuran, jumlah, dan harga, tetapi desain dan catatan
+ * tidak dipakai dalam perhitungan invoice, jadi tetap boleh diperbaiki tanpa membatalkan
+ * invoice. Status PO tidak berubah saat invoice diterbitkan (tetap AGREED).
+ *
+ * Form hanya mengirim field non-nilai: `designNotes` & `notes` (header PO),
+ * `itemNotes-<itemId>` (catatan NOTE produk, tercetak di PDF customer & penjahit),
+ * dan `designFiles-<itemId>` (gambar desain customer versi baru).
+ */
+export async function updatePurchaseOrderDesignNotesAction(formData: FormData) {
+  return runRedirectingAction("/crm/purchase-orders", async () => {
+    const actor = await requireActor(CRM_OPERATOR_ROLES);
+    const parsed = purchaseOrderIdSchema.safeParse({ purchaseOrderId: formData.get("purchaseOrderId"), version: formData.get("version") });
+    if (!parsed.success) throw new UserFacingError("Purchase order tidak valid.");
+
+    const prisma = getPrismaClient();
+    const purchaseOrder = await prisma.purchaseOrder.findUnique({
+      where: { id: parsed.data.purchaseOrderId },
+      select: {
+        id: true,
+        purchaseOrderNo: true,
+        status: true,
+        version: true,
+        opportunityId: true,
+        designNotes: true,
+        notes: true,
+        designTask: { select: { id: true } },
+        items: { orderBy: { position: "asc" }, select: { id: true, name: true, designNotes: true } },
+      },
+    });
+    if (!purchaseOrder) throw new UserFacingError("Purchase order tidak ditemukan.");
+    // Khusus PO disepakati (termasuk yang invoice-nya sudah terbit). Draft tetap memakai
+    // form revisi/unggah desain biasa; PO batal/superseded adalah dokumen arsip.
+    if (purchaseOrder.status !== "AGREED") {
+      throw new UserFacingError("Desain & catatan hanya dapat diubah pada PO yang sudah disepakati.");
+    }
+    if (purchaseOrder.version !== parsed.data.version) throw new UserFacingError("PO sudah berubah di tab lain. Muat ulang halaman lalu coba lagi.");
+
+    const nextDesignNotes = optionalNotes(formData, "designNotes");
+    const nextNotes = optionalNotes(formData, "notes");
+    const itemNotes = purchaseOrder.items.flatMap((item) => {
+      const value = optionalNotes(formData, `itemNotes-${item.id}`);
+      return value === undefined ? [] : [{ itemId: item.id, itemName: item.name, from: item.designNotes, to: value }];
+    });
+
+    const uploads: Array<{ itemId: string; itemName: string; attachments: Awaited<ReturnType<typeof prepareAttachments>> }> = [];
+    for (const item of purchaseOrder.items) {
+      const files = uploadedFiles(formData, item.id);
+      if (!files.length) continue;
+      if (!purchaseOrder.designTask) throw new UserFacingError("PO ini belum punya tugas desain, jadi gambar desain belum bisa diunggah.");
+      if (files.length > MAX_FILES) throw new UserFacingError(`Maksimal lima file setiap versi desain ${item.name}.`);
+      uploads.push({ itemId: item.id, itemName: item.name, attachments: await prepareAttachments(files, purchaseOrder.designTask.id) });
+    }
+
+    const hasNotesChange = nextDesignNotes !== undefined || nextNotes !== undefined || itemNotes.length > 0;
+    if (!hasNotesChange && !uploads.length) throw new UserFacingError("Tidak ada perubahan untuk disimpan.");
+
+    const storage = erpStorage(BUCKET);
+    const uploaded: string[] = [];
+    let opportunityId: string;
+    try {
+      await Promise.all(uploads.flatMap((upload) => upload.attachments).map(async (attachment) => {
+        const { error } = await storage.upload(attachment.path, attachment.bytes, { contentType: attachment.contentType, upsert: false });
+        if (error) {
+          console.error("Gagal mengunggah file desain customer.", { path: attachment.path, sizeBytes: attachment.bytes.length, status: error.status, statusCode: error.statusCode, message: error.message });
+          throw new UserFacingError("File desain belum dapat disimpan.");
+        }
+        uploaded.push(attachment.path);
+      }));
+
+      opportunityId = await prisma.$transaction(async (tx) => {
+        const guarded = await tx.purchaseOrder.updateMany({
+          where: { id: purchaseOrder.id, version: parsed.data.version, status: "AGREED" },
+          data: {
+            version: { increment: 1 },
+            ...(nextDesignNotes !== undefined ? { designNotes: nextDesignNotes } : {}),
+            ...(nextNotes !== undefined ? { notes: nextNotes } : {}),
+          },
+        });
+        if (guarded.count !== 1) throw new UserFacingError("PO sudah berubah di tab lain. Muat ulang halaman lalu coba lagi.");
+
+        for (const note of itemNotes) {
+          await tx.purchaseOrderItem.updateMany({
+            where: { id: note.itemId, purchaseOrderId: purchaseOrder.id },
+            data: { designNotes: note.to },
+          });
+        }
+
+        // Desain setelah PO disepakati adalah koreksi, bukan babak desain baru: versi baru
+        // tetap ditambahkan (riwayat utuh) tanpa batas 4 versi yang berlaku sebelum sepakat.
+        const latest = uploads.length
+          ? latestRevisionByItem(await tx.designRevision.findMany({
+              where: { designTaskId: purchaseOrder.designTask!.id, itemId: { in: uploads.map((upload) => upload.itemId) } },
+              select: { itemId: true, revision: true },
+            }))
+          : new Map<string, number>();
+        for (const upload of uploads) {
+          const revision = (latest.get(upload.itemId) ?? 0) + 1;
+          const created = await tx.designRevision.create({
+            data: {
+              designTaskId: purchaseOrder.designTask!.id,
+              itemId: upload.itemId,
+              revision,
+              createdById: actor.id,
+              attachments: { create: upload.attachments.map(({ path, originalName, contentType, sizeBytes }) => ({ path, originalName, contentType, sizeBytes })) },
+            },
+          });
+          await tx.auditEvent.create({
+            data: {
+              actorId: actor.id,
+              entityType: "DesignRevision",
+              entityId: created.id,
+              action: "DESIGN_REVISION_UPLOADED",
+              changedFields: ["revision", "attachments"],
+              metadata: { designTaskId: purchaseOrder.designTask!.id, itemId: upload.itemId, itemName: upload.itemName, revision, fileCount: upload.attachments.length, afterAgreement: true },
+            },
+          });
+        }
+
+        const diffs = [
+          ...(nextDesignNotes !== undefined && nextDesignNotes !== purchaseOrder.designNotes
+            ? [{ field: "designNotes", label: auditFieldLabel("designNotes"), from: purchaseOrder.designNotes, to: nextDesignNotes }]
+            : []),
+          ...(nextNotes !== undefined && nextNotes !== purchaseOrder.notes
+            ? [{ field: "notes", label: auditFieldLabel("notes"), from: purchaseOrder.notes, to: nextNotes }]
+            : []),
+          ...itemNotes
+            .filter((note) => note.from !== note.to)
+            .map((note) => ({ field: "designNotes", label: `Catatan desain ${note.itemName}`, from: note.from, to: note.to })),
+        ];
+        await tx.auditEvent.create({
+          data: {
+            actorId: actor.id,
+            entityType: "PurchaseOrder",
+            entityId: purchaseOrder.id,
+            action: "PURCHASE_ORDER_DESIGN_NOTES_UPDATED",
+            changedFields: ["designNotes", "notes", "itemDesignNotes", "designFiles"],
+            metadata: {
+              purchaseOrderNo: purchaseOrder.purchaseOrderNo,
+              itemNoteCount: itemNotes.length,
+              uploadCount: uploads.length,
+              ...(diffs.length ? { diff: diffs } : {}),
+            },
+          },
+        });
+        return purchaseOrder.opportunityId;
+      }, DESIGN_TRANSACTION_OPTIONS);
+
+      revalidatePath("/crm");
+      revalidatePath("/crm/purchase-orders");
+      revalidateTag("purchase-orders", { expire: 0 });
+      revalidatePath(`/crm/peluang/${opportunityId}`);
+    } catch (error) {
+      if (uploaded.length) await storage.remove(uploaded);
+      throw error;
+    }
+
+    return flashMessagePath(`/crm/peluang/${opportunityId}?tab=po`, "notice", "Desain & catatan PO tersimpan. Nilai invoice tidak berubah.");
   });
 }

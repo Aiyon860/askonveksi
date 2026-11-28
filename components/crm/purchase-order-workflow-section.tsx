@@ -6,6 +6,7 @@ import { CopyPlus, XCircle } from "lucide-react";
 
 import { cancelPurchaseOrderAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
+import { PurchaseOrderDesignNotesDialog } from "@/components/crm/purchase-order-design-notes-dialog";
 import { type PenjahitPlanItem } from "@/components/crm/penjahit-plan-dialog";
 import { PurchaseOrderForm, type ProductCategoryOption } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderPdfDownloadButton } from "@/components/crm/purchase-order-pdf-download-button";
@@ -70,6 +71,8 @@ type PurchaseOrderWorkflowSectionProps = {
   latestInChain?: boolean;
   /** Sprint 11 (R3): baris deadline/desain penjahit per item untuk dialog Edit PDF Penjahit. */
   penjahitItems: PenjahitPlanItem[];
+  /** Role pengunggah desain; PO tanpa tugas desain hanya bisa mengubah catatan. */
+  canUploadDesign?: boolean;
   children: ReactNode;
 };
 
@@ -92,6 +95,7 @@ export function PurchaseOrderWorkflowSection({
   canManageSizes = false,
   latestInChain = true,
   penjahitItems,
+  canUploadDesign = false,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
@@ -115,6 +119,19 @@ export function PurchaseOrderWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
+          {!isCreatingRevision && purchaseOrderStatus === "AGREED" && canOperate ? (
+            <PurchaseOrderDesignNotesDialog
+              purchaseOrderId={purchaseOrderId}
+              purchaseOrderNo={draftValues.purchaseOrderNo}
+              version={purchaseOrderVersion}
+              designNotes={draftValues.designNotes}
+              notes={draftValues.notes}
+              // PO lama tanpa baris produk memakai item sintetis `saved-*` yang tidak punya id DB;
+              // catatan PO tetap bisa diubah, sedangkan catatan/desain per produk tidak ditampilkan.
+              items={draftValues.items.filter((item) => !item.key.startsWith("saved-")).map((item) => ({ id: item.key, name: item.name, designNotes: item.designNotes }))}
+              canUploadDesign={canUploadDesign}
+            />
+          ) : null}
           {!isCreatingRevision ? (
             <PurchaseOrderPdfDownloadButton
               purchaseOrderId={purchaseOrderId}

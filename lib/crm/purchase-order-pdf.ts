@@ -436,13 +436,28 @@ export async function createPurchaseOrderPdf(
    * Size chart sesuai referensi: kolom label gelap (SIZE/PENDEK/PANJANG), kolom ukuran
    * di header gelap, total per baris, lalu baris NOTE dengan kotak total di kanan.
    */
-  function drawModelTable(rows: Array<{ size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>, note: string | null, sampleQty = 0) {
-    // Hanya kotak TOTAL baris NOTE yang memuat sampel; total per lengan tetap angka order.
+  function drawModelTable(
+    rows: Array<{ size: string; sleeveLength: "PENDEK" | "PANJANG"; quantity: number }>,
+    note: string | null,
+    sample: { size: string; qty: number } | null = null,
+  ) {
+    // Sampel ikut dihitung di dalam tabel (khusus PDF penjahit): qty sampel ditempel ke sel
+    // ukuran sampel, sehingga total lengan di atas dan total NOTE di bawah sama-sama memuatnya.
+    const sampleQty = sample?.qty ?? 0;
+    const sampleSize = sample ? normalizeSize(sample.size) : null;
     const grandTotal = rows.reduce((sum, row) => sum + row.quantity, 0) + sampleQty;
     const quantityFor = (size: string, sleeve: "PENDEK" | "PANJANG") =>
       rows.filter((row) => normalizeSize(row.size) === size && row.sleeveLength === sleeve).reduce((sum, row) => sum + row.quantity, 0);
+    // Sampel masuk ke lengan yang sudah memesan ukuran itu (PENDEK diutamakan) supaya
+    // total per lengan tidak terlihat janggal saat PO hanya memesan satu jenis lengan.
+    const sampleSleeve: "PENDEK" | "PANJANG" | null = sampleSize
+      ? (["PENDEK", "PANJANG"] as const).find((sleeve) => quantityFor(sampleSize, sleeve) > 0) ?? "PENDEK"
+      : null;
 
     const chunks = chartChunks(rows);
+    // Ukuran sampel di luar daftar kolom (mis. ukuran custom) tidak punya sel sendiri;
+    // qty-nya tetap dihitung pada total lengan di blok terakhir agar total atas = bawah.
+    const sampleHasColumn = sampleSize !== null && chunks.some((chunk) => chunk.some((size) => normalizeSize(size) === sampleSize));
     for (const [blockIndex, sizeChunk] of chunks.entries()) {
       const isLastBlock = blockIndex === chunks.length - 1;
       if (y - chartBlockHeight(blockIndex, chunks.length) < margin) addPage();
@@ -476,15 +491,18 @@ export async function createPurchaseOrderPdf(
       for (const sleeve of ["PENDEK", "PANJANG"] as const) {
         labelCell(sleeve);
         let total = 0;
+        const columnSampleQty = !sampleHasColumn && isLastBlock && sleeve === sampleSleeve ? sampleQty : 0;
         sizeChunk.forEach((size, index) => {
-          const quantity = quantityFor(size, sleeve);
+          const sampleExtra =
+            sampleHasColumn && sleeve === sampleSleeve && sampleSize !== null && normalizeSize(size) === sampleSize ? sampleQty : 0;
+          const quantity = quantityFor(size, sleeve) + sampleExtra;
           total += quantity;
           const cellX = margin + SIZE_CHART_LABEL_WIDTH + index * cellWidth;
           page.drawRectangle({ x: cellX, y: rowTop - TABLE_ROW_HEIGHT, width: cellWidth, height: TABLE_ROW_HEIGHT, borderWidth: 0.6, borderColor: GRID });
           if (quantity > 0) centeredText(clipPdfText(String(quantity), bold, MIN_FONT_SIZE, cellWidth - 8), cellX, cellWidth, rowTop, TABLE_ROW_HEIGHT, bold);
         });
         page.drawRectangle({ x: totalX, y: rowTop - TABLE_ROW_HEIGHT, width: SIZE_CHART_TOTAL_WIDTH, height: TABLE_ROW_HEIGHT, borderWidth: 0.6, borderColor: GRID });
-        centeredText(String(total), totalX, SIZE_CHART_TOTAL_WIDTH, rowTop, TABLE_ROW_HEIGHT, bold);
+        centeredText(String(total + columnSampleQty), totalX, SIZE_CHART_TOTAL_WIDTH, rowTop, TABLE_ROW_HEIGHT, bold);
         rowTop -= TABLE_ROW_HEIGHT;
       }
 
@@ -528,6 +546,13 @@ export async function createPurchaseOrderPdf(
     return item.sampleQty ?? 1;
   }
 
+  /** Sampel untuk size chart: ukuran + qty, hanya pada PDF penjahit. */
+  function sampleFor(item: PurchaseOrderPdfItem | undefined) {
+    const size = item?.sampleSize?.trim();
+    if (variant !== "penjahit" || !size) return null;
+    return { size, qty: item?.sampleQty ?? 1 };
+  }
+
   /**
    * Lembar aksesori hanya memuat jumlah produk. Catatan desain dicetak sebagai baris
    * NOTE tepat di bawah angka jumlah, mengikuti gaya baris NOTE pada size chart.
@@ -567,7 +592,7 @@ export async function createPurchaseOrderPdf(
     const rows = data.sizes.filter((row) => row.itemId === item.id);
     // Size chart selalu ikut halaman gambar desain produk ini.
     drawAssets(embeddedAssets.filter((asset) => asset.itemId === item.id && asset.kind !== "PENJAHIT_DESIGN"), item.name, measureModelTable(rows));
-    drawModelTable(rows, noteFor(item), sampleQtyFor(item));
+    drawModelTable(rows, noteFor(item), sampleFor(item));
     // Lembar ringkasan lama (yang dulu memuat sampel) sudah dihapus, jadi ukuran sampel
     // dicetak ulang di tiap lembar produk penjahit — termasuk PO multi-produk.
     if (variant === "penjahit") drawSampleSizeLine();
@@ -712,7 +737,7 @@ export async function createPurchaseOrderPdf(
       }
       const rows = [...aggregated.values()];
       drawAssets(embeddedAssets.filter((asset) => asset.kind !== "PENJAHIT_DESIGN"), null, measureModelTable(rows));
-      drawModelTable(rows, noteFor(data.items[0]), sampleQtyFor(data.items[0]));
+      drawModelTable(rows, noteFor(data.items[0]), sampleFor(data.items[0]));
       // Revisi: ukuran sampel hanya dicetak di PDF penjahit — dokumen customer tidak memuatnya.
       if (variant === "penjahit") drawSampleSizeLine();
     }

@@ -17,6 +17,7 @@ import {
   moveOpportunitySchema,
   publicLeadSchema,
   invoiceDraftSchema,
+  purchaseOrderCorrectionSchema,
   purchaseOrderDraftSchema,
   invoiceScheduleSchema,
   paymentDeadlineUpdateSchema,
@@ -552,6 +553,37 @@ test("PO memakai jenis pakaian, master ukuran, matriks lengan, dan roster", () =
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "excel", roster: [] }] }).success, true);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [{ ...itemBase, rosterMode: "excel" }] }).success, false);
   assert.equal(purchaseOrderDraftSchema.safeParse({ ...valid, items: [] }).success, false);
+});
+
+test("koreksi PO hanya menerima field yang tidak mengubah nilai invoice", () => {
+  const valid = {
+    purchaseOrderId: "cm123456789012",
+    version: 3,
+    instansi: "SMA Negeri 1",
+    customerReference: "PO-EXT-7",
+    deadline: "2026-09-30",
+    designDeadline: "2026-09-20",
+    reason: "Koreksi nama roster dari customer",
+    items: [{ id: "cm123456789013", pola: "Pola regular" }],
+    roster: [{ id: "cm123456789014", memberId: "G-1", name: "Budi", jabatan: "Ketua" }],
+  };
+  assert.equal(purchaseOrderCorrectionSchema.safeParse(valid).success, true);
+  // Referensi customer, jabatan, alasan, dan deadline desain boleh dikosongkan.
+  assert.equal(purchaseOrderCorrectionSchema.safeParse({
+    ...valid,
+    customerReference: "",
+    designDeadline: "",
+    reason: "",
+    roster: [{ ...valid.roster[0], jabatan: "" }],
+  }).success, true);
+  // Deadline produksi & instansi tetap wajib agar dokumen tidak kehilangan identitas.
+  assert.equal(purchaseOrderCorrectionSchema.safeParse({ ...valid, deadline: "" }).success, false);
+  assert.equal(purchaseOrderCorrectionSchema.safeParse({ ...valid, instansi: "" }).success, false);
+  // Nama roster minimal 2 karakter; jabatan mengikuti batas form PO (80).
+  assert.equal(purchaseOrderCorrectionSchema.safeParse({ ...valid, roster: [{ ...valid.roster[0], name: "" }] }).success, false);
+  assert.equal(purchaseOrderCorrectionSchema.safeParse({ ...valid, roster: [{ ...valid.roster[0], jabatan: "x".repeat(81) }] }).success, false);
+  // Qty/ukuran/harga tidak punya jalur di schema koreksi, jadi tidak bisa ikut terkirim.
+  assert.equal(purchaseOrderCorrectionSchema.safeParse({ ...valid, sizes: [{ quantity: 999 }] }).success, true);
 });
 
 test("jabatan roster opsional tersimpan dan dicetak kondisional", async () => {
@@ -2566,4 +2598,41 @@ test("Riwayat revisi PO & Invoice menyimpan nilai sebelum→sesudah dari audit",
   assert.match(component, /Riwayat PO &amp; Invoice/);
   assert.match(component, /change\.from \?\? "—"/);
   assert.match(component, /item\.changedFields\.map\(auditFieldLabel\)/);
+});
+
+test("Desain customer & catatan PO tetap bisa diedit setelah PO disepakati/invoice terbit", async () => {
+  const [designAction, workflowSection, dialog, page, labels] = await Promise.all([
+    readFile(new URL("../app/actions/design.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/purchase-order-workflow-section.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/crm/purchase-order-design-notes-dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/audit/labels.ts", import.meta.url), "utf8"),
+  ]);
+  const actionBody = designAction.slice(designAction.indexOf("export async function updatePurchaseOrderDesignNotesAction"));
+
+  // Aksi terpisah dari revisi PO: hanya desain customer + catatan, jadi nilai invoice utuh.
+  assert.match(actionBody, /purchaseOrderIdSchema\.safeParse/);
+  assert.match(actionBody, /purchaseOrder\.status !== "AGREED"/);
+  assert.match(actionBody, /where: \{ id: purchaseOrder\.id, version: parsed\.data\.version, status: "AGREED" \}/);
+  assert.match(actionBody, /optionalNotes\(formData, "designNotes"\)/);
+  assert.match(actionBody, /optionalNotes\(formData, "notes"\)/);
+  assert.match(actionBody, /\`itemNotes-\$\{item\.id\}\`/);
+  assert.match(actionBody, /uploadedFiles\(formData, item\.id\)/);
+  assert.match(actionBody, /tx\.designRevision\.create\(\{/);
+  assert.match(actionBody, /data: \{ designNotes: note\.to \}/);
+  assert.match(actionBody, /PURCHASE_ORDER_DESIGN_NOTES_UPDATED/);
+  // Tidak ada pembacaan invoice: desain/catatan tidak boleh bergantung pada status invoice.
+  assert.doesNotMatch(actionBody, /invoice\.find|INVOICE_|pendingPayment|salesOrder/);
+  assert.match(labels, /PURCHASE_ORDER_DESIGN_NOTES_UPDATED: "Ubah desain & catatan PO"/);
+
+  // Tombol hanya untuk PO disepakati; dialog memuat catatan PO, catatan NOTE produk, dan gambar baru.
+  assert.match(workflowSection, /purchaseOrderStatus === "AGREED" && canOperate/);
+  assert.match(workflowSection, /<PurchaseOrderDesignNotesDialog/);
+  assert.match(page, /canUploadDesign=\{canUploadDesignRole && Boolean\(purchaseOrder\.designTask\)\}/);
+  assert.match(dialog, /updatePurchaseOrderDesignNotesAction/);
+  assert.match(dialog, /Edit desain &amp; catatan/);
+  assert.match(dialog, /name="designNotes"/);
+  assert.match(dialog, /name="notes"/);
+  assert.match(dialog, /name=\{`itemNotes-\$\{item\.id\}`\}/);
+  assert.match(dialog, /name=\{`designFiles-\$\{item\.id\}`\}/);
 });
