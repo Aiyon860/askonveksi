@@ -1780,8 +1780,8 @@ test("PDF PO punya varian customer dan penjahit dengan deadline merah", async ()
   assert.match(pdfSource, /function drawAccessoryTotal\(quantity: number, label: string \| null, note: string \| null, sampleQty = 0\)/);
   assert.match(pdfSource, /drawAccessoryTotal\(quantity, .*noteFor\(item\), sampleQtyFor\(item\)\)/);
   assert.match(pdfSource, /drawAccessoryTotal\(totalQuantity, null, noteFor\(data\.items\[0\]\), sampleQtyFor\(data\.items\[0\]\)\)/);
-  assert.match(pdfSource, /drawModelTable\(rows, noteFor\(item\), sampleQtyFor\(item\)\)/);
-  assert.match(pdfSource, /drawModelTable\(rows, noteFor\(data\.items\[0\]\), sampleQtyFor\(data\.items\[0\]\)\)/);
+  assert.match(pdfSource, /drawModelTable\(rows, noteFor\(item\), sampleFor\(item\)\)/);
+  assert.match(pdfSource, /drawModelTable\(rows, noteFor\(data\.items\[0\]\), sampleFor\(data\.items\[0\]\)\)/);
   // TOTAL baris NOTE = order + sampel; total per lengan tetap angka order.
   assert.match(pdfSource, /rows\.reduce\(\(sum, row\) => sum \+ row\.quantity, 0\) \+ sampleQty/);
   assert.match(pdfSource, /if \(variant !== "penjahit" \|\| !item\?\.sampleSize\?\.trim\(\)\) return 0;/);
