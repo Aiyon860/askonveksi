@@ -12,7 +12,7 @@ export function PurchaseOrderPdfDownloadButton({
 }: {
   purchaseOrderId: string;
   purchaseOrderNo: string;
-  /** Sprint 11 (R3): tombol Edit PDF Penjahit menempel di samping dua tombol unduh varian. */
+  /** Tombol Edit PDF Penjahit menempel di samping dua tombol unduh varian. */
   penjahit: { version: number; canEdit: boolean; items: PenjahitPlanItem[] };
 }) {
   return (

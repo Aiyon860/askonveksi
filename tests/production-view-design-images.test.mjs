@@ -36,7 +36,7 @@ const [
   readFile(new URL("../app/api/desain/[taskId]/attachments/[attachmentId]/route.ts", import.meta.url), "utf8"),
   readFile(new URL("../components/production/production-board.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/production/production-board-section-client.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../components/crm/purchase-order-agreement-action.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../components/crm/purchase-order-form.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/production/design-annotation-editor.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/detail-desain/[workOrderId]/page.tsx", import.meta.url), "utf8"),
   readFile(new URL("../components/app-nav.tsx", import.meta.url), "utf8"),

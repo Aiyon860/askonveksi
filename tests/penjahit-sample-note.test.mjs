@@ -5,7 +5,7 @@ import test from "node:test";
 const [schema, migration, dialog, actions, data, page, pdfRoute, pdf] = await Promise.all([
   readFile(new URL("../prisma/schema.prisma", import.meta.url), "utf8"),
   readFile(new URL("../prisma/migrations/20261126010000_purchase_order_item_sample/migration.sql", import.meta.url), "utf8"),
-  readFile(new URL("../components/crm/penjahit-plan-dialog.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../components/crm/penjahit-plan-section.tsx", import.meta.url), "utf8"),
   readFile(new URL("../app/actions/crm.ts", import.meta.url), "utf8"),
   readFile(new URL("../lib/crm/data.ts", import.meta.url), "utf8"),
   readFile(new URL("../app/(app)/crm/peluang/[id]/page.tsx", import.meta.url), "utf8"),
@@ -20,12 +20,14 @@ test("sampel per produk tersimpan di DB dengan qty default 1", () => {
   assert.match(migration, /ADD COLUMN IF NOT EXISTS "sampleSize" VARCHAR\(40\)/);
 });
 
-test("dialog Edit PDF Penjahit menyediakan QTY (number, default 1) dan Ukuran sample (text)", () => {
+test("section penjahit menyediakan QTY (number, default 1) dan Ukuran sample (text) berisi nilai lama", () => {
   assert.match(dialog, /name={`sampleQty-\$\{item\.id\}`}/);
   assert.match(dialog, /name={`sampleSize-\$\{item\.id\}`}/);
   assert.match(dialog, /type="number"/);
-  assert.match(dialog, /String\(item\.sampleQty \?\? 1\)/);
-  assert.match(dialog, /value=\{sampleSizes\[item\.id\] \?\? ""\}/);
+  // Nilai lama dipakai sebagai default, bukan state kosong saat dialog dibuka.
+  assert.match(dialog, /defaultValue=\{String\(item\.sampleQty \?\? 1\)\}/);
+  assert.match(dialog, /defaultValue=\{item\.sampleSize \?\? ""\}/);
+  assert.match(dialog, /defaultValue=\{item\.deadline \?\? ""\}/);
 });
 
 test("action menyimpan sampel dan menolak qty bukan bulat minimal 1", () => {
@@ -53,7 +55,7 @@ test("NOTE sampel hanya dicetak di PDF penjahit", () => {
   assert.match(pdf, /const sampleNote = `SAMPLE SIZE \$\{sampleSize\} JML \$\{item\?\.sampleQty \?\? 1\}`/);
   assert.match(pdf, /return designNote \? `\$\{sampleNote\} \| \$\{designNote\}` : sampleNote/);
   // NOTE dipakai dua jalur (size chart & aksesori) lewat helper yang sama.
-  assert.match(pdf, /drawModelTable\(rows, noteFor\(item\), sampleQtyFor\(item\)\)/);
+  assert.match(pdf, /drawModelTable\(rows, noteFor\(item\), sampleFor\(item\)\)/);
   assert.match(pdf, /drawAccessoryTotal\(quantity, `JUMLAH PRODUK/);
 });
 
@@ -65,15 +67,19 @@ test("ukuran sample wajib diisi di dialog dan di action", () => {
   assert.match(actions, /if \(!size\) throw new UserFacingError\(`Ukuran sample \$\{item\.name\} wajib diisi\.`\)/);
 });
 
-test("TOTAL baris NOTE = order + sampel hanya di PDF penjahit", () => {
+test("TOTAL baris NOTE dan total lengan = order + sampel hanya di PDF penjahit", () => {
   assert.match(pdf, /function sampleQtyFor\(item: PurchaseOrderPdfItem \| undefined\)/);
   assert.match(pdf, /if \(variant !== "penjahit" \|\| !item\?\.sampleSize\?\.trim\(\)\) return 0;/);
-  // Hanya grand total NOTE yang berubah; total PENDEK/PANJANG tetap dari baris order.
+  // Sampel ikut dihitung di tabel: grand total NOTE dan sel/total ukuran sampel memuatnya.
   assert.match(pdf, /const grandTotal = rows\.reduce\(\(sum, row\) => sum \+ row\.quantity, 0\) \+ sampleQty/);
-  assert.match(pdf, /const quantity = quantityFor\(size, sleeve\)/);
+  assert.match(pdf, /function sampleFor\(item: PurchaseOrderPdfItem \| undefined\)/);
+  assert.match(pdf, /const quantity = quantityFor\(size, sleeve\) \+ sampleExtra/);
+  assert.match(pdf, /centeredText\(String\(total \+ columnSampleQty\)/);
   assert.match(pdf, /String\(quantity \+ sampleQty\)/);
-  assert.match(pdf, /drawModelTable\(rows, noteFor\(data\.items\[0\]\), sampleQtyFor\(data\.items\[0\]\)\)/);
+  assert.match(pdf, /drawModelTable\(rows, noteFor\(data\.items\[0\]\), sampleFor\(data\.items\[0\]\)\)/);
   assert.match(pdf, /drawAccessoryTotal\(totalQuantity, null, noteFor\(data\.items\[0\]\), sampleQtyFor\(data\.items\[0\]\)\)/);
+  // Sampel hanya masuk hitungan penjahit, bukan dokumen customer.
+  assert.match(pdf, /if \(variant !== "penjahit" \|\| !size\) return null;/);
   // Angka grad total memakai ukuran font minimum yang sama dengan teks lain.
   assert.match(pdf, /widthOfTextAtSize\(String\(grandTotal\), MIN_FONT_SIZE\)/);
   assert.match(pdf, /String\(grandTotal\), \{[^\n]*size: MIN_FONT_SIZE/);

@@ -16,6 +16,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Move, Plus, Trash2, X } from "lucide-react";
 
 import { createInvoiceDraftAction, createInvoiceRevisionAction } from "@/app/actions/crm";
+import { ClearFormButton } from "@/components/crm/clear-form-button";
 import { MoneyInput } from "@/components/money-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -330,6 +331,7 @@ export function InvoiceForm({
   const [orderDiscountPercent, setOrderDiscountPercent] = useState(() => values?.discountType === "NOMINAL" ? "" : initNumber(values?.discountPercent));
   const [orderDiscountNominal, setOrderDiscountNominal] = useState(() => values?.discountType === "NOMINAL" ? initNumber(values?.discountNominal) : "");
   const [taxPercent, setTaxPercent] = useState(() => initNumber(values?.taxPercent));
+  const [notes, setNotes] = useState(values?.notes ?? "");
 
   const [rows, setRows] = useState<ProductRow[]>(() => buildInvoiceProductRows(groups, values?.items ?? []));
   const [addons, setAddons] = useState<AddonDraft[]>(() => (values?.addons ?? []).slice(0, MAX_ADDONS).map((addon, index) => ({
@@ -467,6 +469,25 @@ export function InvoiceForm({
   }
   function removeAddon(addonKey: string) {
     setAddons((current) => current.filter((addon) => addon.key !== addonKey));
+  }
+
+  /** Kosongkan isian invoice di layar; produk & qty tetap mengikuti PO. */
+  function clearForm() {
+    setRows((current) => current
+      .filter((row) => row.sourceKey !== "")
+      .map((row) => ({ ...row, unitPrice: "", discountType: "PERCENTAGE", discountPercent: "", discountNominal: "" })));
+    setAddons([]);
+    setOrderDiscountType("PERCENTAGE");
+    setOrderDiscountPercent("");
+    setOrderDiscountNominal("");
+    setTaxPercent("");
+    setNotes("");
+    setDueAt("");
+    setScheduleKind("");
+    setInitialValueType("NOMINAL");
+    setInitialValue("");
+    setInitialDueAt("");
+    setScheduleTerms([{ key: "term-0", value: "", dueAt: "" }]);
   }
 
   return (
@@ -625,7 +646,7 @@ export function InvoiceForm({
             <FieldDescription>Dipotong dari total setelah diskon per baris.</FieldDescription>
           </Field>
           <Field><FieldLabel htmlFor={`invoice-tax-${fieldKey}`}>Pajak % (opsional)</FieldLabel><Input id={`invoice-tax-${fieldKey}`} name="taxPercent" type="number" min={0} max={100} step="0.0001" placeholder="0" value={taxPercent} onChange={(event) => setTaxPercent(event.target.value)} aria-label="Pajak invoice" /></Field>
-          <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} defaultValue={values?.notes ?? ""} /></Field>
+          <Field><FieldLabel htmlFor={`invoice-notes-${fieldKey}`}>Catatan invoice</FieldLabel><Textarea id={`invoice-notes-${fieldKey}`} name="notes" maxLength={2000} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
         </div>
         <FieldDescription>Harga akhir = total produk setelah diskon per baris, ditambah seluruh Add On (qty bebas), dikurangi diskon total, ditambah pajak, lalu dibulatkan ke kelipatan Rp500 terdekat.</FieldDescription>
         <section className="flex flex-col gap-4 rounded-lg border bg-muted/40 p-4" aria-label="Jadwal pembayaran">
@@ -763,7 +784,18 @@ export function InvoiceForm({
             <AlertDescription>{formState.message} Periksa harga dan diskon, lalu simpan ulang. Isian Anda tidak hilang.</AlertDescription>
           </Alert>
         ) : null}
-        {hideSubmit ? null : <SubmitButton pendingLabel="Menyimpan draft..." disabled={!scheduleReady}>{submitLabel ?? "Buat draft invoice"}</SubmitButton>}
+        {hideSubmit ? null : (
+          <div className="flex flex-wrap items-center gap-2">
+            <SubmitButton pendingLabel="Menyimpan draft..." disabled={!scheduleReady}>{submitLabel ?? "Buat draft invoice"}</SubmitButton>
+            {sourceInvoiceId ? (
+              <ClearFormButton
+                onClear={clearForm}
+                title="Kosongkan formulir invoice?"
+                description="Harga, diskon, add on, catatan, dan jadwal pembayaran di layar akan dikosongkan. Produk dan qty tetap mengikuti PO; data invoice baru berubah setelah Anda menyimpan."
+              />
+            ) : null}
+          </div>
+        )}
       </FieldGroup>
     </form>
   );

@@ -35,6 +35,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   PURCHASE_ORDER_DEPOSIT_RECORDED: "Catat deposit PO",
   PURCHASE_ORDER_DEPOSIT_UPDATED: "Ubah deposit PO",
   PURCHASE_ORDER_CUSTOMER_CONFIRMED: "Konfirmasi PO oleh customer",
+  PURCHASE_ORDER_DESIGN_NOTES_UPDATED: "Ubah desain & catatan PO",
+  PURCHASE_ORDER_CORRECTED: "Koreksi data PO",
   // Invoice & pembayaran
   INVOICE_DRAFT_CREATED: "Buat draft invoice",
   INVOICE_DRAFT_UPDATED: "Ubah draft invoice",
@@ -145,6 +147,8 @@ export const AUDIT_FIELD_LABEL: Record<string, string> = {
   productCategoryId: "Kategori produk",
   productName: "Produk",
   instansi: "Instansi",
+  customerReference: "Referensi customer",
+  pola: "Pola",
   material: "Bahan",
   baseColor: "Warna dasar",
   color: "Warna",

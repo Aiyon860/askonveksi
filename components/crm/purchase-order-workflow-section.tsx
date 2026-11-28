@@ -2,11 +2,11 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { CopyPlus, XCircle } from "lucide-react";
+import { CopyPlus } from "lucide-react";
 
 import { cancelPurchaseOrderAction } from "@/app/actions/crm";
 import { DocumentCancelButton } from "@/components/crm/document-cancel-button";
-import { type PenjahitPlanItem } from "@/components/crm/penjahit-plan-dialog";
+import type { PenjahitPlanItem } from "@/components/crm/penjahit-plan-dialog";
 import { PurchaseOrderForm, type ProductCategoryOption } from "@/components/crm/purchase-order-form";
 import { PurchaseOrderPdfDownloadButton } from "@/components/crm/purchase-order-pdf-download-button";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ export type PurchaseOrderItemDraftValues = {
   productCategoryId: string;
   decorationMethods: string[];
   designNotes: string;
+  /** Gambar desain customer terakhir, ditampilkan saat Edit PO disepakati. */
+  designs?: Array<{ id: string; name: string }>;
   matrix: Record<string, number>;
   rosterMode: "none" | "manual" | "excel";
   roster: Array<{ key: string; memberId: string; name: string; jabatan: string; sizeId: string; sleeveLength: "PENDEK" | "PANJANG" | "" }>;
@@ -70,6 +72,10 @@ type PurchaseOrderWorkflowSectionProps = {
   latestInChain?: boolean;
   /** Sprint 11 (R3): baris deadline/desain penjahit per item untuk dialog Edit PDF Penjahit. */
   penjahitItems: PenjahitPlanItem[];
+  /** Masih ada invoice DRAFT/ISSUED pada PO ini: qty & ukuran dikunci saat edit. */
+  invoiceActive?: boolean;
+  /** Tugas desain PO, dipakai pratinjau gambar desain customer di form edit. */
+  designTaskId?: string | null;
   children: ReactNode;
 };
 
@@ -92,17 +98,19 @@ export function PurchaseOrderWorkflowSection({
   canManageSizes = false,
   latestInChain = true,
   penjahitItems,
+  invoiceActive = false,
+  designTaskId = null,
   children,
 }: PurchaseOrderWorkflowSectionProps) {
-  const [isCreatingRevision, setIsCreatingRevision] = useState(false);
-  // Draft yang sudah tersimpan bersifat readonly; perubahan hanya lewat "Buat versi revisi".
-  // PO yang sudah disepakati bisa direvisi berkali-kali (mis. tambah qty H-1);
-  // server menolak bila invoice sudah terbit atau Sales Order sudah terbentuk.
-  // PO batal juga bisa dilanjutkan sebagai "Buat PO baru": tanpa jalur ini peluang yang PO-nya
-  // dibatalkan tidak akan pernah punya PO lagi (server tetap menolak bila masih ada PO aktif).
-  const canCreateRevision =
-    (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED" || (purchaseOrderStatus === "CANCELLED" && latestInChain))
-    && canOperate && inNegotiation && !isCreatingRevision;
+  const [isEditing, setIsEditing] = useState(false);
+  // Satu form edit untuk semua status aktif, sama seperti Revisi PO.
+  // - Ada invoice aktif: simpan langsung ke PO yang sama, qty/ukuran dikunci.
+  // - Tanpa invoice aktif: simpan sebagai versi revisi baru (perilaku Revisi PO).
+  // - PO batal: form yang sama membuat dokumen PO baru (hanya dokumen terakhir).
+  const canEditPurchaseOrder = canOperate && inNegotiation && (purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED");
+  const canCreateSuccessor = canOperate && inNegotiation && purchaseOrderStatus === "CANCELLED" && latestInChain;
+  const canOpenEditForm = !isEditing && (canEditPurchaseOrder || canCreateSuccessor);
+  const inPlaceEdit = invoiceActive && purchaseOrderStatus === "AGREED";
   // PO disepakati boleh dibatalkan sebelum ada invoice aktif dan sebelum DP/Lunas masuk.
   // Setelah batal, tombol "Buat PO baru" di atas menjadi jalur revisi dokumen.
   const canCancelPurchaseOrder = purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED";
@@ -115,7 +123,13 @@ export function PurchaseOrderWorkflowSection({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-          {!isCreatingRevision ? (
+          {canOpenEditForm ? (
+            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsEditing(true)}>
+              <CopyPlus data-icon="inline-start" aria-hidden="true" />
+              {purchaseOrderStatus === "CANCELLED" ? "Buat PO baru" : "Edit PO"}
+            </Button>
+          ) : null}
+          {!isEditing ? (
             <PurchaseOrderPdfDownloadButton
               purchaseOrderId={purchaseOrderId}
               purchaseOrderNo={draftValues.purchaseOrderNo}
@@ -126,13 +140,7 @@ export function PurchaseOrderWorkflowSection({
               }}
             />
           ) : null}
-          {canCreateRevision ? (
-            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setIsCreatingRevision(true)}>
-              <CopyPlus data-icon="inline-start" aria-hidden="true" />
-              {purchaseOrderStatus === "CANCELLED" ? "Buat PO baru" : purchaseOrderStatus === "AGREED" ? "Revisi PO disepakati" : "Buat versi revisi"}
-            </Button>
-          ) : null}
-          {canCancel && canCancelPurchaseOrder ? (
+          {canCancel && canCancelPurchaseOrder && !isEditing ? (
             cancelBlockedReason ? (
               <p className="max-w-xs text-xs text-muted-foreground sm:text-right">{cancelBlockedReason}</p>
             ) : (
@@ -151,7 +159,7 @@ export function PurchaseOrderWorkflowSection({
           ) : null}
         </div>
       </div>
-      {isCreatingRevision ? (
+      {isEditing ? (
         <div className="min-w-0 max-w-full">
           <PurchaseOrderForm
             opportunityId={opportunityId}
@@ -159,20 +167,24 @@ export function PurchaseOrderWorkflowSection({
             categoryOptions={categoryOptions}
             initialValues={draftValues}
             sourcePurchaseOrderId={purchaseOrderId}
-            submitLabel={purchaseOrderStatus === "CANCELLED" ? "Buat PO baru" : "Buat versi revisi"}
+            purchaseOrderVersion={purchaseOrderVersion}
+            inPlaceEdit={inPlaceEdit}
+            // Satu pintu ubah desain: selalu lewat form Edit PO, baik draft maupun sudah disepakati.
+            customerDesignsEditable={purchaseOrderStatus === "DRAFT" || purchaseOrderStatus === "AGREED"}
+            customerDesignTaskId={designTaskId}
+            onCancelEdit={() => setIsEditing(false)}
+            lockInvoiceQuantities={inPlaceEdit}
+            submitLabel={
+              inPlaceEdit
+                ? "Simpan perubahan PO"
+                : purchaseOrderStatus === "CANCELLED"
+                  ? "Buat PO baru"
+                  : "Simpan revisi PO"
+            }
             purchaseOrderNoPreview={purchaseOrderNoPreview}
             defaultInstansi={defaultInstansi}
             canManageSizes={canManageSizes}
           />
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-2 w-full border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-            onClick={() => setIsCreatingRevision(false)}
-          >
-            <XCircle data-icon="inline-start" aria-hidden="true" />
-            Batalkan draft revisi
-          </Button>
         </div>
       ) : (
         children
